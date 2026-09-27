@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/tplAIter/.github/main/assets/banner.png" alt="tplAIter — Templates for the way you build." width="100%">
+</p>
+
 # tplAIter
 
 `tplaiter` is a Go command-line tool for working with template repositories and
