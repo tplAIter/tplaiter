@@ -198,7 +198,7 @@ func TestSourceGraphProvenanceDoesNotChangeDigestOrExposeHostPath(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(encoded), "/Users/") || strings.Contains(string(encoded), "requestedRef\":\"") && strings.Contains(g2.Nodes[0].Key, "refs/") {
+	if strings.Contains(string(encoded), "/private-home/") || strings.Contains(string(encoded), "requestedRef\":\"") && strings.Contains(g2.Nodes[0].Key, "refs/") {
 		t.Fatalf("host or provenance leaked into key: %s", encoded)
 	}
 }

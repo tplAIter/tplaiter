@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -22,8 +20,8 @@ import (
 var envRunner execx.Runner = execx.Exec{}
 
 // envAutoYes — `--yes` команды `tplater env setup`: подтверждает установку
-// ansible без интерактивного вопроса. Полноценный huh-confirm —
-// Интерактивное подтверждение выполняется здесь; это единственный источник согласия для
+// ansible без интерактивного вопроса (SPEC-03 §4). Полноценный huh-confirm —
+// задача опросника (C2/tp-U1); здесь единственный источник согласия для
 // неинтерактивных сценариев (CI, скрипты).
 var envAutoYes bool
 
@@ -31,17 +29,17 @@ func init() {
 	rootCmd.AddCommand(newEnvCmd())
 }
 
-// newEnvCmd создаёт команду `tplater env`: единая точка запуска
+// newEnvCmd создаёт команду `tplater env` (SPEC-03 §4): единая точка запуска
 // ansible-плейбуков окружения, которые везёт с собой шаблон.
 func newEnvCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "env",
 		Short: "Настройка окружения проекта через ansible-плейбуки шаблона",
-		Long: "Шаблон декларирует environment.playbooks — ansible-плейбуки " +
+		Long: "Шаблон декларирует environment.playbooks (SPEC-01 §2) — ansible-плейбуки " +
 			"настройки окружения (инфраструктура, зависимости и т.п.). tplater — единая точка " +
 			"их запуска: устанавливает ansible при необходимости и исполняет плейбук с " +
 			"extra-vars из настроек и идентификации текущего проекта.\n\n" +
-			"См. документацию",
+			"См. specs/SPEC-03-scaffolding.md §4.",
 	}
 	c.AddCommand(newEnvListCmd(), newEnvSetupCmd())
 	return c
@@ -64,43 +62,48 @@ func newEnvListCmd() *cobra.Command {
 }
 
 // newEnvSetupCmd создаёт `tplater env setup [name]` (по умолчанию name=setup,
-// ).
+// SPEC-03 §4).
 func newEnvSetupCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "setup [name]",
 		Short: "Запустить плейбук окружения (по умолчанию \"setup\")",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := "setup"
-			if len(args) == 1 {
-				name = args[0]
-			}
+			// Cobra rejects this before root hooks; retain the same guard for a
+			// directly constructed setup command.
+			return actionUnavailable()
+			/*
+				name := "setup"
+				if len(args) == 1 {
+					name = args[0]
+				}
 
-			tpl, proj, root, err := loadRunContext()
-			if err != nil {
-				return err
-			}
+				tpl, proj, root, err := loadRunContext()
+				if err != nil {
+					return err
+				}
 
-			pb, err := findPlaybook(tpl.Environment.Playbooks, name)
-			if err != nil {
-				return err
-			}
+				pb, err := findPlaybook(tpl.Environment.Playbooks, name)
+				if err != nil {
+					return err
+				}
 
-			runner := envsetup.NewRunner(envRunner, cmd.OutOrStdout(), ui.Default())
-			runErr := runner.RunPlaybook(cmd.Context(), envsetup.Options{
-				TemplateDir: filepath.Join(root, envsetup.EnvironmentRelPath),
-				ProjectRoot: root,
-				Playbook:    pb,
-				Values:      settingsValues(proj.Settings),
-				Project:     proj.Project,
-				AutoYes:     envAutoYes,
-			})
+				runner := envsetup.NewRunner(envRunner, cmd.OutOrStdout(), ui.Default())
+				runErr := runner.RunPlaybook(cmd.Context(), envsetup.Options{
+					TemplateDir: filepath.Join(root, envsetup.EnvironmentRelPath),
+					ProjectRoot: root,
+					Playbook:    pb,
+					Values:      settingsValues(proj.Settings),
+					Project:     proj.Project,
+					AutoYes:     envAutoYes,
+				})
 
-			var exitErr *execx.ExitError
-			if errors.As(runErr, &exitErr) {
-				return &ExitError{Code: exitErr.ExitCode, Err: runErr}
-			}
-			return runErr
+				var exitErr *execx.ExitError
+				if errors.As(runErr, &exitErr) {
+					return &ExitError{Code: exitErr.ExitCode, Err: runErr}
+				}
+				return runErr
+			*/
 		},
 	}
 	c.Flags().BoolVar(&envAutoYes, "yes", false, "подтвердить установку ansible без интерактивного вопроса")

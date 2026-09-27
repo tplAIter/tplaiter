@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -87,12 +88,61 @@ func writeFile(t *testing.T, dir, rel, content string) {
 	}
 }
 
+type treeEntry struct {
+	mode os.FileMode
+	data []byte
+}
+
+func snapshotTree(t *testing.T, root string) map[string]treeEntry {
+	t.Helper()
+	out := make(map[string]treeEntry)
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == root {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		entry := treeEntry{mode: info.Mode()}
+		if info.Mode().IsRegular() {
+			entry.data, err = os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+		}
+		out[rel] = entry
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("snapshot %s: %v", root, err)
+	}
+	return out
+}
+
+func assertTreeEqual(t *testing.T, want, got map[string]treeEntry) {
+	t.Helper()
+	if !reflect.DeepEqual(want, got) {
+		t.Fatalf("project tree changed:\nwant=%#v\ngot=%#v", want, got)
+	}
+}
+
+func assertExecutionUnavailable(t *testing.T, err error) {
+	t.Helper()
+	if !errors.Is(err, ErrExecutionUnavailable) {
+		t.Fatalf("expected typed execution denial, got %v", err)
+	}
+}
+
 const appGoStub = `package app
 
 import (
 	"log/slog"
 
-	"git.example.test/demo/internal/usecase"
+	"example.invalid/demo/internal/usecase"
 )
 
 func New(logger *slog.Logger) error {
@@ -121,7 +171,7 @@ const usecaseWiringTmpl = `	{{ .Marker }}
 func setupProject(t *testing.T) (dir string, tpl *manifest.Template) {
 	t.Helper()
 	dir = t.TempDir()
-	writeFile(t, dir, "go.mod", "module git.example.test/demo\n\ngo 1.26\n")
+	writeFile(t, dir, "go.mod", "module example.invalid/demo\n\ngo 1.26\n")
 	writeFile(t, dir, "internal/app/app.go", appGoStub)
 	writeFile(t, dir, ".tplaiter/generators/use-case.go.tmpl", usecaseSnippetTmpl)
 	writeFile(t, dir, ".tplaiter/generators/use-case.anchor.tmpl", usecaseWiringTmpl)
@@ -159,38 +209,10 @@ func TestGenerate_CreatesFileAndInsertsAnchorIdempotently(t *testing.T) {
 		NoBuild:       true,
 	}
 
-	res, err := Generate(context.Background(), tpl, "use-case", "Foo", opts)
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	if len(res.CreatedFiles) != 1 || res.CreatedFiles[0] != "internal/usecase/foo.go" {
-		t.Errorf("CreatedFiles = %v", res.CreatedFiles)
-	}
-	if len(res.EditedFiles) != 1 || res.EditedFiles[0] != "internal/app/app.go" {
-		t.Errorf("EditedFiles = %v", res.EditedFiles)
-	}
-
-	created := readFile(t, filepath.Join(dir, "internal/usecase/foo.go"))
-	if !strings.Contains(created, "FooUseCase") {
-		t.Errorf("created file missing FooUseCase:\n%s", created)
-	}
-
-	app := readFile(t, filepath.Join(dir, "internal/app/app.go"))
-	if !strings.Contains(app, "// gen:use-case:foo") {
-		t.Errorf("marker not inserted into app.go:\n%s", app)
-	}
-	if !strings.Contains(app, "FooUseCase{}") {
-		t.Errorf("wiring block not inserted into app.go:\n%s", app)
-	}
-	// Маркер должен идти перед строкой якоря.
-	if strings.Index(app, "gen:use-case:foo") > strings.Index(app, "CODEGEN:WIRING") {
-		t.Errorf("marker must precede anchor line:\n%s", app)
-	}
-
-	// Повтор с тем же именем — ошибка (файл уже существует).
-	if _, err := Generate(context.Background(), tpl, "use-case", "Foo", opts); err == nil {
-		t.Error("expected error on duplicate gen (target file exists)")
-	}
+	before := snapshotTree(t, dir)
+	_, err := Generate(context.Background(), tpl, "use-case", "Foo", opts)
+	assertExecutionUnavailable(t, err)
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 func TestGenerate_UnknownKind(t *testing.T) {
@@ -215,11 +237,12 @@ func TestGenerate_WhenGateBlocks(t *testing.T) {
 		t.Errorf("expected when-gate error mentioning `settings set`, got %v", err)
 	}
 
-	// С включённым брокером генерация проходит.
+	// Даже при валидной настройке выполнение остаётся недоступным.
 	opts.Values = settings.Values{"brokers": []string{"kafka"}}
-	if _, err := Generate(context.Background(), tpl, "kafka-consumer", "Foo", opts); err != nil {
-		t.Errorf("expected success once brokers=kafka: %v", err)
-	}
+	before := snapshotTree(t, dir)
+	_, err = Generate(context.Background(), tpl, "kafka-consumer", "Foo", opts)
+	assertExecutionUnavailable(t, err)
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 func TestGenerate_MissingAnchorFails(t *testing.T) {
@@ -238,9 +261,8 @@ func TestGenerate_MissingAnchorFails(t *testing.T) {
 	}
 }
 
-// TestGenerate_RollbackOnBuildFailure проверяет полный откат (созданный файл
-// удалён, app.go восстановлен) при провале `go build ./...` вызванном
-// синтаксической ошибкой в сниппете.
+// TestGenerate_RollbackOnBuildFailure records the former executable-success
+// contract; generation now denies before any filesystem effect.
 func TestGenerate_RollbackOnBuildFailure(t *testing.T) {
 	dir, tpl := setupProject(t)
 	// Ломаем сниппет: незакрытая скобка структуры.
@@ -248,18 +270,10 @@ func TestGenerate_RollbackOnBuildFailure(t *testing.T) {
 
 	opts := Options{ProjectRoot: dir, GeneratorsDir: filepath.Join(dir, GeneratorsRelPath)} // NoBuild: false (по умолчанию)
 
+	before := snapshotTree(t, dir)
 	_, err := Generate(context.Background(), tpl, "use-case", "Foo", opts)
-	if err == nil || !strings.Contains(err.Error(), "не собирается") {
-		t.Fatalf("expected build failure error, got %v", err)
-	}
-
-	if _, statErr := os.Stat(filepath.Join(dir, "internal/usecase/foo.go")); !os.IsNotExist(statErr) {
-		t.Errorf("expected created file to be rolled back, stat err = %v", statErr)
-	}
-	app := readFile(t, filepath.Join(dir, "internal/app/app.go"))
-	if app != appGoStub {
-		t.Errorf("expected app.go to be restored to original content, got:\n%s", app)
-	}
+	assertExecutionUnavailable(t, err)
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 func setupRustProject(t *testing.T) (dir string, tpl *manifest.Template, original string) {
@@ -284,40 +298,31 @@ func TestGenerate_UsesManifestBuildGateForRustWithoutGoFormatting(t *testing.T) 
 	runner := execx.NewRecordingRunner()
 	runner.On("/bin/sh", []string{"-c", "cargo check --workspace"}, execx.Response{Result: execx.Result{ExitCode: 0}})
 
+	before := snapshotTree(t, dir)
 	_, err := Generate(context.Background(), tpl, "handler", "Ride", Options{
 		ProjectRoot: dir, GeneratorsDir: filepath.Join(dir, GeneratorsRelPath), Runner: runner,
 	})
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
+	assertExecutionUnavailable(t, err)
+	if len(runner.Calls) != 0 {
+		t.Fatalf("denied Rust generation must not run build, calls = %#v", runner.Calls)
 	}
-	if len(runner.Calls) != 1 || runner.Calls[0].Name != "/bin/sh" {
-		t.Fatalf("Rust must run only manifest build-gate, calls = %#v", runner.Calls)
-	}
-	if runner.Calls[0].Opts.Dir != dir {
-		t.Errorf("manifest build-gate Dir = %q, want project root %q", runner.Calls[0].Opts.Dir, dir)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "src/http/ride.rs")); err != nil {
-		t.Fatalf("generated Rust file: %v", err)
-	}
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 func TestGenerate_ManifestBuildGateFailureRollsBackRust(t *testing.T) {
-	dir, tpl, original := setupRustProject(t)
+	dir, tpl, _ := setupRustProject(t)
 	runner := execx.NewRecordingRunner()
 	runner.On("/bin/sh", []string{"-c", "cargo check --workspace"}, execx.Response{Err: errors.New("cargo check failed")})
 
+	before := snapshotTree(t, dir)
 	_, err := Generate(context.Background(), tpl, "handler", "Ride", Options{
 		ProjectRoot: dir, GeneratorsDir: filepath.Join(dir, GeneratorsRelPath), Runner: runner,
 	})
-	if err == nil || !strings.Contains(err.Error(), "изменения откачены") {
-		t.Fatalf("expected rollback error, got %v", err)
+	assertExecutionUnavailable(t, err)
+	if len(runner.Calls) != 0 {
+		t.Fatalf("denied Rust generation must not run build, calls = %#v", runner.Calls)
 	}
-	if _, statErr := os.Stat(filepath.Join(dir, "src/http/ride.rs")); !os.IsNotExist(statErr) {
-		t.Errorf("generated Rust file must be rolled back, stat err = %v", statErr)
-	}
-	if got := readFile(t, filepath.Join(dir, "src/http/router.rs")); got != original {
-		t.Errorf("Rust anchor must be restored: %q", got)
-	}
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 func readFile(t *testing.T, path string) string {

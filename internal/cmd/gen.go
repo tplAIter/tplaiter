@@ -4,16 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sort"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/gen"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 // genRunner — Runner formatter/build-gate пост-шагов [gen.Generate].
@@ -26,7 +23,7 @@ func init() {
 }
 
 // newGenCmd создаёт команду `tplater gen <kind> <name> [--<param> ...]`
-// ( проверку): скаффолдер проекта на основе Generators манифеста
+// (SPEC-01 §6, CG-1): скаффолдер проекта на основе Generators манифеста
 // шаблона, привязанного к текущему проекту (см. [loadRunContext]).
 //
 // Решение по динамическим флагам: набор флагов зависит от параметров
@@ -40,7 +37,7 @@ func newGenCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "gen <kind> <name> [--<param> ...]",
 		Short: "Скаффолдер шаблона: создать файл(ы) вида <kind> с именем <name>",
-		Long: "Генерирует файлы и вставки якорей по generators манифеста шаблона. " +
+		Long: "Генерирует файлы и вставки якорей по generators манифеста шаблона (SPEC-01 §6). " +
 			"Вид (kind) и его сниппеты приходят из шаблона, не из бинарника tplater — " +
 			"`tplater gen list` показывает доступные виды текущего проекта.\n\n" +
 			"Параметры генератора (Generator.params) становятся флагами: `--fields \"name:type,...\"` " +
@@ -73,59 +70,62 @@ func runGen(cmd *cobra.Command, args []string) error {
 	if len(name) > 0 && name[0] == '-' {
 		return fmt.Errorf("gen: вторым аргументом ожидается <name>, получен флаг %q", name)
 	}
-	rest := args[2:]
+	return actionUnavailable()
+	/*
+		rest := args[2:]
 
-	tpl, proj, root, err := loadRunContext()
-	if err != nil {
-		return err
-	}
-	g, err := gen.Lookup(tpl, kind)
-	if err != nil {
-		return err
-	}
-
-	// Строим FlagSet по параметрам генератора + общий --no-build.
-	fs := pflag.NewFlagSet("gen "+kind, pflag.ContinueOnError)
-	fs.SetOutput(cmd.OutOrStderr())
-	noBuild := fs.Bool("no-build", false, "пропустить build-gate после генерации")
-	for i := range g.Params {
-		p := &g.Params[i]
-		fs.String(p.Name, gen.DefaultFor(p), paramUsage(p))
-	}
-	if err := fs.Parse(rest); err != nil {
-		return fmt.Errorf("gen %s: разбор флагов: %w", kind, err)
-	}
-
-	// Собираем только ЯВНО заданные флаги-параметры (Changed) для ResolveParams.
-	provided := make(map[string]string)
-	fs.Visit(func(f *pflag.Flag) {
-		if f.Name == "no-build" {
-			return
+		tpl, proj, root, err := loadRunContext()
+		if err != nil {
+			return err
 		}
-		provided[f.Name] = f.Value.String()
-	})
-	params, fields, err := gen.ResolveParams(g, provided)
-	if err != nil {
-		return fmt.Errorf("gen %s: %w", kind, err)
-	}
+		g, err := gen.Lookup(tpl, kind)
+		if err != nil {
+			return err
+		}
 
-	res, err := gen.Generate(cmd.Context(), tpl, kind, name, gen.Options{
-		ProjectRoot:   root,
-		GeneratorsDir: filepath.Join(root, gen.GeneratorsRelPath),
-		Values:        settingsValues(proj.Settings),
-		Project:       proj.Project,
-		Fields:        fields,
-		Params:        params,
-		NoBuild:       *noBuild,
-		Runner:        genRunner,
-		Logf: func(format string, a ...any) {
-			fmt.Fprintf(cmd.OutOrStdout(), format+"\n", a...)
-		},
-	})
-	if err != nil {
-		return err
-	}
-	return printGenResult(cmd, res)
+		// Строим FlagSet по параметрам генератора + общий --no-build.
+		fs := pflag.NewFlagSet("gen "+kind, pflag.ContinueOnError)
+		fs.SetOutput(cmd.OutOrStderr())
+		noBuild := fs.Bool("no-build", false, "пропустить build-gate после генерации")
+		for i := range g.Params {
+			p := &g.Params[i]
+			fs.String(p.Name, gen.DefaultFor(p), paramUsage(p))
+		}
+		if err := fs.Parse(rest); err != nil {
+			return fmt.Errorf("gen %s: разбор флагов: %w", kind, err)
+		}
+
+		// Собираем только ЯВНО заданные флаги-параметры (Changed) для ResolveParams.
+		provided := make(map[string]string)
+		fs.Visit(func(f *pflag.Flag) {
+			if f.Name == "no-build" {
+				return
+			}
+			provided[f.Name] = f.Value.String()
+		})
+		params, fields, err := gen.ResolveParams(g, provided)
+		if err != nil {
+			return fmt.Errorf("gen %s: %w", kind, err)
+		}
+
+		res, err := gen.Generate(cmd.Context(), tpl, kind, name, gen.Options{
+			ProjectRoot:   root,
+			GeneratorsDir: filepath.Join(root, gen.GeneratorsRelPath),
+			Values:        settingsValues(proj.Settings),
+			Project:       proj.Project,
+			Fields:        fields,
+			Params:        params,
+			NoBuild:       *noBuild,
+			Runner:        genRunner,
+			Logf: func(format string, a ...any) {
+				fmt.Fprintf(cmd.OutOrStdout(), format+"\n", a...)
+			},
+		})
+		if err != nil {
+			return err
+		}
+		return printGenResult(cmd, res)
+	*/
 }
 
 // paramUsage формирует строку справки флага-параметра (тип + описание).
@@ -180,6 +180,8 @@ func newGenBatchCmd() *cobra.Command {
 			"Формат --operations: '[{\"kind\":\"crud\",\"name\":\"Ride\",\"params\":{\"fields\":\"status:string\"}}]'.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Keep input-only validation available to direct callers.  The
+			// denial follows before project discovery or any generator effect.
 			if operationsJSON == "" {
 				return errors.New("gen batch: обязателен --operations с JSON-массивом операций")
 			}
@@ -195,37 +197,55 @@ func newGenBatchCmd() *cobra.Command {
 					return fmt.Errorf("gen batch: операция %d требует kind и name", i+1)
 				}
 			}
+			return actionUnavailable()
+			/*
+				if operationsJSON == "" {
+					return errors.New("gen batch: обязателен --operations с JSON-массивом операций")
+				}
+				var input []genBatchInput
+				if err := json.Unmarshal([]byte(operationsJSON), &input); err != nil {
+					return fmt.Errorf("gen batch: разбор --operations JSON: %w", err)
+				}
+				if len(input) == 0 {
+					return errors.New("gen batch: список операций пуст")
+				}
+				for i, item := range input {
+					if item.Kind == "" || item.Name == "" {
+						return fmt.Errorf("gen batch: операция %d требует kind и name", i+1)
+					}
+				}
 
-			tpl, proj, root, err := loadRunContext()
-			if err != nil {
-				return err
-			}
-			operations := make([]gen.Operation, 0, len(input))
-			for i, item := range input {
-				g, lookupErr := gen.Lookup(tpl, item.Kind)
-				if lookupErr != nil {
-					return fmt.Errorf("gen batch: операция %d: %w", i+1, lookupErr)
+				tpl, proj, root, err := loadRunContext()
+				if err != nil {
+					return err
 				}
-				if err := validateGenBatchParams(g.Params, item.Params); err != nil {
-					return fmt.Errorf("gen batch: операция %d (%s %s): %w", i+1, item.Kind, item.Name, err)
+				operations := make([]gen.Operation, 0, len(input))
+				for i, item := range input {
+					g, lookupErr := gen.Lookup(tpl, item.Kind)
+					if lookupErr != nil {
+						return fmt.Errorf("gen batch: операция %d: %w", i+1, lookupErr)
+					}
+					if err := validateGenBatchParams(g.Params, item.Params); err != nil {
+						return fmt.Errorf("gen batch: операция %d (%s %s): %w", i+1, item.Kind, item.Name, err)
+					}
+					params, fields, resolveErr := gen.ResolveParams(g, item.Params)
+					if resolveErr != nil {
+						return fmt.Errorf("gen batch: операция %d (%s %s): %w", i+1, item.Kind, item.Name, resolveErr)
+					}
+					operations = append(operations, gen.Operation{Kind: item.Kind, Name: item.Name, Params: params, Fields: fields})
 				}
-				params, fields, resolveErr := gen.ResolveParams(g, item.Params)
-				if resolveErr != nil {
-					return fmt.Errorf("gen batch: операция %d (%s %s): %w", i+1, item.Kind, item.Name, resolveErr)
-				}
-				operations = append(operations, gen.Operation{Kind: item.Kind, Name: item.Name, Params: params, Fields: fields})
-			}
 
-			res, generateErr := gen.GenerateBatch(cmd.Context(), tpl, operations, gen.Options{
-				ProjectRoot: root, GeneratorsDir: filepath.Join(root, gen.GeneratorsRelPath),
-				Values: settingsValues(proj.Settings), Project: proj.Project, NoBuild: noBuild,
-				Runner: genRunner,
-				Logf:   func(format string, a ...any) { fmt.Fprintf(cmd.OutOrStdout(), format+"\n", a...) },
-			})
-			if generateErr != nil {
-				return generateErr
-			}
-			return printGenBatchResult(cmd, res)
+				res, generateErr := gen.GenerateBatch(cmd.Context(), tpl, operations, gen.Options{
+					ProjectRoot: root, GeneratorsDir: filepath.Join(root, gen.GeneratorsRelPath),
+					Values: settingsValues(proj.Settings), Project: proj.Project, NoBuild: noBuild,
+					Runner: genRunner,
+					Logf:   func(format string, a ...any) { fmt.Fprintf(cmd.OutOrStdout(), format+"\n", a...) },
+				})
+				if generateErr != nil {
+					return generateErr
+				}
+				return printGenBatchResult(cmd, res)
+			*/
 		},
 	}
 	c.Flags().StringVar(&operationsJSON, "operations", "", "JSON-массив операций {kind,name,params}")

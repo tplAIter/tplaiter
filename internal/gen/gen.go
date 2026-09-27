@@ -1,14 +1,14 @@
-// Package gen реализует скаффолдер `tplater gen <kind> <Name>`:
+// Package gen реализует скаффолдер `tplater gen <kind> <Name>` (SPEC-01 §6):
 // перенос якорной механики go-template'овского internal/gen (маркер
 // идемпотентности, вставка перед якорем, backup+откат при пост-ошибке,
 // пост-шаги форматирования Go и build-gate) на манифест-модель.
 //
 // Главное отличие от go-template: таблица видов скаффолда — НЕ go:embed
-// бинарника, а поле Generators манифеста шаблона. Сниппеты
+// бинарника, а поле Generators манифеста шаблона (SPEC-01 §6). Сниппеты
 // (Generator.Snippet, Anchor.Insert) читаются с диска относительно
 // [Options.GeneratorsDir] — каталога-копии `<источник шаблона>/<aiConfig-подобный
-// путь>`, которую реализация  кладёт в сгенерированный проект как
-// .tplaiter/generators (см. [GeneratorsRelPath] — контракт для /,
+// путь>`, которую задача C2 кладёт в сгенерированный проект как
+// .tplaiter/generators (см. [GeneratorsRelPath] — контракт для C2/C4,
 // симметричный aiconfig.AIConfigRelPath).
 package gen
 
@@ -31,14 +31,16 @@ import (
 )
 
 // GeneratorsRelPath — путь каталога-копии сниппетов генераторов в
-// сгенерированном проекте относительно его корня (контракт с связанными компонентами
-// /: `tplater new` копирует сюда каталог, на который ссылаются
+// сгенерированном проекте относительно его корня (контракт с задачами
+// C2/C4: `tplater new` копирует сюда каталог, на который ссылаются
 // Generator.Snippet/Anchor.Insert манифеста шаблона).
 const GeneratorsRelPath = ".tplaiter/generators"
 
 // identRe — допустимый формат производного snake-имени (перенос go-template
 // без изменений: gen работает преимущественно с Go-исходниками).
 var identRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+var ErrExecutionUnavailable = errors.New("TRUST_GENERATION_EXECUTION_UNAVAILABLE")
 
 // Name — производные варианты сырого имени скаффолда, доступные шаблонам
 // target/snippet/insert как `.Name.Pascal` и т.п. (перенос go-template Data,
@@ -53,7 +55,7 @@ type Name struct {
 }
 
 // Context — данные, доступные шаблонам target-пути, сниппета и вставки
-// якоря (: "контекст: Name{Pascal,Snake,...} + Settings"). Project
+// якоря (SPEC-01 §6: "контекст: Name{Pascal,Snake,...} + Settings"). Project
 // добавлен сверх спеки — не мешает и облегчает сниппеты, которым нужен
 // module path/slug проекта.
 type Context struct {
@@ -66,10 +68,10 @@ type Context struct {
 	// будет обнаружен как дубликат (перенос go-template: маркер живёт в
 	// теле шаблона, а не навязывается движком поверх чужого вывода).
 	Marker string
-	// Fields — поля сущности, разобранные из параметра типа `fields` (проверку).
+	// Fields — поля сущности, разобранные из параметра типа `fields` (CG-1).
 	// Пусто, если генератор не объявляет такого параметра.
 	Fields []Field
-	// Params — значения всех параметров генератора по имени (проверку). Тип
+	// Params — значения всех параметров генератора по имени (CG-1). Тип
 	// значения зависит от Param.Type: string→string, bool→bool, int→int,
 	// fields→[]Field (тот же срез, что и .Fields).
 	Params map[string]any
@@ -92,11 +94,11 @@ type Options struct {
 	Values settings.Values
 	// Project — координаты проекта для `.Project` в контексте рендера.
 	Project manifest.ProjectInfo
-	// Fields — разобранные поля сущности (из параметра типа `fields`, проверку);
+	// Fields — разобранные поля сущности (из параметра типа `fields`, CG-1);
 	// прокидываются в Context.Fields. Резолвится вызывающим (cmd/gen.go) через
 	// [ResolveParams].
 	Fields []Field
-	// Params — значения параметров генератора по имени (проверку); прокидываются в
+	// Params — значения параметров генератора по имени (CG-1); прокидываются в
 	// Context.Params. Резолвится вызывающим через [ResolveParams].
 	Params map[string]any
 	// NoBuild пропускает post-generation build-gate. По умолчанию выполняется
@@ -171,8 +173,8 @@ func List(tpl *manifest.Template, values settings.Values) []Status {
 
 // evalGate вычисляет when-гейт генератора: пустой список — всегда доступен;
 // иначе достаточно ИСТИННОСТИ ОДНОГО из условий списка (семантика OR — как
-// у files.anyOf, см. описание поведения: единственное текстовое поле "when",
-// которое манифест (реализация ) сделал списком строк, а не одной строкой с
+// у files.anyOf, см. отчёт задачи: единственное текстовое поле "when",
+// которое манифест (задача A2) сделал списком строк, а не одной строкой с
 // "&&" внутри — это осмысленно только как список альтернативных гейтов;
 // чистая конъюнкция уже выразима одной строкой "a=1 && b=2", как везде
 // иначе в §3.2).
@@ -217,7 +219,7 @@ func suggestSet(when []string) string {
 	return parts[0] + " (или: " + strings.Join(parts[1:], " | ") + ")"
 }
 
-// Generate выполняет один скаффолд kind с именем rawName.
+// Generate выполняет один скаффолд kind с именем rawName (SPEC-01 §6).
 //
 // Порядок: when-гейт → производные имена → рендер target-пути → проверка
 // отсутствия целевого файла → рендер сниппета → для каждого anchors[] —
@@ -282,56 +284,61 @@ func Generate(ctx context.Context, tpl *manifest.Template, kind, rawName string,
 		return nil, err
 	}
 
-	createdAbs := make([]string, 0, len(planned))
-	rollback := func() {
-		for _, abs := range createdAbs {
-			_ = os.Remove(abs)
+	_ = planned
+	_ = anchors
+	return nil, ErrExecutionUnavailable
+	/*
+		createdAbs := make([]string, 0, len(planned))
+		rollback := func() {
+			for _, abs := range createdAbs {
+				_ = os.Remove(abs)
+			}
+			for _, a := range anchors {
+				_ = os.WriteFile(a.abs, a.original, 0o600)
+			}
 		}
+
+		createdRels := make([]string, 0, len(planned))
+		for _, p := range planned {
+			if mkErr := os.MkdirAll(filepath.Dir(p.abs), 0o755); mkErr != nil {
+				rollback()
+				return nil, fmt.Errorf("gen %s: mkdir: %w", kind, mkErr)
+			}
+			if wErr := os.WriteFile(p.abs, p.content, 0o600); wErr != nil {
+				rollback()
+				return nil, fmt.Errorf("gen %s: запись %s: %w", kind, p.rel, wErr)
+			}
+			createdAbs = append(createdAbs, p.abs)
+			createdRels = append(createdRels, p.rel)
+			log("created %s", p.rel)
+		}
+
+		editedRels := make([]string, 0, len(anchors))
 		for _, a := range anchors {
-			_ = os.WriteFile(a.abs, a.original, 0o600)
+			if wErr := os.WriteFile(a.abs, a.updated, 0o600); wErr != nil {
+				rollback()
+				return nil, fmt.Errorf("gen %s: запись %s: %w", kind, a.rel, wErr)
+			}
+			editedRels = append(editedRels, a.rel)
+			log("edited  %s (anchor %s)", a.rel, a.anchor)
 		}
-	}
 
-	createdRels := make([]string, 0, len(planned))
-	for _, p := range planned {
-		if mkErr := os.MkdirAll(filepath.Dir(p.abs), 0o755); mkErr != nil {
-			rollback()
-			return nil, fmt.Errorf("gen %s: mkdir: %w", kind, mkErr)
+		changed := append(append([]string{}, createdAbs...), anchorAbsPaths(anchors)...)
+		if isGoProject(opts.ProjectRoot) {
+			runPostFormat(ctx, opts, changed, log)
 		}
-		if wErr := os.WriteFile(p.abs, p.content, 0o600); wErr != nil {
-			rollback()
-			return nil, fmt.Errorf("gen %s: запись %s: %w", kind, p.rel, wErr)
+
+		if !opts.NoBuild {
+			gateName, out, buildErr := runBuildGate(ctx, tpl, opts)
+			log("step: %s", gateName)
+			if buildErr != nil {
+				rollback()
+				return nil, fmt.Errorf("gen %s: сгенерированный код не собирается — изменения откачены:\n%s", kind, out)
+			}
 		}
-		createdAbs = append(createdAbs, p.abs)
-		createdRels = append(createdRels, p.rel)
-		log("created %s", p.rel)
-	}
 
-	editedRels := make([]string, 0, len(anchors))
-	for _, a := range anchors {
-		if wErr := os.WriteFile(a.abs, a.updated, 0o600); wErr != nil {
-			rollback()
-			return nil, fmt.Errorf("gen %s: запись %s: %w", kind, a.rel, wErr)
-		}
-		editedRels = append(editedRels, a.rel)
-		log("edited  %s (anchor %s)", a.rel, a.anchor)
-	}
-
-	changed := append(append([]string{}, createdAbs...), anchorAbsPaths(anchors)...)
-	if isGoProject(opts.ProjectRoot) {
-		runPostFormat(ctx, opts, changed, log)
-	}
-
-	if !opts.NoBuild {
-		gateName, out, buildErr := runBuildGate(ctx, tpl, opts)
-		log("step: %s", gateName)
-		if buildErr != nil {
-			rollback()
-			return nil, fmt.Errorf("gen %s: сгенерированный код не собирается — изменения откачены:\n%s", kind, out)
-		}
-	}
-
-	return &Result{Kind: kind, CreatedFiles: createdRels, EditedFiles: editedRels}, nil
+		return &Result{Kind: kind, CreatedFiles: createdRels, EditedFiles: editedRels}, nil
+	*/
 }
 
 // plannedFile — отрендеренный, но ещё не записанный целевой файл.

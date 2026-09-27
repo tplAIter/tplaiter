@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/manifest"
@@ -14,8 +13,8 @@ import (
 // сценариев (`tplater new`, CI).
 type EnsureOptions struct {
 	// AutoYes — установка подтверждается автоматически, без интерактивного
-	// вопроса (соответствует `--yes` CLI-флагу). Полноценный
-	// интерактивный confirm (huh) описан отдельным интерфейсом; здесь
+	// вопроса (соответствует `--yes` CLI-флагу, SPEC-03 §4). Полноценный
+	// интерактивный confirm (huh) — задача опросника (C2/tp-U1); здесь
 	// AutoYes — единственный источник согласия.
 	AutoYes bool
 	// SkipInstall полностью отключает предложения установки — только
@@ -31,7 +30,7 @@ type EnsureOptions struct {
 var ErrMissingRequiredTools = errors.New("deps: отсутствуют обязательные инструменты окружения")
 
 // EnsureTools — оркестрация проверки и (опциональной) установки tools для
-// `tplater new`: проверка -> предложение установки для
+// `tplater new` (SPEC-03 §4): проверка -> предложение установки для
 // отсутствующих/несоответствующих -> повторная проверка -> провал, если
 // после этого остались required-инструменты не в порядке.
 //
@@ -49,9 +48,11 @@ func EnsureTools(ctx context.Context, runner execx.Runner, out UI, tools []manif
 		if !opts.SkipInstall {
 			confirm := func() bool { return opts.AutoYes }
 			if _, err := Install(ctx, runner, out, st.Tool, confirm); err != nil {
-				out.Warn(err.Error())
+				// Generic recipes are closed. Do not expose an error whose text
+				// could contain manifest-controlled values or process output.
+				out.Warn("dependency installation unavailable")
 			}
-			st = checkOne(ctx, runner, st.Tool)
+			st = Check(ctx, runner, []manifest.Tool{st.Tool})[0]
 			statuses[i] = st
 		}
 
@@ -60,37 +61,17 @@ func EnsureTools(ctx context.Context, runner execx.Runner, out UI, tools []manif
 		}
 
 		if !st.Tool.Required {
-			out.Warn(fmt.Sprintf("%s: %s", st.Tool.Name, statusDetail(st)))
+			// The generic gate cannot attest an optional tool. Keep this UI
+			// message fixed: names, paths, and status error text are all
+			// manifest- or runner-controlled.
+			out.Warn("optional dependency unavailable")
 			continue
 		}
 		missing = append(missing, st)
 	}
 
 	if len(missing) > 0 {
-		return fmt.Errorf("%w: %s", ErrMissingRequiredTools, summarizeMissing(missing))
+		return fmt.Errorf("%w: required dependencies unavailable", ErrMissingRequiredTools)
 	}
 	return nil
-}
-
-// statusDetail описывает человекочитаемо, почему статус не «всё хорошо»
-// (для warning-строк необязательных инструментов и итоговой сводки ошибки).
-func statusDetail(st ToolStatus) string {
-	switch {
-	case !st.Found:
-		return "не найден"
-	case !st.Satisfies && st.Version != "":
-		return fmt.Sprintf("версия %s не удовлетворяет требованию %q", st.Version, st.Tool.Version)
-	case st.Err != nil:
-		return st.Err.Error()
-	default:
-		return "не удовлетворяет требованиям"
-	}
-}
-
-func summarizeMissing(missing []ToolStatus) string {
-	parts := make([]string, 0, len(missing))
-	for _, st := range missing {
-		parts = append(parts, fmt.Sprintf("%s (%s)", st.Tool.Name, statusDetail(st)))
-	}
-	return strings.Join(parts, ", ")
 }

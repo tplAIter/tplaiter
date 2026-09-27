@@ -1,5 +1,5 @@
 // Package deps — детект и установка инструментов окружения, объявленных в
-// requires.tools манифеста шаблона. Весь запуск внешних команд
+// requires.tools манифеста шаблона (SPEC-03 §4). Весь запуск внешних команд
 // идёт через [execx.Runner] — пакет не трогает os/exec напрямую и полностью
 // покрывается юнитами через execx.RecordingRunner.
 package deps
@@ -16,6 +16,10 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
+
+// ErrExecutionUnavailable marks the deliberately closed generic dependency
+// execution surface. Version probes are not an authority to start a process.
+var ErrExecutionUnavailable = errors.New("deps: execution unavailable")
 
 // ToolStatus — результат проверки одного инструмента из requires.tools.
 type ToolStatus struct {
@@ -45,7 +49,7 @@ type ToolStatus struct {
 func Check(ctx context.Context, runner execx.Runner, tools []manifest.Tool) []ToolStatus {
 	statuses := make([]ToolStatus, 0, len(tools))
 	for _, tool := range tools {
-		statuses = append(statuses, checkOne(ctx, runner, tool))
+		statuses = append(statuses, ToolStatus{Tool: tool, Err: ErrExecutionUnavailable})
 	}
 	return statuses
 }
@@ -92,7 +96,7 @@ type toolDetector struct {
 }
 
 // detectors — таблица override для инструментов с нестандартным форматом
-// вывода версии.
+// вывода версии (SPEC-03 §4).
 var detectors = map[string]toolDetector{
 	// `go version` -> "go version go1.26.4 darwin/arm64".
 	"go": {

@@ -15,7 +15,7 @@ import (
 // инструмента на данной платформе.
 type ActionKind string
 
-// Виды действий установки.
+// Виды действий установки (SPEC-03 §4).
 const (
 	// ActionBrew — установка одной командой `brew install <formula>`
 	// (доступна на darwin и linux, если в PATH есть brew).
@@ -45,7 +45,7 @@ type Platform struct {
 	HasBrew bool
 }
 
-// InstallPlan выбирает рецепт установки tool для platform:
+// InstallPlan выбирает рецепт установки tool для platform (SPEC-03 §4):
 //  1. brew, если он есть в PATH (darwin или linux) и манифест даёт формулу;
 //  2. apt — только когда brew недоступен на linux (иначе brew в приоритете);
 //  3. url — если задана ссылка на ручную установку;
@@ -96,8 +96,7 @@ func (u UI) Success(msg string) {
 // управляют HasBrew через [execx.RecordingRunner.SetLookPath] без обращения
 // к реальной машине.
 func DetectPlatform(runner execx.Runner) Platform {
-	_, err := runner.LookPath("brew")
-	return Platform{GOOS: runtime.GOOS, HasBrew: err == nil}
+	return Platform{GOOS: runtime.GOOS}
 }
 
 // Install выполняет план установки tool, вычисленный по текущей платформе
@@ -121,33 +120,38 @@ func Install(ctx context.Context, runner execx.Runner, out UI, tool manifest.Too
 // проверяется).
 func installFor(ctx context.Context, runner execx.Runner, out UI, tool manifest.Tool, platform Platform, confirm func() bool) (Action, error) {
 	action := InstallPlan(tool, platform)
+	// Generic manifest recipes never authorize installation, including direct
+	// library callers. A future fixed adapter must provide its own authority.
+	return action, ErrExecutionUnavailable
 
-	switch action.Kind {
-	case ActionBrew:
-		out.Info(tool.Name + ": установка доступна через brew — " + action.Command)
-		if confirm == nil || !confirm() {
-			out.Info(tool.Name + ": установка отменена")
+	/*
+		switch action.Kind {
+		case ActionBrew:
+			out.Info(tool.Name + ": установка доступна через brew — " + action.Command)
+			if confirm == nil || !confirm() {
+				out.Info(tool.Name + ": установка отменена")
+				return action, nil
+			}
+			_, err := runner.Run(ctx, "brew", []string{"install", tool.Install.Brew}, execx.Options{
+				Stdout: out.Out,
+				Stderr: out.Out,
+			})
+			if err != nil {
+				return action, fmt.Errorf("deps: brew install %s: %w", tool.Install.Brew, err)
+			}
+			out.Success(tool.Name + ": установлен через brew")
+			return action, nil
+		case ActionAptPrint:
+			out.Warn(tool.Name + ": автоматическая установка недоступна, выполните вручную:")
+			out.Info("  " + action.Command)
+			return action, nil
+		case ActionURL:
+			out.Warn(tool.Name + ": нет пакетного рецепта для этой платформы, установите вручную:")
+			out.Info("  " + action.Command)
+			return action, nil
+		default:
+			out.Warn(tool.Name + ": нет рецепта установки для этой платформы")
 			return action, nil
 		}
-		_, err := runner.Run(ctx, "brew", []string{"install", tool.Install.Brew}, execx.Options{
-			Stdout: out.Out,
-			Stderr: out.Out,
-		})
-		if err != nil {
-			return action, fmt.Errorf("deps: brew install %s: %w", tool.Install.Brew, err)
-		}
-		out.Success(tool.Name + ": установлен через brew")
-		return action, nil
-	case ActionAptPrint:
-		out.Warn(tool.Name + ": автоматическая установка недоступна, выполните вручную:")
-		out.Info("  " + action.Command)
-		return action, nil
-	case ActionURL:
-		out.Warn(tool.Name + ": нет пакетного рецепта для этой платформы, установите вручную:")
-		out.Info("  " + action.Command)
-		return action, nil
-	default:
-		out.Warn(tool.Name + ": нет рецепта установки для этой платформы")
-		return action, nil
-	}
+	*/
 }

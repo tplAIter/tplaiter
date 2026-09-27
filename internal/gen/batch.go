@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
@@ -71,77 +70,80 @@ func GenerateBatch(ctx context.Context, tpl *manifest.Template, operations []Ope
 		plans = append(plans, plan)
 	}
 
-	createdAbs := make([]string, 0)
-	createdDirs := make([]string, 0)
-	rollback := func() {
-		for _, abs := range createdAbs {
-			_ = os.Remove(abs)
-		}
-		for _, a := range allAnchors {
-			_ = os.WriteFile(a.abs, a.original, 0o600)
-		}
-		// Директории, которых не было до batch, тоже не должны пережить
-		// неуспешную транзакцию. Идём от листьев к корню; Remove безопасно
-		// оставит каталог, если сторонний процесс успел положить в него файл.
-		for _, dir := range createdDirs {
-			_ = os.Remove(dir)
-		}
-	}
-
-	createdRels := make([]string, 0)
-	editedSet := make(map[string]struct{})
-	results := make([]Result, 0, len(plans))
-	for _, plan := range plans {
-		for _, p := range plan.planned {
-			if err := mkdirAllTracked(filepath.Dir(p.abs), &createdDirs); err != nil {
-				rollback()
-				return nil, fmt.Errorf("gen batch: mkdir %s: %w", p.rel, err)
+	return nil, ErrExecutionUnavailable
+	/*
+		createdAbs := make([]string, 0)
+		createdDirs := make([]string, 0)
+		rollback := func() {
+			for _, abs := range createdAbs {
+				_ = os.Remove(abs)
 			}
-			if err := os.WriteFile(p.abs, p.content, 0o600); err != nil {
-				rollback()
-				return nil, fmt.Errorf("gen batch: запись %s: %w", p.rel, err)
+			for _, a := range allAnchors {
+				_ = os.WriteFile(a.abs, a.original, 0o600)
 			}
-			createdAbs = append(createdAbs, p.abs)
-			createdRels = append(createdRels, p.rel)
-			log("created %s", p.rel)
+			// Директории, которых не было до batch, тоже не должны пережить
+			// неуспешную транзакцию. Идём от листьев к корню; Remove безопасно
+			// оставит каталог, если сторонний процесс успел положить в него файл.
+			for _, dir := range createdDirs {
+				_ = os.Remove(dir)
+			}
 		}
-		results = append(results, plan.result)
-	}
 
-	anchorPaths := make([]string, 0, len(allAnchors))
-	for abs := range allAnchors {
-		anchorPaths = append(anchorPaths, abs)
-	}
-	sort.Strings(anchorPaths)
-	for _, abs := range anchorPaths {
-		a := allAnchors[abs]
-		if err := os.WriteFile(a.abs, a.updated, 0o600); err != nil {
-			rollback()
-			return nil, fmt.Errorf("gen batch: запись %s: %w", a.rel, err)
+		createdRels := make([]string, 0)
+		editedSet := make(map[string]struct{})
+		results := make([]Result, 0, len(plans))
+		for _, plan := range plans {
+			for _, p := range plan.planned {
+				if err := mkdirAllTracked(filepath.Dir(p.abs), &createdDirs); err != nil {
+					rollback()
+					return nil, fmt.Errorf("gen batch: mkdir %s: %w", p.rel, err)
+				}
+				if err := os.WriteFile(p.abs, p.content, 0o600); err != nil {
+					rollback()
+					return nil, fmt.Errorf("gen batch: запись %s: %w", p.rel, err)
+				}
+				createdAbs = append(createdAbs, p.abs)
+				createdRels = append(createdRels, p.rel)
+				log("created %s", p.rel)
+			}
+			results = append(results, plan.result)
 		}
-		log("edited  %s (anchor %s)", a.rel, a.anchor)
-		editedSet[a.rel] = struct{}{}
-	}
 
-	changed := append(append([]string{}, createdAbs...), anchorPaths...)
-	if isGoProject(opts.ProjectRoot) {
-		runPostFormat(ctx, opts, changed, log)
-	}
-	if !opts.NoBuild {
-		gateName, out, err := runBuildGate(ctx, tpl, opts)
-		log("step: %s", gateName)
-		if err != nil {
-			rollback()
-			return nil, fmt.Errorf("gen batch: сгенерированный код не собирается — изменения откачены:\n%s", out)
+		anchorPaths := make([]string, 0, len(allAnchors))
+		for abs := range allAnchors {
+			anchorPaths = append(anchorPaths, abs)
 		}
-	}
+		sort.Strings(anchorPaths)
+		for _, abs := range anchorPaths {
+			a := allAnchors[abs]
+			if err := os.WriteFile(a.abs, a.updated, 0o600); err != nil {
+				rollback()
+				return nil, fmt.Errorf("gen batch: запись %s: %w", a.rel, err)
+			}
+			log("edited  %s (anchor %s)", a.rel, a.anchor)
+			editedSet[a.rel] = struct{}{}
+		}
 
-	editedRels := make([]string, 0, len(editedSet))
-	for rel := range editedSet {
-		editedRels = append(editedRels, rel)
-	}
-	sort.Strings(editedRels)
-	return &BatchResult{Results: results, CreatedFiles: createdRels, EditedFiles: editedRels}, nil
+		changed := append(append([]string{}, createdAbs...), anchorPaths...)
+		if isGoProject(opts.ProjectRoot) {
+			runPostFormat(ctx, opts, changed, log)
+		}
+		if !opts.NoBuild {
+			gateName, out, err := runBuildGate(ctx, tpl, opts)
+			log("step: %s", gateName)
+			if err != nil {
+				rollback()
+				return nil, fmt.Errorf("gen batch: сгенерированный код не собирается — изменения откачены:\n%s", out)
+			}
+		}
+
+		editedRels := make([]string, 0, len(editedSet))
+		for rel := range editedSet {
+			editedRels = append(editedRels, rel)
+		}
+		sort.Strings(editedRels)
+		return &BatchResult{Results: results, CreatedFiles: createdRels, EditedFiles: editedRels}, nil
+	*/
 }
 
 // mkdirAllTracked создаёт dir и запоминает только действительно новые

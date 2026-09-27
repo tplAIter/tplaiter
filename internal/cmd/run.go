@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"os/signal"
 	"sort"
 	"strings"
-	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -29,12 +26,12 @@ func init() {
 	rootCmd.AddCommand(newRunCmd())
 }
 
-// newRunCmd создаёт команду `tplater run` .
+// newRunCmd создаёт команду `tplater run` (SPEC-01 §5, SPEC-04 §4).
 func newRunCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "run [name] [-- args...]",
 		Short: "Показать команды проекта или исполнить одну из них",
-		Long: "Без аргументов печатает список команд манифеста шаблона (commands) — " +
+		Long: "Без аргументов печатает список команд манифеста шаблона (commands, SPEC-01 §5) — " +
 			"имя, описание и статус по when-условию текущих настроек проекта.\n\n" +
 			"С именем команды исполняет её `run` через $SHELL -c в корне проекта: " +
 			"`tplater run build -- --race` передаёт `--race` самой команде. " +
@@ -42,16 +39,19 @@ func newRunCmd() *cobra.Command {
 			"код возврата команды становится кодом возврата tplater.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			tpl, proj, root, err := loadRunContext()
+			// The composed root rejects this before its hooks.  Keep the same
+			// ordering when callers construct newRunCmd directly: a named action
+			// must not discover cwd, HOME, or a manifest before fixed material.
+			if len(args) != 0 {
+				return actionUnavailable()
+			}
+			tpl, proj, _, err := loadRunContext()
 			if err != nil {
 				return err
 			}
 			values := settingsValues(proj.Settings)
 
-			if len(args) == 0 {
-				return listRunCommands(cmd, tpl.Commands, values)
-			}
-			return execRunCommand(cmd, tpl.Commands, values, root, args[0], args[1:])
+			return listRunCommands(cmd, tpl.Commands, values)
 		},
 	}
 }
@@ -184,47 +184,52 @@ func execRunCommand(
 	root, name string,
 	extraArgs []string,
 ) error {
-	c, ok := commands[name]
-	if !ok {
-		return fmt.Errorf("cmd: run: неизвестная команда %q — доступные: %s", name, availableNames(commands))
-	}
-
-	if c.When != "" {
-		ok, err := evalWhen(c.When, values)
-		if err != nil || !ok {
-			return fmt.Errorf("команда недоступна при текущих настройках: %s", c.When)
+	// Direct package callers receive the same denial as the Cobra ingress.
+	// Do this before examining the manifest command or process environment.
+	return actionUnavailable()
+	/*
+		c, ok := commands[name]
+		if !ok {
+			return fmt.Errorf("cmd: run: неизвестная команда %q — доступные: %s", name, availableNames(commands))
 		}
-	}
 
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/sh"
-	}
-	script := c.Run + ` "$@"`
-	shellArgs := append([]string{"-c", script, "sh"}, extraArgs...)
+		if c.When != "" {
+			ok, err := evalWhen(c.When, values)
+			if err != nil || !ok {
+				return fmt.Errorf("команда недоступна при текущих настройках: %s", c.When)
+			}
+		}
 
-	// Сигналы, полученные самим tplater (Ctrl+C и т.п.), пересылаются
-	// исполняемой команде — см. execx.Options.Signals и
-	// execx.runWithSignalForwarding (запускает $SHELL в отдельной группе
-	// процессов, чтобы сигнал доставался и реальной программе, не только
-	// самой оболочке).
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sigCh)
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/sh"
+		}
+		script := c.Run + ` "$@"`
+		shellArgs := append([]string{"-c", script, "sh"}, extraArgs...)
 
-	_, err := runRunner.Run(cmd.Context(), shell, shellArgs, execx.Options{
-		Dir:     root,
-		Stdin:   cmd.InOrStdin(),
-		Stdout:  cmd.OutOrStdout(),
-		Stderr:  cmd.ErrOrStderr(),
-		Signals: sigCh,
-	})
+		// Сигналы, полученные самим tplater (Ctrl+C и т.п.), пересылаются
+		// исполняемой команде — см. execx.Options.Signals и
+		// execx.runWithSignalForwarding (запускает $SHELL в отдельной группе
+		// процессов, чтобы сигнал доставался и реальной программе, не только
+		// самой оболочке).
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		defer signal.Stop(sigCh)
 
-	var exitErr *execx.ExitError
-	if errors.As(err, &exitErr) {
-		return &ExitError{Code: exitErr.ExitCode, Err: err}
-	}
-	return err
+		_, err := runRunner.Run(cmd.Context(), shell, shellArgs, execx.Options{
+			Dir:     root,
+			Stdin:   cmd.InOrStdin(),
+			Stdout:  cmd.OutOrStdout(),
+			Stderr:  cmd.ErrOrStderr(),
+			Signals: sigCh,
+		})
+
+		var exitErr *execx.ExitError
+		if errors.As(err, &exitErr) {
+			return &ExitError{Code: exitErr.ExitCode, Err: err}
+		}
+		return err
+	*/
 }
 
 // availableNames возвращает отсортированный список имён команд манифеста —

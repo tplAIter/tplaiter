@@ -2,6 +2,7 @@ package gen
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,25 +10,17 @@ import (
 
 	"golang.org/x/mod/modfile"
 
-	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// runner возвращает Options.Runner либо реальный [execx.Exec]{} (depguard
-// запрещает прямой os/exec вне internal/execx — см. .golangci.yml).
-func runner(opts Options) execx.Runner {
-	if opts.Runner != nil {
-		return opts.Runner
-	}
-	return execx.Exec{}
-}
+var errWorkspacePathUnsafe = errors.New("gen: unsafe workspace path")
 
 // runPostFormat запускает gofumpt -w либо стандартный gofmt -w best-effort по
 // изменённым .go файлам. gofmt — обязательный fallback: на чистом CI/сервере
 // gofumpt часто не установлен, но генератор всё равно должен оставлять
 // gofmt-clean исходники. Неудача форматирования не проваливает gen; итоговый
 // build-gate по-прежнему отвечает за валидность кода.
-func runPostFormat(ctx context.Context, opts Options, changed []string, log func(format string, args ...any)) {
+func runPostFormat(ctx context.Context, opts Options, changed []string, log func(format string, args ...any)) error {
 	goFiles := make([]string, 0, len(changed))
 	for _, f := range changed {
 		if strings.HasSuffix(f, ".go") {
@@ -35,16 +28,9 @@ func runPostFormat(ctx context.Context, opts Options, changed []string, log func
 		}
 	}
 	if len(goFiles) == 0 {
-		return
+		return nil
 	}
-	path, formatter, ok := findFormatter(runner(opts))
-	if !ok {
-		return
-	}
-	args := append([]string{"-w"}, goFiles...)
-	if _, err := runner(opts).Run(ctx, path, args, execx.Options{Dir: opts.ProjectRoot}); err != nil {
-		log("%s: %v (пропущено, best-effort)", formatter, err)
-	}
+	return ErrExecutionUnavailable
 }
 
 // isGoProject ограничивает gofumpt/gofmt проектами с Go-модулем или
@@ -64,38 +50,18 @@ func isGoProject(root string) bool {
 // исполняется так же, как `tplater run`, через POSIX shell. Старые Go manifest
 // без build-команды сохраняют workspace-aware fallback `go build ./...`.
 func runBuildGate(ctx context.Context, tpl *manifest.Template, opts Options) (string, string, error) {
-	if tpl != nil {
-		if command, ok := tpl.Commands["build"]; ok && strings.TrimSpace(command.Run) != "" {
-			res, err := runner(opts).Run(ctx, "/bin/sh", []string{"-c", command.Run}, execx.Options{Dir: opts.ProjectRoot})
-			return command.Run, strings.TrimSpace(res.Stdout + res.Stderr), err
-		}
-	}
-	out, err := goBuild(ctx, opts)
-	return "go build ./...", out, err
+	return "", "", ErrExecutionUnavailable
 }
 
 // findFormatter предпочитает gofumpt из PATH/~/go/bin, затем использует
 // стандартный gofmt из Go toolchain.
-func findFormatter(r execx.Runner) (path, name string, ok bool) {
-	if p, err := r.LookPath("gofumpt"); err == nil {
-		return p, "gofumpt", true
-	}
-	home, err := os.UserHomeDir()
-	if err == nil {
-		candidate := filepath.Join(home, "go", "bin", "gofumpt")
-		if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {
-			return candidate, "gofumpt", true
-		}
-	}
-	if p, lookErr := r.LookPath("gofmt"); lookErr == nil {
-		return p, "gofmt", true
-	}
-	return "", "", false
+func findFormatter() (path, name string, err error) {
+	return "", "", ErrExecutionUnavailable
 }
 
 // goBuild запускает `go build ./...` в ProjectRoot, возвращая объединённый
 // вывод при ошибке. В go.work-монорепо (корень — не модуль) сборка идёт
-// помодульно по use-директориям воркспейса (находка : иначе build-гейт
+// помодульно по use-директориям воркспейса (находка CG-4: иначе build-гейт
 // всегда падал и откатывал генерацию в workspace-проектах).
 func goBuild(ctx context.Context, opts Options) (string, error) {
 	dirs, err := workspaceUseDirs(opts.ProjectRoot)
@@ -105,18 +71,8 @@ func goBuild(ctx context.Context, opts Options) (string, error) {
 	if dirs == nil {
 		dirs = []string{"."}
 	}
-	var combined []string
-	for _, d := range dirs {
-		res, rerr := runner(opts).Run(ctx, "go", []string{"build", "./..."},
-			execx.Options{Dir: filepath.Join(opts.ProjectRoot, d)})
-		if out := strings.TrimSpace(res.Stdout + res.Stderr); out != "" {
-			combined = append(combined, out)
-		}
-		if rerr != nil {
-			return strings.Join(combined, "\n"), rerr
-		}
-	}
-	return strings.Join(combined, "\n"), nil
+	_ = dirs
+	return "", ErrExecutionUnavailable
 }
 
 // workspaceUseDirs возвращает use-директории go.work в корне проекта
@@ -135,7 +91,26 @@ func workspaceUseDirs(root string) ([]string, error) {
 	}
 	dirs := make([]string, 0, len(wf.Use))
 	for _, u := range wf.Use {
+		if unsafeWorkspacePath(root, u.Path) {
+			return nil, errWorkspacePathUnsafe
+		}
 		dirs = append(dirs, u.Path)
 	}
 	return dirs, nil
+}
+
+func unsafeWorkspacePath(root, rel string) bool {
+	if rel == "" || filepath.IsAbs(filepath.FromSlash(rel)) {
+		return true
+	}
+	clean := filepath.Clean(filepath.FromSlash(rel))
+	cleanSlash := filepath.ToSlash(clean)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || (rel != cleanSlash && rel != "./"+cleanSlash) {
+		return true
+	}
+	info, err := os.Lstat(filepath.Join(root, clean))
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeSymlink != 0 || !info.IsDir()
 }

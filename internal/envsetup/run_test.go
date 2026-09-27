@@ -155,49 +155,49 @@ func TestRunPlaybook_PassesExtraVarsFileAndProjectRoot(t *testing.T) {
 		Values:      values,
 		Project:     proj,
 	})
-	if err != nil {
-		t.Fatalf("RunPlaybook() error = %v", err)
-	}
+	assertAnsibleDenied(t, err, runner.Calls)
+	if len(runner.Calls) > 0 {
 
-	if len(runner.Calls) != 1 {
-		t.Fatalf("Calls = %+v, want exactly 1 call to ansible-playbook", runner.Calls)
-	}
-	call := runner.Calls[0]
-	if call.Name != "ansible-playbook" {
-		t.Fatalf("call.Name = %q, want ansible-playbook", call.Name)
-	}
-	if len(call.Args) != 5 {
-		t.Fatalf("call.Args = %+v, want 5 elements", call.Args)
-	}
-	if call.Args[0] != filepath.Join(dir, "setup.yml") {
-		t.Errorf("call.Args[0] = %q, want playbook path", call.Args[0])
-	}
-	if call.Args[1] != "--extra-vars" {
-		t.Errorf("call.Args[1] = %q, want --extra-vars", call.Args[1])
-	}
-	if !strings.HasPrefix(call.Args[2], "@") {
-		t.Fatalf("call.Args[2] = %q, want @<path>", call.Args[2])
-	}
-	extraVarsPath := strings.TrimPrefix(call.Args[2], "@")
-	if call.Args[3] != "-e" {
-		t.Errorf("call.Args[3] = %q, want -e", call.Args[3])
-	}
-	if call.Args[4] != "tplater_project_root=/project/root" {
-		t.Errorf("call.Args[4] = %q, want tplater_project_root=/project/root", call.Args[4])
-	}
-	if call.Opts.Dir != "/project/root" {
-		t.Errorf("call.Opts.Dir = %q, want /project/root", call.Opts.Dir)
-	}
+		if len(runner.Calls) != 1 {
+			t.Fatalf("Calls = %+v, want exactly 1 call to ansible-playbook", runner.Calls)
+		}
+		call := runner.Calls[0]
+		if call.Name != "ansible-playbook" {
+			t.Fatalf("call.Name = %q, want ansible-playbook", call.Name)
+		}
+		if len(call.Args) != 5 {
+			t.Fatalf("call.Args = %+v, want 5 elements", call.Args)
+		}
+		if call.Args[0] != filepath.Join(dir, "setup.yml") {
+			t.Errorf("call.Args[0] = %q, want playbook path", call.Args[0])
+		}
+		if call.Args[1] != "--extra-vars" {
+			t.Errorf("call.Args[1] = %q, want --extra-vars", call.Args[1])
+		}
+		if !strings.HasPrefix(call.Args[2], "@") {
+			t.Fatalf("call.Args[2] = %q, want @<path>", call.Args[2])
+		}
+		extraVarsPath := strings.TrimPrefix(call.Args[2], "@")
+		if call.Args[3] != "-e" {
+			t.Errorf("call.Args[3] = %q, want -e", call.Args[3])
+		}
+		if call.Args[4] != "tplater_project_root=/project/root" {
+			t.Errorf("call.Args[4] = %q, want tplater_project_root=/project/root", call.Args[4])
+		}
+		if call.Opts.Dir != "/project/root" {
+			t.Errorf("call.Opts.Dir = %q, want /project/root", call.Opts.Dir)
+		}
 
-	// Файл должен существовать МОМЕНТ вызова (проверяем это отдельно через
-	// buildExtraVars — здесь важно, что путь был передан корректно и что файл
-	// удалён ПОСЛЕ завершения RunPlaybook).
-	if _, err := os.Stat(extraVarsPath); !os.IsNotExist(err) {
-		t.Errorf("extra-vars файл %s не удалён после RunPlaybook (err=%v)", extraVarsPath, err)
-	}
+		// Файл должен существовать МОМЕНТ вызова (проверяем это отдельно через
+		// buildExtraVars — здесь важно, что путь был передан корректно и что файл
+		// удалён ПОСЛЕ завершения RunPlaybook).
+		if _, err := os.Stat(extraVarsPath); !os.IsNotExist(err) {
+			t.Errorf("extra-vars файл %s не удалён после RunPlaybook (err=%v)", extraVarsPath, err)
+		}
 
-	if !strings.Contains(out.String(), "PLAY [setup]") {
-		t.Errorf("output = %q, want streamed ansible-playbook stdout", out.String())
+		if !strings.Contains(out.String(), "PLAY [setup]") {
+			t.Errorf("output = %q, want streamed ansible-playbook stdout", out.String())
+		}
 	}
 }
 
@@ -234,22 +234,23 @@ func TestRunPlaybook_ExtraVarsFileContentMatchesBuildExtraVars(t *testing.T) {
 	var out bytes.Buffer
 	r := &Runner{Exec: runner, UI: deps.NewUI(&out, ui.NewPalette(false)), DepsUI: deps.NewUI(&out, ui.NewPalette(false))}
 
-	if err := r.RunPlaybook(context.Background(), Options{
+	err := r.RunPlaybook(context.Background(), Options{
 		TemplateDir: dir,
 		ProjectRoot: "/root",
 		Playbook:    manifest.Playbook{Name: "setup", File: "setup.yml"},
 		Values:      values,
 		Project:     proj,
-	}); err != nil {
-		t.Fatalf("RunPlaybook() error = %v", err)
-	}
+	})
+	assertAnsibleDenied(t, err, runner.Calls)
+	if len(runner.Calls) > 0 {
 
-	want, err := buildExtraVars(values, proj)
-	if err != nil {
-		t.Fatalf("buildExtraVars() error = %v", err)
-	}
-	if fileContent != want {
-		t.Errorf("файл extra-vars = %s, want %s", fileContent, want)
+		want, err := buildExtraVars(values, proj)
+		if err != nil {
+			t.Fatalf("buildExtraVars() error = %v", err)
+		}
+		if fileContent != want {
+			t.Errorf("файл extra-vars = %s, want %s", fileContent, want)
+		}
 	}
 }
 
@@ -283,15 +284,7 @@ func TestRunPlaybook_MissingPlaybookFile(t *testing.T) {
 		ProjectRoot: "/root",
 		Playbook:    manifest.Playbook{Name: "setup", File: "does-not-exist.yml"},
 	})
-	if err == nil {
-		t.Fatal("RunPlaybook() error = nil, want ошибку про отсутствующий файл")
-	}
-	if !errors.Is(err, ErrPlaybookFileNotFound) {
-		t.Errorf("errors.Is(err, ErrPlaybookFileNotFound) = false, err = %v", err)
-	}
-	if len(runner.Calls) != 0 {
-		t.Errorf("Calls = %+v, ansible-playbook не должен запускаться при отсутствующем файле", runner.Calls)
-	}
+	assertAnsibleDenied(t, err, runner.Calls)
 }
 
 // ---- RunPlaybook: ansible отсутствует -------------------------------------
@@ -312,18 +305,7 @@ func TestRunPlaybook_AnsibleMissing_AutoYesFalse_ErrorWithRecipe(t *testing.T) {
 		Playbook:    manifest.Playbook{Name: "setup", File: "setup.yml"},
 		AutoYes:     false,
 	})
-	if err == nil {
-		t.Fatal("RunPlaybook() error = nil, want ErrAnsibleMissing")
-	}
-	if !errors.Is(err, ErrAnsibleMissing) {
-		t.Errorf("errors.Is(err, ErrAnsibleMissing) = false, err = %v", err)
-	}
-	if !strings.Contains(err.Error(), "brew install ansible") {
-		t.Errorf("err = %v, want рецепт установки (brew install ansible)", err)
-	}
-	if containsBrewInstall(runner.Calls) {
-		t.Errorf("Calls = %+v, brew install не должен вызываться без подтверждения (AutoYes=false)", runner.Calls)
-	}
+	assertAnsibleDenied(t, err, runner.Calls)
 }
 
 func TestRunPlaybook_AnsibleMissing_AutoYesTrue_InstallsThenRechecks(t *testing.T) {
@@ -353,18 +335,7 @@ func TestRunPlaybook_AnsibleMissing_AutoYesTrue_InstallsThenRechecks(t *testing.
 		Playbook:    manifest.Playbook{Name: "setup", File: "setup.yml"},
 		AutoYes:     true,
 	})
-	if err != nil {
-		t.Fatalf("RunPlaybook() error = %v, want nil (ansible ставится и повторная проверка проходит)", err)
-	}
-	if !containsBrewInstall(inner.Calls) {
-		t.Errorf("Calls = %+v, want brew install ansible вызванным без интерактивного подтверждения (AutoYes)", inner.Calls)
-	}
-	if runner.calls != 2 {
-		t.Errorf("LookPath(ansible-playbook) вызван %d раз(а), want 2 (до и после установки)", runner.calls)
-	}
-	if !strings.Contains(out.String(), "PLAY [setup]") {
-		t.Errorf("output = %q, want streamed ansible-playbook stdout после успешной установки", out.String())
-	}
+	assertAnsibleDenied(t, err, inner.Calls)
 }
 
 func TestRunPlaybook_AnsibleAlreadyPresent_NoInstallAttempted(t *testing.T) {
@@ -377,17 +348,13 @@ func TestRunPlaybook_AnsibleAlreadyPresent_NoInstallAttempted(t *testing.T) {
 
 	r := &Runner{Exec: runner, UI: deps.NewUI(&bytes.Buffer{}, ui.NewPalette(false)), DepsUI: deps.NewUI(&bytes.Buffer{}, ui.NewPalette(false))}
 
-	if err := r.RunPlaybook(context.Background(), Options{
+	err := r.RunPlaybook(context.Background(), Options{
 		TemplateDir: dir,
 		ProjectRoot: "/root",
 		Playbook:    manifest.Playbook{Name: "setup", File: "setup.yml"},
 		AutoYes:     false,
-	}); err != nil {
-		t.Fatalf("RunPlaybook() error = %v", err)
-	}
-	if containsBrewInstall(runner.Calls) {
-		t.Errorf("Calls = %+v, brew install не должен вызываться, когда ansible-playbook уже в PATH", runner.Calls)
-	}
+	})
+	assertAnsibleDenied(t, err, runner.Calls)
 }
 
 // ---- RunPlaybook: exit-код пробрасывается ---------------------------------
@@ -408,15 +375,16 @@ func TestRunPlaybook_ExitCodePropagates(t *testing.T) {
 		ProjectRoot: "/root",
 		Playbook:    manifest.Playbook{Name: "setup", File: "setup.yml"},
 	})
-	if err == nil {
-		t.Fatal("RunPlaybook() error = nil, want ExitError с кодом 2")
+	assertAnsibleDenied(t, err, runner.Calls)
+}
+
+func assertAnsibleDenied(t *testing.T, err error, calls []execx.Call) {
+	t.Helper()
+	if !errors.Is(err, ErrAnsibleAdapterUnavailable) {
+		t.Fatalf("RunPlaybook = %v", err)
 	}
-	var got *execx.ExitError
-	if !errors.As(err, &got) {
-		t.Fatalf("errors.As(err, *execx.ExitError) = false, err = %v", err)
-	}
-	if got.ExitCode != 2 {
-		t.Errorf("ExitCode = %d, want 2", got.ExitCode)
+	if len(calls) != 0 {
+		t.Fatalf("runner calls = %+v", calls)
 	}
 }
 
@@ -487,4 +455,90 @@ func containsBrewInstall(calls []execx.Call) bool {
 		}
 	}
 	return false
+}
+
+type denialSpy struct{ lookups, runs int }
+
+func (s *denialSpy) LookPath(string) (string, error) {
+	s.lookups++
+	return "", errors.New("LOOKUP_CANARY")
+}
+func (s *denialSpy) Run(context.Context, string, []string, execx.Options) (execx.Result, error) {
+	s.runs++
+	return execx.Result{}, errors.New("RUN_CANARY")
+}
+
+func TestAnsibleDeniedBeforeAnyRunnerOrPathEffect(t *testing.T) {
+	for _, autoYes := range []bool{false, true} {
+		t.Run("auto", func(t *testing.T) {
+			spy := &denialSpy{}
+			var out bytes.Buffer
+			r := &Runner{Exec: spy, UI: deps.NewUI(&out, ui.NewPalette(false)), DepsUI: deps.NewUI(&out, ui.NewPalette(false))}
+			hostile := "/tmp/LOOKUP_CANARY/../../secret.yml"
+			err := r.RunPlaybook(context.Background(), Options{TemplateDir: hostile, ProjectRoot: hostile, Playbook: manifest.Playbook{Name: "RUN_CANARY", File: hostile}, AutoYes: autoYes})
+			if !errors.Is(err, ErrAnsibleAdapterUnavailable) || spy.lookups != 0 || spy.runs != 0 || out.Len() != 0 || strings.Contains(err.Error(), "CANARY") {
+				t.Fatalf("unsafe denial err=%v lookup=%d run=%d out=%q", err, spy.lookups, spy.runs, out.String())
+			}
+			if err := ensureAnsiblePlaybook(context.Background(), spy, r.DepsUI, autoYes); !errors.Is(err, ErrAnsibleAdapterUnavailable) || spy.lookups != 0 || spy.runs != 0 {
+				t.Fatal("helper touched runner")
+			}
+			if err := ensureAnsiblePlaybook(context.Background(), nil, r.DepsUI, autoYes); !errors.Is(err, ErrAnsibleAdapterUnavailable) {
+				t.Fatal("nil helper unsafe")
+			}
+		})
+	}
+}
+
+func TestAnsibleDenialLeavesSyntheticRootsUnchanged(t *testing.T) {
+	root := t.TempDir()
+	home, tmp, project := filepath.Join(root, "home"), filepath.Join(root, "tmp"), filepath.Join(root, "project")
+	for _, p := range []string{home, tmp, project} {
+		if err := os.Mkdir(p, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	marker := filepath.Join(project, "marker")
+	if err := os.WriteFile(marker, []byte("unchanged"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("TMPDIR", tmp)
+	before := snapshotDenialRoots(t, home, tmp, project)
+	spy := &denialSpy{}
+	r := &Runner{Exec: spy, UI: deps.NewUI(&bytes.Buffer{}, ui.NewPalette(false)), DepsUI: deps.NewUI(&bytes.Buffer{}, ui.NewPalette(false))}
+	if err := r.RunPlaybook(context.Background(), Options{TemplateDir: project, ProjectRoot: project, Playbook: manifest.Playbook{File: "hostile.yml"}, AutoYes: true}); !errors.Is(err, ErrAnsibleAdapterUnavailable) {
+		t.Fatal(err)
+	}
+	if err := ensureAnsiblePlaybook(context.Background(), nil, r.DepsUI, true); !errors.Is(err, ErrAnsibleAdapterUnavailable) {
+		t.Fatal(err)
+	}
+	if after := snapshotDenialRoots(t, home, tmp, project); after != before || spy.lookups != 0 || spy.runs != 0 {
+		t.Fatalf("denial mutated roots before=%q after=%q", before, after)
+	}
+}
+func snapshotDenialRoots(t *testing.T, roots ...string) string {
+	t.Helper()
+	var b strings.Builder
+	for _, root := range roots {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.WriteString(root)
+		for _, e := range entries {
+			info, err := e.Info()
+			if err != nil {
+				t.Fatal(err)
+			}
+			b.WriteString(e.Name() + info.Mode().String())
+			if !e.IsDir() {
+				raw, err := os.ReadFile(filepath.Join(root, e.Name()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				b.Write(raw)
+			}
+		}
+	}
+	return b.String()
 }

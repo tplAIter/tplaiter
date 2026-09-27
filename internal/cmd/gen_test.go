@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,17 +128,24 @@ runtime: { port: 8080 }
 
 func TestRunGen_PatternFailureDoesNotWriteFile(t *testing.T) {
 	dir := setupPatternGenProject(t)
+	spy := new(doctorSpyRunner)
+	old := genRunner
+	genRunner = spy
+	t.Cleanup(func() { genRunner = old })
 	t.Chdir(dir)
 	t.Setenv(state.HomeEnv, filepath.Join(t.TempDir(), "tplater-home"))
 	cmd := &cobra.Command{Use: "gen"}
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	err := runGen(cmd, []string{"migration", "create_rides", "--table", "rides; DROP TABLE rides", "--no-build"})
-	if err == nil || !strings.Contains(err.Error(), "не соответствует pattern") {
-		t.Fatalf("expected pattern rejection, got %v", err)
+	if !errors.Is(err, ErrActionUnavailable) {
+		t.Fatalf("expected typed denial, got %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "migrations", "create_rides.sql")); !os.IsNotExist(statErr) {
 		t.Errorf("single gen wrote a file after pattern rejection: %v", statErr)
+	}
+	if spy.calls != 0 {
+		t.Fatalf("gen action touched runner before denial: %d calls", spy.calls)
 	}
 }
 
@@ -150,8 +158,8 @@ func TestGenBatch_PatternFailureDoesNotWriteFiles(t *testing.T) {
 	c.SetErr(&bytes.Buffer{})
 	c.SetArgs([]string{"--operations", `[{"kind":"migration","name":"create_rides","params":{"table":"rides -- comment"}}]`, "--no-build"})
 	err := c.Execute()
-	if err == nil || !strings.Contains(err.Error(), "не соответствует pattern") {
-		t.Fatalf("expected pattern rejection, got %v", err)
+	if !errors.Is(err, ErrActionUnavailable) {
+		t.Fatalf("expected typed denial, got %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "migrations", "create_rides.sql")); !os.IsNotExist(statErr) {
 		t.Errorf("batch gen wrote a file after pattern rejection: %v", statErr)

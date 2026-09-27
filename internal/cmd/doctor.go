@@ -36,7 +36,7 @@ type doctorRow struct {
 }
 
 // doctorSection — именованная группа строк ("Среда", "Инструменты шаблона",
-// "Состояние").
+// "Состояние", SPEC-03 §4).
 type doctorSection struct {
 	Title string
 	Rows  []doctorRow
@@ -44,7 +44,7 @@ type doctorSection struct {
 
 // doctorCriticalTools — инструменты, чьё отсутствие/несоответствие делает
 // `tplater doctor` неуспешным (ненулевой exit code). Остальные проблемы —
-// только предупреждения в отчёте (: "exit 1 при критичных ✗
+// только предупреждения в отчёте (SPEC-03 §4: "exit 1 при критичных ✗
 // (go, git)").
 var doctorCriticalTools = map[string]bool{
 	"go":  true,
@@ -58,16 +58,7 @@ func newDoctorCmd() *cobra.Command {
 		Short: "Проверить окружение и инструменты активного шаблона",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return fmt.Errorf("cmd: doctor: определение рабочего каталога: %w", err)
-			}
-			home, err := state.Home()
-			if err != nil {
-				return fmt.Errorf("cmd: doctor: определение домашнего каталога: %w", err)
-			}
-
-			sections, critical := buildDoctorReport(cmd.Context(), execx.Exec{}, cwd, home)
+			sections, critical := buildDoctorReport(cmd.Context(), nil, "", "")
 			renderDoctorReport(cmd.OutOrStdout(), ui.Default(), sections)
 
 			if critical {
@@ -82,21 +73,31 @@ func newDoctorCmd() *cobra.Command {
 // бы одна строка из [doctorCriticalTools] провалилась (Found/Satisfies не
 // оба true).
 func buildDoctorReport(ctx context.Context, runner execx.Runner, cwd, home string) (sections []doctorSection, critical bool) {
-	envSection, envCritical := environmentSection(ctx, runner)
-	sections = append(sections, envSection)
-	critical = critical || envCritical
+	// A doctor report is useful without becoming an authority or running a
+	// manifest-selected executable.  The old probe path remains unavailable
+	// until a separately approved bound action exists.
+	_ = ctx
+	_ = runner
+	_ = cwd
+	_ = home
+	return []doctorSection{{Title: "Среда", Rows: []doctorRow{{Name: "инструменты", Status: rowWarn, Detail: "не проверено: требуется подтверждённое действие"}}}}, false
+	/*
+		envSection, envCritical := environmentSection(ctx, runner)
+		sections = append(sections, envSection)
+		critical = critical || envCritical
 
-	if templSection, ok := templateToolsSection(ctx, runner, cwd); ok {
-		sections = append(sections, templSection)
-	}
+		if templSection, ok := templateToolsSection(ctx, runner, cwd); ok {
+			sections = append(sections, templSection)
+		}
 
-	sections = append(sections, stateSection(home))
+		sections = append(sections, stateSection(home))
 
-	return sections, critical
+		return sections, critical
+	*/
 }
 
 // environmentSection — базовый набор инструментов, не зависящий от того,
-// запущен ли doctor внутри проекта шаблона.
+// запущен ли doctor внутри проекта шаблона (SPEC-03 §4).
 func environmentSection(ctx context.Context, runner execx.Runner) (doctorSection, bool) {
 	tools := []manifest.Tool{
 		{

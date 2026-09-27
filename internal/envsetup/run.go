@@ -1,5 +1,5 @@
 // Package envsetup исполняет ansible-плейбуки окружения, объявленные шаблоном
-// в манифесте (environment.playbooks, ) — решение
+// в манифесте (environment.playbooks, SPEC-01 §2, SPEC-03 §4) — решение
 // ревью владельца «всё должно работать в рамках экосистемы»: tplater не
 // пытается сам понимать все возможные способы настройки окружения проекта, а
 // устанавливает единственный универсальный инструмент (ansible) и передаёт
@@ -10,14 +10,14 @@
 // заблуждение соседством с internal/cmd/env.go (CLI-командой `tplater env`,
 // которая оборачивает этот пакет).
 //
-// # Контракт .tplaiter/environment (для  — `tplater new`)
+// # Контракт .tplaiter/environment (для C2 — `tplater new`)
 //
 // У созданного проекта нет checkout шаблона: рендер (engine) кладёт только
 // результат применения gotemplate к дереву настроек, а playbook-файлы
 // (environment.playbooks[].file, обычно "environment/setup.yml" и т.п.)
 // адресуются относительно КОРНЯ ШАБЛОНА, а не относительно проекта. Чтобы
 // `tplater env` мог запускать плейбуки уже после того, как checkout шаблона
-// давно удалён/обновлён, реализация  (`tplater new`) ДОЛЖНА скопировать (не
+// давно удалён/обновлён, задача C2 (`tplater new`) ДОЛЖНА скопировать (не
 // рендерить — как есть, включая .yml/.j2/vars и что угодно ansible-специфичное)
 // каталог(и), на которые ссылаются пути environment.playbooks[].file шаблона,
 // в проект по адресу:
@@ -30,9 +30,9 @@
 // содержимое каталога шаблона целиком под .tplaiter/environment/, повторяя её
 // структуру 1:1; тогда Playbook.File можно джойнить с TemplateDir без всякой
 // пере-нормализации путей). [EnvironmentRelPath] — канонический относительный
-// путь этого каталога, чтобы обе стороны контракта ( и `tplater env`)
+// путь этого каталога, чтобы обе стороны контракта (C2 и `tplater env`)
 // ссылались на одну константу. Для тестов этого пакета файлы плейбуков кладутся
-// руками (без реального прохода /checkout).
+// руками (без реального прохода C2/checkout).
 package envsetup
 
 import (
@@ -42,7 +42,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/tplAIter/tplaiter/internal/deps"
 	"github.com/tplAIter/tplaiter/internal/execx"
@@ -52,12 +51,12 @@ import (
 )
 
 // EnvironmentRelPath — путь каталога окружения проекта относительно корня
-// проекта. `tplater new` копирует туда playbook-файлы шаблона (см. doc
+// проекта. `tplater new` (C2) копирует туда playbook-файлы шаблона (см. doc
 // пакета); TemplateDir для [Options] строится как filepath.Join(root,
 // EnvironmentRelPath).
 const EnvironmentRelPath = ".tplaiter/environment"
 
-// ansibleTool — требование окружения для исполнения плейбуков (:
+// ansibleTool — требование окружения для исполнения плейбуков (SPEC-01 §2:
 // `{ name: ansible, required: false, install: { brew: ansible, apt: ansible } }`).
 // required здесь true не в смысле манифеста шаблона (там ansible не обязателен
 // глобально), а в смысле локального требования именно этой операции — без
@@ -87,6 +86,12 @@ var ErrAnsibleMissing = errors.New("envsetup: ansible-playbook не найден
 // ожидаемому пути (TemplateDir/Playbook.File).
 var ErrPlaybookFileNotFound = errors.New("envsetup: файл плейбука не найден")
 
+// ErrAnsibleAdapterUnavailable is returned before inspecting a playbook,
+// resolving a tool, creating extra-vars, or invoking an installer. Generic
+// Ansible imports, plugins, inventory and variable closure are not an
+// approved executable adapter.
+var ErrAnsibleAdapterUnavailable = errors.New("TRUST_ANSIBLE_ADAPTER_UNAVAILABLE")
+
 // PlaybookInfo — один плейбук окружения для отчёта `tplater env list`.
 type PlaybookInfo struct {
 	// Name — идентификатор плейбука (environment.playbooks[].name).
@@ -103,7 +108,7 @@ type PlaybookInfo struct {
 }
 
 // ListPlaybooks возвращает плейбуки окружения манифеста tpl с отметкой
-// доступности по when-условию на текущих values. Порядок — как
+// доступности по when-условию на текущих values (SPEC-03 §4). Порядок — как
 // в манифесте.
 func ListPlaybooks(tpl *manifest.Template, values settings.Values) []PlaybookInfo {
 	playbooks := tpl.Environment.Playbooks
@@ -119,7 +124,7 @@ func ListPlaybooks(tpl *manifest.Template, values settings.Values) []PlaybookInf
 	return infos
 }
 
-// evalWhen разбирает и вычисляет строку when-условия. Ошибка
+// evalWhen разбирает и вычисляет строку when-условия (SPEC-01 §3.2). Ошибка
 // разбора/вычисления (в том числе ссылка на неизвестную группу) трактуется
 // вызывающим как "условие не выполнено", а не паника — согласовано с
 // [manifest.ParseCondition]/[settings.Eval].
@@ -144,7 +149,7 @@ type Runner struct {
 	// ansible-playbook.
 	UI deps.UI
 	// DepsUI — UI, передаваемый в deps.Install при автоустановке ansible
-	//. Отдельное поле от UI по заданию реализации — на практике
+	// (SPEC-03 §4). Отдельное поле от UI по заданию задачи — на практике
 	// [NewRunner] заполняет оба одним и тем же значением; разделены, чтобы
 	// вызывающий код мог осознанно приглушить вывод именно deps-подпотока
 	// (например, если решит логировать установку ansible иначе), не трогая
@@ -181,13 +186,13 @@ type Options struct {
 	// уходит в extra-vars как tplater.project.
 	Project manifest.ProjectInfo
 	// AutoYes — подтверждает установку ansible без интерактивного вопроса
-	// (`--yes`). При false и отсутствующем ansible-playbook
+	// (`--yes`, SPEC-03 §4). При false и отсутствующем ansible-playbook
 	// [Runner.RunPlaybook] возвращает [ErrAnsibleMissing] с рецептом установки,
 	// ничего не устанавливая.
 	AutoYes bool
 }
 
-// RunPlaybook исполняет один плейбук окружения:
+// RunPlaybook исполняет один плейбук окружения (SPEC-03 §4):
 //  1. проверяет, что файл плейбука существует (TemplateDir/Playbook.File);
 //  2. убеждается, что ansible-playbook доступен в PATH — если нет, предлагает
 //     установку через [deps.Install] (см. [ensureAnsiblePlaybook]);
@@ -204,74 +209,80 @@ type Options struct {
 // (internal/cmd/env.go) пробросить тот же код возврата процессом tplater
 // (см. execRunCommand в run.go — тот же приём).
 func (r *Runner) RunPlaybook(ctx context.Context, opts Options) error {
-	playbookPath := filepath.Join(opts.TemplateDir, opts.Playbook.File)
-	if _, err := os.Stat(playbookPath); err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf(
-				"%w: %s (плейбук %q манифеста environment.playbooks) — проверьте, что "+
-					"`tplater new` скопировал каталог окружения шаблона в %s",
-				ErrPlaybookFileNotFound, playbookPath, opts.Playbook.Name, EnvironmentRelPath,
-			)
+	return ErrAnsibleAdapterUnavailable
+	/*
+		playbookPath := filepath.Join(opts.TemplateDir, opts.Playbook.File)
+		if _, err := os.Stat(playbookPath); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf(
+					"%w: %s (плейбук %q манифеста environment.playbooks) — проверьте, что "+
+						"`tplater new` скопировал каталог окружения шаблона в %s",
+					ErrPlaybookFileNotFound, playbookPath, opts.Playbook.Name, EnvironmentRelPath,
+				)
+			}
+			return fmt.Errorf("envsetup: проверка файла плейбука %s: %w", playbookPath, err)
 		}
-		return fmt.Errorf("envsetup: проверка файла плейбука %s: %w", playbookPath, err)
-	}
 
-	if err := ensureAnsiblePlaybook(ctx, r.Exec, r.DepsUI, opts.AutoYes); err != nil {
+		if err := ensureAnsiblePlaybook(ctx, r.Exec, r.DepsUI, opts.AutoYes); err != nil {
+			return err
+		}
+
+		extraVarsJSON, err := buildExtraVars(opts.Values, opts.Project)
+		if err != nil {
+			return err
+		}
+
+		tmpPath, err := writeExtraVarsFile(extraVarsJSON)
+		if err != nil {
+			return err
+		}
+		defer os.Remove(tmpPath)
+
+		r.UI.Info(fmt.Sprintf("envsetup: запускаю плейбук %s (%s)", opts.Playbook.Name, playbookPath))
+
+		args := []string{
+			playbookPath,
+			"--extra-vars", "@" + tmpPath,
+			"-e", "tplater_project_root=" + opts.ProjectRoot,
+		}
+		_, err = r.Exec.Run(ctx, ansiblePlaybookBinary, args, execx.Options{
+			Dir:    opts.ProjectRoot,
+			Stdout: r.UI.Out,
+			Stderr: r.UI.Out,
+		})
 		return err
-	}
-
-	extraVarsJSON, err := buildExtraVars(opts.Values, opts.Project)
-	if err != nil {
-		return err
-	}
-
-	tmpPath, err := writeExtraVarsFile(extraVarsJSON)
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmpPath)
-
-	r.UI.Info(fmt.Sprintf("envsetup: запускаю плейбук %s (%s)", opts.Playbook.Name, playbookPath))
-
-	args := []string{
-		playbookPath,
-		"--extra-vars", "@" + tmpPath,
-		"-e", "tplater_project_root=" + opts.ProjectRoot,
-	}
-	_, err = r.Exec.Run(ctx, ansiblePlaybookBinary, args, execx.Options{
-		Dir:    opts.ProjectRoot,
-		Stdout: r.UI.Out,
-		Stderr: r.UI.Out,
-	})
-	return err
+	*/
 }
 
 // ensureAnsiblePlaybook проверяет, что ansible-playbook доступен в PATH, и
-// если нет — прогоняет флоу автоустановки ansible:
+// если нет — прогоняет флоу автоустановки ansible (SPEC-03 §4):
 // [deps.Install] с confirm=autoYes, затем повторная проверка PATH. Строгая
 // проверка именно "ansible-playbook" (а не "ansible" через [deps.Check]) —
 // потому что это ровно тот бинарник, который запускает [Runner.RunPlaybook];
 // на практике они ставятся одним пакетом ansible, но проверять нужно то, что
 // реально будет исполняться.
 func ensureAnsiblePlaybook(ctx context.Context, exec execx.Runner, out deps.UI, autoYes bool) error {
-	if _, err := exec.LookPath(ansiblePlaybookBinary); err == nil {
-		return nil
-	}
+	return ErrAnsibleAdapterUnavailable
+	/*
+		if _, err := exec.LookPath(ansiblePlaybookBinary); err == nil {
+			return nil
+		}
 
-	confirm := func() bool { return autoYes }
-	if _, err := deps.Install(ctx, exec, out, ansibleTool, confirm); err != nil {
-		return fmt.Errorf("envsetup: установка ansible: %w", err)
-	}
+		confirm := func() bool { return autoYes }
+		if _, err := deps.Install(ctx, exec, out, ansibleTool, confirm); err != nil {
+			return fmt.Errorf("envsetup: установка ansible: %w", err)
+		}
 
-	if _, err := exec.LookPath(ansiblePlaybookBinary); err == nil {
-		return nil
-	}
+		if _, err := exec.LookPath(ansiblePlaybookBinary); err == nil {
+			return nil
+		}
 
-	recipe := installRecipe(exec)
-	return fmt.Errorf(
-		"%w — установите ansible (%s) и повторите; либо передайте --yes для автоматической установки",
-		ErrAnsibleMissing, recipe,
-	)
+		recipe := installRecipe(exec)
+		return fmt.Errorf(
+			"%w — установите ansible (%s) и повторите; либо передайте --yes для автоматической установки",
+			ErrAnsibleMissing, recipe,
+		)
+	*/
 }
 
 // installRecipe формирует человекочитаемый рецепт установки ansible для
@@ -285,7 +296,7 @@ func installRecipe(exec execx.Runner) string {
 	return "brew install " + ansibleTool.Install.Brew + " (или " + ansibleTool.Install.Apt + " через apt на linux)"
 }
 
-// projectVars — часть extra-vars tplater.project (: JSON
+// projectVars — часть extra-vars tplater.project (SPEC-03 §4: JSON
 // {"tplaiter": {"project": {...}, "settings": {...}}}). Явные json-теги в
 // нижнем регистре — извне (ansible) ожидается snake/lower-case, а не
 // Go-конвенция экспортированных полей [manifest.ProjectInfo].
@@ -308,7 +319,7 @@ type extraVarsPayload struct {
 	Tplater extraVarsTplater `json:"tplaiter"`
 }
 
-// buildExtraVars сериализует values и project в JSON extra-vars:
+// buildExtraVars сериализует values и project в JSON extra-vars (SPEC-03 §4):
 // {"tplaiter": {"project": {name,slug,module,system,domain}, "settings":
 // {...values}}}. Вынесена отдельной функцией от [Runner.RunPlaybook] намеренно
 // — юниты проверяют форму JSON без необходимости гонять реальный
@@ -336,7 +347,7 @@ func buildExtraVars(values settings.Values, proj manifest.ProjectInfo) (string, 
 	return string(data), nil
 }
 
-// writeExtraVarsFile пишет content во временный файл с правами 0600 (
+// writeExtraVarsFile пишет content во временный файл с правами 0600 (SPEC-03
 // §4: extra-vars безопаснее передавать через файл, чем длинной командной
 // строкой — секреты настроек не попадают в argv/историю шелла) и возвращает
 // его путь. Вызывающий отвечает за удаление (см. defer os.Remove в

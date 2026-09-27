@@ -148,34 +148,70 @@ func TestRun_List_WhenFiltering(t *testing.T) {
 
 func TestRun_Exec_ArgsAfterDoubleDash(t *testing.T) {
 	root := newRunFixture(t)
+	spy := new(doctorSpyRunner)
+	old := runRunner
+	runRunner = spy
+	t.Cleanup(func() { runRunner = old })
 
-	if _, err := runRunCmd(t, "echoargs", "--", "foo", "bar --baz"); err != nil {
-		t.Fatalf("run echoargs error = %v", err)
+	_, err := runRunCmd(t, "echoargs", "--", "foo", "bar --baz")
+	if !errors.Is(err, ErrActionUnavailable) {
+		t.Fatalf("run echoargs error = %v, want typed denial", err)
 	}
+	if _, statErr := os.Stat(filepath.Join(root, "marker.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("run action wrote marker after denial: %v", statErr)
+	}
+	if spy.calls != 0 {
+		t.Fatalf("run action touched runner before denial: %d calls", spy.calls)
+	}
+}
 
-	data, err := os.ReadFile(filepath.Join(root, "marker.txt"))
-	if err != nil {
-		t.Fatalf("marker.txt не создан: %v", err)
+func TestRunDirectCobraActionDeniedBeforeContextDiscovery(t *testing.T) {
+	project := t.TempDir()
+	home := filepath.Join(t.TempDir(), "hostile-home-CANARY")
+	canary := filepath.Join(project, "project-CANARY")
+	if err := os.WriteFile(canary, []byte("unchanged"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	got := strings.TrimRight(string(data), "\n")
-	want := "foo\nbar --baz"
-	if got != want {
-		t.Errorf("marker.txt = %q, want %q", got, want)
+	t.Chdir(project)
+	t.Setenv(state.HomeEnv, home)
+	t.Setenv("HOME", home)
+	spy := new(doctorSpyRunner)
+	old := runRunner
+	runRunner = spy
+	t.Cleanup(func() { runRunner = old })
+
+	c := newRunCmd()
+	var out, stderr bytes.Buffer
+	c.SetOut(&out)
+	c.SetErr(&stderr)
+	c.SetArgs([]string{"CANARY-command"})
+	err := c.Execute()
+	if !errors.Is(err, ErrActionUnavailable) {
+		t.Fatalf("direct run = %v, want typed denial", err)
+	}
+	if strings.Contains(err.Error(), "CANARY") || strings.Contains(out.String()+stderr.String(), "CANARY") {
+		t.Fatalf("denial leaked hostile input: err=%q output=%q", err, out.String()+stderr.String())
+	}
+	if _, statErr := os.Stat(home); !os.IsNotExist(statErr) {
+		t.Fatalf("direct run initialized home: %v", statErr)
+	}
+	data, readErr := os.ReadFile(canary)
+	if readErr != nil || string(data) != "unchanged" {
+		t.Fatalf("direct run changed project: %q, %v", data, readErr)
+	}
+	if spy.calls != 0 {
+		t.Fatalf("direct run touched runner: %d calls", spy.calls)
 	}
 }
 
 func TestRun_Exec_NoArgs(t *testing.T) {
 	root := newRunFixture(t)
 
-	if _, err := runRunCmd(t, "echoargs"); err != nil {
-		t.Fatalf("run echoargs error = %v", err)
+	if _, err := runRunCmd(t, "echoargs"); !errors.Is(err, ErrActionUnavailable) {
+		t.Fatalf("run echoargs error = %v, want typed denial", err)
 	}
-	data, err := os.ReadFile(filepath.Join(root, "marker.txt"))
-	if err != nil {
-		t.Fatalf("marker.txt не создан: %v", err)
-	}
-	if strings.TrimSpace(string(data)) != "" {
-		t.Errorf("marker.txt = %q, want пусто (нет args)", string(data))
+	if _, statErr := os.Stat(filepath.Join(root, "marker.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("run action wrote marker after denial: %v", statErr)
 	}
 }
 
@@ -186,12 +222,8 @@ func TestRun_Exec_ExitCodePropagates(t *testing.T) {
 	if err == nil {
 		t.Fatal("run failcmd: ожидалась ошибка")
 	}
-	var exitErr *ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("err = %v (%T), want *ExitError", err, err)
-	}
-	if exitErr.Code != 3 {
-		t.Errorf("ExitError.Code = %d, want 3", exitErr.Code)
+	if !errors.Is(err, ErrActionUnavailable) {
+		t.Fatalf("err = %v, want typed denial", err)
 	}
 }
 
@@ -202,11 +234,8 @@ func TestRun_Exec_WhenMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatal("run unavail: ожидалась ошибка when-гейта")
 	}
-	if !strings.Contains(err.Error(), "недоступна при текущих настройках") {
-		t.Errorf("err = %v, want упоминание недоступности при текущих настройках", err)
-	}
-	if !strings.Contains(err.Error(), "database=mysql") {
-		t.Errorf("err = %v, want упоминание условия database=mysql", err)
+	if !errors.Is(err, ErrActionUnavailable) {
+		t.Fatalf("err = %v, want typed denial", err)
 	}
 }
 
@@ -217,8 +246,8 @@ func TestRun_Exec_UnknownCommand(t *testing.T) {
 	if err == nil {
 		t.Fatal("run does-not-exist: ожидалась ошибка")
 	}
-	if !strings.Contains(err.Error(), "неизвестная команда") {
-		t.Errorf("err = %v, want упоминание неизвестной команды", err)
+	if !errors.Is(err, ErrActionUnavailable) {
+		t.Fatalf("err = %v, want typed denial", err)
 	}
 }
 

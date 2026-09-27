@@ -6,19 +6,20 @@ require a Python runtime for template processing.
 
 ## Checkpoint status
 
-This private checkpoint is an in-progress engineering snapshot, not a release.
+This checkpoint is an in-progress engineering snapshot, not a release.
 It contains the rehomed core module, its schemas, embedded template skeletons,
 and the applicable test fixtures. The repository is being prepared as a clean
 new history after privacy and provenance review.
 
 The command surface, template packages, trust workflows, and publication
-metadata are still under active development. Live project creation and update
-workflows are not available in this checkpoint. Do not rely on it for
-production use or compatibility guarantees.
+metadata are still under active development. Project creation and update
+action paths are unavailable until their fixed adapters are complete. Do not
+rely on this checkpoint for production use or compatibility guarantees.
 
-A stock CLI without a registered trust anchor stops `new` and `update` with
-`TRUST_ANCHOR_MISSING`. Registering an anchor does not enable ordinary live
-project creation or update in this checkpoint: those paths still stop with
+The CLI has no production-installed trust anchors in this checkpoint. A stock
+CLI stops `new` and `update` with `TRUST_ANCHOR_MISSING`; registering an anchor
+does not enable ordinary live project creation or update until the fixed
+adapters are complete, so those paths still stop with
 `TRUST_LIFECYCLE_UNAVAILABLE`.
 
 Fixed simulated registration tests cover dry-run and maintenance behavior.

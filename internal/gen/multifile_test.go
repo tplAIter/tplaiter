@@ -21,7 +21,7 @@ const pairIndexStub = "index\n# CODEGEN:PAIR\n"
 func setupMultiProject(t *testing.T) (dir string, tpl *manifest.Template) {
 	t.Helper()
 	dir = t.TempDir()
-	writeFile(t, dir, "go.mod", "module git.example.test/demo\n\ngo 1.26\n")
+	writeFile(t, dir, "go.mod", "module example.invalid/demo\n\ngo 1.26\n")
 	writeFile(t, dir, "out/index.txt", pairIndexStub)
 	writeFile(t, dir, ".tplaiter/generators/pair/entity.txt.tmpl",
 		"entity {{ .Name.Pascal }}\n{{- range .Fields }}\n{{ .Name.Snake }}:{{ .SQLType }}{{- end }}\n")
@@ -52,31 +52,16 @@ func TestGenerateBatch_ComposesSharedAnchorAndBuildsOnce(t *testing.T) {
 	opts.NoBuild = false
 	opts.Runner = runner
 
-	res, err := GenerateBatch(context.Background(), tpl, []Operation{
+	before := snapshotTree(t, dir)
+	_, err := GenerateBatch(context.Background(), tpl, []Operation{
 		{Kind: "pair", Name: "Ride", Fields: opts.Fields, Params: opts.Params},
 		{Kind: "pair", Name: "Driver", Fields: opts.Fields, Params: opts.Params},
 	}, opts)
-	if err != nil {
-		t.Fatalf("GenerateBatch: %v", err)
+	assertExecutionUnavailable(t, err)
+	if len(runner.Calls) != 0 {
+		t.Fatalf("denied batch must not run build, calls = %#v", runner.Calls)
 	}
-	if len(res.Results) != 2 || len(res.CreatedFiles) != 4 || len(res.EditedFiles) != 1 {
-		t.Fatalf("unexpected batch result: %#v", res)
-	}
-	for _, path := range []string{
-		"out/ride.txt", "out/driver.txt",
-		"out/migrations/00001_ride.txt", "out/migrations/00002_driver.txt",
-	} {
-		if _, statErr := os.Stat(filepath.Join(dir, path)); statErr != nil {
-			t.Errorf("expected %s: %v", path, statErr)
-		}
-	}
-	idx := readFile(t, filepath.Join(dir, "out/index.txt"))
-	if !strings.Contains(idx, "gen:pair:ride") || !strings.Contains(idx, "gen:pair:driver") {
-		t.Errorf("shared anchor must contain both operations:\n%s", idx)
-	}
-	if len(runner.Calls) != 1 || runner.Calls[0].Name != "go" {
-		t.Errorf("build must run exactly once, calls = %#v", runner.Calls)
-	}
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 func TestGenerateBatch_PreflightFailureLeavesProjectUntouched(t *testing.T) {
@@ -99,27 +84,16 @@ func TestGenerateBatch_PreflightFailureLeavesProjectUntouched(t *testing.T) {
 
 func TestGenerateBatch_BuildFailureRollsBackAllOperations(t *testing.T) {
 	dir, tpl := setupMultiProject(t)
-	runner := execx.NewRecordingRunner()
-	runner.On("go", []string{"build", "./..."}, execx.Response{Err: errors.New("build failed")})
 	opts := multiOpts(dir, mustFields(t, "status:string"))
 	opts.NoBuild = false
-	opts.Runner = runner
 
+	before := snapshotTree(t, dir)
 	_, err := GenerateBatch(context.Background(), tpl, []Operation{
 		{Kind: "pair", Name: "Ride", Fields: opts.Fields, Params: opts.Params},
 		{Kind: "pair", Name: "Driver", Fields: opts.Fields, Params: opts.Params},
 	}, opts)
-	if err == nil || !strings.Contains(err.Error(), "изменения откачены") {
-		t.Fatalf("expected rollback on build failure, got %v", err)
-	}
-	for _, path := range []string{"out/ride.txt", "out/driver.txt", "out/migrations/00001_ride.txt", "out/migrations/00002_driver.txt"} {
-		if _, statErr := os.Stat(filepath.Join(dir, path)); !os.IsNotExist(statErr) {
-			t.Errorf("%s must be rolled back, stat err = %v", path, statErr)
-		}
-	}
-	if idx := readFile(t, filepath.Join(dir, "out/index.txt")); idx != pairIndexStub {
-		t.Errorf("anchor must be restored:\n%s", idx)
-	}
+	assertExecutionUnavailable(t, err)
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 func setupRustBatchProject(t *testing.T) (dir string, tpl *manifest.Template, original string) {
@@ -144,39 +118,31 @@ func TestGenerateBatch_UsesOneManifestBuildGateForRust(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	runner.On("/bin/sh", []string{"-c", "cargo check --workspace"}, execx.Response{Result: execx.Result{ExitCode: 0}})
 
+	before := snapshotTree(t, dir)
 	_, err := GenerateBatch(context.Background(), tpl, []Operation{{Kind: "route", Name: "Ride"}, {Kind: "route", Name: "Driver"}}, Options{
 		ProjectRoot: dir, GeneratorsDir: filepath.Join(dir, GeneratorsRelPath), Runner: runner,
 	})
-	if err != nil {
-		t.Fatalf("GenerateBatch: %v", err)
+	assertExecutionUnavailable(t, err)
+	if len(runner.Calls) != 0 {
+		t.Fatalf("denied Rust batch must not run build, calls = %#v", runner.Calls)
 	}
-	if len(runner.Calls) != 1 || runner.Calls[0].Name != "/bin/sh" {
-		t.Fatalf("Rust batch must run one manifest build-gate, calls = %#v", runner.Calls)
-	}
-	if runner.Calls[0].Opts.Dir != dir {
-		t.Errorf("manifest build-gate Dir = %q, want project root %q", runner.Calls[0].Opts.Dir, dir)
-	}
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 func TestGenerateBatch_ManifestBuildGateFailureRollsBackRust(t *testing.T) {
-	dir, tpl, original := setupRustBatchProject(t)
+	dir, tpl, _ := setupRustBatchProject(t)
 	runner := execx.NewRecordingRunner()
 	runner.On("/bin/sh", []string{"-c", "cargo check --workspace"}, execx.Response{Err: errors.New("cargo check failed")})
 
+	before := snapshotTree(t, dir)
 	_, err := GenerateBatch(context.Background(), tpl, []Operation{{Kind: "route", Name: "Ride"}, {Kind: "route", Name: "Driver"}}, Options{
 		ProjectRoot: dir, GeneratorsDir: filepath.Join(dir, GeneratorsRelPath), Runner: runner,
 	})
-	if err == nil || !strings.Contains(err.Error(), "изменения откачены") {
-		t.Fatalf("expected rollback error, got %v", err)
+	assertExecutionUnavailable(t, err)
+	if len(runner.Calls) != 0 {
+		t.Fatalf("denied Rust batch must not run build, calls = %#v", runner.Calls)
 	}
-	for _, path := range []string{"src/routes/ride.rs", "src/routes/driver.rs"} {
-		if _, statErr := os.Stat(filepath.Join(dir, path)); !os.IsNotExist(statErr) {
-			t.Errorf("%s must be rolled back, stat err = %v", path, statErr)
-		}
-	}
-	if got := readFile(t, filepath.Join(dir, "src/router.rs")); got != original {
-		t.Errorf("Rust anchor must be restored: %q", got)
-	}
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 func multiOpts(dir string, fields []Field) Options {
@@ -203,35 +169,10 @@ func TestGenerate_Multifile_CreatesBothTargetsAndAnchor(t *testing.T) {
 	dir, tpl := setupMultiProject(t)
 	opts := multiOpts(dir, mustFields(t, "customer:string,amount:float64"))
 
-	res, err := Generate(context.Background(), tpl, "pair", "Order", opts)
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	if len(res.CreatedFiles) != 2 {
-		t.Fatalf("CreatedFiles = %v (want 2)", res.CreatedFiles)
-	}
-	if len(res.EditedFiles) != 1 || res.EditedFiles[0] != "out/index.txt" {
-		t.Errorf("EditedFiles = %v", res.EditedFiles)
-	}
-
-	entity := readFile(t, filepath.Join(dir, "out/order.txt"))
-	if !strings.Contains(entity, "entity Order") || !strings.Contains(entity, "customer:text") || !strings.Contains(entity, "amount:double precision") {
-		t.Errorf("entity file:\n%s", entity)
-	}
-	// record-таргет: numbered goose → нет существующих миграций → 00001.
-	record := readFile(t, filepath.Join(dir, "out/migrations/00001_order.txt"))
-	if !strings.Contains(record, "seq=00001") {
-		t.Errorf("record file:\n%s", record)
-	}
-	idx := readFile(t, filepath.Join(dir, "out/index.txt"))
-	if !strings.Contains(idx, "// gen:pair:order") || !strings.Contains(idx, "- order") {
-		t.Errorf("index anchor:\n%s", idx)
-	}
-
-	// Повтор — ошибка (файлы уже существуют).
-	if _, err := Generate(context.Background(), tpl, "pair", "Order", opts); err == nil {
-		t.Error("expected duplicate error on repeat")
-	}
+	before := snapshotTree(t, dir)
+	_, err := Generate(context.Background(), tpl, "pair", "Order", opts)
+	assertExecutionUnavailable(t, err)
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 // TestGenerate_Multifile_MigrationSeq: каталог с 00001, 00002 → следующий 00003.
@@ -241,12 +182,10 @@ func TestGenerate_Multifile_MigrationSeq(t *testing.T) {
 	writeFile(t, dir, "out/migrations/00002_second.txt", "y\n")
 
 	opts := multiOpts(dir, mustFields(t, "a:int"))
-	if _, err := Generate(context.Background(), tpl, "pair", "Third", opts); err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	if _, statErr := os.Stat(filepath.Join(dir, "out/migrations/00003_third.txt")); statErr != nil {
-		t.Errorf("expected migration 00003_third.txt: %v", statErr)
-	}
+	before := snapshotTree(t, dir)
+	_, err := Generate(context.Background(), tpl, "pair", "Third", opts)
+	assertExecutionUnavailable(t, err)
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 // TestGenerate_Multifile_TargetWhenGate: target.when гейтит один из таргетов по
@@ -256,39 +195,30 @@ func TestGenerate_Multifile_TargetWhenGate(t *testing.T) {
 	// Гейтим record-таргет по toggle-настройке migrations.
 	tpl.Generators[0].Targets[1].When = []string{"migrations=true"}
 
-	// migrations выключена → только entity-файл.
+	// migrations выключена: target selection is pure, execution is denied.
 	opts := multiOpts(dir, mustFields(t, "a:int"))
 	opts.Values = settings.Values{"migrations": false}
-	res, err := Generate(context.Background(), tpl, "pair", "Order", opts)
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	if len(res.CreatedFiles) != 1 || !strings.HasSuffix(res.CreatedFiles[0], "order.txt") {
-		t.Fatalf("gated: CreatedFiles = %v (want only entity)", res.CreatedFiles)
-	}
-	if _, statErr := os.Stat(filepath.Join(dir, "out/migrations/00001_order.txt")); !os.IsNotExist(statErr) {
-		t.Errorf("gated target must not be created, stat err = %v", statErr)
-	}
+	before := snapshotTree(t, dir)
+	_, err := Generate(context.Background(), tpl, "pair", "Order", opts)
+	assertExecutionUnavailable(t, err)
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 
 	// migrations включена → оба файла.
 	dir2, tpl2 := setupMultiProject(t)
 	tpl2.Generators[0].Targets[1].When = []string{"migrations=true"}
 	opts2 := multiOpts(dir2, mustFields(t, "a:int"))
 	opts2.Values = settings.Values{"migrations": true}
-	res2, err := Generate(context.Background(), tpl2, "pair", "Order", opts2)
-	if err != nil {
-		t.Fatalf("Generate (enabled): %v", err)
-	}
-	if len(res2.CreatedFiles) != 2 {
-		t.Errorf("enabled: CreatedFiles = %v (want 2)", res2.CreatedFiles)
-	}
+	before2 := snapshotTree(t, dir2)
+	_, err = Generate(context.Background(), tpl2, "pair", "Order", opts2)
+	assertExecutionUnavailable(t, err)
+	assertTreeEqual(t, before2, snapshotTree(t, dir2))
 }
 
 // TestGenerate_Multifile_RollbackOnBuildFailure: второй таргет генерит невалидный
 // Go → `go build` падает → откат ПЕРВОГО файла, второго и якоря.
 func TestGenerate_Multifile_RollbackOnBuildFailure(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "go.mod", "module git.example.test/demo\n\ngo 1.26\n")
+	writeFile(t, dir, "go.mod", "module example.invalid/demo\n\ngo 1.26\n")
 	writeFile(t, dir, "internal/reg/reg.go", "package reg\n\n// CODEGEN:PAIR\nvar Registered []string\n")
 	// Первый таргет — валидный Go; второй — синтаксически битый.
 	writeFile(t, dir, ".tplaiter/generators/a.go.tmpl", "package domain\n\ntype {{ .Name.Pascal }} struct{}\n")
@@ -312,22 +242,10 @@ func TestGenerate_Multifile_RollbackOnBuildFailure(t *testing.T) {
 		Values:        settings.Values{},
 	} // NoBuild:false
 
+	before := snapshotTree(t, dir)
 	_, err := Generate(context.Background(), tpl, "pair", "Order", opts)
-	if err == nil || !strings.Contains(err.Error(), "не собирается") {
-		t.Fatalf("expected build failure, got %v", err)
-	}
-	// Откат: первый файл удалён.
-	if _, statErr := os.Stat(filepath.Join(dir, "internal/domain/order.go")); !os.IsNotExist(statErr) {
-		t.Errorf("first target must be rolled back, stat err = %v", statErr)
-	}
-	if _, statErr := os.Stat(filepath.Join(dir, "internal/usecase/order.go")); !os.IsNotExist(statErr) {
-		t.Errorf("second target must be rolled back, stat err = %v", statErr)
-	}
-	// Якорный файл восстановлен (маркера нет).
-	reg := readFile(t, filepath.Join(dir, "internal/reg/reg.go"))
-	if strings.Contains(reg, "gen:pair:order") {
-		t.Errorf("anchor file must be restored:\n%s", reg)
-	}
+	assertExecutionUnavailable(t, err)
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
 // TestGenerate_Multifile_RenderErrorNoWrites: ошибка рендера второго сниппета
@@ -351,7 +269,7 @@ func TestGenerate_Multifile_RenderErrorNoWrites(t *testing.T) {
 }
 
 // TestGenerate_BackwardCompat_SingleForm: старая одиночная форма (snippet+target)
-// продолжает работать без targets[] — тот же контракт, что и до появления targets[].
+// продолжает работать без targets[] — тот же контракт, что и до CG-1.
 func TestGenerate_BackwardCompat_SingleForm(t *testing.T) {
 	dir, tpl := setupProject(t) // одиночный use-case генератор
 	opts := Options{
@@ -360,14 +278,8 @@ func TestGenerate_BackwardCompat_SingleForm(t *testing.T) {
 		Values:        settings.Values{},
 		NoBuild:       true,
 	}
-	res, err := Generate(context.Background(), tpl, "use-case", "Bar", opts)
-	if err != nil {
-		t.Fatalf("Generate single-form: %v", err)
-	}
-	if len(res.CreatedFiles) != 1 || res.CreatedFiles[0] != "internal/usecase/bar.go" {
-		t.Errorf("CreatedFiles = %v", res.CreatedFiles)
-	}
-	if len(res.EditedFiles) != 1 {
-		t.Errorf("EditedFiles = %v", res.EditedFiles)
-	}
+	before := snapshotTree(t, dir)
+	_, err := Generate(context.Background(), tpl, "use-case", "Bar", opts)
+	assertExecutionUnavailable(t, err)
+	assertTreeEqual(t, before, snapshotTree(t, dir))
 }

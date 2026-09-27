@@ -22,6 +22,15 @@ type invocation struct {
 
 type invocationKey struct{}
 
+// ErrActionUnavailable is returned for legacy CLI actions for which this
+// binary has no fixed, launcher-selected execution material.  It is kept
+// deliberately free of command, path, and environment data.
+var ErrActionUnavailable = errors.New("TRUST_ACTION_UNAVAILABLE")
+
+func actionUnavailable() error {
+	return errors.Join(trustload.ErrProvenanceUnavailable, ErrActionUnavailable)
+}
+
 func withInvocation(ctx context.Context, in invocation) context.Context {
 	return context.WithValue(ctx, invocationKey{}, in)
 }
@@ -61,7 +70,7 @@ func newTrustRootCommand(in invocation) *cobra.Command {
 	}
 	root.SetVersionTemplate("{{.Version}}\n")
 	root.SetContext(withInvocation(context.Background(), in))
-	root.AddCommand(newNewCmd(), newUpdateCmd(), newTrustCmd())
+	root.AddCommand(newNewCmd(), newUpdateCmd(), newTrustCmd(), newVersionCmd(), newDoctorCmd(), newRunCmd(), newEnvCmd(), newGenCmd())
 	return root
 }
 
@@ -97,12 +106,12 @@ func (e *ExitError) Error() string {
 func (e *ExitError) Unwrap() error { return e.Err }
 
 // verbose — persistent-флаг подробного вывода. Заготовка: пока не влияет на
-// поведение команд, будет прокинут в логирование/UI последующими связанными компонентами
-// (см. документацию проекта, реализацию).
+// поведение команд, будет прокинут в логирование/UI последующими задачами
+// (см. PLAN.md §4, tp-U1).
 var verbose bool
 
 // upgradeFlag — root-флаг `--upgrade`, алиас команды `tplaiter self-upgrade`
-//. Локальный (не persistent) флаг: имеет смысл только на самой
+// (SPEC-05 §2). Локальный (не persistent) флаг: имеет смысл только на самой
 // root-команде, см. rootCmd.RunE и [rootPreRun].
 var upgradeFlag bool
 
@@ -115,8 +124,8 @@ var rootCmd = &cobra.Command{
 		"См. README.md и docs/ в репозитории tplaiter для деталей архитектуры.",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	// PersistentPreRunE — компоновка first-run приветствия и
-	// suggest-проверки обновлений, см. [rootPreRun].
+	// PersistentPreRunE — компоновка first-run приветствия (SPEC-05 §4) и
+	// suggest-проверки обновлений (SPEC-05 §2), см. [rootPreRun].
 	PersistentPreRunE: rootPreRun,
 	// RunE — есть только затем, чтобы `tplaiter --upgrade` работал как алиас
 	// `tplaiter self-upgrade` без объявления --upgrade persistent-флагом на
@@ -147,12 +156,12 @@ func init() {
 }
 
 // rootPreRun — единая PersistentPreRunE корневой команды: сначала
-// [firstRunPreRun], затем [suggestUpdatePreRun],
-// затем [projectSyncPreRun]. Скомпоновано явно одной функцией (а
+// [firstRunPreRun] (SPEC-05 §4), затем [suggestUpdatePreRun] (SPEC-05 §2),
+// затем [projectSyncPreRun] (SPEC-04 §1). Скомпоновано явно одной функцией (а
 // не цепочкой cobra-хуков по дереву команд), чтобы порядок и общий обход
 // bare-инвокации читались в одном месте.
 //
-// До этой реализации rootCmd не имел Run/RunE и поэтому не был Runnable — cobra
+// До этой задачи rootCmd не имел Run/RunE и поэтому не был Runnable — cobra
 // печатала help ДО вызова PersistentPreRunE (см. cobra Command.execute:
 // `if !c.Runnable() { return flag.ErrHelp }` предшествует c.preRun()).
 // Флаг --upgrade требует RunE на root, что делает root Runnable всегда — без
@@ -162,6 +171,15 @@ func init() {
 // --upgrade); `tplaiter --upgrade` (тоже bare-инвокация root, но с флагом)
 // проходит first-run/suggest как обычная команда.
 func rootPreRun(cmd *cobra.Command, args []string) error {
+	// This classification precedes every legacy root hook.  A command that
+	// could execute manifest-derived input must not initialize process state,
+	// inspect HOME, or synchronize a project before it has fixed material.
+	if legacyActionCommand(cmd, args) {
+		return actionUnavailable()
+	}
+	if descriptiveCommand(cmd, args) {
+		return nil
+	}
 	// Naming migration is explicitly rooted by its sealed plan. It must not
 	// create/discover a process home or synchronize a registry while planning
 	// or applying an unrelated synthetic/isolated state transaction.
@@ -192,6 +210,36 @@ func rootPreRun(cmd *cobra.Command, args []string) error {
 	suggestUpdatePreRun(cmd, args)
 	projectSyncPreRun(cmd, args)
 	return nil
+}
+
+func descriptiveCommand(cmd *cobra.Command, args []string) bool {
+	if cmd == nil {
+		return false
+	}
+	if cmd.Name() == "doctor" || cmd.Name() == "version" {
+		return true
+	}
+	if cmd.Name() == "run" && len(args) == 0 {
+		return true
+	}
+	return cmd.Name() == "list" && cmd.Parent() != nil && (cmd.Parent().Name() == "gen" || cmd.Parent().Name() == "env")
+}
+
+// legacyActionCommand distinguishes action ingress from the descriptive
+// list/help routes.  It intentionally does not infer authority from flags,
+// the manifest, cwd, or process state.
+func legacyActionCommand(cmd *cobra.Command, args []string) bool {
+	if cmd == nil {
+		return false
+	}
+	switch cmd.Name() {
+	case "run":
+		return len(args) != 0
+	case "gen", "batch", "setup":
+		return true
+	default:
+		return false
+	}
 }
 
 // Execute запускает корневую команду.
