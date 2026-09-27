@@ -1,0 +1,27 @@
+name: template checks
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  lint-template:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        combo: ["", defaults, variant=advanced, all-on, max]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - name: Install tplaiter
+        run: go install github.com/tplAIter/tplaiter@latest
+      - name: Validate template
+        run: |
+          if [ -n "${{ matrix.combo }}" ]; then
+            tplaiter lint-template --path . --combo "${{ matrix.combo }}"
+          else
+            tplaiter lint-template --path .
+          fi

@@ -1,0 +1,18 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: cycle-demo
+  version: 1.0.0
+settings:
+  - group: feat_a
+    type: multiselect
+    default: [x]
+    options:
+      - id: x
+        requires: ["feat_b=y"]
+  - group: feat_b
+    type: multiselect
+    default: []
+    options:
+      - id: y
+        requires: ["feat_a=x"]

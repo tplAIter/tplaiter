@@ -1,0 +1,1245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/bootstrap-descriptor/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "profile",
+    "authorityId",
+    "anchors",
+    "threshold",
+    "allowedPolicyOrigins",
+    "publisherScopes",
+    "descriptorSHA256"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/bootstrap-descriptor/v1"
+    },
+    "profile": {
+      "enum": [
+        "oss",
+        "organization"
+      ]
+    },
+    "authorityId": {
+      "type": "string",
+      "pattern": "^\\S{1,256}$"
+    },
+    "anchors": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/anchor"
+      },
+      "uniqueItems": true
+    },
+    "threshold": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64
+    },
+    "allowedPolicyOrigins": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/origin"
+      },
+      "uniqueItems": true
+    },
+    "publisherScopes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1024,
+      "items": {
+        "$ref": "#/$defs/scope"
+      },
+      "uniqueItems": true
+    },
+    "descriptorSHA256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fingerprint",
+        "publicKeyBase64"
+      ],
+      "properties": {
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "publicKeyBase64": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]{43}=$"
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyOrigin",
+        "issuer",
+        "sourceOrigin",
+        "templatePath",
+        "predicate",
+        "usage"
+      ],
+      "properties": {
+        "policyOrigin": {
+          "$ref": "#/$defs/origin"
+        },
+        "issuer": {
+          "type": "string",
+          "pattern": "^\\S{1,256}$"
+        },
+        "sourceOrigin": {
+          "$ref": "#/$defs/origin"
+        },
+        "templatePath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?:\\.|[^/\\\\:]+(?:/[^/\\\\:]+)*)$",
+          "not": {
+            "anyOf": [
+              {
+                "pattern": "^\\.\\.$"
+              },
+              {
+                "pattern": "(?:^|/)\\.{1,2}/"
+              },
+              {
+                "pattern": "/\\.{1,2}$"
+              }
+            ]
+          }
+        },
+        "predicate": {
+          "$ref": "#/$defs/origin"
+        },
+        "usage": {
+          "const": "template-source"
+        }
+      }
+    },
+    "origin": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[a-z][a-z0-9+.-]*://[a-z0-9.-]+(?:/[^\\s?#\\\\]*)?$",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "://[^/]+/[^?]*//"
+          },
+          {
+            "pattern": "%2[fF]|%5[bB]|%2[eE]"
+          },
+          {
+            "pattern": "://[^/]+/.*(?:/\\.|/\\.\\.)"
+          }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 1,
+            "maxItems": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 2
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 3,
+            "maxItems": 3
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 3
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 4,
+            "maxItems": 4
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 4
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 5,
+            "maxItems": 5
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 5
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 6,
+            "maxItems": 6
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 6
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 7,
+            "maxItems": 7
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 7
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 8,
+            "maxItems": 8
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 8
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 9,
+            "maxItems": 9
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 9
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 10,
+            "maxItems": 10
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 10
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 11,
+            "maxItems": 11
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 11
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 12,
+            "maxItems": 12
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 12
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 13,
+            "maxItems": 13
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 13
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 14,
+            "maxItems": 14
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 14
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 15,
+            "maxItems": 15
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 15
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 16,
+            "maxItems": 16
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 16
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 17,
+            "maxItems": 17
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 17
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 18,
+            "maxItems": 18
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 18
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 19,
+            "maxItems": 19
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 19
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 20,
+            "maxItems": 20
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 20
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 21,
+            "maxItems": 21
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 21
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 22,
+            "maxItems": 22
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 22
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 23,
+            "maxItems": 23
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 23
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 24,
+            "maxItems": 24
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 24
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 25,
+            "maxItems": 25
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 25
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 26,
+            "maxItems": 26
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 26
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 27,
+            "maxItems": 27
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 27
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 28,
+            "maxItems": 28
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 28
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 29,
+            "maxItems": 29
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 29
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 30,
+            "maxItems": 30
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 30
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 31,
+            "maxItems": 31
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 31
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 32,
+            "maxItems": 32
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 32
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 33,
+            "maxItems": 33
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 33
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 34,
+            "maxItems": 34
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 34
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 35,
+            "maxItems": 35
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 35
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 36,
+            "maxItems": 36
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 36
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 37,
+            "maxItems": 37
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 37
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 38,
+            "maxItems": 38
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 38
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 39,
+            "maxItems": 39
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 39
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 40,
+            "maxItems": 40
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 40
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 41,
+            "maxItems": 41
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 41
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 42,
+            "maxItems": 42
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 42
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 43,
+            "maxItems": 43
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 43
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 44,
+            "maxItems": 44
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 44
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 45,
+            "maxItems": 45
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 45
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 46,
+            "maxItems": 46
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 46
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 47,
+            "maxItems": 47
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 47
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 48,
+            "maxItems": 48
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 48
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 49,
+            "maxItems": 49
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 49
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 50,
+            "maxItems": 50
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 50
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 51,
+            "maxItems": 51
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 51
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 52,
+            "maxItems": 52
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 52
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 53,
+            "maxItems": 53
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 53
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 54,
+            "maxItems": 54
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 54
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 55,
+            "maxItems": 55
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 55
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 56,
+            "maxItems": 56
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 56
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 57,
+            "maxItems": 57
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 57
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 58,
+            "maxItems": 58
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 58
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 59,
+            "maxItems": 59
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 59
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 60,
+            "maxItems": 60
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 60
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 61,
+            "maxItems": 61
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 61
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 62,
+            "maxItems": 62
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 62
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 63,
+            "maxItems": 63
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 63
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "anchors": {
+            "minItems": 64,
+            "maxItems": 64
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "threshold": {
+            "maximum": 64
+          }
+        }
+      }
+    }
+  ]
+}

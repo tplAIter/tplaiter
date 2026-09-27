@@ -1,0 +1,6 @@
+{
+  "language": "ru",
+  "code_language": "en",
+  "targets": ["agents_md"],
+  "line_length": 120
+}

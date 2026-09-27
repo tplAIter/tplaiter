@@ -1,0 +1,13 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: planned-service
+  version: 1.0.0
+settings:
+  - group: database
+    type: select
+    default: mysql
+    options:
+      - id: none
+      - id: mysql
+        status: planned

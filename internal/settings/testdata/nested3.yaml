@@ -1,0 +1,66 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: nested-demo
+  version: 1.0.0
+settings:
+  - group: database
+    title: "База данных"
+    type: select
+    default: none
+    options:
+      - id: none
+        title: "Без БД"
+      - id: postgres
+        title: "PostgreSQL"
+        settings:
+          - group: pg_pool          # уровень 2
+            title: "Пул соединений"
+            type: select
+            default: small
+            options:
+              - id: small
+              - id: large
+                settings:
+                  - group: pg_shards   # уровень 3
+                    title: "Число шардов"
+                    type: int
+                    default: 4
+          - group: idempotency
+            title: "Идемпотентность"
+            type: toggle
+            default: false
+      - id: mysql
+        title: "MySQL"
+  - group: brokers
+    title: "Брокеры"
+    type: multiselect
+    default: []
+    options:
+      - id: kafka
+        settings:
+          - group: kafka_ssl
+            type: toggle
+            default: false
+      - id: rabbitmq
+  - group: auth
+    type: multiselect
+    default: []
+    options:
+      - id: sso_provider
+        requires: ["database=postgres"]
+      - id: audit
+        requires: ["brokers=kafka"]
+  - group: metrics
+    type: toggle
+    default: false
+  - group: extras
+    type: multiselect
+    default: []
+    options:
+      - id: dashboards
+        requires: ["metrics=true"]
+constraints:
+  - if: "idempotency=true"
+    require: "database=postgres"
+    message: "Идемпотентность требует PostgreSQL"

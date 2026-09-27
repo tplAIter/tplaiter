@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/trust-profile-binding/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "id", "definitionVersion", "configSHA256", "policySHA256", "authoritySHA256", "assurance", "evidenceClass"],
+  "properties": {
+    "apiVersion": {"const": "tplaiter.dev/trust-profile-binding/v1"},
+    "id": {"enum": ["oss", "development", "organization"]},
+    "definitionVersion": {"const": 1},
+    "configSHA256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "policySHA256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "authoritySHA256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "assurance": {"enum": ["publisher-verified", "development-unverified", "organization-protected"]},
+    "evidenceClass": {"enum": ["production", "simulated"]}
+  },
+  "allOf": [
+    {"if": {"properties": {"id": {"const": "oss"}}}, "then": {"properties": {"assurance": {"const": "publisher-verified"}}}},
+    {"if": {"properties": {"id": {"const": "development"}}}, "then": {"properties": {"assurance": {"const": "development-unverified"}}}},
+    {"if": {"properties": {"id": {"const": "organization"}}}, "then": {"properties": {"assurance": {"const": "organization-protected"}, "evidenceClass": {"const": "production"}}}}
+  ]
+}

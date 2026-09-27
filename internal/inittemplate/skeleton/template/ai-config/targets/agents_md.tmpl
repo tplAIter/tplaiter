@@ -1,0 +1,10 @@
+{{ define "agents.tmpl" -}}
+# AGENTS.md — {{ .Project.Name }}
+
+Сгенерировано tplaiter из ai-config шаблона. Активные модули правил:
+{{ range .Modules }}
+## {{ .Title }} ({{ .ID }})
+
+{{ .Rule }}
+{{ end }}
+{{- end }}

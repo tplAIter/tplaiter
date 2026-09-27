@@ -1,0 +1,13 @@
+# Манифест multi-репозитория: перечисляет шаблоны репозитория.
+# Каждый templates[].path — подкаталог с собственным template.manifest.yaml.
+# Добавляя новый шаблон, создайте подкаталог с манифестом и допишите его сюда.
+apiVersion: tplater.dev/v1alpha1
+kind: Repository
+metadata:
+  name: << .Name >>
+  description: "Репозиторий шаблонов << .Name >> (сгенерирован tplaiter init-template --multi)"
+  maintainers:
+    - name: "TODO: имя мейнтейнера"
+      email: "todo@example.com"
+templates:
+  - path: << .Name >>

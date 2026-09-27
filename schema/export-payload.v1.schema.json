@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplaiter.dev/schema/export-payload.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "exportID", "files", "slots", "blocks"],
+  "properties": {
+    "apiVersion": {"const": "tplaiter.dev/export-payload/v1"},
+    "exportID": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"},
+    "files": {"type": "array", "items": {"$ref": "#/$defs/file"}, "maxItems": 4096},
+    "slots": {"type": "array", "items": {"$ref": "#/$defs/slot"}, "maxItems": 4096},
+    "blocks": {"type": "array", "items": {"$ref": "#/$defs/block"}, "maxItems": 4096}
+  },
+  "$defs": {
+    "path": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[^/:\\\\][^/:\\\\]*(/[^/:\\\\][^/:\\\\]*)*$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourcePath", "targetPath", "mode", "contentSHA256"],
+      "properties": {"sourcePath": {"$ref": "#/$defs/path"}, "targetPath": {"$ref": "#/$defs/path"}, "mode": {"enum": ["100644", "100755"]}, "contentSHA256": {"$ref": "#/$defs/digest"}}
+    },
+    "slot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["targetPath", "pointer", "value"],
+      "properties": {"targetPath": {"$ref": "#/$defs/path"}, "pointer": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^/(scripts|dependencies|devDependencies|peerDependencies|optionalDependencies)/[^/]+$"}, "value": {"type": "string", "maxLength": 65536}}
+    },
+    "block": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourcePath", "contentSHA256"],
+      "properties": {"sourcePath": {"$ref": "#/$defs/path"}, "contentSHA256": {"$ref": "#/$defs/digest"}}
+    }
+  }
+}

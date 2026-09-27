@@ -1,0 +1,24 @@
+# {{ .Project.Name }}
+
+Модуль: `{{ .Project.Module }}`
+Slug: `{{ .Project.Slug }}` (Pascal: `{{ .Project.Pascal }}`, Kebab: `{{ .Project.Kebab }}`)
+Создан из шаблона `{{ .Template.Name }}@{{ .Template.Version }}`.
+
+## Настройки сборки
+
+- Вариант: **{{ .Settings.variant }}**
+{{- if is "variant" "advanced" }}
+- Подробный вывод (verbose): **{{ .Settings.verbose }}**
+{{- end }}
+- Feature X: **{{ if is "feature_x" "true" }}включён{{ else }}выключен{{ end }}**
+
+{{ if is "feature_x" "true" -}}
+> Feature X активна — см. `extra.txt` (добавлен условным каталогом `__if_feature_x__/`).
+{{- end }}
+
+## Запуск
+
+```sh
+tplaiter run dev
+tplaiter run test
+```

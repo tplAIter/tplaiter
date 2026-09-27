@@ -1,0 +1,5 @@
+project={{ .Project.Slug }}
+module={{ .Project.Module }}
+port={{ .Runtime.Port }}
+template={{ .Template.Name }}@{{ .Template.Version }} ({{ .Template.Repo }})
+{{ template "fixture.greeting" . }}

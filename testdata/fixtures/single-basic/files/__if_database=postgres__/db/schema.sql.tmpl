@@ -1,0 +1,3 @@
+-- schema for {{ .Project.Slug }}
+CREATE TABLE {{ .Project.Snake }}_demo (id serial primary key);
+{{ if is "migrations" "true" }}-- migrations enabled{{ else }}-- migrations disabled{{ end }}

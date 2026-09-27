@@ -1,0 +1,13 @@
+// Пример сниппета генератора (`tplaiter gen example <name>`).
+// Контекст: .Name{Pascal,Snake,Camel,Kebab,Raw} + .Settings + .Project.
+package example
+
+// {{ .Name.Pascal }} — сгенерированная сущность.
+type {{ .Name.Pascal }} struct {
+	// slug проекта: {{ .Project.Slug }}
+}
+
+// New{{ .Name.Pascal }} — конструктор.
+func New{{ .Name.Pascal }}() *{{ .Name.Pascal }} {
+	return &{{ .Name.Pascal }}{}
+}

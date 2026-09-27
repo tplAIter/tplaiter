@@ -1,0 +1,22 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Project
+id: 8f3a1c2e-0d4b-4a6f-9b2c-1e5d7f9a0b3c
+template:
+  repo: example
+  name: go-service
+  version: 1.4.0
+project:
+  name: "Billing Service"
+  slug: billing-service
+  module: git.example.test/idp/billing-service
+  system: billing
+  domain: payments
+settings:
+  database: postgres
+  idempotency: true
+  brokers: [kafka]
+  kafka_cdc: false
+  kafka_topics: "orders,payments"
+runtime:
+  port: 8081
+baseline: .tplater/baseline.json

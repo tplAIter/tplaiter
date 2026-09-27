@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "profileBindingSHA256",
+    "operationInputsSHA256",
+    "projectID",
+    "scope",
+    "provider",
+    "action",
+    "tool",
+    "workingDirectoryScope",
+    "environmentPolicySHA256",
+    "timeoutMillis",
+    "migration",
+    "requestSHA256"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/execution-request/v1"
+    },
+    "profileBindingSHA256": {
+      "$ref": "#/$defs/d"
+    },
+    "operationInputsSHA256": {
+      "$ref": "#/$defs/d"
+    },
+    "projectID": {
+      "$ref": "#/$defs/t"
+    },
+    "scope": {
+      "enum": [
+        "new",
+        "update",
+        "run",
+        "gen",
+        "tool-install",
+        "migration"
+      ]
+    },
+    "provider": {
+      "$ref": "#/$defs/provider"
+    },
+    "action": {
+      "$ref": "#/$defs/action"
+    },
+    "tool": {
+      "$ref": "#/$defs/tool"
+    },
+    "workingDirectoryScope": {
+      "$ref": "#/$defs/cwd"
+    },
+    "environmentPolicySHA256": {
+      "$ref": "#/$defs/d"
+    },
+    "timeoutMillis": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3600000
+    },
+    "migration": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "none"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "from",
+            "to"
+          ],
+          "properties": {
+            "kind": {
+              "const": "version-transition"
+            },
+            "from": {
+              "$ref": "#/$defs/t"
+            },
+            "to": {
+              "$ref": "#/$defs/t"
+            }
+          }
+        }
+      ]
+    },
+    "requestSHA256": {
+      "$ref": "#/$defs/d"
+    }
+  },
+  "$defs": {
+    "d": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "t": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^\\S+$"
+    },
+    "path": {
+      "oneOf": [
+        {
+          "const": "."
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^[^/\\\\:\\p{C}]+(?:/[^/\\\\:\\p{C}]+)*$",
+          "not": {
+            "pattern": "(^|/)\\.\\.?($|/)"
+          }
+        }
+      ]
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "origin",
+        "templatePath",
+        "commit",
+        "treeSHA256",
+        "contractSHA256"
+      ],
+      "properties": {
+        "origin": {
+          "$ref": "#/$defs/t"
+        },
+        "templatePath": {
+          "$ref": "#/$defs/path"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        },
+        "treeSHA256": {
+          "$ref": "#/$defs/d"
+        },
+        "contractSHA256": {
+          "$ref": "#/$defs/d"
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "phase",
+        "shell",
+        "argv",
+        "contentClosureSHA256"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/t"
+        },
+        "kind": {
+          "enum": [
+            "hook",
+            "command",
+            "shell",
+            "ansible",
+            "codegen",
+            "formatter",
+            "tool-install",
+            "migration"
+          ]
+        },
+        "phase": {
+          "enum": [
+            "before",
+            "after",
+            "standalone"
+          ]
+        },
+        "shell": {
+          "type": "boolean"
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          }
+        },
+        "contentClosureSHA256": {
+          "$ref": "#/$defs/d"
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "binarySHA256",
+        "optionsSHA256"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/t"
+        },
+        "version": {
+          "$ref": "#/$defs/t"
+        },
+        "binarySHA256": {
+          "$ref": "#/$defs/d"
+        },
+        "optionsSHA256": {
+          "$ref": "#/$defs/d"
+        }
+      }
+    },
+    "cwd": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root",
+        "path"
+      ],
+      "properties": {
+        "root": {
+          "enum": [
+            "project",
+            "provider"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        }
+      }
+    }
+  }
+}

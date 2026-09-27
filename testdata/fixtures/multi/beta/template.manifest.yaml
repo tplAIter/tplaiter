@@ -1,0 +1,14 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: beta
+  version: 0.2.0
+  description: "Крошечный шаблон beta для мульти-репо тестов."
+engine:
+  type: gotemplate
+  root: files
+settings:
+  - group: label
+    title: "Метка"
+    type: string
+    default: "beta"

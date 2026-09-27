@@ -1,0 +1,7 @@
+static line, always kept
+kafka mode enabled // tplater:if brokers=kafka
+// tplater:begin database=postgres
+postgres block content
+// tplater:end
+no-migrations notice // tplater:if! migrations=true
+end of modes

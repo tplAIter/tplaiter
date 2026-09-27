@@ -1,0 +1,330 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplater.dev/schema/template.manifest.schema.json",
+  "title": "tplater Template manifest",
+  "description": "Схема манифеста шаблона tplater. Ручная, для подсказок в IDE.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "engine"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "tplater.dev/v1alpha1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "Template"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "displayName": { "type": "string" },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+        },
+        "description": { "type": "string" },
+        "maintainers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/maintainer" }
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "docs": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+    "engine": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "root": { "type": "string" },
+        "copyWithoutRender": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "postReplace": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["glob", "placeholder", "contextKey"],
+            "additionalProperties": false,
+            "properties": {
+              "glob": { "type": "string" },
+              "placeholder": { "type": "string" },
+              "contextKey": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tplater": { "type": "string" },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "required": { "type": "boolean" },
+              "install": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "brew": { "type": "string" },
+                  "apt": { "type": "string" },
+                  "url": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "settings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/settingGroup" }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "when": { "type": "string" },
+          "anyOf": { "type": "array", "items": { "type": "string" } },
+          "paths": { "type": "array", "items": { "type": "string" } },
+          "remove": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["if", "require"],
+        "additionalProperties": false,
+        "properties": {
+          "if": { "type": "string" },
+          "require": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["run"],
+        "additionalProperties": false,
+        "properties": {
+          "run": { "type": "string" },
+          "description": { "type": "string" },
+          "when": { "type": "string" }
+        }
+      }
+    },
+    "generators": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "additionalProperties": false,
+        "description": "Форма файлов взаимоисключающая: либо snippet+target (одиночная), либо targets[] (мультифайл).",
+        "oneOf": [
+          { "required": ["snippet", "target"], "not": { "required": ["targets"] } },
+          { "required": ["targets"], "not": { "anyOf": [{ "required": ["snippet"] }, { "required": ["target"] }] } }
+        ],
+        "properties": {
+          "kind": { "type": "string" },
+          "description": { "type": "string" },
+          "snippet": { "type": "string" },
+          "target": { "type": "string" },
+          "params": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/param" }
+          },
+          "targets": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/generatorTarget" }
+          },
+          "anchors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["file", "anchor", "insert"],
+              "additionalProperties": false,
+              "properties": {
+                "file": { "type": "string" },
+                "anchor": { "type": "string" },
+                "insert": { "type": "string" }
+              }
+            }
+          },
+          "when": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "aiConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "playbooks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "file"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "file": { "type": "string" },
+              "description": { "type": "string" },
+              "when": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "postCreate": { "type": "array", "items": { "$ref": "#/$defs/hook" } },
+        "postUpdate": { "type": "array", "items": { "$ref": "#/$defs/hook" } }
+      }
+    },
+    "lint": {
+      "type": "object",
+      "description": "Opt-in arch-lint правила, проверяемые `tplater lint-template` по AST пробного рендера (реализация проверку). Пустая/отсутствующая секция не меняет поведение.",
+      "additionalProperties": false,
+      "properties": {
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/lintRule" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "param": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]*$" },
+        "type": { "type": "string", "enum": ["string", "bool", "int", "fields"] },
+        "required": { "type": "boolean" },
+        "default": {},
+        "description": { "type": "string" }
+      }
+    },
+    "generatorTarget": {
+      "type": "object",
+      "required": ["snippet", "target"],
+      "additionalProperties": false,
+      "properties": {
+        "snippet": { "type": "string" },
+        "target": { "type": "string" },
+        "when": { "type": "array", "items": { "type": "string" } },
+        "numbered": { "type": "string", "enum": ["goose"] }
+      }
+    },
+    "maintainer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "telegram": { "type": "string" }
+      }
+    },
+    "hook": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "run": { "type": "string" },
+        "ansible": { "type": "string" },
+        "optional": { "type": "boolean" }
+      }
+    },
+    "settingGroup": {
+      "type": "object",
+      "required": ["group", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "group": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["select", "multiselect", "toggle", "string", "int"]
+        },
+        "default": {},
+        "pattern": { "type": "string" },
+        "options": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/option" }
+        }
+      }
+    },
+    "lintRule": {
+      "type": "object",
+      "required": ["id", "paths"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["ctx-first", "no-init", "generated-marker", "no-panic"]
+        },
+        "paths": { "type": "array", "items": { "type": "string" } },
+        "exclude": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "option": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["", "planned"] },
+        "requires": { "type": "array", "items": { "type": "string" } },
+        "settings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/settingGroup" }
+        },
+        "vars": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}

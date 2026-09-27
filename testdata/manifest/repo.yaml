@@ -1,0 +1,11 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Repository
+metadata:
+  name: example-templates
+  description: "Каталог шаблонов сервисов"
+  maintainers:
+    - { name: "Example Maintainer", email: "maintainer@example.test", telegram: "@example_maintainer" }
+templates:
+  - path: go-service/
+  - path: go-workspace/
+  - path: python-service/

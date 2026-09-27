@@ -1,0 +1,42 @@
+# lint-rules — фикстура arch-lint секции lint (реализация проверку). Минимальный Go-
+# проект: два переключаемых файла (dirty.go/generated.go рендерятся в чистом
+# ИЛИ нарушающем виде по toggle violations) + всегда-чистый clean.go + main.go
+# (панику в main правило no-panic разрешает). Цель — е2e lint-template: toggle
+# off (defaults) зелёный, toggle on (all-on/max, генерируются [Combos]
+# автоматически для toggle-групп) красный со списком нарушений всех 4 правил.
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: lint-rules
+  displayName: "Lint Rules Fixture"
+  version: 0.1.0
+  description: "Фикстура arch-lint правил lint-template: ctx-first/no-init/no-panic/generated-marker."
+
+engine:
+  type: gotemplate
+  root: files
+
+requires:
+  tplater: ">=0.1.0"
+
+settings:
+  - group: violations
+    title: "Включить нарушения arch-lint (негативный путь фикстуры)"
+    type: toggle
+    default: false
+
+lint:
+  rules:
+    - id: ctx-first
+      paths: ["clean.go", "dirty.go"]
+      exclude: ["**/*_test.go"]
+    - id: no-init
+      paths: ["clean.go", "dirty.go"]
+    - id: no-panic
+      paths: ["clean.go", "dirty.go", "main.go"]
+    - id: generated-marker
+      paths: ["generated.go"]
+
+commands:
+  test:
+    run: "echo lint-rules fixture"

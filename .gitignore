@@ -1,0 +1,6 @@
+# Local command state
+.tplaiter/
+
+# Build outputs
+tplaiter
+coverage.out

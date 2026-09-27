@@ -1,0 +1,5 @@
+apiVersion: tplater.dev/v2beta1
+kind: Template
+metadata:
+  name: future-service
+  version: 1.0.0

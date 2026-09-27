@@ -1,0 +1,6 @@
+implied:
+    - group: database
+      value: postgres
+      requiredBy: sso_provider
+warnings:
+    - группа "kafka_ssl" неактивна (родительская опция не выбрана) — значение сброшено в контексте рендера

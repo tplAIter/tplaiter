@@ -1,0 +1,17 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: badcond-service
+  version: 1.0.0
+settings:
+  - group: database
+    type: select
+    default: none
+    options:
+      - id: none
+      - id: postgres
+files:
+  - when: "missing_group=x"
+    paths: ["a/**"]
+  - when: "database"
+    paths: ["b/**"]

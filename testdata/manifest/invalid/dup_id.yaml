@@ -1,0 +1,14 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: dup-service
+  version: 1.0.0
+settings:
+  - group: database
+    type: select
+    default: none
+    options:
+      - id: none
+  - group: database
+    type: toggle
+    default: false

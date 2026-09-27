@@ -1,0 +1,6 @@
+{
+  "title": "__PROJECT_SLUG__ overview",
+  "panels": [
+    { "expr": "sum(rate(http_requests_total{service=\"__PROJECT_SLUG__\"}[{{ __rate_interval }}])) by (ns)" }
+  ]
+}

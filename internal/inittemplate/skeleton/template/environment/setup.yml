@@ -1,0 +1,11 @@
+# Пример ansible-плейбука настройки окружения.
+# Запускается через `tplaiter env setup` / предложение после `tplaiter new`.
+# TODO(мейнтейнер): замените debug-таск на реальную установку зависимостей.
+- name: Настройка окружения проекта (пример)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Приветствие
+      ansible.builtin.debug:
+        msg: "Окружение шаблона настраивается — замените этот таск реальными шагами."

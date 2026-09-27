@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/root-template-lock/v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "trustProfile", "policy", "root", "renderer", "rootLockSHA256"],
+  "properties": {
+    "apiVersion": {"const": "tplaiter.dev/root-template-lock/v2"},
+    "kind": {"const": "RootTemplateLock"},
+    "trustProfile": {"$ref": "#/$defs/profile"},
+    "policy": {"type": "object", "additionalProperties": false, "required": ["policySHA256"], "properties": {"policySHA256": {"$ref": "#/$defs/digest"}}},
+    "root": {"$ref": "#/$defs/subject"},
+    "renderer": {"type": "object", "additionalProperties": false, "required": ["name", "version"], "properties": {"name": {"$ref": "#/$defs/token"}, "version": {"$ref": "#/$defs/token"}}},
+    "rootLockSHA256": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "profile": {"type":"object","additionalProperties":false,"required":["apiVersion","id","definitionVersion","configSHA256","policySHA256","authoritySHA256","assurance","evidenceClass"],"properties":{"apiVersion":{"const":"tplaiter.dev/trust-profile-binding/v1"},"id":{"enum":["oss","development","organization"]},"definitionVersion":{"const":1},"configSHA256":{"$ref":"#/$defs/digest"},"policySHA256":{"$ref":"#/$defs/digest"},"authoritySHA256":{"$ref":"#/$defs/digest"},"assurance":{"enum":["publisher-verified","development-unverified","organization-protected"]},"evidenceClass":{"enum":["production","simulated"]}},"allOf":[{"if":{"properties":{"id":{"const":"oss"}}},"then":{"properties":{"assurance":{"const":"publisher-verified"}}}},{"if":{"properties":{"id":{"const":"development"}}},"then":{"properties":{"assurance":{"const":"development-unverified"}}}},{"if":{"properties":{"id":{"const":"organization"}}},"then":{"properties":{"assurance":{"const":"organization-protected"},"evidenceClass":{"const":"production"}}}}]},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "token": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$"},
+    "subject": {"type": "object", "additionalProperties": false, "required": ["origin", "templatePath", "requestedRef", "commit", "treeSHA256", "contractSHA256", "statementCAS", "signatureCAS", "keyFingerprint", "checkpointCAS", "inclusionProofCAS"], "properties": {
+      "origin": {"$ref": "#/$defs/token"}, "templatePath": {"type": "string", "minLength": 1, "pattern": "^[^/\\\\].*$", "not": {"pattern": "[\u0000-\u001F\u007F]|\\.\\."}}, "requestedRef": {"$ref": "#/$defs/token"}, "commit": {"type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"}, "treeSHA256": {"$ref": "#/$defs/digest"}, "contractSHA256": {"$ref": "#/$defs/digest"}, "statementCAS": {"$ref": "#/$defs/digest"}, "signatureCAS": {"$ref": "#/$defs/digest"}, "keyFingerprint": {"$ref": "#/$defs/digest"}, "checkpointCAS": {"$ref": "#/$defs/digest"}, "inclusionProofCAS": {"$ref": "#/$defs/digest"}
+    }}
+  }
+}

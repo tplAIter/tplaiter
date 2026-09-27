@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/update-plan/v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "trustProfile", "source", "target", "operationInputsSHA256", "requests", "preimageSHA256", "actions", "outputs", "createdAt", "planSHA256"],
+  "properties": {
+    "apiVersion": {"const": "tplaiter.dev/update-plan/v2"}, "kind": {"const": "UpdatePlan"}, "trustProfile": {"$ref": "#/$defs/profile"},
+    "source": {"$ref": "#/$defs/lock"}, "target": {"$ref": "#/$defs/lock"}, "operationInputsSHA256": {"$ref": "#/$defs/digest"},
+    "requests": {"type": "array", "minItems": 1, "maxItems": 4096, "items": {"$ref": "#/$defs/request"}}, "preimageSHA256": {"$ref": "#/$defs/digest"},
+    "actions": {"type": "array", "minItems": 1, "maxItems": 4096, "items": {"$ref": "#/$defs/action"}}, "outputs": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/output"}},
+    "createdAt": {"$ref": "#/$defs/timestamp"}, "planSHA256": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "token": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$"},
+    "path": {"type": "string", "minLength": 1, "pattern": "^[^/\\\\].*$", "not": {"pattern": "[\u0000-\u001F\u007F]|\\.\\."}},
+    "timestamp": {"type": "string", "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8])))|(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29))T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"},
+    "profile": {"type":"object","additionalProperties":false,"required":["apiVersion","id","definitionVersion","configSHA256","policySHA256","authoritySHA256","assurance","evidenceClass"],"properties":{"apiVersion":{"const":"tplaiter.dev/trust-profile-binding/v1"},"id":{"enum":["oss","organization"]},"definitionVersion":{"const":1},"configSHA256":{"$ref":"#/$defs/digest"},"policySHA256":{"$ref":"#/$defs/digest"},"authoritySHA256":{"$ref":"#/$defs/digest"},"assurance":{"enum":["publisher-verified","organization-protected"]},"evidenceClass":{"enum":["production","simulated"]}},"allOf":[{"if":{"properties":{"id":{"const":"oss"}}},"then":{"properties":{"assurance":{"const":"publisher-verified"}}}},{"if":{"properties":{"id":{"const":"organization"}}},"then":{"properties":{"assurance":{"const":"organization-protected"},"evidenceClass":{"const":"production"}}}}]},
+    "lock": {"type":"object","additionalProperties":false,"required":["rootLockSHA256","templateLockSHA256"],"properties":{"rootLockSHA256":{"$ref":"#/$defs/digest"},"templateLockSHA256":{"$ref":"#/$defs/digest"}}},
+    "request": {"type":"object","additionalProperties":false,"required":["requestSHA256","grantSHA256","approvalCAS"],"properties":{"requestSHA256":{"$ref":"#/$defs/digest"},"grantSHA256":{"$ref":"#/$defs/digest"},"approvalCAS":{"$ref":"#/$defs/digest"}}},
+    "provider": {"type":"object","additionalProperties":false,"required":["origin","templatePath","commit","treeSHA256","contractSHA256"],"properties":{"origin":{"$ref":"#/$defs/token"},"templatePath":{"$ref":"#/$defs/path"},"commit":{"type":"string","pattern":"^[0-9a-f]{40}([0-9a-f]{24})?$"},"treeSHA256":{"$ref":"#/$defs/digest"},"contractSHA256":{"$ref":"#/$defs/digest"}}},
+    "actionDef": {"type":"object","additionalProperties":false,"required":["id","kind","phase","shell","argv","contentClosureSHA256"],"properties":{"id":{"$ref":"#/$defs/token"},"kind":{"enum":["hook","command","shell","ansible","codegen","formatter","tool-install","migration"]},"phase":{"enum":["before","after","standalone"]},"shell":{"type":"boolean"},"argv":{"type":"array","minItems":1,"maxItems":256,"items":{"type":"string","minLength":1,"maxLength":4096}},"contentClosureSHA256":{"$ref":"#/$defs/digest"}}},
+    "tool": {"type":"object","additionalProperties":false,"required":["id","version","binarySHA256","optionsSHA256"],"properties":{"id":{"$ref":"#/$defs/token"},"version":{"$ref":"#/$defs/token"},"binarySHA256":{"$ref":"#/$defs/digest"},"optionsSHA256":{"$ref":"#/$defs/digest"}}},
+    "cwd": {"type":"object","additionalProperties":false,"required":["root","path"],"properties":{"root":{"enum":["project","provider"]},"path":{"$ref":"#/$defs/path"}}},
+    "migration": {"type":"object","additionalProperties":false,"required":["kind","from","to"],"properties":{"kind":{"enum":["none","version-transition"]},"from":{"type":"string"},"to":{"type":"string"}},"oneOf":[{"properties":{"kind":{"const":"none"},"from":{"const":""},"to":{"const":""}}},{"properties":{"kind":{"const":"version-transition"},"from":{"$ref":"#/$defs/token"},"to":{"$ref":"#/$defs/token"}}}]},
+    "action": {"type":"object","additionalProperties":false,"required":["requestSHA256","operationInputsSHA256","provider","action","tool","workingDirectoryScope","environmentPolicySHA256","timeoutMillis","migration"],"properties":{"requestSHA256":{"$ref":"#/$defs/digest"},"operationInputsSHA256":{"$ref":"#/$defs/digest"},"provider":{"$ref":"#/$defs/provider"},"action":{"$ref":"#/$defs/actionDef"},"tool":{"$ref":"#/$defs/tool"},"workingDirectoryScope":{"$ref":"#/$defs/cwd"},"environmentPolicySHA256":{"$ref":"#/$defs/digest"},"timeoutMillis":{"type":"integer","minimum":1,"maximum":3600000},"migration":{"$ref":"#/$defs/migration"}}},
+    "output": {"type":"object","additionalProperties":false,"required":["path","contentSHA256"],"properties":{"path":{"$ref":"#/$defs/path"},"contentSHA256":{"$ref":"#/$defs/digest"}}}
+  }
+}

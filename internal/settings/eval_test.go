@@ -1,0 +1,124 @@
+package settings
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/tplAIter/tplaiter/internal/manifest"
+)
+
+func cond(t *testing.T, s string) manifest.Condition {
+	t.Helper()
+	c, err := manifest.ParseCondition(s)
+	if err != nil {
+		t.Fatalf("ParseCondition(%q): %v", s, err)
+	}
+	return c
+}
+
+func TestEval_Types(t *testing.T) {
+	v := Values{
+		"database": "postgres",
+		"brokers":  []string{"kafka", "rabbitmq"},
+		"toggle":   true,
+		"replicas": 3,
+		"name":     "svc",
+	}
+	tests := []struct {
+		expr string
+		want bool
+	}{
+		{"database=postgres", true},
+		{"database=mysql", false},
+		{"database!=mysql", true},
+		{"database!=postgres", false},
+		{"brokers=kafka", true},                      // multiselect содержит
+		{"brokers=nats", false},                      // multiselect не содержит
+		{"brokers!=nats", true},                      // multiselect не содержит -> !=
+		{"brokers!=kafka", false},                    // содержит -> != ложно
+		{"toggle=true", true},                        // toggle
+		{"toggle=false", false},                      // toggle
+		{"toggle!=false", true},                      // toggle отрицание
+		{"replicas=3", true},                         // int
+		{"replicas=4", false},                        // int
+		{"replicas!=4", true},                        // int отрицание
+		{"name=svc", true},                           // string
+		{"name=other", false},                        // string
+		{"database=postgres && brokers=kafka", true}, // конъюнкция
+		{"database=postgres && brokers=nats", false}, // конъюнкция ложна
+		{"database=postgres && toggle=true && replicas=3", true},
+	}
+	for _, tc := range tests {
+		got, err := Eval(cond(t, tc.expr), v)
+		if err != nil {
+			t.Errorf("Eval(%q) неожиданная ошибка: %v", tc.expr, err)
+		}
+		if got != tc.want {
+			t.Errorf("Eval(%q) = %v, ожидалось %v", tc.expr, got, tc.want)
+		}
+	}
+}
+
+func TestEval_UnknownGroup(t *testing.T) {
+	v := Values{"database": "postgres"}
+	got, err := Eval(cond(t, "missing=1"), v)
+	if got {
+		t.Errorf("неизвестная группа должна давать false, получено true")
+	}
+	var uge *UnknownGroupError
+	if !errors.As(err, &uge) {
+		t.Fatalf("ожидался *UnknownGroupError, получено %T (%v)", err, err)
+	}
+	if uge.Group != "missing" {
+		t.Errorf("UnknownGroupError.Group = %q, ожидалось \"missing\"", uge.Group)
+	}
+}
+
+func TestEval_UnknownGroup_ShortCircuitsFalse(t *testing.T) {
+	// Первый атом ложен -> общий результат false без обращения к unknown-группе.
+	v := Values{"database": "mysql"}
+	got, err := Eval(cond(t, "database=postgres && missing=1"), v)
+	if got || err != nil {
+		t.Errorf("ожидалось (false, nil), получено (%v, %v)", got, err)
+	}
+}
+
+func TestEvalAny_OR(t *testing.T) {
+	v := Values{"brokers": []string{"kafka"}}
+	conds := []manifest.Condition{
+		cond(t, "brokers=rabbitmq"),
+		cond(t, "brokers=kafka"),
+	}
+	got, err := EvalAny(conds, v)
+	if err != nil {
+		t.Errorf("неожиданная ошибка: %v", err)
+	}
+	if !got {
+		t.Errorf("EvalAny должно быть true (kafka присутствует)")
+	}
+
+	none, _ := EvalAny([]manifest.Condition{cond(t, "brokers=nats")}, v)
+	if none {
+		t.Errorf("EvalAny должно быть false")
+	}
+
+	empty, _ := EvalAny(nil, v)
+	if empty {
+		t.Errorf("пустой список условий -> false")
+	}
+}
+
+func TestEvalAny_CollectsWarnings(t *testing.T) {
+	v := Values{"brokers": []string{"kafka"}}
+	conds := []manifest.Condition{
+		cond(t, "missing=1"),
+		cond(t, "brokers=kafka"),
+	}
+	got, err := EvalAny(conds, v)
+	if !got {
+		t.Errorf("должно быть true (второе условие истинно)")
+	}
+	if err == nil {
+		t.Errorf("предупреждение о неизвестной группе должно вернуться даже при true")
+	}
+}

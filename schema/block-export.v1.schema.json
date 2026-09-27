@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplater.dev/schema/block-export.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "compatibility",
+    "mergeStrategy",
+    "formatter",
+    "targets"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "tplater.dev/block-export/v1"
+    },
+    "kind": {
+      "const": "BlockExport"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-((0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*))?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tplater",
+        "markerSchema"
+      ],
+      "properties": {
+        "tplater": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "markerSchema": {
+          "const": "tplater.dev/managed-block/v1"
+        }
+      }
+    },
+    "mergeStrategy": {
+      "const": "managed-blocks-v1"
+    },
+    "formatter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapter",
+        "optionsDigest"
+      ],
+      "properties": {
+        "adapter": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "optionsDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "blocks"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "pattern": "^(?!/)(?!.*\\\\)(?!.*//)(?!.*(^|/)\\.\\.?(/|$))(?!.*[\\u0000\\r\\n]).*[^/]$"
+          },
+          "blocks": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 512,
+            "items": {
+              "$ref": "#/$defs/block"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "provider",
+        "layout",
+        "body",
+        "order"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"
+        },
+        "provider": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._/-]{0,127}$"
+        },
+        "layout": {
+          "enum": [
+            "per_entity",
+            "layer_files"
+          ]
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*//)(?!.*(^|/)\\.\\.?(/|$))(?!.*[\\u0000\\r\\n]).*[^/]$"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "anchor": {
+          "type": "object",
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": [
+                "before"
+              ]
+            },
+            {
+              "required": [
+                "after"
+              ]
+            }
+          ],
+          "properties": {
+            "before": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"
+            },
+            "after": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"
+            }
+          }
+        },
+        "replaces": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"
+          }
+        }
+      }
+    }
+  }
+}

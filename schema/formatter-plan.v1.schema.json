@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplaiter.dev/schema/formatter-plan.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "path", "language", "adapter", "tool", "options", "inputSHA256", "inputMode", "markers", "timeoutMillis", "outputLimitBytes", "planSHA256"],
+  "properties": {
+    "apiVersion": {"const": "tplaiter.dev/formatter-plan/v1"},
+    "path": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "language": {"enum": ["go", "rust", "typescript", "tsx"]},
+    "adapter": {"enum": ["gofmt-stdin-v1", "rustfmt-stdin-v1", "prettier-typescript-standalone-v1"]},
+    "tool": {"type": "object", "additionalProperties": false, "required": ["id", "version", "binarySHA256", "optionsSHA256"], "properties": {"id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"}, "version": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9.+-]{0,127}$"}, "binarySHA256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "optionsSHA256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}},
+    "options": {"type": "array", "maxItems": 256, "items": {"type": "string", "maxLength": 4096}},
+    "inputSHA256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "inputMode": {"enum": ["100644", "100755"]},
+    "markers": {"type": "array", "maxItems": 4096, "items": {"type": "object", "additionalProperties": false, "required": ["kind", "id", "provider"], "properties": {"kind": {"enum": ["begin", "end"]}, "id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"}, "provider": {"type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9._/-]*$"}}}},
+    "timeoutMillis": {"type": "integer", "minimum": 1, "maximum": 120000},
+    "outputLimitBytes": {"type": "integer", "minimum": 1, "maximum": 16777216},
+    "planSHA256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

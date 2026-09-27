@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/public-trust-metadata/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "authorityId", "sequence", "validity", "allowedPolicyOrigins", "rootKeys", "threshold", "revocationEpoch", "revocations", "payloadSHA256", "signatures"],
+  "properties": {
+    "apiVersion": {"const": "tplaiter.dev/trust-roots/v1"},
+    "authorityId": {"type": "string", "minLength": 1, "maxLength": 256},
+    "sequence": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "validity": {"$ref": "#/$defs/validity"},
+    "allowedPolicyOrigins": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "rootKeys": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/rootKey"}, "uniqueItems": true},
+    "threshold": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+    "revocationEpoch": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "revocations": {"type": "array", "items": {"$ref": "#/$defs/revocation"}, "uniqueItems": true},
+    "rotation": {"$ref": "#/$defs/rotation"},
+    "payloadSHA256": {"$ref": "#/$defs/digest"},
+    "signatures": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/signature"}, "uniqueItems": true}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "validity": {"type": "object", "additionalProperties": false, "required": ["notBefore", "notAfter"], "properties": {"notBefore": {"type": "string", "minLength": 1}, "notAfter": {"type": "string", "minLength": 1}}},
+    "rootKey": {"type": "object", "additionalProperties": false, "required": ["fingerprint", "publicKeyCAS", "issuer", "status"], "properties": {"fingerprint": {"$ref": "#/$defs/digest"}, "publicKeyCAS": {"$ref": "#/$defs/digest"}, "issuer": {"type": "string", "minLength": 1, "maxLength": 256}, "status": {"enum": ["active", "retiring"]}}},
+    "revocation": {"type": "object", "additionalProperties": false, "required": ["fingerprint", "effectiveSequence"], "properties": {"fingerprint": {"$ref": "#/$defs/digest"}, "effectiveSequence": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}}},
+    "rotation": {"type": "object", "additionalProperties": false, "required": ["previousSequence", "overlapUntil"], "properties": {"previousSequence": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}, "overlapUntil": {"type": "string", "minLength": 1}}},
+    "signature": {"type": "object", "additionalProperties": false, "required": ["keyFingerprint", "signatureCAS"], "properties": {"keyFingerprint": {"$ref": "#/$defs/digest"}, "signatureCAS": {"$ref": "#/$defs/digest"}}}
+  }
+}

@@ -1,0 +1,7 @@
+# {{ .Project.Name }}
+
+Slug: {{ .Project.Slug }} (Pascal: {{ .Project.Pascal }}, Camel: {{ .Project.Camel }}, Kebab: {{ .Project.Kebab }})
+
+{{ if is "database" "postgres" }}Database: PostgreSQL{{ else }}Database: none{{ end }}
+{{ if has "brokers" "kafka" }}Kafka: enabled{{ else }}Kafka: disabled{{ end }}
+{{ if has "brokers" "rabbitmq" }}RabbitMQ: enabled{{ else }}RabbitMQ: disabled{{ end }}

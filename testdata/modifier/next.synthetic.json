@@ -1,0 +1,129 @@
+{
+  "apiVersion": "tplaiter.dev/modifier/v1",
+  "kind": "Modifier",
+  "metadata": {
+    "id": "next-app",
+    "version": "0.0.0-synthetic"
+  },
+  "compatibility": {
+    "minimumCLI": "0.0.0",
+    "portableAPI": "tplaiter.dev/portable/v1",
+    "runtimes": [
+      "next-app"
+    ],
+    "layouts": [
+      "app-router"
+    ]
+  },
+  "sources": [
+    {
+      "alias": "react",
+      "providerId": "template-react",
+      "origin": "https://example.invalid/react.git",
+      "templatePath": ".",
+      "requestedRef": "synthetic-v0.0.0",
+      "commitAlgorithm": "sha1",
+      "commit": "0000000000000000000000000000000000000000",
+      "treeDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "evidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "alias": "next",
+      "providerId": "modifier-next",
+      "origin": "https://example.invalid/next.git",
+      "templatePath": ".",
+      "requestedRef": "synthetic-v0.0.0",
+      "commitAlgorithm": "sha1",
+      "commit": "0000000000000000000000000000000000000000",
+      "treeDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "evidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "selfSource": "next",
+  "requires": {
+    "exports": [
+      {
+        "selector": "react.approach.runtime",
+        "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "compatibleRange": ">=0.0.0-0 <1.0.0"
+      }
+    ],
+    "capabilities": [
+      {
+        "name": "runtime",
+        "value": "next-app"
+      },
+      {
+        "name": "router",
+        "value": "next-app-router"
+      }
+    ]
+  },
+  "provides": [
+    {
+      "name": "runtime",
+      "value": "next-app",
+      "ruleId": "next.router"
+    },
+    {
+      "name": "router",
+      "value": "next-app-router",
+      "ruleId": "next.router"
+    }
+  ],
+  "conflicts": [
+    {
+      "name": "runtime",
+      "value": "react-spa"
+    }
+  ],
+  "replaces": [
+    {
+      "name": "runtime",
+      "value": "react-spa",
+      "providerRule": "react.router",
+      "withRule": "next.router"
+    },
+    {
+      "name": "router",
+      "value": "react-router",
+      "providerRule": "react.router",
+      "withRule": "next.router"
+    }
+  ],
+  "bindings": [],
+  "rules": [
+    {
+      "id": "next.router",
+      "op": "replace",
+      "target": "react.router",
+      "expectedDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "export": "next.block.router",
+      "before": [
+        "next.routes"
+      ],
+      "after": []
+    },
+    {
+      "id": "next.routes",
+      "op": "add",
+      "export": "next.block.routes",
+      "before": [],
+      "after": []
+    },
+    {
+      "id": "next.remove-spa-build",
+      "op": "remove",
+      "target": "react.build",
+      "expectedDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "before": [],
+      "after": []
+    }
+  ],
+  "toolConstraints": [],
+  "renames": []
+}

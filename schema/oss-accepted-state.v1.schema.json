@@ -1,0 +1,19 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"tplaiter.dev/oss-accepted-state/v1",
+  "type":"object", "additionalProperties":false,
+  "required":["apiVersion","descriptorSHA256","provisioningSHA256","authorityId","sequence","envelopePayloadSHA256","revocationEpoch","receiptDigest","treeSize","checkpointDigest","stateSHA256"],
+  "properties": {
+    "apiVersion":{"const":"tplaiter.dev/oss-accepted-state/v1"},
+    "descriptorSHA256":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},
+    "provisioningSHA256":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},
+    "authorityId":{"type":"string","minLength":1,"maxLength":256},
+    "sequence":{"type":"integer","minimum":1,"maximum":9007199254740991},
+    "envelopePayloadSHA256":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},
+    "revocationEpoch":{"type":"integer","minimum":0,"maximum":9007199254740991},
+    "receiptDigest":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},
+    "treeSize":{"type":"integer","minimum":1,"maximum":9007199254740991},
+    "checkpointDigest":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},
+    "stateSHA256":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"}
+  }
+}

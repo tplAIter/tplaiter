@@ -1,0 +1,14 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"tplaiter.dev/bootstrap-provisioning/v1",
+  "type":"object", "additionalProperties":false,
+  "required":["apiVersion","mode","descriptorSHA256","authenticationEvidenceSHA256","evidenceClass","provisioningSHA256"],
+  "properties": {
+    "apiVersion":{"const":"tplaiter.dev/bootstrap-provisioning/v1"},
+    "mode":{"enum":["release-distribution","operator-pinned"]},
+    "descriptorSHA256":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},
+    "authenticationEvidenceSHA256":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},
+    "evidenceClass":{"enum":["production","simulated"]},
+    "provisioningSHA256":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"}
+  }
+}

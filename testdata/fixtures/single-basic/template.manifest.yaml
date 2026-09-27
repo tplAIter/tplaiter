@@ -1,0 +1,78 @@
+# single-basic — фикстура для тестов internal/engine и связанных компонентов
+# работ ///. НЕ Go-проект — текстовые файлы, единственная цель дерева
+# files/ — упражнять механики движка: is/has, __if_<group>__,
+# __if_<group>=<value>__, files-правила (paths/remove), copyWithoutRender +
+# postReplace, партиалы, плейсхолдер __slug__.
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: single-basic
+  displayName: "Single Basic Fixture"
+  version: 0.1.0
+  description: "Фикстура engine-тестов: select+вложенный toggle, multiselect, files-правила."
+  labels:
+    lang: [fixture]
+    type: [fixture]
+  docs: README.md
+  notes: NOTES.tmpl
+
+engine:
+  type: gotemplate
+  root: files
+  copyWithoutRender:
+    - "**/dashboards/*.json"
+  postReplace:
+    - { glob: "**/dashboards/*.json", placeholder: "__PROJECT_SLUG__", contextKey: "Project.Slug" }
+
+requires:
+  tplater: ">=0.1.0"
+
+settings:
+  - group: database
+    title: "База данных"
+    type: select
+    default: none
+    options:
+      - id: none
+        title: "Без БД"
+      - id: postgres
+        title: "PostgreSQL"
+        settings:
+          - group: migrations
+            title: "Миграции"
+            type: toggle
+            default: false
+  - group: brokers
+    title: "Брокеры сообщений"
+    type: multiselect
+    options:
+      - id: kafka
+        title: "Kafka"
+      - id: rabbitmq
+        title: "RabbitMQ"
+
+files:
+  - when: "database=postgres"
+    paths: ["extra/postgres-only.txt"]
+  # Композитное удаление (аналог COMPOSITE_REMOVALS python-хука) — это
+  # КОНЪЮНКЦИЯ атомов через && в одном `when`, НЕ `anyOf`: settings.Eval
+  # трактует && как AND внутри Condition, а settings.EvalAny (то, во что
+  # компилируется `anyOf`) — это OR по списку строк (см. описание поведения ).
+  - when: "brokers!=kafka && brokers!=rabbitmq"
+    remove: ["integrations/**"]
+  # anyOf — OR: удаляем legacy-заметку, как только выбрана ЛЮБАЯ современная
+  # опция (postgres ИЛИ kafka), а не обе одновременно.
+  - anyOf: ["database=postgres", "brokers=kafka"]
+    remove: ["legacy/**"]
+
+commands:
+  dev:
+    run: "echo dev"
+    description: "локальный запуск фикстуры"
+  test:
+    run: "echo test"
+    description: "прогон тестов фикстуры"
+
+hooks:
+  postCreate:
+    - run: "echo postCreate"

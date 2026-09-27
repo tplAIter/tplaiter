@@ -1,0 +1,133 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: go-service
+  displayName: "Go Service"
+  version: 1.4.0
+  description: "HTTP/Kafka/Temporal сервис на gocore"
+  maintainers:
+    - { name: "Example Maintainer", email: "maintainer@example.test", telegram: "@example_maintainer" }
+  labels:
+    lang: [go]
+    type: [service]
+    infra: [postgres, kafka, temporal]
+  docs: README.md
+  notes: NOTES.tmpl
+
+engine:
+  type: gotemplate
+  root: files/
+  copyWithoutRender: ["**/dashboards/*.json"]
+  postReplace:
+    - { glob: "**/dashboards/*.json", placeholder: "__PROJECT_SLUG__", contextKey: "Project.Slug" }
+
+requires:
+  tplater: ">=0.1.0"
+  tools:
+    - { name: go, version: ">=1.26", required: true }
+    - { name: docker, required: true }
+    - { name: ansible, required: false, install: { brew: ansible, apt: ansible } }
+
+settings:
+  - group: database
+    title: "База данных"
+    type: select
+    default: none
+    options:
+      - id: none
+        title: "Без БД"
+      - id: postgres
+        title: "PostgreSQL (GORM + goose)"
+        settings:
+          - group: idempotency
+            title: "Идемпотентность запросов (advisory-lock + кэш ответов)"
+            type: toggle
+            default: false
+      - id: mysql
+        title: "MySQL"
+        status: planned
+  - group: brokers
+    title: "Брокеры сообщений"
+    type: multiselect
+    default: []
+    options:
+      - id: kafka
+        settings:
+          - group: kafka_ssl
+            type: toggle
+            default: false
+          - group: kafka_cdc
+            title: "CDC (Debezium-совместимые топики)"
+            type: toggle
+            default: false
+          - group: kafka_topics
+            title: "Преднастроенные топики (через запятую)"
+            type: string
+            default: ""
+      - id: rabbitmq
+  - group: auth
+    type: multiselect
+    default: []
+    options:
+      - id: sso_provider
+        requires: ["database=postgres"]
+
+files:
+  - when: "database=postgres"
+    paths: ["internal/infra/db/**", "internal/runner/example_runner.go"]
+  - when: "brokers=kafka"
+    paths: ["internal/api/events/kafka/**", "internal/integrations/events/kafka/**"]
+  - anyOf: ["brokers!=kafka", "brokers!=rabbitmq"]
+    remove: ["internal/integrations/events/**"]
+
+constraints:
+  - if: "idempotency=true"
+    require: "database=postgres"
+    message: "Идемпотентность требует PostgreSQL"
+
+commands:
+  dev: { run: "make dev", description: "live-reload (air)" }
+  start: { run: "make run", description: "запуск http" }
+  build: { run: "make build" }
+  migrate-up: { run: "make migrate-up", description: "миграции", when: "database=postgres" }
+
+generators:
+  # Одиночная форма: snippet+target — обратно совместима, НЕ трогать.
+  - kind: use-case
+    description: "Сценарий (Request/Result/Code/Response)"
+    snippet: generators/use-case.go.tmpl
+    target: "internal/usecase/{{ .Name.Snake }}.go"
+    anchors:
+      - { file: internal/app/app.go, anchor: "// CODEGEN:WIRING", insert: generators/use-case.anchor.tmpl }
+    when: []
+  # Мультифайловая форма (проверку): targets[] + params(fields) + numbered goose +
+  # target.when-гейт (activity только при workflow=temporal). Демонстрирует
+  # весь расширенный контракт Generator.
+  - kind: crud
+    description: "CRUD-разворот сущности (entity + usecase + миграция + activity)"
+    params:
+      - { name: fields, type: fields, required: true, description: "поля сущности name:type,..." }
+      - { name: with-list, type: bool, default: true }
+    targets:
+      - { snippet: generators/crud/entity.go.tmpl, target: "internal/domain/{{ .Name.Snake }}.go" }
+      - { snippet: generators/crud/usecase.go.tmpl, target: "internal/usecase/{{ .Name.Snake }}_crud.go" }
+      - { snippet: generators/crud/migration.sql.tmpl, target: "internal/infra/db/migrations/{{ .MigrationSeq }}_{{ .Name.Snake }}.sql", numbered: goose }
+      - { snippet: generators/crud/activity.go.tmpl, target: "internal/activity/{{ .Name.Snake }}_activity.go", when: ["database=postgres"] }
+    anchors:
+      - { file: internal/app/app.go, anchor: "// CODEGEN:WIRING", insert: generators/crud/wiring.go.tmpl }
+
+aiConfig:
+  path: ai-config/
+
+environment:
+  playbooks:
+    - { name: setup, file: environment/setup.yml, description: "базовая настройка окружения" }
+    - { name: kafka, file: environment/kafka.yml, description: "локальная kafka", when: "brokers=kafka" }
+
+hooks:
+  postCreate:
+    - { run: "go mod tidy" }
+    - { run: "gofumpt -w .", optional: true }
+    - { ansible: playbooks/bootstrap.yml, optional: true }
+  postUpdate:
+    - { run: "go mod tidy" }

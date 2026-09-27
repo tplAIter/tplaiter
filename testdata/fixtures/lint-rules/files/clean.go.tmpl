@@ -1,0 +1,35 @@
+package lintrules
+
+import "context"
+
+// DoWork — экспортируемая функция с ctx первым параметром: не нарушает
+// ctx-first.
+func DoWork(ctx context.Context, id string) error {
+	_ = ctx
+	_ = id
+	return nil
+}
+
+// NoParams — экспортируемая функция без параметров: ctx-first её пропускает.
+func NoParams() {
+}
+
+// Worker — тип с экспортируемым методом, принимающим ctx первым.
+type Worker struct{}
+
+// NewWorker — конструктор, исключён из ctx-first по префиксу New.
+func NewWorker() *Worker {
+	return &Worker{}
+}
+
+// Run — метод с ресивером, ctx первым параметром — ок.
+func (w *Worker) Run(ctx context.Context, opts ...string) error {
+	_ = ctx
+	_ = opts
+	return nil
+}
+
+// helper — неэкспортируемая функция без ctx: правило её не касается.
+func helper() int {
+	return 1
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "manifestPath", "manifestSHA256", "dependencies"],
+  "properties": {
+    "apiVersion": {"const": "tplaiter.dev/native-template-contract/v1"},
+    "kind": {"const": "NativeTemplate"},
+    "manifestPath": {"const": "template.manifest.yaml"},
+    "manifestSHA256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "dependencies": {"type": "array", "maxItems": 0}
+  }
+}

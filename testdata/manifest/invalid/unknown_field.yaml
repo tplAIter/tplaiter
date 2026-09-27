@@ -1,0 +1,6 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: unknown-service
+  version: 1.0.0
+  bogusField: "не существует в схеме"
