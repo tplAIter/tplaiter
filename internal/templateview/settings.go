@@ -10,15 +10,14 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// indentUnit — отступ на один уровень дерева групп настроек.
+// indentUnit is the indent for one level of the settings-group tree.
 const indentUnit = "  "
 
-// RenderSettings печатает дерево групп настроек шаблона (`settings`,
-// ) в стиле helm-каталога: для каждой группы — её
-// id/заголовок, тип и default, затем список опций (planned-опции —
-// приглушённым цветом палитры pal, честность каталога — ), затем
-// рекурсивно вложенные группы уточнения (Option.Settings) с увеличенным
-// отступом. depth — начальный уровень отступа (обычно 0).
+// RenderSettings writes the template settings-group tree (`settings`) in a
+// Helm-catalog style: each group shows its id/title, type and default, followed
+// by options (planned options use muted pal color) and recursively nested detail
+// groups (Option.Settings) with increased indentation. depth is the initial
+// indent level, usually 0.
 func RenderSettings(w io.Writer, pal ui.Palette, groups []manifest.SettingGroup, depth int) {
 	if len(groups) == 0 {
 		fmt.Fprintln(w, strings.Repeat(indentUnit, depth)+"манифест не объявляет settings")
@@ -63,8 +62,8 @@ func renderOption(w io.Writer, pal ui.Palette, opt *manifest.Option, depth int) 
 	}
 }
 
-// formatDefault приводит SettingGroup.Default (тип зависит от Type группы —
-// см. [manifest.SettingGroup]) к печатному виду.
+// formatDefault converts SettingGroup.Default (whose type depends on group Type;
+// see [manifest.SettingGroup]) to printable form.
 func formatDefault(v any) string {
 	switch d := v.(type) {
 	case nil:

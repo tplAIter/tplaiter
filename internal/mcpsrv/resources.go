@@ -12,13 +12,13 @@ import (
 	"github.com/tplAIter/tplaiter/internal/project"
 )
 
-// registerResources выставляет два ресурса:
+// registerResources exposes two resources:
 //
-//	tplaiter://config        — маскированный конфиг: список репозиториев БЕЗ
-//	                          токенов (вывод `repo list`; токены хранятся
-//	                          отдельно в keyring и в этот вывод не попадают).
-//	tplaiter://project/{dir} — содержимое .tplaiter/project.yaml проекта по пути
-//	                          dir (шаблон-ресурс с параметром пути).
+//	tplaiter://config        — a redacted configuration: repository list WITHOUT
+//	                          tokens (`repo list` output; tokens are stored
+//	                          separately in the keyring and never appear here).
+//	tplaiter://project/{dir} — the .tplaiter/project.yaml content for project
+//	                          directory dir (a path-parameterized resource template).
 func (s *Server) registerResources() {
 	s.mcp.AddResource(
 		mcp.NewResource(
@@ -39,9 +39,8 @@ func (s *Server) registerResources() {
 	)
 }
 
-// readConfigResource отдаёт `repo list` как текст. Этот вывод по построению не
-// содержит токенов (ALIAS/URL/TYPE/TEMPLATES/UPDATED), поэтому безопасен для
-// агента.
+// readConfigResource returns `repo list` as text. By construction this output
+// contains no tokens (ALIAS/URL/TYPE/TEMPLATES/UPDATED), so it is safe for an agent.
 func (s *Server) readConfigResource(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 	res, runErr := s.runCLI(ctx, "", argvRepoList(), defaultTimeout)
 	if failed(res, runErr) {
@@ -52,9 +51,9 @@ func (s *Server) readConfigResource(ctx context.Context, req mcp.ReadResourceReq
 	}, nil
 }
 
-// readProjectResource читает .tplaiter/project.yaml из каталога, извлечённого из
-// URI tplaiter://project/{dir}. dir абсолютизируется; чтение вне ФС сервер не
-// делает (только локальный файл маркера проекта).
+// readProjectResource reads .tplaiter/project.yaml from the directory extracted
+// from tplaiter://project/{dir}. dir is made absolute; the server does not read
+// outside the filesystem (only the local project marker file).
 func (s *Server) readProjectResource(_ context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 	dir := strings.TrimPrefix(req.Params.URI, "tplaiter://project/")
 	if dir == "" || dir == req.Params.URI {

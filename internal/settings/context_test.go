@@ -18,12 +18,12 @@ func TestRenderContext_SettingsAndHelpers(t *testing.T) {
 		t.Fatalf(".Settings не View: %T", ctx["Settings"])
 	}
 
-	// Доступ как к map (.Settings.<group> в шаблоне).
+	// Map-style access (.Settings.<group> in a template).
 	if sv["database"] != "postgres" {
 		t.Errorf("Settings.database = %v", sv["database"])
 	}
 
-	// Is: select/string/toggle равенство.
+	// Is: select/string/toggle equality.
 	if !sv.Is("database", "postgres") {
 		t.Errorf("Is(database, postgres) должно быть true")
 	}
@@ -33,19 +33,19 @@ func TestRenderContext_SettingsAndHelpers(t *testing.T) {
 	if !sv.Is("metrics", "false") {
 		t.Errorf("Is(metrics, false) должно быть true (toggle=false)")
 	}
-	// Is на multiselect бессмысленно -> false.
+	// Is on a multiselect is meaningless -> false.
 	if sv.Is("brokers", "kafka") {
 		t.Errorf("Is на multiselect должно быть false, используйте Has")
 	}
 
-	// Has: multiselect содержит.
+	// Has: multiselect contains.
 	if !sv.Has("brokers", "kafka") {
 		t.Errorf("Has(brokers, kafka) должно быть true")
 	}
 	if sv.Has("brokers", "nats") {
 		t.Errorf("Has(brokers, nats) должно быть false")
 	}
-	// Has на не-multiselect -> false.
+	// Has on a non-multiselect -> false.
 	if sv.Has("database", "postgres") {
 		t.Errorf("Has на select должно быть false, используйте Is")
 	}

@@ -6,16 +6,16 @@ import (
 	"strconv"
 )
 
-// Пакет mcpsrv строит argv подкоманд tplater из аргументов MCP-tool'ов. Ключевое
-// правило безопасности: аргументы всегда передаются подпроцессу отдельными
-// элементами слайса — никакой конкатенации в строку и никакой shell-
-// интерполяции (см. exec.go). Функции ниже — чистые: они не трогают ФС и не
-// исполняют процессы, поэтому их легко покрыть табличным юнит-тестом
-// (argv_test.go).
+// Package mcpsrv builds tplater subcommand argv values from MCP tool arguments.
+// The essential security rule is that arguments always pass to a child process
+// as separate slice elements: there is no string concatenation or shell
+// interpolation (see exec.go). The functions below are pure: they neither touch
+// the filesystem nor execute processes, so table-driven unit tests cover them
+// easily (argv_test.go).
 
-// sortedSetPairs сериализует карту группа→значение в детерминированный
-// (по возрастанию ключа) слайс пар вида "--set", "group=value". Детерминизм
-// важен и для тестов, и для воспроизводимости вызовов агентом.
+// sortedSetPairs serializes a group-to-value map into a deterministic sequence
+// of ascending-key "--set", "group=value" pairs. Determinism matters both for
+// tests and reproducible agent calls.
 func sortedSetPairs(set map[string]string) []string {
 	keys := make([]string, 0, len(set))
 	for k := range set {
@@ -30,9 +30,9 @@ func sortedSetPairs(set map[string]string) []string {
 	return out
 }
 
-// sortedPositionalPairs сериализует карту группа→значение в детерминированный
-// слайс позиционных аргументов "group=value" (для `settings set`, который
-// принимает пары позиционно, а не через флаг --set).
+// sortedPositionalPairs serializes a group-to-value map into a deterministic
+// sequence of positional "group=value" arguments. `settings set` accepts pairs
+// positionally rather than through --set.
 func sortedPositionalPairs(values map[string]string) []string {
 	keys := make([]string, 0, len(values))
 	for k := range values {
@@ -47,10 +47,10 @@ func sortedPositionalPairs(values map[string]string) []string {
 	return out
 }
 
-// sortedDynamicFlags сериализует параметры генератора в динамические cobra-
-// флаги вида "--fields", "name:string". В отличие от настроек проекта,
-// `tplater gen` регистрирует параметры конкретного generator прямо как флаги
-// (см. cmd/gen.go), поэтому общий `--set key=value` здесь неприменим.
+// sortedDynamicFlags serializes generator parameters into dynamic Cobra flags
+// such as "--fields", "name:string". Unlike project settings, `tplater gen`
+// registers a particular generator's parameters directly as flags (see cmd/gen.go),
+// so the generic `--set key=value` is not applicable here.
 func sortedDynamicFlags(values map[string]string) []string {
 	keys := make([]string, 0, len(values))
 	for k := range values {
@@ -101,12 +101,11 @@ func argvTemplateList(repo, name string, labels []string) []string {
 
 func argvTemplateShow(ref string) []string { return []string{"template", "show", ref} }
 
-// argvProjectNew строит argv для `tplater new`. Интерактив исключён всегда:
-// подпроцессу не подключается stdin (см. exec.go), а при неполноте --set сам
-// `new` вернёт ошибку про обязательные группы. --defaults форсирует дефолты.
-// dir здесь НЕ используется — он становится рабочим каталогом подпроцесса
-// (cwd), а проект создаётся как <dir>/<slug> (единое правило dir=cwd для всех
-// tool'ов, см. tools.go).
+// argvProjectNew builds argv for `tplater new`. Interaction is always excluded:
+// the child process has no stdin (see exec.go), and `new` reports missing required
+// groups when --set is incomplete. --defaults forces defaults. dir is NOT used
+// here: it becomes the child process working directory (cwd), and the project is
+// created as <dir>/<slug> (the uniform dir=cwd rule for all tools; see tools.go).
 func argvProjectNew(ref, name string, set map[string]string, defaults, noHooks, noDepsCheck, noEnvSetup, yes bool, port int) []string {
 	argv := []string{"new", ref, name}
 	argv = append(argv, sortedSetPairs(set)...)
@@ -142,8 +141,8 @@ func argvRun(command string, args []string) []string {
 
 func argvSettingsList() []string { return []string{"settings", "list"} }
 
-// argvSettingsSet строит argv для `settings set`. --yes обязателен: интерактив
-// исключён, без него команда в неинтерактивном режиме ждала бы подтверждения.
+// argvSettingsSet builds argv for `settings set`. --yes is required: interaction
+// is excluded, and without it the command would await confirmation when noninteractive.
 func argvSettingsSet(values map[string]string) []string {
 	pairs := sortedPositionalPairs(values)
 	argv := make([]string, 0, len(pairs)+3)
@@ -167,15 +166,15 @@ func argvUpdate(to string, dryRun, check bool) []string {
 	return argv
 }
 
-// argvStats всегда добавляет --json — результат парсится и возвращается как
-// структурированный JSON (см. handleStats в tools.go).
+// argvStats always adds --json: the result is parsed and returned as structured
+// JSON (see handleStats in tools.go).
 func argvStats() []string { return []string{"stats", "--json"} }
 
-// argvGen строит argv для `tplater gen <kind> <name>`. params сериализуются в
-// динамические флаги генератора: {"fields":"name:string"} превращается в
-// `--fields name:string`. Cobra регистрирует эти флаги из params манифеста до
-// разбора argv; общего флага --set у команды gen нет. noBuild пропускает
-// финальный build-gate, сохраняя созданные файлы при отсутствии toolchain.
+// argvGen builds argv for `tplater gen <kind> <name>`. params serialize as dynamic
+// generator flags: {"fields":"name:string"} becomes `--fields name:string`.
+// Cobra registers these flags from manifest params before argv parsing; gen has no
+// generic --set flag. noBuild skips the final build gate, retaining created files
+// when the toolchain is unavailable.
 func argvGen(kind, name string, params map[string]string, noBuild bool) []string {
 	pairs := sortedDynamicFlags(params)
 	argv := make([]string, 0, len(pairs)+3)
@@ -187,9 +186,9 @@ func argvGen(kind, name string, params map[string]string, noBuild bool) []string
 	return argv
 }
 
-// genBatchOperation — входной контракт MCP gen_batch. JSON сериализуется
-// только на границе с CLI; сами значения params остаются строками до
-// типизации в `tplater gen batch` по manifest.Param конкретного generator.
+// genBatchOperation is the MCP gen_batch input contract. JSON is serialized only
+// at the CLI boundary; params values remain strings until `tplater gen batch`
+// types them according to the specific generator's manifest.Param.
 type genBatchOperation struct {
 	Kind   string            `json:"kind"`
 	Name   string            `json:"name"`
@@ -197,9 +196,8 @@ type genBatchOperation struct {
 }
 
 func argvGenBatch(operations []genBatchOperation, noBuild bool) []string {
-	// genBatchOperation состоит только из строк и map[string]string, поэтому
-	// json.Marshal для этого закрытого набора типов не может завершиться
-	// ошибкой.
+	// genBatchOperation contains only strings and map[string]string, so json.Marshal
+	// cannot fail for this closed set of types.
 	payload, _ := json.Marshal(operations)
 	argv := []string{"gen", "batch", "--operations", string(payload)}
 	if noBuild {
@@ -228,13 +226,13 @@ func argvWorkspaceAddService(name, module string, set map[string]string, default
 	if port > 0 {
 		argv = append(argv, "--port", strconv.Itoa(port))
 	}
-	// MCP не подключает stdin: исключаем предложение env setup и все
-	// подтверждения делаем неинтерактивными.
+	// MCP does not connect stdin: suppress the env setup prompt and make all
+	// confirmations noninteractive.
 	return append(argv, "--no-env-setup", "--yes")
 }
 
-// argvLintTemplate: path передаётся флагом --path (native-механизм команды),
-// абсолютизируется вызывающим.
+// argvLintTemplate passes path with --path (the command's native mechanism); the
+// caller makes it absolute.
 func argvLintTemplate(path, combo string) []string {
 	argv := []string{"lint-template"}
 	if path != "" {
@@ -246,8 +244,8 @@ func argvLintTemplate(path, combo string) []string {
 	return argv
 }
 
-// argvInitTemplate: dir (если задан) передаётся флагом --dir (native-механизм
-// команды, целевой каталог создаётся ею), абсолютизируется вызывающим.
+// argvInitTemplate passes dir, if supplied, with --dir (the command's native
+// mechanism; it creates the target directory); the caller makes it absolute.
 func argvInitTemplate(name, dir string, multi bool) []string {
 	argv := []string{"init-template", name}
 	if dir != "" {
@@ -265,8 +263,8 @@ func argvDoctor() []string { return []string{"doctor"} }
 
 func argvAIGen() []string { return []string{"ai", "gen"} }
 
-// argvEnvSetup: yes форсируется всегда (интерактив исключён), name опционален
-// (по умолчанию сама команда берёт "setup").
+// argvEnvSetup always forces yes (interaction is excluded); name is optional
+// (the command itself defaults it to "setup").
 func argvEnvSetup(name string) []string {
 	argv := []string{"env", "setup"}
 	if name != "" {

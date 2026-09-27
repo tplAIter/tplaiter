@@ -39,7 +39,7 @@ func TestResolve_MultiselectImplication(t *testing.T) {
 	if !reflect.DeepEqual(res.Report.Implied, want) {
 		t.Errorf("Implied = %#v, ожидалось %#v", res.Report.Implied, want)
 	}
-	// kafka теперь выбран -> kafka_ssl активна, не сбрасывается.
+	// kafka is now selected -> kafka_ssl is active and not reset.
 	if res.ActiveValues["kafka_ssl"] != false {
 		t.Errorf("kafka_ssl = %v", res.ActiveValues["kafka_ssl"])
 	}
@@ -90,7 +90,7 @@ func TestResolve_RequiresCycle(t *testing.T) {
 
 func TestResolve_ConstraintViolation(t *testing.T) {
 	tpl := loadFixture(t, "nested3.yaml")
-	// idempotency=true, но database=none — нарушение constraint.
+	// idempotency=true but database=none violates the constraint.
 	_, err := Resolve(tpl, Values{"idempotency": true})
 	var cerr *ConstraintError
 	if !errors.As(err, &cerr) {
@@ -103,7 +103,7 @@ func TestResolve_ConstraintViolation(t *testing.T) {
 
 func TestResolve_InactiveNestedResetWithWarning(t *testing.T) {
 	tpl := loadFixture(t, "nested3.yaml")
-	// kafka_ssl=true, но kafka не выбрана в brokers.
+	// kafka_ssl=true but kafka is not selected in brokers.
 	res, err := Resolve(tpl, Values{"kafka_ssl": true})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -127,8 +127,8 @@ func TestResolve_InactiveNestedResetWithWarning(t *testing.T) {
 
 func TestResolve_InactiveNonDefault_NoSpuriousWarning(t *testing.T) {
 	tpl := loadFixture(t, "nested3.yaml")
-	// Чистый postgres: pg_shards (дефолт 4) неактивна при pg_pool=small,
-	// но значение == дефолту -> предупреждения быть не должно.
+	// Plain postgres: pg_shards (default 4) is inactive with pg_pool=small, but
+	// the value equals the default -> there must be no warning.
 	res, err := Resolve(tpl, Values{"database": "postgres"})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)

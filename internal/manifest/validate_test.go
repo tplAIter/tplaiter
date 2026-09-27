@@ -19,7 +19,7 @@ func TestValidate_Full_Clean(t *testing.T) {
 func TestValidate_InvalidFixtures(t *testing.T) {
 	tests := []struct {
 		file string
-		want string // подстрока, ожидаемая в агрегированной ошибке
+		want string // substring expected in the aggregate error
 	}{
 		{"invalid/dup_id.yaml", "дублирующийся id группы"},
 		{"invalid/planned_default.yaml", "planned-опция"},
@@ -51,14 +51,14 @@ func TestValidate_BadConditionSyntax(t *testing.T) {
 	if err == nil {
 		t.Fatal("ожидалась ошибка")
 	}
-	// Второе files-правило `when: "database"` — синтаксическая ошибка условия.
+	// The second files rule, `when: "database"`, has a condition syntax error.
 	if !strings.Contains(err.Error(), "без оператора") {
 		t.Errorf("ожидалась ошибка синтаксиса условия:\n%v", err)
 	}
 }
 
 func TestValidate_Aggregates(t *testing.T) {
-	// Манифест с несколькими независимыми проблемами: все должны попасть в отчёт.
+	// A manifest with several independent problems: all must appear in the report.
 	src := `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:

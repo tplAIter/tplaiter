@@ -14,19 +14,19 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
-// Таймауты per-tool. Генерация проекта и обновление 3-way существенно дольше
-// прочих команд (checkout, рендер, hooks) — им даётся расширенный лимит.
+// Per-tool timeouts. Project generation and three-way updates take substantially
+// longer than other commands (checkout, rendering, hooks), so they get a longer limit.
 const (
 	defaultTimeout = 120 * time.Second
 	longTimeout    = 300 * time.Second
 )
 
-// runCLI исполняет подкоманду tplater в отдельном процессе (subprocess-паттерн
-// goca): тот же бинарник (s.exe), аргументы отдельными элементами argv (без
-// shell-интерполяции), рабочий каталог cwd, окружение — унаследованное
-// (TPLAITER_HOME и прочее прокидывается автоматически, т.к. Env не задаётся).
-// stdin НЕ подключается — интерактив исключён на уровне транспорта. Таймаут
-// применяется через контекст: по истечении процесс убивается.
+// runCLI executes a tplater subcommand in a separate process (the goca subprocess
+// pattern): the same binary (s.exe), separate argv elements (without shell
+// interpolation), cwd as working directory, and inherited environment
+// (TPLAITER_HOME and other values propagate automatically because Env is unset).
+// stdin is NOT connected, excluding interaction at the transport layer. The
+// timeout is applied through the context; expiration kills the process.
 func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout time.Duration) (execx.Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -34,11 +34,11 @@ func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout 
 	return s.runner.Run(ctx, s.exe, argv, execx.Options{Dir: cwd})
 }
 
-// toolResult транслирует результат подпроцесса в результат MCP-tool'а. Провал
-// (ненулевой код возврата ИЛИ сбой запуска) даёт isError с полным stdout+stderr
-// — агент должен видеть всю диагностику. Успех отдаёт stdout как текст (stderr
-// добавляется отдельной секцией, если непуст: команды tplater пишут в stderr
-// предупреждения, не только ошибки).
+// toolResult translates a child-process result into an MCP tool result. Failure
+// (a nonzero exit code OR launch failure) yields isError with complete stdout+stderr:
+// the agent must see all diagnostics. Success returns stdout as text (stderr is
+// appended in a separate section when nonempty, because tplater commands write
+// warnings as well as errors to stderr).
 func toolResult(res execx.Result, runErr error) *mcp.CallToolResult {
 	if failed(res, runErr) {
 		return mcp.NewToolResultError(formatFailure(res, runErr))
@@ -54,21 +54,21 @@ func toolResult(res execx.Result, runErr error) *mcp.CallToolResult {
 	return mcp.NewToolResultText(out)
 }
 
-// failed определяет провал вызова: ненулевой код возврата подпроцесса ИЛИ
-// ошибка запуска (бинарник не найден и т.п. — execx возвращает её без обёртки
-// ExitError, с ExitCode -1).
+// failed identifies a failed call: a nonzero child exit code OR launch failure
+// (binary not found, and so on; execx returns it without an ExitError wrapper,
+// with ExitCode -1).
 func failed(res execx.Result, runErr error) bool {
 	if res.ExitCode != 0 {
 		return true
 	}
 	var exitErr *execx.ExitError
-	// runErr != nil при ExitCode==0 маловероятно, но перестрахуемся: любую
-	// ненулевую ошибку, кроме «чистого» ExitError с кодом 0, считаем провалом.
+	// runErr != nil with ExitCode==0 is unlikely, but be defensive: every nonnil
+	// error except a clean ExitError with code 0 counts as failure.
 	return runErr != nil && !errors.As(runErr, &exitErr)
 }
 
-// formatFailure собирает диагностику провала: код возврата, stdout, stderr и
-// (для сбоя запуска) текст самой ошибки.
+// formatFailure collects failure diagnostics: exit code, stdout, stderr, and
+// (for launch failure) the error text itself.
 func formatFailure(res execx.Result, runErr error) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "команда завершилась с ошибкой (код возврата %d)\n", res.ExitCode)
@@ -88,10 +88,10 @@ func formatFailure(res execx.Result, runErr error) string {
 	return b.String()
 }
 
-// resolveWorkDir абсолютизирует и валидирует рабочий каталог tool'а: путь
-// должен существовать и быть каталогом. Пустой dir → пустая строка (подпроцесс
-// унаследует cwd сервера). Абсолютизация защищает от неоднозначности
-// относительных путей относительно cwd сервера.
+// resolveWorkDir makes a tool working directory absolute and validates it: the
+// path must exist and be a directory. An empty dir yields an empty string (the
+// child inherits server cwd). Absolutization prevents ambiguity of relative paths
+// against the server cwd.
 func resolveWorkDir(dir string) (string, error) {
 	if dir == "" {
 		return "", nil
@@ -110,10 +110,10 @@ func resolveWorkDir(dir string) (string, error) {
 	return abs, nil
 }
 
-// resolveTargetDir абсолютизирует целевой каталог команды-создателя
-// (init-template): сам каталог создаётся командой и существовать не обязан, но
-// его родитель должен существовать, иначе писать некуда. Пустой dir → пустая
-// строка (команда возьмёт дефолт ./<name>).
+// resolveTargetDir makes a creator command's target directory (init-template)
+// absolute: the command creates that directory, so it need not exist, but its
+// parent must exist or there is nowhere to write. An empty dir yields an empty
+// string (the command uses its ./<name> default).
 func resolveTargetDir(dir string) (string, error) {
 	if dir == "" {
 		return "", nil

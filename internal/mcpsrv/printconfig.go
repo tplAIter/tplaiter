@@ -7,21 +7,21 @@ import (
 	"strings"
 )
 
-// serverEntry — описание одного stdio MCP-сервера в конфиге клиента.
+// serverEntry describes one stdio MCP server in a client configuration.
 type serverEntry struct {
 	Type    string   `json:"type,omitempty"`
 	Command string   `json:"command"`
 	Args    []string `json:"args"`
 }
 
-// PrintConfig возвращает готовый JSON-сниппет конфигурации MCP-клиента для
-// подключения этого сервера (goca-паттерн `--print-config`). Поддерживаемые
-// клиенты: claude, cursor, vscode. exe — абсолютный путь к бинарнику tplater.
+// PrintConfig returns a ready JSON configuration snippet for connecting an MCP
+// client to this server (the goca `--print-config` pattern). Supported clients
+// are claude, cursor, and vscode. exe is the absolute path to the tplater binary.
 //
-// Формы конфигов различаются по клиентам:
+// Configuration shapes differ by client:
 //   - claude / cursor: {"mcpServers": {"tplaiter": {command, args}}};
 //   - vscode: {"servers": {"tplaiter": {"type":"stdio", command, args}}}
-//     (формат .vscode/mcp.json).
+//     (the .vscode/mcp.json format).
 func PrintConfig(client, exe string) (string, error) {
 	entry := serverEntry{Command: exe, Args: []string{"mcp-server"}}
 
@@ -47,8 +47,8 @@ func PrintConfig(client, exe string) (string, error) {
 	return string(data), nil
 }
 
-// SupportedPrintConfigClients возвращает отсортированный список поддерживаемых
-// клиентов — для сообщений об ошибке/справки команды.
+// SupportedPrintConfigClients returns the sorted list of supported clients for
+// command help and error messages.
 func SupportedPrintConfigClients() []string {
 	clients := []string{"claude", "cursor", "vscode"}
 	sort.Strings(clients)

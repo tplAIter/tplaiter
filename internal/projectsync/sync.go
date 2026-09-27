@@ -1,21 +1,21 @@
-// Package projectsync приводит запись реестра ~/.tplaiter/projects.yaml,
-// отвечающую проекту в текущем рабочем каталоге, в соответствие с фактическим
-// состоянием диска (: слежение за путями).
+// Package projectsync reconciles the ~/.tplaiter/projects.yaml registry entry
+// for the project in the current working directory with the actual state on
+// disk (including path tracking).
 //
-// Три сценария, которые обслуживает [SyncCurrent]:
-//   - каталог проекта переехал (id тот же, path другой) — path и lastSeenAt
-//     обновляются;
-//   - проекта нет в реестре (клонирован коллегой, реестр потерян и т.п.) —
-//     авто-регистрация: Template/CreatedAt берутся из .tplaiter/project.yaml и
-//     текущего момента;
-//   - записанный baselineSHA расходится с фактическим содержимым
-//     .tplaiter/baseline.json — проект обновляли на другой машине, реестр
-//     обновляется по факту.
+// [SyncCurrent] handles three scenarios:
+//   - the project directory moved (same id, different path), so path and
+//     lastSeenAt are updated;
+//   - the project is absent from the registry (cloned by a colleague, registry
+//     lost, and so on), so it is registered automatically: Template/CreatedAt
+//     come from .tplaiter/project.yaml and the current time;
+//   - stored baselineSHA differs from actual .tplaiter/baseline.json content,
+//     meaning the project was updated on another machine, so the registry is
+//     updated from the observed state.
 //
-// Все три случая покрываются одним вызовом [state.Projects.Upsert]: его
-// контракт (path/lastSeenAt/baselineSHA обновляются всегда, Template/CreatedAt
-// фиксируются только при первой вставке) уже реализует ровно это поведение —
-// пакету не нужно различать сценарии (а)/(б)/(в) веткой кода.
+// One [state.Projects.Upsert] call covers all three cases: its contract always
+// updates path/lastSeenAt/baselineSHA and fixes Template/CreatedAt only on the
+// first insert. This already implements precisely that behavior, so this
+// package need not branch between the scenarios.
 package projectsync
 
 import (
@@ -32,19 +32,19 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// SyncCurrent синхронизирует запись реестра ~/.tplaiter/projects.yaml (домашний
-// каталог home) для проекта tplater, обнаруженного от cwd вверх по дереву
-// каталогов ([project.FindRoot]). now — временная метка, которая пишется как
-// CreatedAt (только при первой вставке) и LastSeenAt.
+// SyncCurrent synchronizes the ~/.tplaiter/projects.yaml registry entry (home
+// directory home) for a tplater project discovered by walking from cwd up its
+// directory tree ([project.FindRoot]). now is written as CreatedAt (only on the
+// first insert) and LastSeenAt.
 //
-// cwd вне проекта tplater — не ошибка: SyncCurrent возвращает nil, ничего не
-// меняя (реестр — удобство навигации, а не источник истины; вне проекта
-// синхронизировать нечего). Прочие ошибки (побитый .tplaiter/project.yaml,
-// недоступный .tplaiter/baseline.json, лок домашнего каталога) возвращаются
-// вызывающему как есть — SyncCurrent сам никогда не паникует и не пишет в
-// вывод; решение о том, фатальна ли ошибка для конкретной команды, принимает
-// вызывающий (см. cmd.projectSyncPreRun в internal/cmd/projects.go — там она
-// не фатальна).
+// A cwd outside a tplater project is not an error: SyncCurrent returns nil
+// without changing anything (the registry is a navigation convenience, not a
+// source of truth, and there is nothing to synchronize outside a project). It
+// returns other errors unchanged (corrupt .tplaiter/project.yaml, inaccessible
+// .tplaiter/baseline.json, or a home-directory lock). SyncCurrent itself never
+// panics or writes output; its caller decides whether an error is fatal for a
+// particular command (see cmd.projectSyncPreRun in internal/cmd/projects.go,
+// where it is nonfatal).
 func SyncCurrent(home, cwd string, now time.Time) error {
 	root, proj, err := project.FindRoot(cwd)
 	if err != nil {
@@ -82,9 +82,9 @@ func SyncCurrent(home, cwd string, now time.Time) error {
 	})
 }
 
-// hashFile возвращает hex sha256 содержимого файла path (та же формула, что
-// [internal/newcmd] использует при первичной регистрации проекта в
-// `tplater new`, чтобы значения baselineSHA были сравнимы между собой).
+// hashFile returns the hexadecimal SHA-256 of path's content. It uses the same
+// formula as [internal/newcmd] during initial project registration in
+// `tplater new`, so baselineSHA values are comparable.
 func hashFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

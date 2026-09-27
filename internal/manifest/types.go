@@ -1,31 +1,31 @@
-// Package manifest описывает контракт между шаблоном и CLI tplater: структуры
-// манифестов (Template/Repository/Project), их парсер (yaml.v3 с KnownFields и
-// apiVersion-гейтом), валидатор шаблона, мини-язык условий
-// и офлайн-снимок манифеста.
+// Package manifest defines the contract between a template and the tplater CLI:
+// manifest structures (Template/Repository/Project), their parser (yaml.v3 with
+// KnownFields and an apiVersion gate), a template validator, a small condition
+// language, and an offline manifest snapshot.
 //
-// Пакет НЕ вычисляет условия и НЕ резолвит настройки — это ответственность
-// резолвера . Здесь только структура [Condition]/[Atom] и её
-// синтаксический разбор + ссылочная валидация относительно дерева групп.
+// The package does NOT evaluate conditions or resolve settings; that is the
+// resolver's responsibility. It only contains [Condition]/[Atom] structure,
+// syntax parsing, and reference validation against the group tree.
 package manifest
 
-// APIGroup — группа контракта в поле apiVersion (`tplater.dev/v1alpha1`).
+// APIGroup is the contract group in the apiVersion field (`tplater.dev/v1alpha1`).
 const APIGroup = "tplater.dev"
 
-// SupportedMajor — единственная поддерживаемая major-версия контракта. Манифест
-// с иным major отклоняется парсером с требованием обновить tplater.
+// SupportedMajor is the only supported major contract version. The parser rejects
+// a manifest with another major version and asks the user to update tplater.
 const SupportedMajor = 1
 
-// APIVersion — каноническое значение поля apiVersion, которое пишут шаблоны v1.
+// APIVersion is the canonical apiVersion field value written by v1 templates.
 const APIVersion = APIGroup + "/v1alpha1"
 
-// Kind-константы допустимых видов манифеста.
+// Kind constants for permitted manifest kinds.
 const (
 	KindTemplate   = "Template"
 	KindRepository = "Repository"
 	KindProject    = "Project"
 )
 
-// Типы групп настроек (SettingGroup.Type).
+// Setting group types (SettingGroup.Type).
 const (
 	TypeSelect      = "select"
 	TypeMultiselect = "multiselect"
@@ -34,10 +34,10 @@ const (
 	TypeInt         = "int"
 )
 
-// StatusPlanned — опция видна в каталоге, но невыбираема (честность каталога).
+// StatusPlanned makes an option visible in the catalog but unavailable for selection.
 const StatusPlanned = "planned"
 
-// Template — манифест одного шаблона (`template.manifest.yaml`).
+// Template is a manifest for one template (`template.manifest.yaml`).
 type Template struct {
 	APIVersion  string             `yaml:"apiVersion"`
 	Kind        string             `yaml:"kind"`
@@ -52,10 +52,10 @@ type Template struct {
 	AIConfig    AIConfig           `yaml:"aiConfig"`
 	Environment Environment        `yaml:"environment"`
 	Hooks       Hooks              `yaml:"hooks"`
-	Lint        LintConfig         `yaml:"lint"` // opt-in arch-lint правила, см. lint_types.go
+	Lint        LintConfig         `yaml:"lint"` // opt-in architecture-lint rules; see lint_types.go
 }
 
-// TemplateMeta — секция metadata шаблона.
+// TemplateMeta is the template metadata section.
 type TemplateMeta struct {
 	Name        string              `yaml:"name"`
 	DisplayName string              `yaml:"displayName"`
@@ -67,14 +67,14 @@ type TemplateMeta struct {
 	Notes       string              `yaml:"notes"`
 }
 
-// Maintainer — сопровождающий шаблона/репозитория.
+// Maintainer maintains a template or repository.
 type Maintainer struct {
 	Name     string `yaml:"name"`
 	Email    string `yaml:"email"`
 	Telegram string `yaml:"telegram"`
 }
 
-// Engine — настройки движка рендера.
+// Engine contains rendering engine settings.
 type Engine struct {
 	Type              string        `yaml:"type"`
 	Root              string        `yaml:"root"`
@@ -82,14 +82,14 @@ type Engine struct {
 	PostReplace       []PostReplace `yaml:"postReplace"`
 }
 
-// PostReplace — пост-замена плейсхолдера в некопируемых через рендер файлах.
+// PostReplace replaces a placeholder after rendering in files that are not copied through rendering.
 type PostReplace struct {
 	Glob        string `yaml:"glob"`
 	Placeholder string `yaml:"placeholder"`
 	ContextKey  string `yaml:"contextKey"`
 }
 
-// Requires — требования шаблона к CLI и окружению.
+// Requires describes template requirements for the CLI and environment.
 type Requires struct {
 	Tplaiter string `yaml:"tplaiter"`
 	// Tplater is read-only compatibility for legacy manifests.
@@ -97,7 +97,7 @@ type Requires struct {
 	Tools   []Tool `yaml:"tools"`
 }
 
-// Tool — бинарная зависимость окружения.
+// Tool is a binary environment dependency.
 type Tool struct {
 	Name     string      `yaml:"name"`
 	Version  string      `yaml:"version"`
@@ -105,30 +105,30 @@ type Tool struct {
 	Install  ToolInstall `yaml:"install"`
 }
 
-// ToolInstall — рецепты установки инструмента.
+// ToolInstall contains tool installation recipes.
 type ToolInstall struct {
 	Brew string `yaml:"brew"`
 	Apt  string `yaml:"apt"`
 	URL  string `yaml:"url"`
 }
 
-// SettingGroup — узел дерева настроек. Значение попадает в контекст
-// рендера как .Settings.<group>. Вложенные группы (Option.Settings) плоские по
-// id — валидатор следит за глобальной уникальностью.
+// SettingGroup is a node in the settings tree. Its value enters the rendering
+// context as .Settings.<group>. Nested groups (Option.Settings) are flat by id;
+// the validator enforces global uniqueness.
 type SettingGroup struct {
 	Group       string `yaml:"group"`
 	Title       string `yaml:"title"`
 	Description string `yaml:"description"`
 	Type        string `yaml:"type"`
-	// Default — значение по умолчанию; его конкретный тип зависит от Type
-	// (string для select/string, []any для multiselect, bool для toggle,
-	// int для int). Валидатор сверяет согласованность.
+	// Default is the default value; its concrete type depends on Type (string for
+	// select/string, []any for multiselect, bool for toggle, int for int). The
+	// validator checks consistency.
 	Default any      `yaml:"default"`
 	Pattern string   `yaml:"pattern"`
 	Options []Option `yaml:"options"`
 }
 
-// Option — вариант выбора внутри select/multiselect-группы.
+// Option is a choice within a select or multiselect group.
 type Option struct {
 	ID          string            `yaml:"id"`
 	Title       string            `yaml:"title"`
@@ -139,8 +139,8 @@ type Option struct {
 	Vars        map[string]string `yaml:"vars"`
 }
 
-// FileRule — правило маппинга настроек на дерево файлов. Ровно один
-// из When/AnyOf задаёт условие; Paths добавляет, Remove удаляет пути.
+// FileRule maps settings to the file tree. Exactly one of When/AnyOf defines a
+// condition; Paths adds paths and Remove removes them.
 type FileRule struct {
 	When   string   `yaml:"when"`
 	AnyOf  []string `yaml:"anyOf"`
@@ -148,48 +148,46 @@ type FileRule struct {
 	Remove []string `yaml:"remove"`
 }
 
-// Constraint — межгрупповой инвариант.
+// Constraint is an invariant across groups.
 type Constraint struct {
 	If      string `yaml:"if"`
 	Require string `yaml:"require"`
 	Message string `yaml:"message"`
 }
 
-// Command — именованная команда проекта для `tplater run`.
+// Command is a named project command for `tplater run`.
 type Command struct {
 	Run         string `yaml:"run"`
 	Description string `yaml:"description"`
 	When        string `yaml:"when"`
 }
 
-// Типы параметров генератора (Param.Type). Значение параметра приходит
-// из CLI (`tplater gen <kind> <Name> --<param> <value>`) и попадает в контекст
-// рендера сниппетов как `.Params.<name>` (для типа fields — дополнительно как
-// разобранный `.Fields`).
+// Generator parameter types (Param.Type). A parameter value comes from the CLI
+// (`tplater gen <kind> <Name> --<param> <value>`) and enters snippet rendering
+// context as `.Params.<name>` (and as parsed `.Fields` for the fields type).
 const (
 	ParamTypeString = "string"
 	ParamTypeBool   = "bool"
 	ParamTypeInt    = "int"
-	// ParamTypeFields — спец-тип: строка "name:type,..." парсится в []Field
-	// (см. internal/gen). Обычно ровно один такой параметр на генератор.
+	// ParamTypeFields is a special type: a "name:type,..." string is parsed into
+	// []Field (see internal/gen). A generator normally has exactly one such parameter.
 	ParamTypeFields = "fields"
-	// ParamTypeList — спец-тип: строка "a,b,c" парсится в []string .
-	// Значение доступно сниппетам как `.Params.<name>` ([]string) — удобно для
-	// range по элементам (напр. --activities "payments.Debit,notify.Send").
+	// ParamTypeList is a special type: an "a,b,c" string is parsed into []string.
+	// The value is available to snippets as `.Params.<name>` ([]string), useful for
+	// ranging over elements (for example, --activities "payments.Debit,notify.Send").
 	ParamTypeList = "list"
 )
 
-// NumberedGoose — стратегия нумерации Target.Numbered: перед рендером таргета
-// вычисляется следующий goose-номер миграции (`.MigrationSeq`, NNNNN) по
-// каталогу целевого файла.
+// NumberedGoose is the Target.Numbered strategy: before rendering a target, the
+// next goose migration number (`.MigrationSeq`, NNNNN) is derived from its directory.
 const NumberedGoose = "goose"
 
-// Generator — вид скаффолда для `tplater gen`.
+// Generator is a scaffold kind for `tplater gen`.
 //
-// Форма файлов задаётся ВЗАИМОИСКЛЮЧАЮЩЕ: либо одиночная (Snippet+Target —
-// обратно совместимая форма ), либо мультифайловая (Targets[] — проверку).
-// Валидатор требует ровно одну из форм. Params декларирует параметры CLI
-// (--fields и произвольные --<name>), доступные сниппетам как `.Params`/`.Fields`.
+// File form is mutually exclusive: either the single-file form (Snippet+Target,
+// kept for backward compatibility) or the multi-file form (Targets[]). The
+// validator requires exactly one form. Params declares CLI parameters (--fields
+// and arbitrary --<name>) available to snippets as `.Params`/`.Fields`.
 type Generator struct {
 	Kind        string   `yaml:"kind"`
 	Description string   `yaml:"description"`
@@ -201,26 +199,26 @@ type Generator struct {
 	When        []string `yaml:"when"`
 }
 
-// Param — декларация одного параметра генератора . Name — имя флага CLI
-// (kebab допустим, напр. with-list). Type — из allowlist ([ParamTypeString] и
-// др.). Required без Default — обязателен (ошибка CLI с Description при
-// отсутствии). Default используется, когда флаг не задан.
+// Param declares one generator parameter. Name is the CLI flag name (kebab case
+// is allowed, for example with-list). Type comes from the allowlist
+// ([ParamTypeString] etc.). Required without Default is mandatory (the CLI
+// reports Description when absent). Default is used when the flag is omitted.
 type Param struct {
 	Name     string `yaml:"name"`
 	Type     string `yaml:"type"`
 	Required bool   `yaml:"required,omitempty"`
 	Default  any    `yaml:"default,omitempty"`
-	// Pattern — необязательный RE2-совместимый regexp для сырого значения
-	// параметра. Поддерживается для string и int; применяется до рендера
-	// генератора единым путём ResolveParams (CLI, batch и MCP).
+	// Pattern is an optional RE2-compatible regexp for the raw parameter value.
+	// It is supported for string and int and is applied before generator rendering
+	// through the shared ResolveParams path (CLI, batch, and MCP).
 	Pattern     string `yaml:"pattern,omitempty"`
 	Description string `yaml:"description,omitempty"`
 }
 
-// Target — один файл мультифайлового генератора . Snippet рендерится в
-// Target-путь. When — гейт по НАСТРОЙКАМ проекта (OR-список, как Generator.When):
-// таргет пропускается, если не выполнен (напр. activity только при
-// workflow=temporal). Numbered — стратегия нумерации ("" | [NumberedGoose]).
+// Target is one file in a multi-file generator. Snippet renders to the Target
+// path. When gates it on project SETTINGS (an OR list like Generator.When): the
+// target is skipped if unsatisfied (for example, activity only with
+// workflow=temporal). Numbered is the numbering strategy ("" | [NumberedGoose]).
 type Target struct {
 	Snippet  string   `yaml:"snippet"`
 	Target   string   `yaml:"target"`
@@ -228,24 +226,24 @@ type Target struct {
 	Numbered string   `yaml:"numbered,omitempty"`
 }
 
-// Anchor — точка вставки сгенерированного кода в существующий файл.
+// Anchor is the insertion point for generated code in an existing file.
 type Anchor struct {
 	File   string `yaml:"file"`
 	Anchor string `yaml:"anchor"`
 	Insert string `yaml:"insert"`
 }
 
-// AIConfig — расположение каталога ai-config внутри шаблона.
+// AIConfig locates the ai-config directory within a template.
 type AIConfig struct {
 	Path string `yaml:"path"`
 }
 
-// Environment — плейбуки настройки окружения.
+// Environment contains environment setup playbooks.
 type Environment struct {
 	Playbooks []Playbook `yaml:"playbooks"`
 }
 
-// Playbook — один ansible-плейбук окружения.
+// Playbook is one Ansible environment playbook.
 type Playbook struct {
 	Name        string `yaml:"name"`
 	File        string `yaml:"file"`
@@ -253,21 +251,21 @@ type Playbook struct {
 	When        string `yaml:"when"`
 }
 
-// Hooks — хуки жизненного цикла проекта.
+// Hooks contains project lifecycle hooks.
 type Hooks struct {
 	PostCreate []Hook `yaml:"postCreate"`
 	PostUpdate []Hook `yaml:"postUpdate"`
 }
 
-// Hook — один шаг хука: ровно один из Run/Ansible. Optional=true понижает
-// отсутствие бинарника до предупреждения.
+// Hook is one hook step: exactly one of Run/Ansible. Optional=true downgrades a
+// missing binary to a warning.
 type Hook struct {
 	Run      string `yaml:"run"`
 	Ansible  string `yaml:"ansible"`
 	Optional bool   `yaml:"optional"`
 }
 
-// Repository — манифест мульти-шаблонного репозитория.
+// Repository is a multi-template repository manifest.
 type Repository struct {
 	APIVersion string         `yaml:"apiVersion"`
 	Kind       string         `yaml:"kind"`
@@ -275,19 +273,19 @@ type Repository struct {
 	Templates  []TemplateRef  `yaml:"templates"`
 }
 
-// RepositoryMeta — секция metadata репозитория.
+// RepositoryMeta is the repository metadata section.
 type RepositoryMeta struct {
 	Name        string       `yaml:"name"`
 	Description string       `yaml:"description"`
 	Maintainers []Maintainer `yaml:"maintainers"`
 }
 
-// TemplateRef — ссылка на каталог с template.manifest.yaml.
+// TemplateRef references a directory containing template.manifest.yaml.
 type TemplateRef struct {
 	Path string `yaml:"path"`
 }
 
-// Project — проектный маркер `.tplaiter/project.yaml`.
+// Project is the `.tplaiter/project.yaml` project marker.
 type Project struct {
 	APIVersion string          `yaml:"apiVersion"`
 	Kind       string          `yaml:"kind"`
@@ -299,14 +297,14 @@ type Project struct {
 	Baseline   string          `yaml:"baseline"`
 }
 
-// ProjectTemplate — координаты шаблона-источника проекта.
+// ProjectTemplate identifies the project's source template.
 type ProjectTemplate struct {
 	Repo    string `yaml:"repo"`
 	Name    string `yaml:"name"`
 	Version string `yaml:"version"`
 }
 
-// ProjectInfo — идентификация самого проекта.
+// ProjectInfo identifies the project itself.
 type ProjectInfo struct {
 	Name   string `yaml:"name"`
 	Slug   string `yaml:"slug"`
@@ -315,7 +313,7 @@ type ProjectInfo struct {
 	Domain string `yaml:"domain"`
 }
 
-// ProjectRuntime — рантайм-параметры проекта.
+// ProjectRuntime contains project runtime parameters.
 type ProjectRuntime struct {
 	Port int `yaml:"port"`
 }

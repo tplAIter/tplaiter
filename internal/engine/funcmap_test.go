@@ -64,7 +64,7 @@ func TestSplitFunc(t *testing.T) {
 	if len(got) != 2 || got[0] != "payments" || got[1] != "DebitAccount" {
 		t.Errorf(`split(".", "payments.DebitAccount") = %#v`, got)
 	}
-	// Пайп-порядок: {{ "a,b" | split "," }} → split(",", "a,b").
+	// Pipeline order: {{ "a,b" | split "," }} → split(",", "a,b").
 	tmpl := template.Must(template.New("t").Funcs(StaticFuncMap()).
 		Parse(`{{ index ("a.b.c" | split ".") 1 }}`))
 	var buf strings.Builder
@@ -105,7 +105,7 @@ func TestFuncMapIsHas(t *testing.T) {
 		t.Errorf(`has("brokers", "rabbitmq") = true, want false`)
 	}
 
-	// Статические функции остаются доступны в полном наборе.
+	// Static functions remain available in the full set.
 	for _, k := range []string{"slug", "snake", "camel", "pascal", "kebab", "upper", "lower", "quote", "split"} {
 		if _, ok := fm[k]; !ok {
 			t.Errorf("FuncMap missing static %q", k)

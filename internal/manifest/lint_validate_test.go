@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// baseTemplate — минимальный валидный манифест (без lint) для табличных тестов
-// секции lint: изолирует проверку от остального валидатора.
+// baseTemplate is a minimal valid manifest (without lint) for table tests of the
+// lint section; it isolates the check from the rest of the validator.
 func baseTemplateForLint() *Template {
 	return &Template{
 		APIVersion: APIVersion,
@@ -18,8 +18,7 @@ func baseTemplateForLint() *Template {
 
 func TestValidate_Lint_OptInNoEffect(t *testing.T) {
 	tpl := baseTemplateForLint()
-	// Lint не задан (zero-значение) — валидатор не должен добавлять проблем
-	// из-за lint.
+	// Lint is unset (the zero value), so the validator must not add lint issues.
 	if err := tpl.Validate(); err != nil {
 		t.Fatalf("пустая секция lint не должна влиять на валидацию: %v", err)
 	}
@@ -29,7 +28,7 @@ func TestValidate_Lint_Rules(t *testing.T) {
 	tests := []struct {
 		name  string
 		rules []LintRule
-		want  string // подстрока в агрегированной ошибке; пусто — валидно
+		want  string // substring in the aggregate error; empty means valid
 	}{
 		{
 			name: "valid ctx-first",

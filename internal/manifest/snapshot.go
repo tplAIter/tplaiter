@@ -9,13 +9,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// SnapshotRelPath — путь снимка манифеста относительно корня проекта. Снимок
-// нужен для офлайн-исполнения `tplater run`/`gen` без доступа к репозиторию
-// шаблона.
+// SnapshotRelPath is the manifest snapshot path relative to the project root.
+// The snapshot enables offline `tplater run`/`gen` without access to the
+// template repository.
 const SnapshotRelPath = ".tplaiter/manifest.snapshot.yaml"
 
-// SaveSnapshot сериализует манифест шаблона как есть в path (создавая
-// родительские каталоги). Права файла 0644, каталогов — 0755.
+// SaveSnapshot serializes the template manifest as-is to path, creating parent
+// directories. File mode is 0644 and directory mode is 0755.
 func SaveSnapshot(path string, t *Template) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("создание каталога снимка: %w", err)
@@ -24,19 +24,19 @@ func SaveSnapshot(path string, t *Template) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: манифест не секрет, 0644 намеренно.
+	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: the manifest is not secret; 0644 is intentional.
 		return fmt.Errorf("запись снимка %s: %w", path, err)
 	}
 	return nil
 }
 
-// LoadSnapshot читает и разбирает снимок манифеста (строгий разбор + гейты, как
-// у [LoadTemplate]).
+// LoadSnapshot reads and parses a manifest snapshot (strict decoding and gates,
+// as in [LoadTemplate]).
 func LoadSnapshot(path string) (*Template, error) {
 	return LoadTemplate(path)
 }
 
-// MarshalTemplate сериализует манифест в YAML с отступом в 2 пробела.
+// MarshalTemplate serializes the manifest to YAML with two-space indentation.
 func MarshalTemplate(t *Template) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)

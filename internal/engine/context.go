@@ -8,14 +8,14 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// Context — данные, доступные внутри шаблонов (`{{ . }}`) и при резолве
-// contextKey правил postReplace. Замена go-template'овского Context: вместо
-// .Features (map[string]bool из бинарного реестра фич) — .Settings (общий
-// [settings.View] с хелперами Is/Has); проектные данные приходят
-// не из внутреннего маркера, а от вызывающего (команда, держащая
-// [settings.Resolved] и координаты проекта).
+// Context contains data available inside templates (`{{ . }}`) and when
+// resolving the contextKey of postReplace rules. Unlike go-template's Context,
+// it uses .Settings (a shared [settings.View] with Is/Has helpers) instead of
+// .Features (map[string]bool from the binary feature registry); project data is
+// supplied by the caller (the command holding [settings.Resolved] and project
+// coordinates), rather than an internal marker.
 //
-// Доступ в шаблонах: `{{ .Project.Slug }}`, `{{ .Settings.database }}`,
+// Template access: `{{ .Project.Slug }}`, `{{ .Settings.database }}`,
 // `{{ .Runtime.Port }}`, `{{ .Template.Version }}`.
 type Context struct {
 	Template manifest.ProjectTemplate `json:"template"`
@@ -24,10 +24,10 @@ type Context struct {
 	Runtime  manifest.ProjectRuntime  `json:"runtime"`
 }
 
-// ProjectView — `.Project` в контексте рендера: поля идентификации проекта
-// (перенос [manifest.ProjectInfo]) плюс производные case-варианты slug'а
-// (перенос go-template'овских top-level SlugPascal/SlugCamel/SlugKebab/SlugSnake,
-// здесь — вложенные под Project, т.к. .Project уже несёт Slug).
+// ProjectView is `.Project` in the render context: project identity fields
+// (ported from [manifest.ProjectInfo]) plus derived slug case variants (the
+// go-template top-level SlugPascal/SlugCamel/SlugKebab/SlugSnake port, nested
+// under Project here because .Project already carries Slug).
 type ProjectView struct {
 	Name   string `json:"name"`
 	Slug   string `json:"slug"`
@@ -35,17 +35,16 @@ type ProjectView struct {
 	System string `json:"system,omitempty"`
 	Domain string `json:"domain,omitempty"`
 
-	// Производные case-варианты Slug.
+	// Derived slug case variants.
 	Pascal string `json:"pascal"`
 	Camel  string `json:"camel"`
 	Kebab  string `json:"kebab"`
 	Snake  string `json:"snake"`
 }
 
-// NewContext строит контекст рендера из [Options]: проектных координат,
-// разрешённых настроек (ActiveValues — производный набор с обнулёнными
-// неактивными вложенными группами, см. [settings.Resolved]) и координат
-// используемого шаблона.
+// NewContext builds the render context from [Options]: project coordinates,
+// resolved settings (ActiveValues is a derived set with inactive nested groups
+// zeroed out; see [settings.Resolved]), and the coordinates of the template in use.
 func NewContext(opts Options) *Context {
 	p := opts.Project
 	return &Context{
@@ -70,9 +69,9 @@ func NewContext(opts Options) *Context {
 	}
 }
 
-// lookup резолвит строковое значение контекста по дотированному ключу (для
-// postReplace.contextKey, например "Project.Slug" — см. пример ).
-// Поддерживает поля Project/Template и Runtime.Port (число форматируется
+// lookup resolves a context string value by dotted key (for
+// postReplace.contextKey, such as "Project.Slug"; see the  example).
+// It supports Project/Template fields and Runtime.Port (formatted with
 // strconv.Itoa).
 func (c *Context) lookup(key string) (string, bool) {
 	switch key {
@@ -107,9 +106,9 @@ func (c *Context) lookup(key string) (string, bool) {
 	}
 }
 
-// compilePostReplace резолвит contextKey каждого правила postReplace
-// (engine.postReplace манифеста) в конкретное значение контекста. Ошибка на
-// неизвестном ключе — это ошибка автора манифеста, а не рантайм-предупреждение.
+// compilePostReplace resolves each postReplace rule's contextKey (from the
+// manifest engine.postReplace) to a concrete context value. An unknown key is
+// a manifest authoring error, not a runtime warning.
 func compilePostReplace(rules []manifest.PostReplace, ctx *Context) ([]compiledPostReplace, error) {
 	out := make([]compiledPostReplace, 0, len(rules))
 	for _, rule := range rules {

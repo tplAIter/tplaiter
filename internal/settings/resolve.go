@@ -9,45 +9,45 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// ImpliedValue — значение, довключённое резолвером транзитивно через requires
-// (пользователь его явно не задавал). RequiredBy — id опции, потребовавшей это
-// значение.
+// ImpliedValue is a value transitively added by the resolver through requires
+// (the user did not set it explicitly). RequiredBy is the id of the option that
+// required this value.
 type ImpliedValue struct {
 	Group      string `yaml:"group" json:"group"`
 	Value      string `yaml:"value" json:"value"`
 	RequiredBy string `yaml:"requiredBy" json:"requiredBy"`
 }
 
-// Report — доклад резолвера пользователю: что было довключено и какие
-// предупреждения возникли (неактивные группы со сброшенными значениями и т.п.).
+// Report is the resolver report to the user: what it implied and what warnings
+// occurred (inactive groups with reset values, and so on).
 type Report struct {
 	Implied  []ImpliedValue `yaml:"implied" json:"implied"`
 	Warnings []string       `yaml:"warnings" json:"warnings"`
 }
 
-// Resolved — результат разрешения настроек.
+// Resolved is the settings resolution result.
 //
-//   - Values — полный набор значений (дефолты + explicit + довключённые
-//     requires) для ВСЕХ групп, включая неактивные вложенные. Сохраняется в
-//     .tplaiter/project.yaml как снимок для update/переопроса.
-//   - ActiveValues — производное представление для рендера: неактивные вложенные
-//     группы (родительская опция не выбрана) сброшены в zero-значение своего
-//     типа. Это устраняет протечки вида «kafka_ssl=true при brokers без kafka»:
-//     контекст движка видит kafka_ssl=false, хотя снимок хранит заданное true.
+//   - Values is the complete value set (defaults + explicit + implied requires)
+//     for ALL groups, including inactive nested ones. It is stored in
+//     .tplaiter/project.yaml as a snapshot for update/re-questioning.
+//   - ActiveValues is the derived rendering view: inactive nested groups (whose
+//     parent option is unselected) are reset to their type's zero value. This
+//     prevents leaks such as kafka_ssl=true when brokers lacks kafka: the engine
+//     context sees kafka_ssl=false even though the snapshot stores true.
 type Resolved struct {
 	Values       Values
 	ActiveValues Values
 	Report       Report
 }
 
-// ConflictError — requires опции противоречит явно заданному значению группы
-// (для select/toggle/int/string перезапись explicit-значения запрещена).
+// ConflictError means an option's requires conflicts with an explicitly set group
+// value (overwriting an explicit select/toggle/int/string value is forbidden).
 type ConflictError struct {
-	RequiredBy  string   // id опции, потребовавшей значение
-	Requirement string   // канонический атом требования (group=value)
-	Group       string   // группа с конфликтующим значением
-	Current     string   // текущее (явно заданное) значение группы
-	Chain       []string // цепочка ключей опций до конфликта
+	RequiredBy  string   // id of the option that required the value
+	Requirement string   // canonical requirement atom (group=value)
+	Group       string   // group with the conflicting value
+	Current     string   // current explicitly set group value
+	Chain       []string // option-key chain to the conflict
 }
 
 func (e *ConflictError) Error() string {
@@ -58,7 +58,7 @@ func (e *ConflictError) Error() string {
 	return msg
 }
 
-// CycleError — цикл в графе requires (опция A требует B, B требует … A).
+// CycleError is a cycle in the requires graph (option A requires B, B requires … A).
 type CycleError struct {
 	Chain []string
 }
@@ -67,8 +67,8 @@ func (e *CycleError) Error() string {
 	return "цикл в requires: " + strings.Join(e.Chain, " → ")
 }
 
-// ConstraintError — нарушен межгрупповой инвариант constraints (§3): if
-// выполнен, а require — нет.
+// ConstraintError means a cross-group constraints invariant (§3) is violated:
+// if holds but require does not.
 type ConstraintError struct {
 	If      string
 	Require string
@@ -77,7 +77,7 @@ type ConstraintError struct {
 
 func (e *ConstraintError) Error() string { return e.Message }
 
-// resolver держит рабочее состояние одного вызова [Resolve].
+// resolver holds the working state of one [Resolve] call.
 type resolver struct {
 	tpl      *manifest.Template
 	gidx     map[string]groupMeta
@@ -91,11 +91,11 @@ type resolver struct {
 	done    map[string]bool
 }
 
-// Resolve — ядро модели настроек. Начинает с [DefaultValues],
-// накладывает explicit-значения, транзитивно дотягивает requires выбранных
-// опций (довключение с докладом или конфликт-ошибка), детектит циклы requires,
-// проверяет constraints и строит ActiveValues. Возвращает [Resolved] либо
-// типизированную ошибку ([*ConflictError]/[*CycleError]/[*ConstraintError]).
+// Resolve is the core of the settings model. It starts with [DefaultValues],
+// overlays explicit values, transitively satisfies requires of selected options
+// (reporting implications or conflicts), detects requires cycles, checks
+// constraints, and builds ActiveValues. It returns [Resolved] or a typed error
+// ([*ConflictError]/[*CycleError]/[*ConstraintError]).
 func Resolve(tpl *manifest.Template, explicit Values) (Resolved, error) {
 	r := &resolver{
 		tpl:      tpl,
@@ -133,8 +133,8 @@ func Resolve(tpl *manifest.Template, explicit Values) (Resolved, error) {
 	}, nil
 }
 
-// overlayExplicit накладывает заданные значения поверх дефолтов, помечая группы
-// как явно заданные. Неизвестные группы игнорируются с предупреждением.
+// overlayExplicit overlays supplied values on defaults, marking groups as
+// explicitly set. Unknown groups are ignored with a warning.
 func (r *resolver) overlayExplicit(explicit Values) {
 	keys := make([]string, 0, len(explicit))
 	for k := range explicit {
@@ -151,9 +151,9 @@ func (r *resolver) overlayExplicit(explicit Values) {
 	}
 }
 
-// resolveRequires разрешает requires до неподвижной точки: на каждом проходе
-// обходит выбранные опции активных групп; активированные довключением группы
-// подхватываются следующим проходом. Транзитивность внутри прохода — рекурсией
+// resolveRequires resolves requires to a fixed point: on every pass it traverses
+// selected options of active groups; groups activated by implication are picked up
+// by the next pass. Transitivity within a pass is recursive.
 // [resolver.visit].
 func (r *resolver) resolveRequires() error {
 	for {
@@ -173,9 +173,9 @@ func (r *resolver) resolveRequires() error {
 	}
 }
 
-// visit обрабатывает requires одной выбранной опции, рекурсивно спускаясь в
-// довключённые опции. Возврат в опцию, уже находящуюся в стеке обработки, —
-// цикл requires.
+// visit processes requires of one selected option, recursively descending into
+// implied options. Returning to an option already on the processing stack is a
+// requires cycle.
 func (r *resolver) visit(key string, stack []string) error {
 	if r.onStack[key] {
 		return &CycleError{Chain: append(append([]string{}, stack...), key)}
@@ -185,7 +185,7 @@ func (r *resolver) visit(key string, stack []string) error {
 	}
 	om, ok := r.oidx[key]
 	if !ok {
-		// Ключ ссылается на не-опцию (toggle/int/string) — обходить нечего.
+		// The key refers to a non-option (toggle/int/string), so there is nothing to traverse.
 		r.done[key] = true
 		return nil
 	}
@@ -216,10 +216,10 @@ func (r *resolver) visit(key string, stack []string) error {
 	return nil
 }
 
-// ensure добивается выполнения одного requires-атома. Возвращает ключ
-// "group=value" опции для дальнейшего обхода (для select/multiselect `=`, в т.ч.
-// уже выполненных — чтобы детектить структурные циклы) либо "". Конфликт с
-// explicit-значением или невыполнимый негатив → типизированная ошибка.
+// ensure satisfies one requires atom. It returns the option's "group=value" key
+// for further traversal (for select/multiselect `=`, including already satisfied
+// atoms to detect structural cycles), or "". A conflict with an explicit value or
+// an unsatisfiable negative produces a typed error.
 func (r *resolver) ensure(a manifest.Atom, requiredBy string, stack []string) (string, error) {
 	m, ok := r.gidx[a.Group]
 	if !ok {
@@ -321,9 +321,9 @@ func (r *resolver) isOption(key string) bool {
 	return ok
 }
 
-// checkConstraints проверяет межгрупповые инварианты на полном наборе значений
-// (не ActiveValues — чтобы ловить рассогласование вида idempotency=true при
-// database=none). Возвращает первое нарушение.
+// checkConstraints validates cross-group invariants on the complete value set,
+// rather than ActiveValues, to catch inconsistencies such as idempotency=true
+// with database=none. It returns the first violation.
 func (r *resolver) checkConstraints() error {
 	for i := range r.tpl.Constraints {
 		c := r.tpl.Constraints[i]
@@ -352,12 +352,11 @@ func (r *resolver) checkConstraints() error {
 	return nil
 }
 
-// activeValues строит производный набор для рендера: неактивные группы сброшены
-// в zero своего типа. Если у сброшенной группы было непустое значение —
-// добавляется предупреждение.
+// activeValues builds a derived rendering set: inactive groups are reset to their
+// type's zero value. A warning is added if a reset group had a non-empty value.
 func (r *resolver) activeValues() Values {
 	active := r.values.Clone()
-	// Детерминированный порядок предупреждений — обход по отсортированным id.
+	// Deterministic warning order comes from traversal by sorted ids.
 	ids := make([]string, 0, len(r.gidx))
 	for id := range r.gidx {
 		ids = append(ids, id)
@@ -368,9 +367,9 @@ func (r *resolver) activeValues() Values {
 			continue
 		}
 		m := r.gidx[id]
-		// Предупреждаем только если сбрасывается ОСМЫСЛЕННО заданное значение
-		// (отличное от дефолта группы) — иначе неактивная группа с ненулевым
-		// дефолтом (напр. pg_shards=4) шумела бы предупреждением на ровном месте.
+		// Warn only when a meaningfully set value (different from the group default)
+		// is reset; otherwise an inactive group with a nonzero default (such as
+		// pg_shards=4) would create a gratuitous warning.
 		if !equalValue(active[id], defaultFor(m.g)) {
 			r.warn("группа %q неактивна (родительская опция не выбрана) — значение сброшено в контексте рендера", id)
 		}
@@ -379,8 +378,8 @@ func (r *resolver) activeValues() Values {
 	return active
 }
 
-// isActive сообщает, активна ли группа: корневые активны всегда, вложенная —
-// когда активен родитель и в нём выбрана активирующая опция.
+// isActive reports whether a group is active: roots are always active, and a
+// nested group is active when its parent is active and its activating option is selected.
 func (r *resolver) isActive(id string) bool {
 	m, ok := r.gidx[id]
 	if !ok {
@@ -395,7 +394,7 @@ func (r *resolver) isActive(id string) bool {
 	return r.optionSelected(m.parentGroup, m.parentOpt)
 }
 
-// optionSelected сообщает, выбрана ли опция opt в группе group.
+// optionSelected reports whether option opt is selected in group.
 func (r *resolver) optionSelected(group, opt string) bool {
 	switch val := r.values[group].(type) {
 	case string:
@@ -407,8 +406,8 @@ func (r *resolver) optionSelected(group, opt string) bool {
 	}
 }
 
-// activeSelectedKeys возвращает ключи "group=option" выбранных опций активных
-// select/multiselect-групп в порядке объявления (детерминизм).
+// activeSelectedKeys returns "group=option" keys of selected options in active
+// select/multiselect groups in declaration order for determinism.
 func (r *resolver) activeSelectedKeys() []string {
 	var keys []string
 	var walk func(groups []manifest.SettingGroup)
@@ -429,8 +428,8 @@ func (r *resolver) activeSelectedKeys() []string {
 	return keys
 }
 
-// selectedValues возвращает выбранные значения группы (для select — одно, для
-// multiselect — список), только реально существующие опции.
+// selectedValues returns selected group values (one for select, a list for
+// multiselect), limited to options that actually exist.
 func (r *resolver) selectedValues(g *manifest.SettingGroup) []string {
 	switch val := r.values[g.Group].(type) {
 	case string:
@@ -449,8 +448,8 @@ func (r *resolver) selectedValues(g *manifest.SettingGroup) []string {
 	return nil
 }
 
-// atomHolds сообщает, выполняется ли атом на значениях (группа гарантированно
-// присутствует у вызывающего).
+// atomHolds reports whether an atom holds on values; the caller guarantees the
+// group is present.
 func atomHolds(a manifest.Atom, v Values) bool {
 	match := matchValue(v[a.Group], a.Value)
 	if a.Op == manifest.OpNeq {
@@ -459,9 +458,9 @@ func atomHolds(a manifest.Atom, v Values) bool {
 	return match
 }
 
-// asStringSlice возвращает []string-значение группы (копию не делает — вызов
-// сразу append'ит новый элемент, что создаёт новый backing-массив при нехватке
-// ёмкости; для безопасности копируем).
+// asStringSlice returns a group's []string value. It does not copy because the
+// caller immediately appends a new item, which allocates a new backing array when
+// capacity is insufficient; copy it here for safety.
 func asStringSlice(v any) []string {
 	if list, ok := v.([]string); ok {
 		cp := make([]string, len(list))
@@ -471,7 +470,7 @@ func asStringSlice(v any) []string {
 	return nil
 }
 
-// equalValue сравнивает значения настроек с поддержкой []string.
+// equalValue compares settings values with []string support.
 func equalValue(a, b any) bool {
 	if av, ok := a.([]string); ok {
 		bv, ok := b.([]string)
@@ -488,7 +487,7 @@ func equalValue(a, b any) bool {
 	return a == b
 }
 
-// formatValue форматирует значение группы для сообщений об ошибках.
+// formatValue formats a group value for error messages.
 func formatValue(v any) string {
 	if list, ok := v.([]string); ok {
 		return strings.Join(list, ",")

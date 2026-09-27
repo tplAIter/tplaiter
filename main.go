@@ -1,9 +1,9 @@
-// Command tplater — helm-подобный менеджер репозиториев шаблонов (см. документацию проекта).
+// Command tplater is a Helm-like template repository manager (see project documentation).
 //
-// На этапе  реализован только скелет: cobra root + `tplater version` и
-// служебные пакеты (execx, ui). Продуктовые команды (repo, template, new,
-// update, stats, run, ...) добавляются последующими связанными компонентами согласно
-// документацию проекта
+// At this stage only the skeleton is implemented: the Cobra root, `tplater version`,
+// and utility packages (execx, ui). Product commands (repo, template, new,
+// update, stats, run, ...) are added by subsequent related components according
+// to the project documentation.
 package main
 
 import (

@@ -5,9 +5,10 @@ import (
 	"testing"
 )
 
-// TestArgvBuilders — табличный тест маппинга tool→argv: ключевые случаи из ТЗ
-// (project_new с set-map → корректные --set пары; stats добавляет --json; gen
-// params/noBuild → флаги; env_setup форсирует --yes; settings_set добавляет --yes).
+// TestArgvBuilders is a table-driven test of tool-to-argv mapping: key cases
+// from the specification (project_new set map to correct --set pairs; stats
+// adds --json; gen params/noBuild to flags; env_setup forces --yes; settings_set
+// adds --yes).
 func TestArgvBuilders(t *testing.T) {
 	tests := []struct {
 		name string

@@ -12,16 +12,16 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// ParseSet разбирает одно CLI-значение вида "group=value" (флаг --set),
-// типизируя его по манифесту:
-//   - select: value должен быть id существующей невыбираемой-не-planned опции;
-//   - multiselect: "a,b,c" → []string, каждый — валидная опция;
+// ParseSet parses one CLI value in the form "group=value" (--set flag), typing it
+// according to the manifest:
+//   - select: value must be the id of an existing selectable, non-planned option;
+//   - multiselect: "a,b,c" → []string, each item is a valid option;
 //   - toggle: true/false/yes/no/1/0/on/off → bool;
-//   - int: целое число;
-//   - string: как есть.
+//   - int: an integer;
+//   - string: unchanged.
 //
-// Возвращает id группы и типизированное значение. Ошибки перечисляют допустимые
-// значения (для select/multiselect — список опций).
+// It returns the group id and typed value. Errors list permitted values (the
+// option list for select/multiselect).
 func ParseSet(tpl *manifest.Template, expr string) (group string, value any, err error) {
 	eq := strings.IndexByte(expr, '=')
 	if eq < 0 {
@@ -46,10 +46,10 @@ func ParseSet(tpl *manifest.Template, expr string) (group string, value any, err
 	return group, value, nil
 }
 
-// LoadAnswersFile читает YAML-файл ответов (--answers) и типизирует каждое
-// значение по манифесту той же логикой, что и остальной ввод. Сырые скалярные
-// значения (bool/int/string) и списки приводятся к каноническим типам групп.
-// Неизвестные группы в файле — ошибка (перечисляются все).
+// LoadAnswersFile reads a YAML answers file (--answers) and types each value using
+// the same manifest logic as other input. Raw scalar values (bool/int/string) and
+// lists are converted to canonical group types. Unknown groups in the file are
+// an error and all are listed.
 func LoadAnswersFile(tpl *manifest.Template, path string) (Values, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -62,13 +62,13 @@ func LoadAnswersFile(tpl *manifest.Template, path string) (Values, error) {
 	return typeAnswers(tpl, raw)
 }
 
-// typeAnswers типизирует сырой map ответов по манифесту. Вынесен отдельно для
-// тестируемости без файловой системы.
+// typeAnswers types a raw answer map according to the manifest. It is separate to
+// enable testing without the file system.
 func typeAnswers(tpl *manifest.Template, raw map[string]any) (Values, error) {
 	idx := indexGroups(tpl)
 	out := make(Values, len(raw))
 
-	// Детерминированный порядок обхода — стабильные сообщения об ошибках.
+	// Deterministic traversal order produces stable error messages.
 	keys := make([]string, 0, len(raw))
 	for k := range raw {
 		keys = append(keys, k)
@@ -94,7 +94,7 @@ func typeAnswers(tpl *manifest.Template, raw map[string]any) (Values, error) {
 	return out, nil
 }
 
-// typeString типизирует строковый ввод (--set) по типу группы.
+// typeString types string input (--set) by group type.
 func typeString(g *manifest.SettingGroup, raw string) (any, error) {
 	switch g.Type {
 	case manifest.TypeSelect:
@@ -137,8 +137,8 @@ func typeString(g *manifest.SettingGroup, raw string) (any, error) {
 	}
 }
 
-// typeNative типизирует нативное yaml-значение по типу группы. Строковые формы
-// (например "true" для toggle) допускаются и делегируются typeString.
+// typeNative types a native yaml value by group type. String forms (such as
+// "true" for toggle) are allowed and delegated to typeString.
 func typeNative(g *manifest.SettingGroup, raw any) (any, error) {
 	switch g.Type {
 	case manifest.TypeSelect:
@@ -186,8 +186,8 @@ func typeNative(g *manifest.SettingGroup, raw any) (any, error) {
 	}
 }
 
-// checkOption проверяет, что value — существующая невыбираемая-не-planned опция
-// группы. Ошибка перечисляет допустимые (не-planned) значения.
+// checkOption verifies that value is an existing selectable, non-planned group
+// option. An error lists permitted non-planned values.
 func checkOption(g *manifest.SettingGroup, value string) error {
 	allowed := make([]string, 0, len(g.Options))
 	for i := range g.Options {
@@ -206,7 +206,7 @@ func checkOption(g *manifest.SettingGroup, value string) error {
 	return fmt.Errorf("недопустимое значение %q, допустимо: %s", value, strings.Join(allowed, ", "))
 }
 
-// parseBool разбирает булев ввод CLI в широком наборе форм.
+// parseBool parses CLI boolean input in a broad set of forms.
 func parseBool(raw string) (bool, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "true", "yes", "y", "on", "1":

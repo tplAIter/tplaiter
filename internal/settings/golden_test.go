@@ -8,9 +8,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestReport_GoldenSerialization фиксирует стабильную YAML-сериализацию доклада
-// резолвера. Порядок Implied и Warnings детерминирован (сортировка в Resolve),
-// поэтому golden-файл воспроизводим. Обновление: TPLAITER_UPDATE_GOLDEN=1.
+// TestReport_GoldenSerialization fixes the resolver report's stable YAML
+// serialization. Implied and Warnings ordering is deterministic (sorted in
+// Resolve), so the golden file is reproducible. Update with TPLAITER_UPDATE_GOLDEN=1.
 func TestReport_GoldenSerialization(t *testing.T) {
 	tpl := loadFixture(t, "nested3.yaml")
 	res, err := Resolve(tpl, Values{

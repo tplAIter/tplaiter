@@ -2,15 +2,15 @@ package settings
 
 import "github.com/tplAIter/tplaiter/internal/manifest"
 
-// View — представление активных значений настроек для движка рендера.
-// Как именованный тип map[string]any допускает доступ `.Settings.<group>` в
-// шаблонах и одновременно несёт методы-хелперы Is/Has (§3.1). Движок (реализация )
-// может дополнительно зарегистрировать их как функции FuncMap `is`/`has`.
+// View is the render engine's view of active settings values. As a named
+// map[string]any type it enables `.Settings.<group>` access in templates and
+// provides Is/Has helper methods (§3.1). The engine (the  implementation) may
+// also register them as `is`/`has` FuncMap functions.
 type View map[string]any
 
-// Is сообщает, равно ли значение группы заданному (select/string — равенство,
-// toggle — сравнение с true/false, int — числовое). Для multiselect используйте
-// [View.Has].
+// Is reports whether a group's value equals the requested value (equality for
+// select/string, comparison with true/false for toggle, numeric comparison for
+// int). Use [View.Has] for multiselect.
 func (s View) Is(group, value string) bool {
 	raw, ok := s[group]
 	if !ok {
@@ -22,8 +22,8 @@ func (s View) Is(group, value string) bool {
 	return matchValue(raw, value)
 }
 
-// Has сообщает, содержит ли multiselect-группа заданное значение. Для
-// не-multiselect всегда false.
+// Has reports whether a multiselect group contains the requested value. It is
+// always false for non-multiselect groups.
 func (s View) Has(group, value string) bool {
 	list, ok := s[group].([]string)
 	if !ok {
@@ -32,10 +32,10 @@ func (s View) Has(group, value string) bool {
 	return contains(list, value)
 }
 
-// RenderContext строит контекст движка рендера из разрешённых настроек:
-// `.Settings` — активные значения (View с хелперами Is/Has). реализация
-// дополняет контекст проектными полями (Project/Name/…) и подключает Is/Has в
-// FuncMap.
+// RenderContext builds the render engine context from resolved settings:
+// `.Settings` contains active values (a View with Is/Has helpers). The
+// implementation adds project fields (Project/Name/…) and registers Is/Has in
+// the FuncMap.
 func RenderContext(_ *manifest.Template, resolved Resolved) map[string]any {
 	return map[string]any{
 		"Settings": View(resolved.ActiveValues),

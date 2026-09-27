@@ -9,12 +9,12 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// markerPrefix — общий префикс всех внутрифайловых маркеров.
-// Маркер ищется как ПОДСТРОКА строки — независимо от стиля комментария
-// (//, #, <!-- -->, /* */, ;) вокруг него.
+// markerPrefix is the common prefix of all in-file markers. A marker is found
+// as a substring of the line, regardless of the surrounding comment style
+// (//, #, <!-- -->, /* */, ;).
 const markerPrefix = "tplater:"
 
-// Ключевые слова маркеров, идущие сразу после [markerPrefix].
+// Marker keywords immediately following [markerPrefix].
 const (
 	markerKwIfInverse = "if!"
 	markerKwIf        = "if"
@@ -22,18 +22,18 @@ const (
 	markerKwEnd       = "end"
 )
 
-// commentPrefixes — известные "открывающие" последовательности комментариев.
-// Для хвостового tplater:if "начало комментария" — последнее вхождение любой
-// из них перед маркером; при отсутствии — generic-фоллбек
-// (см. [commentStartBefore]).
+// commentPrefixes are known comment-opening sequences. For a trailing
+// tplater:if, the “comment start” is the last occurrence of any of them before
+// the marker; when none is present, a generic fallback is used
+// (see [commentStartBefore]).
 var commentPrefixes = []string{"//", "#", "<!--", "/*", ";"}
 
-// commentSuffixes — закрывающие последовательности стилей комментариев,
-// которые не входят в текст условия хвостового/begin-маркера, если ими
-// заканчивается остаток строки (`<!-- tplater:if x=y -->`, `/* tplater:end */`).
+// commentSuffixes are closing sequences for comment styles. They are excluded
+// from trailing or begin-marker condition text when the remainder ends with
+// one (`<!-- tplater:if x=y -->`, `/* tplater:end */`).
 var commentSuffixes = []string{"-->", "*/"}
 
-// markerKind — распознанный вид маркера на строке файла.
+// markerKind is the recognized marker kind on a file line.
 type markerKind int
 
 const (
@@ -44,20 +44,20 @@ const (
 	markerKindUnknown
 )
 
-// markerMatch — результат разбора одной строки на маркер: idx — индекс начала
-// "tplater:" в строке, argIdx — индекс начала текста ПОСЛЕ ключевого слова
-// (аргумент/условие для if и begin; для end и unknown не используется).
+// markerMatch is the result of parsing one line for a marker: idx is the index
+// where "tplater:" starts, and argIdx is the index where text AFTER the
+// keyword starts (the argument/condition for if and begin; unused for end and
+// unknown).
 type markerMatch struct {
 	kind   markerKind
 	idx    int
 	argIdx int
 }
 
-// findMarker ищет первое вхождение [markerPrefix] в строке и классифицирует
-// его по ключевому слову. Ключевое слово должно заканчиваться границей
-// не-идентификаторного символа (или концом строки) — иначе "tplater:iff" или
-// "tplater:endpoint" не спутать с известными маркерами, а сообщить как
-// [markerKindUnknown] (защита от опечаток).
+// findMarker finds the first [markerPrefix] occurrence in a line and classifies
+// it by keyword. The keyword must end at a non-identifier boundary (or the end
+// of the line), so "tplater:iff" and "tplater:endpoint" are reported as
+// [markerKindUnknown] rather than confused with known markers (typo protection).
 func findMarker(line string) (markerMatch, bool) {
 	idx := strings.Index(line, markerPrefix)
 	if idx < 0 {
@@ -65,9 +65,9 @@ func findMarker(line string) (markerMatch, bool) {
 	}
 	after := line[idx+len(markerPrefix):]
 
-	// if! проверяется раньше if — иначе "if" совпал бы как префикс "if!" по
-	// ошибке (см. matchesKeyword: "!" — граничный символ, значит "if" тоже
-	// матчился бы на "if!...", если бы шёл первым).
+	// Check if! before if; otherwise if would incorrectly match the if! prefix
+	// (see matchesKeyword: "!" is a boundary character, so if would also match
+	// "if!..." if checked first).
 	switch {
 	case matchesKeyword(after, markerKwIfInverse):
 		return markerMatch{kind: markerKindIfInverse, idx: idx, argIdx: idx + len(markerPrefix) + len(markerKwIfInverse)}, true
@@ -82,8 +82,8 @@ func findMarker(line string) (markerMatch, bool) {
 	}
 }
 
-// matchesKeyword сообщает, начинается ли after ключевым словом keyword с
-// последующей границей (конец строки или не-идентификаторный символ).
+// matchesKeyword reports whether after starts with keyword followed by a
+// boundary (the end of the line or a non-identifier character).
 func matchesKeyword(after, keyword string) bool {
 	if !strings.HasPrefix(after, keyword) {
 		return false
@@ -94,9 +94,9 @@ func matchesKeyword(after, keyword string) bool {
 	return isIdentBoundary(after[len(keyword)])
 }
 
-// isIdentBoundary сообщает, что байт b не может быть частью идентификатора
-// (буква/цифра/подчёркивание) — используется для отделения ключевого слова
-// маркера от случайного продолжения (typo-защита).
+// isIdentBoundary reports whether byte b cannot be part of an identifier
+// (letter, digit, or underscore); it separates a marker keyword from accidental
+// continuation (typo protection).
 func isIdentBoundary(b byte) bool {
 	switch {
 	case b == '_':
@@ -108,11 +108,11 @@ func isIdentBoundary(b byte) bool {
 	}
 }
 
-// commentStartBefore определяет индекс "начала комментария-последовательности"
-// перед маркером на позиции markerIdx: последнее вхождение
-// любого из [commentPrefixes] в line[:markerIdx]. Если ни один префикс не
-// найден — generic-фоллбек: индекс самого маркера (после TrimRight пробелов
-// перед ним это равносильно "вырезать с последнего пробельного разрыва").
+// commentStartBefore finds the index of the “comment sequence start” before a
+// marker at markerIdx: the last occurrence of any [commentPrefixes] in
+// line[:markerIdx]. If no prefix is found, the generic fallback is the marker
+// index (after TrimRight, this is equivalent to cutting at the last whitespace
+// boundary before it).
 func commentStartBefore(line string, markerIdx int) int {
 	head := line[:markerIdx]
 	best := -1
@@ -127,10 +127,10 @@ func commentStartBefore(line string, markerIdx int) int {
 	return markerIdx
 }
 
-// extractMarkerArg вытаскивает аргумент маркера (условие if/begin) из остатка
-// строки после ключевого слова: обрезает пробелы и, если строка заканчивается
-// закрывающей последовательностью стиля комментария ([commentSuffixes]), тоже
-// её отрезает (иначе она попала бы в текст условия — `<!-- tplater:if x=y -->`).
+// extractMarkerArg extracts a marker argument (the if/begin condition) from the
+// remainder after the keyword: it trims spaces and removes a trailing comment
+// style suffix ([commentSuffixes]) so that it does not enter the condition text
+// (`<!-- tplater:if x=y -->`).
 func extractMarkerArg(rest string) string {
 	s := strings.TrimSpace(rest)
 	for _, suf := range commentSuffixes {
@@ -142,7 +142,7 @@ func extractMarkerArg(rest string) string {
 	return s
 }
 
-// evalConditionExpr разбирает и вычисляет условие §3.2 маркера на values.
+// evalConditionExpr parses and evaluates the marker condition from §3.2 against values.
 func evalConditionExpr(expr string, values settings.Values) (bool, error) {
 	cond, err := manifest.ParseCondition(expr)
 	if err != nil {
@@ -155,29 +155,28 @@ func evalConditionExpr(expr string, values settings.Values) (bool, error) {
 	return ok, nil
 }
 
-// markerFrame — открытый tplater:begin в стеке (для вложенности).
+// markerFrame is an open tplater:begin in the nesting stack.
 type markerFrame struct {
-	line       int    // номер строки begin в исходном файле (для ошибки о непарности)
-	expr       string // исходный текст условия (для сообщения об ошибке)
-	prevActive bool   // active, действовавший ДО этого begin — восстанавливается на end
+	line       int    // begin line number in the source file (for an unpaired error)
+	expr       string // original condition text (for an error message)
+	prevActive bool   // active before this begin; restored at end
 }
 
-// processMarkers обрабатывает внутрифайловые маркеры tplater:if / tplater:if! /
-// tplater:begin / tplater:end над содержимым файла ПОСЛЕ его
-// текстового рендера или байт-копирования — см. интеграцию в engine.go
-// (renderFile) и описание поведения  о выборе точки интеграции и исключении
-// copyWithoutRender-совпадений.
+// processMarkers handles in-file tplater:if / tplater:if! / tplater:begin /
+// tplater:end markers in file content AFTER text rendering or byte copying;
+// see the engine.go (renderFile) integration and the  behavior description
+// for the integration point and copyWithoutRender exclusion.
 //
-// path — логический путь файла в дереве проекта, используется только в
-// сообщениях об ошибках. values — [settings.Resolved.ActiveValues] шаблона.
+// path is the logical file path in the project tree, used only in error
+// messages. values is the template's [settings.Resolved.ActiveValues].
 //
-// Ошибки (все — fatal, с path:строка): непарный tplater:begin, tplater:end без
-// tplater:begin, синтаксически некорректное или ссылающееся на неизвестную
-// группу условие, неизвестный tplater-маркер (защита от опечаток, например
-// tplater:iff). Вложенные блоки поддержаны через стек [markerFrame].
+// Errors (all fatal, with path:line): unmatched tplater:begin, tplater:end
+// without tplater:begin, syntactically invalid conditions or conditions
+// referencing unknown groups, and unknown tplater markers (typo protection,
+// such as tplater:iff). Nested blocks are supported through [markerFrame].
 func processMarkers(path string, data []byte, values settings.Values) ([]byte, error) {
 	if !bytes.Contains(data, []byte(markerPrefix)) {
-		return data, nil // fast path: в файле нет маркеров вовсе
+		return data, nil // fast path: the file has no markers at all
 	}
 
 	lines := strings.Split(string(data), "\n")
@@ -208,7 +207,7 @@ func processMarkers(path string, data []byte, values settings.Values) ([]byte, e
 			}
 			stack = append(stack, markerFrame{line: lineNo, expr: expr, prevActive: active})
 			active = active && ok
-			// строка самого begin всегда удаляется из вывода.
+			// The begin line itself is always removed from the output.
 
 		case markerKindEnd:
 			if len(stack) == 0 {
@@ -217,7 +216,7 @@ func processMarkers(path string, data []byte, values settings.Values) ([]byte, e
 			top := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			active = top.prevActive
-			// строка самого end всегда удаляется из вывода.
+			// The end line itself is always removed from the output.
 
 		case markerKindIf, markerKindIfInverse:
 			expr := extractMarkerArg(line[m.argIdx:])
@@ -228,10 +227,10 @@ func processMarkers(path string, data []byte, values settings.Values) ([]byte, e
 			if m.kind == markerKindIfInverse {
 				ok = !ok
 			}
-			// active главнее хвостового маркера: строка внутри выключенного
-			// tplater:begin-блока вырезается целиком независимо от исхода
-			// собственного условия (но условие всё равно проверено выше —
-			// синтаксис/группа валидны и в мёртвом коде, как требует lint).
+			// active takes precedence over a trailing marker: a line inside a disabled
+			// tplater:begin block is removed in full regardless of its own condition
+			// (the condition was still checked above, so syntax and group are valid in
+			// dead code as required by lint).
 			if !active || !ok {
 				continue
 			}
@@ -247,10 +246,10 @@ func processMarkers(path string, data []byte, values settings.Values) ([]byte, e
 
 	result := []byte(strings.Join(out, "\n"))
 	if bytes.Contains(result, []byte(markerPrefix)) {
-		// Защитная сеть: по построению сюда попадать не должно
-		// — каждый маркер выше либо обработан, либо уже вернул ошибку. Если
-		// "tplater:" всё же остался в выводе, это баг обработки маркеров, а
-		// не опечатка автора шаблона (та уже отловлена как markerKindUnknown).
+		// Safety net: control should never reach this point; every marker above was
+		// either handled or returned an error. If "tplater:" remains in the output,
+		// it is a marker-processing bug, not a template-author typo (already caught
+		// as markerKindUnknown).
 		return nil, fmt.Errorf("engine: %s: маркер tplater: остался в обработанном выводе (внутренняя ошибка)", path)
 	}
 	return result, nil

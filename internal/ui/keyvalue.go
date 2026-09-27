@@ -8,33 +8,31 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// KeyValue — компактный блок "ключ: значение" (шапка `template show`,
-// сводки survey/settings) с выравниванием значений по самому длинному ключу
-// и единым отступом 2 пробела (см. реализацию реализацию, требование консистентности
-// отступов). Порядок пар — порядок вызовов [KeyValue.Add].
+// KeyValue is a compact "key: value" block for `template show` headers and
+// survey/settings summaries. It aligns values to the longest key with a uniform
+// two-space indent. Pair order is the order of [KeyValue.Add] calls.
 type KeyValue struct {
 	pairs [][2]string
 }
 
-// NewKeyValue создаёт пустой блок.
+// NewKeyValue creates an empty block.
 func NewKeyValue() *KeyValue {
 	return &KeyValue{}
 }
 
-// Add добавляет пару key/value и возвращает kv для чейнинга. Пустое value
-// добавляется как есть — решение пропускать пустые поля остаётся за
-// вызывающим кодом.
+// Add adds a key/value pair and returns kv for chaining. An empty value is added
+// unchanged; the caller decides whether to omit empty fields.
 func (kv *KeyValue) Add(key, value string) *KeyValue {
 	kv.pairs = append(kv.pairs, [2]string{key, value})
 	return kv
 }
 
-// Render пишет блок в w: каждая пара — своя строка "  key: value",
-// значения выровнены по самому длинному "key:" среди всех пар.
+// Render writes the block to w, one "  key: value" pair per line, aligning values
+// to the longest "key:" among all pairs.
 func (kv *KeyValue) Render(w io.Writer) {
 	maxLabel := 0
 	for _, p := range kv.pairs {
-		if n := lipgloss.Width(p[0]) + 1; n > maxLabel { // +1 за ":"
+		if n := lipgloss.Width(p[0]) + 1; n > maxLabel { // +1 for ":"
 			maxLabel = n
 		}
 	}
@@ -48,9 +46,8 @@ func (kv *KeyValue) Render(w io.Writer) {
 	}
 }
 
-// String возвращает блок как строку без завершающего "\n" сверх последней
-// строки — удобно для вставки в более крупный текст (например, в сводку
-// survey перед подтверждением, см. internal/survey/flow.go).
+// String returns the block without an extra trailing "\n", convenient for
+// inserting it into larger text such as a survey summary before confirmation.
 func (kv *KeyValue) String() string {
 	var b strings.Builder
 	kv.Render(&b)

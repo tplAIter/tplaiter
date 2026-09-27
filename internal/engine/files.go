@@ -7,20 +7,20 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// compileFileRules строит набор глобов файлов, исключаемых из рендер-набора
-// правилами files манифеста:
+// compileFileRules builds the set of file globs excluded from the render set
+// by the manifest's files rules:
 //
-//	render-набор = все файлы дерева MINUS (paths правил с ложным условием)
-//	                                 MINUS (remove правил с истинным условием)
+//	render set = all tree files MINUS (paths rules with a false condition)
+//	                                 MINUS (remove rules with a true condition)
 //
-// То есть paths — «включить при true» (полноценность: при false путь
-// исключается, будто его не было); remove — «удалить при true» (composite
-// removal — , аналог COMPOSITE_REMOVALS python-хука).
+// Thus paths means “include when true” (when false, the path is excluded as if
+// it did not exist); remove means “remove when true” (composite removal — the
+// equivalent of the COMPOSITE_REMOVALS Python hook).
 //
-// Условие правила — ровно одно из When ([manifest.ParseCondition] +
-// [settings.Eval]) или AnyOf (список условий, семантика OR через
-// [settings.EvalAny]); правило без обоих полей — no-op (валидатор манифеста,
-// реализация , такие правила отклоняет — здесь просто игнорируется).
+// A rule condition is exactly one of When ([manifest.ParseCondition] plus
+// [settings.Eval]) or AnyOf (a list of conditions with OR semantics through
+// [settings.EvalAny]); a rule with neither field is a no-op (the manifest
+// validator rejects such rules; this layer simply ignores them).
 func compileFileRules(rules []manifest.FileRule, values settings.Values) (*globSet, error) {
 	var excluded []string
 	for i := range rules {
@@ -38,10 +38,10 @@ func compileFileRules(rules []manifest.FileRule, values settings.Values) (*globS
 	return newGlobSet(excluded), nil
 }
 
-// evalFileRule вычисляет условие одного правила files. Неизвестная группа в
-// условии — ошибка автора манифеста (прерывает Render), а не молчаливое false:
-// files-правила определяют состав дерева, тихая ошибка здесь означала бы
-// незаметно неполный проект.
+// evalFileRule evaluates one files-rule condition. An unknown group in the
+// condition is a manifest authoring error (it aborts Render), rather than a
+// silent false: files rules define the tree contents, so silently ignoring an
+// error would produce an incomplete project without notice.
 func evalFileRule(rule *manifest.FileRule, values settings.Values) (bool, error) {
 	switch {
 	case rule.When != "":

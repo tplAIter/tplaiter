@@ -9,9 +9,9 @@ import (
 	"strings"
 )
 
-// Issue — одна проблема валидации. Path — логический адрес внутри манифеста
-// (например `settings[0].options[1].id`), стабильнее номера строки при
-// переформатировании YAML.
+// Issue is one validation problem. Path is a logical address within the manifest
+// (for example, `settings[0].options[1].id`), more stable than a line number
+// when YAML is reformatted.
 type Issue struct {
 	Path string
 	Msg  string
@@ -24,8 +24,8 @@ func (i Issue) String() string {
 	return i.Path + ": " + i.Msg
 }
 
-// ValidationErrors — агрегированный список проблем валидации манифеста. Все
-// проблемы собираются за один проход и возвращаются вместе.
+// ValidationErrors is an aggregate list of manifest validation problems. All
+// problems are collected in one pass and returned together.
 type ValidationErrors []Issue
 
 func (e ValidationErrors) Error() string {
@@ -44,18 +44,18 @@ var (
 	groupRe  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	optionRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 	semverRe = regexp.MustCompile(`^\d+\.\d+\.\d+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`)
-	// paramNameRe — имя параметра генератора (флаг CLI): буква, затем
-	// буквы/цифры/дефис (kebab, напр. with-list).
+	// paramNameRe is a generator parameter name (a CLI flag): a letter followed
+	// by letters, digits, or a hyphen (kebab case, e.g. with-list).
 	paramNameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 )
 
-// groupInfo — сведения о группе для проверки ссылок в условиях.
+// groupInfo contains group data for condition reference checks.
 type groupInfo struct {
 	typ     string
-	options map[string]bool // id опции -> planned?
+	options map[string]bool // option id -> planned?
 }
 
-// condRef — условие с местом объявления для отложенной проверки ссылок.
+// condRef is a condition with its declaration location for deferred reference checks.
 type condRef struct {
 	loc  string
 	expr string
@@ -67,8 +67,8 @@ type validator struct {
 	conds  []condRef
 }
 
-// Validate проверяет манифест шаблона по  Возвращает nil, если
-// проблем нет, иначе [ValidationErrors] со всеми найденными проблемами.
+// Validate checks a template manifest. It returns nil when there are no problems,
+// otherwise [ValidationErrors] with all discovered problems.
 func (t *Template) Validate() error {
 	v := &validator{groups: make(map[string]groupInfo)}
 
@@ -80,10 +80,10 @@ func (t *Template) Validate() error {
 	v.checkGenerators(t.Generators)
 	v.checkEngineGlobs(t.Engine)
 	v.checkPlaybooks(t.Environment.Playbooks)
-	v.checkLint(t.Lint) // проверку: opt-in arch-lint секция, см. lint_validate.go
+	v.checkLint(t.Lint) // checks the opt-in architecture-lint section; see lint_validate.go
 
-	// Проверка ссылок в условиях — после полного построения карты групп,
-	// т.к. условие может ссылаться на группу, объявленную позже/глубже.
+	// Check condition references after fully building the group map because a
+	// condition may refer to a group declared later or deeper in the tree.
 	v.checkConditionRefs()
 
 	if len(v.issues) == 0 {
@@ -109,8 +109,8 @@ func (v *validator) checkMetadata(t *Template) {
 	}
 }
 
-// walkGroups рекурсивно обходит дерево настроек, регистрируя группы и опции и
-// собирая условия (Option.Requires) для отложенной проверки.
+// walkGroups recursively traverses the settings tree, registering groups and
+// options and collecting conditions (Option.Requires) for deferred checking.
 func (v *validator) walkGroups(groups []SettingGroup, prefix string) {
 	for i := range groups {
 		g := &groups[i]
@@ -138,14 +138,14 @@ func (v *validator) checkGroup(g *SettingGroup, loc string) {
 	optionIDs := v.checkOptions(g, loc)
 	v.checkDefault(g, loc, optionIDs)
 
-	// Регистрируем группу (первое вхождение) для проверки ссылок.
+	// Register the group (first occurrence) for reference checks.
 	if g.Group != "" {
 		if _, exists := v.groups[g.Group]; !exists {
 			v.groups[g.Group] = groupInfo{typ: g.Type, options: optionIDs}
 		}
 	}
 
-	// Рекурсия во вложенные группы уточнений.
+	// Recurse into nested refinement groups.
 	for i := range g.Options {
 		opt := &g.Options[i]
 		optLoc := fmt.Sprintf("%s.options[%d]", loc, i)
@@ -156,7 +156,7 @@ func (v *validator) checkGroup(g *SettingGroup, loc string) {
 	}
 }
 
-// checkOptions проверяет опции группы и возвращает множество id -> planned.
+// checkOptions validates group options and returns the id -> planned set.
 func (v *validator) checkOptions(g *SettingGroup, loc string) map[string]bool {
 	ids := make(map[string]bool)
 	needsOptions := g.Type == TypeSelect || g.Type == TypeMultiselect
@@ -194,8 +194,8 @@ func (v *validator) checkOptions(g *SettingGroup, loc string) map[string]bool {
 	return ids
 }
 
-// checkDefault сверяет default с типом группы и (для select/multiselect) с
-// множеством опций; planned-опция не может быть значением по умолчанию.
+// checkDefault matches default against the group type and, for select/multiselect,
+// against the option set; a planned option cannot be the default value.
 func (v *validator) checkDefault(g *SettingGroup, loc string, optionIDs map[string]bool) {
 	if g.Default == nil {
 		return
@@ -313,7 +313,7 @@ func (v *validator) checkCommands(cmds map[string]Command) {
 	for name := range cmds {
 		names = append(names, name)
 	}
-	sort.Strings(names) // детерминированный порядок проблем
+	sort.Strings(names) // deterministic issue order
 	for _, name := range names {
 		c := cmds[name]
 		loc := fmt.Sprintf("commands[%q]", name)
@@ -341,8 +341,8 @@ func (v *validator) checkGenerators(gens []Generator) {
 	}
 }
 
-// checkGeneratorForm проверяет взаимоисключение одиночной (snippet+target) и
-// мультифайловой (targets[]) форм генератора: ровно одна должна быть задана.
+// checkGeneratorForm validates mutual exclusion of single-file (snippet+target)
+// and multi-file (targets[]) generator forms: exactly one must be specified.
 func (v *validator) checkGeneratorForm(g *Generator, loc string) {
 	hasSingle := strings.TrimSpace(g.Snippet) != "" || strings.TrimSpace(g.Target) != ""
 	hasMulti := len(g.Targets) > 0
@@ -353,7 +353,7 @@ func (v *validator) checkGeneratorForm(g *Generator, loc string) {
 	case hasMulti:
 		v.checkTargets(g.Targets, loc)
 	default:
-		// Одиночная форма (или пустой генератор): оба поля обязательны.
+		// Single-file form (or an empty generator): both fields are required.
 		if strings.TrimSpace(g.Snippet) == "" {
 			v.add(loc+".snippet", "snippet генератора обязателен (или используйте targets[])")
 		}
@@ -429,8 +429,8 @@ func (v *validator) checkPlaybooks(pbs []Playbook) {
 	}
 }
 
-// checkConditionRefs проверяет синтаксис каждого собранного условия и ссылочную
-// целостность его атомов относительно карты групп.
+// checkConditionRefs validates syntax of every collected condition and the
+// reference integrity of its atoms against the group map.
 func (v *validator) checkConditionRefs() {
 	for _, c := range v.conds {
 		cond, err := ParseCondition(c.expr)
@@ -464,7 +464,7 @@ func (v *validator) checkAtomRef(loc string, atom Atom) {
 			v.add(loc, "int-группа %q сравнивается с нечисловым %q", atom.Group, atom.Value)
 		}
 	case TypeString:
-		// Значение произвольно — проверить нечего.
+		// The value is arbitrary, so there is nothing to validate.
 	}
 }
 

@@ -8,18 +8,18 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// Все описания tools и их параметров — НА РУССКОМ: их читают AI-агенты, для
-// которых этот сервер и предназначен. Схемы типизированы (mcp.NewTypedToolHandler
-// связывает JSON-аргументы со структурой).
+// All tool and parameter descriptions are IN RUSSIAN: AI agents, the intended
+// users of this server, read them. Schemas are typed (mcp.NewTypedToolHandler
+// binds JSON arguments to a structure).
 
-// registerTools регистрирует ~20 tools поверх подкоманд tplater.
+// registerTools registers about 20 tools over tplater subcommands.
 //
-// Осознанно НЕ выставлены (см. решения в docs и финальном отчёте):
-//   - auth_* / repo add с токеном: секреты через агента — плохая идея; токены
-//     заводятся человеком заранее (`tplater repo add` с интерактивным auth или
-//     --token-stdin). MCP-сервер stdin подпроцессам не подключает.
-//   - upgrade / self-upgrade: git-push/MR и самообновление бинарника из агента
-//     без явного подтверждения человека опасны.
+// Deliberately NOT exposed (see the decisions in docs and the final report):
+//   - auth_* / repo add with a token: passing secrets through an agent is a bad
+//     idea; a human sets tokens up in advance (`tplater repo add` with interactive
+//     auth or --token-stdin). The MCP server does not connect stdin to children.
+//   - upgrade / self-upgrade: an agent performing git push/MR work or binary
+//     self-upgrade without explicit human approval is dangerous.
 func (s *Server) registerTools() {
 	s.addRepoTools()
 	s.addTemplateTools()
@@ -188,8 +188,8 @@ func (s *Server) addProjectTools() {
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		// Сборка/тесты на чистом Go cache легко выходят за 120 секунд:
-		// manifest-команды получают тот же расширенный лимит, что new/update.
+		// Building/testing with a clean Go cache easily exceeds 120 seconds, so
+		// manifest commands receive the same longer timeout as new/update.
 		return s.exec(ctx, cwd, argvRun(a.Command, a.Args), longTimeout), nil
 	}))
 
@@ -247,9 +247,8 @@ func (s *Server) addProjectTools() {
 	}))
 }
 
-// handleStats исполняет `stats --json` и возвращает распарсенный (для
-// валидации) и переформатированный JSON. Если stdout не парсится как JSON —
-// отдаётся как есть.
+// handleStats executes `stats --json` and returns parsed (for validation) and
+// reformatted JSON. If stdout cannot be parsed as JSON, it is returned as is.
 func (s *Server) handleStats(ctx context.Context, cwd string) *mcp.CallToolResult {
 	res, runErr := s.runCLI(ctx, cwd, argvStats(), defaultTimeout)
 	if failed(res, runErr) {
@@ -428,7 +427,7 @@ func (s *Server) addWorkspaceTools() {
 	}))
 }
 
-// ── авторские tools шаблонов (lint / init-template) ─────────────────────────
+// ── template-author tools (lint / init-template) ─────────────────────────────
 
 type lintTemplateArgs struct {
 	Path  string `json:"path"`
@@ -471,7 +470,7 @@ func (s *Server) addTemplateAuthorTools() {
 	}))
 }
 
-// ── прочее (projects / env) ─────────────────────────────────────────────────
+// ── miscellaneous (projects / env) ───────────────────────────────────────────
 
 type envSetupArgs struct {
 	Dir  string `json:"dir"`
@@ -503,8 +502,8 @@ func (s *Server) addMiscTools() {
 	}))
 }
 
-// exec — общий путь исполнения tool'а: запускает подпроцесс и транслирует
-// результат в MCP-результат (провал → isError с полной диагностикой).
+// exec is the common tool execution path: it starts a child process and
+// translates its result into an MCP result (failure yields isError with complete diagnostics).
 func (s *Server) exec(ctx context.Context, cwd string, argv []string, timeout time.Duration) *mcp.CallToolResult {
 	res, runErr := s.runCLI(ctx, cwd, argv, timeout)
 	return toolResult(res, runErr)

@@ -1,24 +1,23 @@
 package manifest
 
-// LintRuleID-константы известных arch-lint правил (docs/research/clean-codegen.md
-// §1 заимствование 4, §4 ). Список закрыт намеренно: opt-in секция lint не
-// является общим движком статического анализа — это узкий набор инвариантов,
-// которые движок [lintengine аналог] умеет проверять по AST рендера.
+// LintRuleID constants for known arch-lint rules (docs/research/clean-codegen.md
+// §1 borrowing 4, §4 ). The list is intentionally closed: the opt-in lint
+// section is not a general static-analysis engine, but a narrow set of
+// invariants that the [lintengine analogue] can check in the render AST.
 const (
-	// LintRuleCtxFirst — экспортируемая функция/метод с параметрами обязана
-	// принимать context.Context первым параметром (конструкторы New*
-	// исключены).
+	// LintRuleCtxFirst — an exported function/method with parameters must take
+	// context.Context as its first parameter (New* constructors are excluded).
 	LintRuleCtxFirst = "ctx-first"
-	// LintRuleNoInit — запрет func init() в paths.
+	// LintRuleNoInit — prohibit func init() in paths.
 	LintRuleNoInit = "no-init"
-	// LintRuleGeneratedMarker — файлы по глобам обязаны нести маркер
-	// «Code generated»/«DO NOT EDIT» в первых строках.
+	// LintRuleGeneratedMarker — files matched by the globs must carry a
+	// “Code generated”/“DO NOT EDIT” marker in their first lines.
 	LintRuleGeneratedMarker = "generated-marker"
-	// LintRuleNoPanic — запрет panic() вне func main/func init.
+	// LintRuleNoPanic — prohibit panic() outside func main/func init.
 	LintRuleNoPanic = "no-panic"
 )
 
-// knownLintRuleIDs — множество допустимых значений LintRule.ID.
+// knownLintRuleIDs is the set of allowed LintRule.ID values.
 var knownLintRuleIDs = map[string]bool{
 	LintRuleCtxFirst:        true,
 	LintRuleNoInit:          true,
@@ -26,18 +25,18 @@ var knownLintRuleIDs = map[string]bool{
 	LintRuleNoPanic:         true,
 }
 
-// LintConfig — opt-in секция `lint` манифеста шаблона ( реализация проверку):
-// шаблон сам декларирует свои архитектурные инварианты, которые
-// `tplater lint-template` проверяет по AST пробного рендера. Пустая секция
-// (Rules == nil) не меняет поведение lint-template — правил нет, проверок нет.
+// LintConfig is the template manifest's opt-in `lint` section (the  check):
+// the template declares its architectural invariants, which `tplater
+// lint-template` checks against a trial render AST. An empty section
+// (Rules == nil) does not change lint-template behavior: no rules, no checks.
 type LintConfig struct {
 	Rules []LintRule `yaml:"rules"`
 }
 
-// LintRule — одно arch-lint правило: известный ID + глобы, к каким файлам
-// рендера правило применяется (Paths — включение, Exclude — исключение из
-// включённого множества). Язык глобов — тот же, что у files[].paths (
-// §4): `*` в пределах сегмента, `**` как отдельный сегмент, `?` — один символ.
+// LintRule is one arch-lint rule: a known ID and globs selecting the rendered
+// files to which it applies (Paths includes, Exclude removes from the included
+// set). The glob language is the same as files[].paths (§4): `*` within a
+// segment, `**` as a separate segment, and `?` for one character.
 type LintRule struct {
 	ID      string   `yaml:"id"`
 	Paths   []string `yaml:"paths"`

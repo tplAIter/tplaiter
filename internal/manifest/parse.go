@@ -9,13 +9,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ErrUnsupportedAPIVersion возвращается, когда major-версия контракта не
-// поддерживается этим tplater (сообщение содержит призыв обновиться).
+// ErrUnsupportedAPIVersion is returned when this tplater does not support the
+// contract major version (the message asks the user to update).
 var ErrUnsupportedAPIVersion = errors.New("неподдерживаемая версия контракта apiVersion")
 
-// LoadTemplate читает и разбирает манифест шаблона по пути path. Незнакомые
-// поля отклоняются (KnownFields), apiVersion и kind проверяются. Валидация
-// содержимого (§9) выполняется отдельно методом [Template.Validate].
+// LoadTemplate reads and parses a template manifest at path. Unknown fields are
+// rejected (KnownFields), and apiVersion and kind are checked. Content validation
+// (§9) is separately performed by [Template.Validate].
 func LoadTemplate(path string) (*Template, error) {
 	data, err := readFile(path)
 	if err != nil {
@@ -31,7 +31,7 @@ func LoadTemplate(path string) (*Template, error) {
 	return &t, nil
 }
 
-// LoadRepository читает и разбирает манифест мульти-шаблонного репозитория.
+// LoadRepository reads and parses a multi-template repository manifest.
 func LoadRepository(path string) (*Repository, error) {
 	data, err := readFile(path)
 	if err != nil {
@@ -47,7 +47,7 @@ func LoadRepository(path string) (*Repository, error) {
 	return &r, nil
 }
 
-// LoadProject читает и разбирает проектный маркер .tplaiter/project.yaml.
+// LoadProject reads and parses the .tplaiter/project.yaml project marker.
 func LoadProject(path string) (*Project, error) {
 	data, err := readFile(path)
 	if err != nil {
@@ -63,8 +63,8 @@ func LoadProject(path string) (*Project, error) {
 	return &p, nil
 }
 
-// ParseTemplate разбирает манифест шаблона из байтов (без чтения файла) — для
-// снимков и тестов.
+// ParseTemplate parses a template manifest from bytes without reading a file, for
+// snapshots and tests.
 func ParseTemplate(data []byte) (*Template, error) {
 	var t Template
 	if err := decodeStrict(data, &t); err != nil {
@@ -84,8 +84,8 @@ func readFile(path string) ([]byte, error) {
 	return data, nil
 }
 
-// decodeStrict разбирает YAML с KnownFields(true): любое незнакомое поле — это
-// ошибка с координатами строки/колонки от yaml.v3.
+// decodeStrict parses YAML with KnownFields(true): any unknown field is an error
+// with line and column coordinates from yaml.v3.
 func decodeStrict(data []byte, v any) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -95,9 +95,9 @@ func decodeStrict(data []byte, v any) error {
 	return nil
 }
 
-// checkKind проверяет kind и major-версию apiVersion. apiVersion разбирается
-// первым: несовместимый major важнее любой другой ошибки — пользователь должен
-// сначала обновить CLI.
+// checkKind validates kind and the apiVersion major version. It parses apiVersion
+// first: an incompatible major takes precedence over any other error because the
+// user must update the CLI first.
 func checkKind(apiVersion, kind, want string) error {
 	if err := checkAPIVersion(apiVersion); err != nil {
 		return err
@@ -108,7 +108,7 @@ func checkKind(apiVersion, kind, want string) error {
 	return nil
 }
 
-// checkAPIVersion проверяет группу и major-версию контракта.
+// checkAPIVersion validates the contract group and major version.
 func checkAPIVersion(apiVersion string) error {
 	if apiVersion == "" {
 		return fmt.Errorf("%w: поле apiVersion пустое (ожидается %s)", ErrUnsupportedAPIVersion, APIVersion)
@@ -130,7 +130,7 @@ func checkAPIVersion(apiVersion string) error {
 	return nil
 }
 
-// splitAPIVersion делит "group/version" на части.
+// splitAPIVersion splits "group/version" into its parts.
 func splitAPIVersion(s string) (group, version string, ok bool) {
 	for i := 0; i < len(s); i++ {
 		if s[i] == '/' {
@@ -140,7 +140,7 @@ func splitAPIVersion(s string) (group, version string, ok bool) {
 	return "", "", false
 }
 
-// parseMajor извлекает целое major из версии вида "v1alpha1" → 1.
+// parseMajor extracts an integer major from a version like "v1alpha1" → 1.
 func parseMajor(version string) (int, bool) {
 	if len(version) < 2 || version[0] != 'v' {
 		return 0, false

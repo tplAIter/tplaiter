@@ -6,36 +6,36 @@ import (
 	"strings"
 )
 
-// Операторы атома условия.
+// Condition atom operators.
 const (
 	OpEq  = "="
 	OpNeq = "!="
 )
 
-// ErrEmptyCondition возвращается [ParseCondition] для пустой строки условия.
+// ErrEmptyCondition is returned by [ParseCondition] for an empty condition string.
 var ErrEmptyCondition = errors.New("пустое условие")
 
-// Atom — элементарное сравнение `group=value` или `group!=value` (для
-// multiselect `=` означает «содержит», `!=` — «не содержит»); toggle
-// сравнивается с `true`/`false`. Семантику вычисления реализует резолвер
-// (реализация ); здесь только структура и синтаксис.
+// Atom is an elementary `group=value` or `group!=value` comparison (for a
+// multiselect, `=` means contains and `!=` means does not contain); a toggle is
+// compared with `true`/`false`. The resolver implements evaluation semantics;
+// this package only defines structure and syntax.
 type Atom struct {
 	Group string
 	Op    string // OpEq | OpNeq
 	Value string
 }
 
-// String возвращает канонический вид атома (`group=value`).
+// String returns the canonical atom representation (`group=value`).
 func (a Atom) String() string { return a.Group + a.Op + a.Value }
 
-// Condition — конъюнкция атомов через `&&`. Дизъюнкции
-// выражаются списком условий на уровне вызывающего поля (`when: [a, b]`),
-// внутри одной строки OR не поддерживается — детерминизм важнее.
+// Condition is a conjunction of atoms joined by `&&`. Disjunction is expressed
+// as a list of conditions in the calling field (`when: [a, b]`); OR is not
+// supported inside one string to preserve determinism.
 type Condition struct {
 	Atoms []Atom
 }
 
-// String возвращает канонический вид условия (атомы через ` && `).
+// String returns the canonical condition form (atoms joined by ` && `).
 func (c Condition) String() string {
 	parts := make([]string, len(c.Atoms))
 	for i, a := range c.Atoms {
@@ -44,8 +44,8 @@ func (c Condition) String() string {
 	return strings.Join(parts, " && ")
 }
 
-// Groups возвращает имена групп, на которые ссылается условие (в порядке
-// появления, с повторами — вызывающий дедуплицирует при необходимости).
+// Groups returns group names referenced by the condition in occurrence order,
+// including duplicates; callers deduplicate them if needed.
 func (c Condition) Groups() []string {
 	groups := make([]string, 0, len(c.Atoms))
 	for _, a := range c.Atoms {
@@ -54,9 +54,9 @@ func (c Condition) Groups() []string {
 	return groups
 }
 
-// ParseCondition разбирает строку условия §3.2. Возвращает [ErrEmptyCondition]
-// для пустой строки и содержательную ошибку синтаксиса иначе. Семантика
-// (существование групп/значений) проверяется валидатором отдельно.
+// ParseCondition parses a §3.2 condition string. It returns [ErrEmptyCondition]
+// for an empty string and a descriptive syntax error otherwise. The validator
+// separately checks semantics (the existence of groups and values).
 func ParseCondition(s string) (Condition, error) {
 	trimmed := strings.TrimSpace(s)
 	if trimmed == "" {
@@ -75,8 +75,8 @@ func ParseCondition(s string) (Condition, error) {
 	return Condition{Atoms: atoms}, nil
 }
 
-// parseAtom разбирает один атом. `!=` проверяется раньше `=`, иначе `!=` был бы
-// ошибочно разрезан по `=` с пустым оператором.
+// parseAtom parses one atom. It checks `!=` before `=`, otherwise `!=` would be
+// incorrectly split at `=` with an empty operator.
 func parseAtom(raw string) (Atom, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {

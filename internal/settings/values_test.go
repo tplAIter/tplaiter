@@ -39,7 +39,7 @@ func TestDefaultValues_FullFixture(t *testing.T) {
 	tpl := loadRepoFixture(t, "full.yaml")
 	got := DefaultValues(tpl)
 
-	// Вложенные группы получают дефолты всегда, независимо от выбора родителя.
+	// Nested groups always receive defaults, regardless of the parent's choice.
 	checks := map[string]any{
 		"database":     "none",
 		"idempotency":  false,

@@ -6,10 +6,9 @@ import (
 	"strings"
 )
 
-// checkLint валидирует opt-in секцию lint (реализация проверку): ID правила известен,
-// paths непустые и являются корректными глобами, exclude (если задан) —
-// корректные глобы. Секция необязательна — пустой/нулевой LintConfig не
-// добавляет проблем.
+// checkLint validates the opt-in lint section (the  check): the rule ID is
+// known, paths are non-empty valid globs, and exclude (when set) contains valid
+// globs. The section is optional; an empty or nil LintConfig adds no problems.
 func (v *validator) checkLint(l LintConfig) {
 	for i := range l.Rules {
 		r := &l.Rules[i]
@@ -29,8 +28,8 @@ func (v *validator) checkLint(l LintConfig) {
 	}
 }
 
-// sortedLintRuleIDs возвращает известные ID правил в детерминированном порядке
-// (для сообщений валидатора).
+// sortedLintRuleIDs returns known rule IDs in deterministic order (for
+// validator messages).
 func sortedLintRuleIDs() []string {
 	ids := make([]string, 0, len(knownLintRuleIDs))
 	for id := range knownLintRuleIDs {

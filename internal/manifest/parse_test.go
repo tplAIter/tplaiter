@@ -28,7 +28,7 @@ func TestLoadTemplate_Full(t *testing.T) {
 	if tpl.Settings[0].Group != "database" || tpl.Settings[0].Type != TypeSelect {
 		t.Errorf("settings[0] = %+v", tpl.Settings[0])
 	}
-	// Вложенная группа idempotency под опцией postgres.
+	// Nested idempotency group under the postgres option.
 	pg := tpl.Settings[0].Options[1]
 	if pg.ID != "postgres" || len(pg.Settings) != 1 || pg.Settings[0].Group != "idempotency" {
 		t.Errorf("postgres option = %+v", pg)
@@ -100,7 +100,7 @@ func TestLoadTemplate_UnknownField(t *testing.T) {
 }
 
 func TestLoadTemplate_WrongKind(t *testing.T) {
-	// project.yaml имеет kind Project — LoadTemplate обязан отклонить.
+	// project.yaml has kind Project; LoadTemplate must reject it.
 	_, err := LoadTemplate(fixture("project.yaml"))
 	if err == nil {
 		t.Fatal("ожидалась ошибка неверного kind")

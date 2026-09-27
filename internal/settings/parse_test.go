@@ -61,7 +61,7 @@ func TestParseSet_Errors(t *testing.T) {
 }
 
 func TestParseSet_PlannedOptionRejected(t *testing.T) {
-	tpl := loadRepoFixture(t, "full.yaml") // mysql помечена planned
+	tpl := loadRepoFixture(t, "full.yaml") // mysql is marked planned
 	_, _, err := ParseSet(tpl, "database=mysql")
 	if err == nil || !strings.Contains(err.Error(), "planned") {
 		t.Fatalf("planned-опция должна отклоняться, получено: %v", err)

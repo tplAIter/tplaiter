@@ -1,28 +1,27 @@
 package ui
 
-// StatusKind — семантический статус одной позиции отчёта/строки таблицы:
-// проверка окружения (doctor), доступность записи реестра (projects list),
-// выполнимость when-условия (run/env/gen/ai list), объявленная-но-не-
-// реализованная опция манифеста (template show, planned).
+// StatusKind is the semantic state of a report item or table row: environment
+// check (doctor), registry-record availability (projects list), when-condition
+// satisfiability (run/env/gen/ai list), or a declared but unimplemented manifest
+// option (template show, planned).
 type StatusKind int
 
 const (
-	// StatusOK — проверка/позиция в порядке.
+	// StatusOK means the check/item is in order.
 	StatusOK StatusKind = iota
-	// StatusWarn — не критично, но требует внимания (необязательный
-	// инструмент не найден, запись реестра под вопросом).
+	// StatusWarn is noncritical but needs attention (an optional tool is absent
+	// or a registry record is questionable).
 	StatusWarn
-	// StatusFail — критично (обязательный инструмент не найден, ошибка).
+	// StatusFail is critical (a required tool is absent or an error occurred).
 	StatusFail
-	// StatusPlanned — заявлено манифестом, но ещё не реализовано (
-	// "честность каталога": planned-опции показываются, но приглушённо).
+	// StatusPlanned is declared by the manifest but not yet implemented; planned
+	// options remain visible but muted.
 	StatusPlanned
 )
 
-// StatusIcon возвращает символ статуса, окрашенный палитрой pal: ✓ (OK),
-// ! (Warn), ✗ (Fail), ○ (Planned, приглушённый). При pal.Enabled() == false
-// возвращает символ без ANSI-раскраски (иконка остаётся — она несёт смысл
-// сама по себе, в отличие от цвета).
+// StatusIcon returns a pal-colored state symbol: ✓ (OK), ! (Warn), ✗ (Fail),
+// or ○ (muted Planned). When pal.Enabled() is false it returns the symbol
+// without ANSI color; unlike color, the icon carries meaning by itself.
 func StatusIcon(pal Palette, kind StatusKind) string {
 	switch kind {
 	case StatusOK:

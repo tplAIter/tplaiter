@@ -7,16 +7,16 @@ import (
 	"github.com/charmbracelet/glamour"
 )
 
-// markdownWordWrap — ширина переноса строк markdown-рендера glamour;
-// совпадает с типичной шириной терминала, не привязана к реальной (glamour
-// сам её не определяет без TTY).
+// markdownWordWrap is the wrap width for Glamour markdown rendering. It matches
+// a typical terminal width and is not tied to the actual width, which Glamour
+// cannot determine without a TTY.
 const markdownWordWrap = 100
 
-// Markdown печатает markdown-текст src в w. При colorEnabled (TTY и нет
-// NO_COLOR — см. [ColorEnabled]) рендерится через glamour с авто-стилем
-// (сам определяет светлый/тёмный фон терминала); иначе печатается исходный
-// текст как есть — именно так, а не "выключенным" glamour-рендером, чтобы
-// пайпы/CI получали чистый markdown без ANSI и без искажений разметки.
+// Markdown writes src markdown to w. When colorEnabled (TTY and no NO_COLOR;
+// see [ColorEnabled]), it renders through Glamour with automatic styling, which
+// determines the light or dark terminal background. Otherwise it writes source
+// text unchanged so pipes and CI receive clean Markdown without ANSI codes or
+// distorted markup.
 func Markdown(w io.Writer, src []byte, colorEnabled bool) error {
 	if !colorEnabled {
 		if _, err := w.Write(src); err != nil {

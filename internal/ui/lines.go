@@ -1,21 +1,20 @@
 package ui
 
-// SuccessLine формирует строку "✓ msg" — иконка в цвете успеха, текст как
-// есть. Используется для итоговых однострочных сообщений (в отличие от
-// [Palette.Success], который просто раскрашивает весь переданный текст).
+// SuccessLine forms "✓ msg": a success-colored icon and unmodified text. It is
+// used for final one-line messages, unlike [Palette.Success], which colors all text.
 func SuccessLine(pal Palette, msg string) string { return StatusIcon(pal, StatusOK) + " " + msg }
 
-// WarnLine формирует строку "! msg" — иконка предупреждения.
+// WarnLine forms "! msg" with a warning icon.
 func WarnLine(pal Palette, msg string) string { return StatusIcon(pal, StatusWarn) + " " + msg }
 
-// ErrorLine формирует строку "✗ msg" — иконка ошибки. Используется, в
-// частности, для префикса "error:" в main.go (см. [ErrorPrefix]).
+// ErrorLine forms "✗ msg" with an error icon. It is used, in particular, for
+// the "error:" prefix in main.go (see [ErrorPrefix]).
 func ErrorLine(pal Palette, msg string) string { return StatusIcon(pal, StatusFail) + " " + msg }
 
-// InfoLine формирует приглушённую информационную строку "ℹ msg".
+// InfoLine forms a muted informational "ℹ msg" line.
 func InfoLine(pal Palette, msg string) string { return pal.Muted("ℹ") + " " + msg }
 
-// ErrorPrefix раскрашивает префикс "error:" палитрой ошибки — отдельно от
-// [ErrorLine], потому что main.go печатает префикс и текст ошибки как два
-// разных Fprintln-аргумента (см. main.go), а не собирает одну строку.
+// ErrorPrefix colors the "error:" prefix with the error palette separately from
+// [ErrorLine], because main.go prints the prefix and error text as two Fprintln
+// arguments rather than composing one line.
 func ErrorPrefix(pal Palette) string { return pal.Error("error:") }

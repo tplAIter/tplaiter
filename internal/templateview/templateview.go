@@ -1,10 +1,8 @@
-// Package templateview рендерит "каталожное" представление шаблона
-// (`tplater template show`, будущий `tplater new --help-template`,
-// §4): шапка метаданных, дерево групп настроек и документация шаблона.
-// Пакет — чистый рендер в io.Writer без доступа к репозиториям/файловой
-// системе шаблона: вызывающий код (internal/cmd) сам разрешает ссылку,
-// делает checkout и передаёт сюда уже разобранный [manifest.Template] и байты
-// docs-файла.
+// Package templateview renders a template's catalog view (`tplater template show`
+// and future `tplater new --help-template`): metadata header, settings-group tree,
+// and template documentation. It is pure rendering to io.Writer with no repository
+// or template-filesystem access: the caller (internal/cmd) resolves the reference,
+// checks it out, and passes the parsed [manifest.Template] and documentation bytes.
 package templateview
 
 import (
@@ -17,27 +15,26 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// HeaderInfo — данные шапки `template show`: displayName/name, репозиторий,
-// выбранная версия (+ доступные стабильные версии), описание, maintainers,
-// лейблы.
+// HeaderInfo is `template show` header data: displayName/name, repository,
+// selected version (and available stable versions), description, maintainers, labels.
 type HeaderInfo struct {
 	Repo        string
 	Name        string
 	DisplayName string
-	// Version — человекочитаемая выбранная версия (см. [repo.Resolved.Version]).
+	// Version is the human-readable selected version (see [repo.Resolved.Version]).
 	Version string
-	// Versions — все доступные стабильные версии шаблона (версия-суффикс без
-	// репо/имени-префикса), в порядке убывания; пусто, если у шаблона нет
-	// стабильных тегов.
+	// Versions contains all available stable template versions (version suffix with
+	// no repository/name prefix), in descending order; empty if the template has no
+	// stable tags.
 	Versions    []string
 	Description string
 	Maintainers []manifest.Maintainer
 	Labels      map[string][]string
 }
 
-// RenderHeader печатает шапку метаданных шаблона в w: заголовок (жирным при
-// цвете, см. [ui.Palette.Header]) и блок "ключ: значение" ([ui.KeyValue]) —
-// репозиторий/версия/описание/maintainers/labels, только для непустых полей.
+// RenderHeader writes the template metadata header to w: a title (bold with
+// color; see [ui.Palette.Header]) and a "key: value" [ui.KeyValue] block for
+// nonempty repository/version/description/maintainers/labels fields.
 func RenderHeader(w io.Writer, pal ui.Palette, h HeaderInfo) {
 	title := h.Name
 	if h.DisplayName != "" && h.DisplayName != h.Name {
@@ -63,9 +60,8 @@ func RenderHeader(w io.Writer, pal ui.Palette, h HeaderInfo) {
 	kv.Render(w)
 }
 
-// FormatLabels плоско форматирует лейблы шаблона: группы отсортированы по
-// имени, значения внутри группы — через запятую, группы между собой — через
-// "; " (`lang=go; infra=kafka,postgres`).
+// FormatLabels formats template labels flatly: groups sort by name, values within
+// a group are comma-separated, and groups are separated by "; ".
 func FormatLabels(labels map[string][]string) string {
 	if len(labels) == 0 {
 		return ""
@@ -103,9 +99,9 @@ func formatMaintainers(ms []manifest.Maintainer) string {
 	return strings.Join(parts, ", ")
 }
 
-// RenderCommands печатает список команд манифеста (`commands`)
-// как таблицу COMMAND/DESCRIPTION, отсортированную по имени. Пустой список
-// команд — не ошибка, печатается поясняющая строка.
+// RenderCommands writes manifest commands (`commands`) as a name-sorted
+// COMMAND/DESCRIPTION table. An empty command list is not an error; it writes
+// an explanatory line.
 func RenderCommands(w io.Writer, pal ui.Palette, commands map[string]manifest.Command) {
 	fmt.Fprintln(w, pal.Header("команды:"))
 	if len(commands) == 0 {
@@ -126,7 +122,7 @@ func RenderCommands(w io.Writer, pal ui.Palette, commands map[string]manifest.Co
 	fmt.Fprintln(w, indentLines(t.RenderStyled(pal), "  "))
 }
 
-// indentLines добавляет префикс pad перед каждой строкой s.
+// indentLines prefixes every line of s with pad.
 func indentLines(s, pad string) string {
 	lines := strings.Split(s, "\n")
 	for i, l := range lines {

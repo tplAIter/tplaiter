@@ -32,20 +32,20 @@ func TestEval_Types(t *testing.T) {
 		{"database=mysql", false},
 		{"database!=mysql", true},
 		{"database!=postgres", false},
-		{"brokers=kafka", true},                      // multiselect содержит
-		{"brokers=nats", false},                      // multiselect не содержит
-		{"brokers!=nats", true},                      // multiselect не содержит -> !=
-		{"brokers!=kafka", false},                    // содержит -> != ложно
+		{"brokers=kafka", true},                      // multiselect contains
+		{"brokers=nats", false},                      // multiselect does not contain
+		{"brokers!=nats", true},                      // multiselect does not contain -> !=
+		{"brokers!=kafka", false},                    // contains -> != false
 		{"toggle=true", true},                        // toggle
 		{"toggle=false", false},                      // toggle
-		{"toggle!=false", true},                      // toggle отрицание
+		{"toggle!=false", true},                      // toggle negation
 		{"replicas=3", true},                         // int
 		{"replicas=4", false},                        // int
-		{"replicas!=4", true},                        // int отрицание
+		{"replicas!=4", true},                        // int negation
 		{"name=svc", true},                           // string
 		{"name=other", false},                        // string
-		{"database=postgres && brokers=kafka", true}, // конъюнкция
-		{"database=postgres && brokers=nats", false}, // конъюнкция ложна
+		{"database=postgres && brokers=kafka", true}, // conjunction
+		{"database=postgres && brokers=nats", false}, // conjunction is false
 		{"database=postgres && toggle=true && replicas=3", true},
 	}
 	for _, tc := range tests {
@@ -75,7 +75,8 @@ func TestEval_UnknownGroup(t *testing.T) {
 }
 
 func TestEval_UnknownGroup_ShortCircuitsFalse(t *testing.T) {
-	// Первый атом ложен -> общий результат false без обращения к unknown-группе.
+	// The first atom is false, so the overall result is false without accessing
+	// the unknown group.
 	v := Values{"database": "mysql"}
 	got, err := Eval(cond(t, "database=postgres && missing=1"), v)
 	if got || err != nil {

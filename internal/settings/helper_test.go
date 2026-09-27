@@ -7,7 +7,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// loadFixture загружает и валидирует манифест-фикстуру пакета.
+// loadFixture loads and validates a package manifest fixture.
 func loadFixture(t *testing.T, name string) *manifest.Template {
 	t.Helper()
 	tpl, err := manifest.LoadTemplate(filepath.Join("testdata", name))
@@ -20,7 +20,7 @@ func loadFixture(t *testing.T, name string) *manifest.Template {
 	return tpl
 }
 
-// loadRepoFixture загружает фикстуру из общего testdata репозитория.
+// loadRepoFixture loads a fixture from the shared repository testdata.
 func loadRepoFixture(t *testing.T, name string) *manifest.Template {
 	t.Helper()
 	tpl, err := manifest.LoadTemplate(filepath.Join("..", "..", "testdata", "manifest", name))

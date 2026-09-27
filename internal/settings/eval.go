@@ -9,9 +9,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// UnknownGroupError сообщает, что условие ссылается на группу, отсутствующую в
-// наборе значений. Не паника: атом с неизвестной группой вычисляется как false,
-// а ошибка возвращается отдельно как предупреждение вызывающему.
+// UnknownGroupError reports that a condition refers to a group absent from the
+// value set. This is not a panic: an atom with an unknown group evaluates to
+// false and the error is separately returned to the caller as a warning.
 type UnknownGroupError struct {
 	Group string
 }
@@ -20,15 +20,15 @@ func (e *UnknownGroupError) Error() string {
 	return fmt.Sprintf("условие ссылается на неизвестную группу %q", e.Group)
 }
 
-// Eval вычисляет условие §3.2 на наборе значений: конъюнкция всех атомов.
-// Семантика атома определяется рантайм-типом значения группы:
-//   - bool (toggle): сравнение с "true"/"false";
-//   - []string (multiselect): "=" — содержит, "!=" — не содержит;
-//   - int: числовое сравнение;
-//   - string (select/string): равенство.
+// Eval evaluates a §3.2 condition on a value set: a conjunction of all atoms.
+// Atom semantics are determined by the runtime type of the group value:
+//   - bool (toggle): comparison with "true"/"false";
+//   - []string (multiselect): "=" means contains and "!=" means does not contain;
+//   - int: numeric comparison;
+//   - string (select/string): equality.
 //
-// Неизвестная группа даёт false и возвращается как [*UnknownGroupError]
-// (первая встреченная). При ошибке результат гарантированно false.
+// An unknown group produces false and is returned as the first encountered
+// [*UnknownGroupError]. When there is an error, the result is always false.
 func Eval(cond manifest.Condition, v Values) (bool, error) {
 	var warn error
 	for _, atom := range cond.Atoms {
@@ -46,10 +46,10 @@ func Eval(cond manifest.Condition, v Values) (bool, error) {
 	return true, warn
 }
 
-// EvalAny вычисляет список условий по семантике OR (`when: [a, b]` в §3.2):
-// true, если истинно хотя бы одно. Предупреждения о неизвестных группах
-// собираются со всех условий и возвращаются объединённой ошибкой (даже если
-// итог true), чтобы вызывающий мог их залогировать.
+// EvalAny evaluates a condition list with OR semantics (`when: [a, b]` in §3.2):
+// true if at least one is true. Unknown-group warnings from all conditions are
+// collected and returned as a combined error (even if the result is true), so
+// the caller can log them.
 func EvalAny(conds []manifest.Condition, v Values) (bool, error) {
 	if len(conds) == 0 {
 		return false, nil
@@ -68,8 +68,8 @@ func EvalAny(conds []manifest.Condition, v Values) (bool, error) {
 	return result, joinWarnings(warns)
 }
 
-// evalAtom вычисляет один атом. Тип сравнения выводится из рантайм-типа
-// значения; операторный `!=` инвертирует результат совпадения.
+// evalAtom evaluates one atom. The comparison type follows the runtime value
+// type; the `!=` operator inverts the match result.
 func evalAtom(a manifest.Atom, v Values) (bool, error) {
 	raw, ok := v[a.Group]
 	if !ok {
@@ -82,8 +82,8 @@ func evalAtom(a manifest.Atom, v Values) (bool, error) {
 	return match, nil
 }
 
-// matchValue сопоставляет значение группы со строковым операндом атома с учётом
-// рантайм-типа значения.
+// matchValue matches a group value against an atom's string operand, respecting
+// the runtime type of the value.
 func matchValue(raw any, value string) bool {
 	switch val := raw.(type) {
 	case bool:
@@ -103,7 +103,7 @@ func matchValue(raw any, value string) bool {
 	}
 }
 
-// joinWarnings объединяет несколько предупреждений в одно (nil, если их нет).
+// joinWarnings combines several warnings into one (nil when there are none).
 func joinWarnings(warns []error) error {
 	switch len(warns) {
 	case 0:

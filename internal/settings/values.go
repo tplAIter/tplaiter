@@ -1,27 +1,26 @@
-// Package settings реализует модель значений настроек шаблона и резолвер
-// (.3): типизированные значения групп, вычисление мини-языка
-// условий [manifest.Condition], разбор CLI-значений (--set/--answers),
-// транзитивное разрешение requires с довключением и детектом конфликтов/циклов,
-// проверку constraints и построение контекста рендера с хелперами Is/Has.
+// Package settings implements the template settings value model and resolver:
+// typed group values, evaluation of the [manifest.Condition] mini-language, CLI
+// value parsing (--set/--answers), transitive requires resolution with implication
+// and conflict/cycle detection, constraint validation, and rendering context
+// construction with Is/Has helpers.
 //
-// Пакет надстраивается над [manifest]: структуры дерева групп и синтаксис
-// условий берутся оттуда, а вся семантика вычисления живёт здесь. Пакет
-// [manifest] не импортирует settings и не изменяется этой реализацией.
+// The package builds on [manifest]: it takes group tree structures and condition
+// syntax from there, while all evaluation semantics live here. [manifest] does
+// not import settings and is unchanged by this implementation.
 package settings
 
 import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// Values — набор значений настроек: id группы → значение согласно типу группы.
-// Тип значения канонический: string для select/string, []string для
-// multiselect, bool для toggle, int для int. Значения хранятся плоско по id
-// группы (id глобально уникальны, включая вложенные — гарантирует валидатор
-// манифеста).
+// Values is a settings value set: group id → value according to the group type.
+// The value type is canonical: string for select/string, []string for
+// multiselect, bool for toggle, and int for int. Values are stored flat by group
+// id (the manifest validator guarantees global uniqueness, including nested ids).
 type Values map[string]any
 
-// Clone возвращает поверхностную копию значений с копированием []string-срезов,
-// чтобы мутации производного набора не протекали в исходный.
+// Clone returns a shallow copy of values, copying []string slices so mutations of
+// a derived set do not leak into the original.
 func (v Values) Clone() Values {
 	out := make(Values, len(v))
 	for k, val := range v {
@@ -36,23 +35,23 @@ func (v Values) Clone() Values {
 	return out
 }
 
-// groupMeta — сведения о группе и её активирующем родителе для обхода дерева.
-// parentGroup == "" — корневая группа (активна всегда). Иначе группа активна,
-// когда в parentGroup выбрана опция parentOption (и сам parentGroup активен).
+// groupMeta contains a group and its activating parent for tree traversal.
+// parentGroup == "" means a root group (always active). Otherwise the group is
+// active when parentOpt is selected in parentGroup (and parentGroup is active).
 type groupMeta struct {
 	g           *manifest.SettingGroup
 	parentGroup string
 	parentOpt   string
 }
 
-// optionMeta — опция select/multiselect-группы с обратной ссылкой на группу.
+// optionMeta is a select/multiselect option with a back-reference to its group.
 type optionMeta struct {
 	opt   *manifest.Option
 	group string
 }
 
-// indexGroups строит плоскую карту id группы → метаданные (тип, дефолт,
-// родитель) обходом всего дерева настроек, включая вложенные уточнения.
+// indexGroups builds a flat group id → metadata map (type, default, parent) by
+// traversing the entire settings tree, including nested refinements.
 func indexGroups(tpl *manifest.Template) map[string]groupMeta {
 	idx := make(map[string]groupMeta)
 	var walk func(groups []manifest.SettingGroup, parentGroup, parentOpt string)
@@ -72,9 +71,9 @@ func indexGroups(tpl *manifest.Template) map[string]groupMeta {
 	return idx
 }
 
-// indexOptions строит карту "group=optionID" → опция для select/multiselect
-// групп. Ключ совпадает с каноническим видом атома условия (§3.2), что
-// позволяет напрямую связывать requires-атомы с опциями.
+// indexOptions builds a "group=optionID" → option map for select/multiselect
+// groups. The key matches the canonical condition atom form (§3.2), allowing
+// requires atoms to be linked directly to options.
 func indexOptions(tpl *manifest.Template) map[string]optionMeta {
 	idx := make(map[string]optionMeta)
 	var walk func(groups []manifest.SettingGroup)
@@ -97,9 +96,9 @@ func indexOptions(tpl *manifest.Template) map[string]optionMeta {
 	return idx
 }
 
-// DefaultValues возвращает значения по умолчанию ВСЕХ групп дерева, включая
-// вложенные уточнения. Дефолты вложенных групп применяются всегда; «активность»
-// (учёт выбора родителя) вычисляется отдельно в [Resolve] через ActiveValues.
+// DefaultValues returns defaults for ALL groups in the tree, including nested
+// refinements. Nested-group defaults always apply; activity (the parent selection)
+// is separately calculated in [Resolve] through ActiveValues.
 func DefaultValues(tpl *manifest.Template) Values {
 	v := make(Values)
 	for id, m := range indexGroups(tpl) {
@@ -108,8 +107,8 @@ func DefaultValues(tpl *manifest.Template) Values {
 	return v
 }
 
-// defaultFor приводит manifest-дефолт группы к каноническому Go-типу. При
-// отсутствии дефолта возвращает zero-значение типа.
+// defaultFor converts a group manifest default to its canonical Go type. Without
+// a default, it returns the type's zero value.
 func defaultFor(g *manifest.SettingGroup) any {
 	if g.Default == nil {
 		return zeroValue(g.Type)
@@ -137,8 +136,8 @@ func defaultFor(g *manifest.SettingGroup) any {
 	return zeroValue(g.Type)
 }
 
-// zeroValue — пустое значение канонического типа группы: "" для select/string,
-// пустой []string для multiselect, false для toggle, 0 для int.
+// zeroValue is the empty value for the canonical group type: "" for select/string,
+// an empty []string for multiselect, false for toggle, and 0 for int.
 func zeroValue(typ string) any {
 	switch typ {
 	case manifest.TypeMultiselect:
@@ -147,12 +146,12 @@ func zeroValue(typ string) any {
 		return false
 	case manifest.TypeInt:
 		return 0
-	default: // select, string и неизвестные
+	default: // select, string, and unknown types
 		return ""
 	}
 }
 
-// toStringSlice приводит yaml-значение (обычно []any) к []string.
+// toStringSlice converts a yaml value (usually []any) to []string.
 func toStringSlice(v any) []string {
 	switch list := v.(type) {
 	case []string:
@@ -172,8 +171,8 @@ func toStringSlice(v any) []string {
 	}
 }
 
-// toInt приводит числовое yaml-значение к int (int, int64, float64 без
-// дробной части).
+// toInt converts a numeric yaml value to int (int, int64, or float64 without a
+// fractional part).
 func toInt(v any) (int, bool) {
 	switch n := v.(type) {
 	case int:
@@ -188,7 +187,7 @@ func toInt(v any) (int, bool) {
 	return 0, false
 }
 
-// contains сообщает, содержит ли срез значение.
+// contains reports whether a slice contains a value.
 func contains(list []string, value string) bool {
 	for _, s := range list {
 		if s == value {

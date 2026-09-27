@@ -33,18 +33,17 @@ func TestCompileFileRulesPathsKeptWhenTrue(t *testing.T) {
 	}
 }
 
-// TestCompileFileRulesAnyOfIsOr фиксирует семантику anyOf: список условий
-// объединяется через settings.EvalAny — OR, а НЕ AND (несмотря на то, что имя
-// поля "anyOf" наводит на противоположную интуицию, а
-// иллюстрирует anyOf примером композитного удаления, для которого нужен
-// именно AND — см. описание поведения ). Композитное удаление («ни кафка, ни
-// раббит») выражается ОДНИМ `when` с `&&` (settings.Eval), не через anyOf.
+// TestCompileFileRulesAnyOfIsOr fixes anyOf semantics: the condition list is
+// combined through settings.EvalAny with OR, not AND. The field name suggests
+// the opposite, and the  example illustrates composite removal, which needs
+// AND (see the behavior description). Composite removal (“neither kafka nor
+// rabbit”) is expressed by one `when` with `&&` (settings.Eval), not anyOf.
 func TestCompileFileRulesAnyOfIsOr(t *testing.T) {
 	rules := []manifest.FileRule{
 		{AnyOf: []string{"database=postgres", "brokers=kafka"}, Remove: []string{"legacy/**"}},
 	}
 
-	// Истинен только первый атом (database=postgres) — OR всё равно true.
+	// Only the first atom (database=postgres) is true; OR is still true.
 	gs, err := compileFileRules(rules, settings.Values{"database": "postgres", "brokers": []string{}})
 	if err != nil {
 		t.Fatalf("compileFileRules: %v", err)
@@ -53,7 +52,7 @@ func TestCompileFileRulesAnyOfIsOr(t *testing.T) {
 		t.Error("anyOf — OR: истинности одного условия достаточно, remove должен сработать")
 	}
 
-	// Оба атома ложны — OR ложен, remove не срабатывает.
+	// Both atoms are false; OR is false and remove does not apply.
 	gs, err = compileFileRules(rules, settings.Values{"database": "none", "brokers": []string{}})
 	if err != nil {
 		t.Fatalf("compileFileRules: %v", err)
@@ -63,9 +62,9 @@ func TestCompileFileRulesAnyOfIsOr(t *testing.T) {
 	}
 }
 
-// TestCompileFileRulesCompositeRemovalUsesWhenWithAnd — правильный способ
-// выразить композитное удаление («ни kafka, ни rabbitmq») в текущем
-// мини-языке: конъюнкция через && внутри одного when, не anyOf.
+// TestCompileFileRulesCompositeRemovalUsesWhenWithAnd is the correct way to
+// express composite removal (“neither kafka nor rabbitmq”) in the current
+// mini-language: conjunction through && in one when, not anyOf.
 func TestCompileFileRulesCompositeRemovalUsesWhenWithAnd(t *testing.T) {
 	rules := []manifest.FileRule{
 		{When: "brokers!=kafka && brokers!=rabbitmq", Remove: []string{"internal/integrations/**"}},

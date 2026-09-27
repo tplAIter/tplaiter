@@ -15,9 +15,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// writeMarker создаёт минимально валидный .tplaiter/project.yaml (принимается
-// manifest.LoadProject) — тот же формат, что internal/project/locate_test.go
-// использует для своих фикстур.
+// writeMarker creates a minimally valid .tplaiter/project.yaml accepted by
+// manifest.LoadProject, in the same format used by internal/project/locate_test.go fixtures.
 func writeMarker(t *testing.T, dir, id, repo, name, version string) {
 	t.Helper()
 	tplDir := filepath.Join(dir, ".tplaiter")
@@ -33,8 +32,8 @@ func writeMarker(t *testing.T, dir, id, repo, name, version string) {
 	}
 }
 
-// writeBaseline пишет .tplaiter/baseline.json с заданным содержимым и
-// возвращает hex sha256 этого содержимого — ожидаемое baselineSHA.
+// writeBaseline writes .tplaiter/baseline.json with the supplied content and
+// returns its hexadecimal SHA-256, the expected baselineSHA.
 func writeBaseline(t *testing.T, dir, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, filepath.FromSlash(engine.BaselineRelPath))
@@ -48,8 +47,8 @@ func writeBaseline(t *testing.T, dir, content string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// cleanPath резолвит симлинки (macOS: /tmp -> /private/tmp) для стабильного
-// сравнения путей — та же необходимость, что в internal/project/locate_test.go.
+// cleanPath resolves symlinks (macOS: /tmp -> /private/tmp) for stable path
+// comparison, as required by internal/project/locate_test.go too.
 func cleanPath(t *testing.T, p string) string {
 	t.Helper()
 	resolved, err := filepath.EvalSymlinks(p)
@@ -73,10 +72,10 @@ func mustFindByID(t *testing.T, home, id string) state.ProjectRef {
 }
 
 func TestSyncCurrent_OutsideProject_NoOp(t *testing.T) {
-	// home намеренно не существует — no-op не должен пытаться его создать
-	// или залочить: он возвращается до какого-либо обращения к home.
+	// home deliberately does not exist: the no-op must not try to create or lock
+	// it, because it returns before accessing home.
 	home := filepath.Join(t.TempDir(), "does-not-exist")
-	cwd := t.TempDir() // никакого .tplaiter/project.yaml внутри.
+	cwd := t.TempDir() // No .tplaiter/project.yaml inside.
 
 	if err := SyncCurrent(home, cwd, time.Now()); err != nil {
 		t.Fatalf("SyncCurrent() вне проекта error = %v, want nil", err)
@@ -144,7 +143,7 @@ func TestSyncCurrent_UnregisteredClone_AutoRegisters(t *testing.T) {
 	writeMarker(t, dir, "proj-clone", "example", "python-service", "2.0.0")
 	sha := writeBaseline(t, dir, `{"schema":1,"templateVersion":"2.0.0"}`)
 
-	// Реестр существует, но пуст — записи для "proj-clone" в нём нет.
+	// The registry exists but is empty: it has no "proj-clone" entry.
 	if err := state.SaveProjects(home, state.DefaultProjects()); err != nil {
 		t.Fatalf("SaveProjects() error = %v", err)
 	}
@@ -174,8 +173,8 @@ func TestSyncCurrent_BaselineSHAMismatch_Updates(t *testing.T) {
 	home := t.TempDir()
 	dir := t.TempDir()
 	writeMarker(t, dir, "proj-drift", "example", "go-service", "1.4.0")
-	// baseline.json на диске уже "новее" того, что помнит реестр — как если
-	// бы update прогнали на другой машине без участия текущего реестра.
+	// baseline.json on disk is already newer than the registry knows, as if an
+	// update had run on another machine without this registry participating.
 	newSHA := writeBaseline(t, dir, `{"schema":1,"templateVersion":"1.5.0"}`)
 
 	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -217,14 +216,14 @@ func TestSyncCurrent_BrokenProjectYAML_ReturnsErrorNotPanics(t *testing.T) {
 	if err := os.MkdirAll(tplDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// kind не Project — LoadProject должен отклонить, FindRoot вернёт ошибку,
-	// отличную от ErrNotInProject.
+	// kind is not Project: LoadProject must reject it and FindRoot must return an
+	// error other than ErrNotInProject.
 	broken := "apiVersion: tplater.dev/v1alpha1\nkind: Template\nid: broken\n"
 	if err := os.WriteFile(filepath.Join(tplDir, "project.yaml"), []byte(broken), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	err := SyncCurrent(home, dir, time.Now()) // не должен паниковать.
+	err := SyncCurrent(home, dir, time.Now()) // Must not panic.
 	if err == nil {
 		t.Fatal("SyncCurrent() error = nil, want ошибку разбора маркера")
 	}

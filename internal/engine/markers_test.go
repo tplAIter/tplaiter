@@ -9,9 +9,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// markerValues — типовой набор значений настроек для тестов маркеров: select,
-// multiselect и toggle-группы, покрывающие все три вида
-// сравнения matchValue в [settings.Eval].
+// markerValues is the standard settings value set for marker tests: select,
+// multiselect, and toggle groups covering all three matchValue comparisons in
+// [settings.Eval].
 func markerValues() settings.Values {
 	return settings.Values{
 		"database":   "postgres",
@@ -264,10 +264,10 @@ func TestProcessMarkers_Errors(t *testing.T) {
 	})
 }
 
-// TestProcessMarkers_GoFileGofmtClean проверяет требование реализации : файл с
-// хвостовым if-маркером остаётся gofmt-чистым, включая крайний случай, когда
-// после вырезания маркера код-часть строки пуста (строка становится пустой
-// без trailing-пробелов, а не остаётся с "хвостом" из отступа).
+// TestProcessMarkers_GoFileGofmtClean checks the  requirement: a file with a
+// trailing if marker remains gofmt-clean, including the edge case where marker
+// removal leaves no code on the line (the line becomes empty without trailing
+// spaces rather than retaining indentation).
 func TestProcessMarkers_GoFileGofmtClean(t *testing.T) {
 	src := strings.Join([]string{
 		"package sample",
@@ -300,10 +300,10 @@ func TestProcessMarkers_GoFileGofmtClean(t *testing.T) {
 	}
 }
 
-// TestRenderSingleBasicMarkers рендерит фикстуру single-basic (реализация
-// дополнила её files/modes.txt.tmpl маркерами) и проверяет, что маркеры
-// вырезаются согласно условиям при разных настройках, не ломая существующие
-// engine-тесты фикстуры (TestRenderSingleBasicDefaults и др., engine_test.go).
+// TestRenderSingleBasicMarkers renders the single-basic fixture (the  implementation
+// added markers to files/modes.txt.tmpl) and checks that markers are removed
+// according to conditions under different settings without breaking existing
+// fixture engine tests (TestRenderSingleBasicDefaults and others in engine_test.go).
 func TestRenderSingleBasicMarkers(t *testing.T) {
 	t.Run("defaults: database=none, brokers=[]", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "out")
@@ -348,10 +348,10 @@ func TestRenderSingleBasicMarkers(t *testing.T) {
 	})
 }
 
-// TestRenderSingleBasicMarkersDeterministic проверяет, что добавление
-// маркеров в фикстуру не нарушает byte-детерминизм рендера и стабильность
-// baseline (требование реализации  — "baseline считается по финальному
-// содержимому — ничего менять не должно").
+// TestRenderSingleBasicMarkersDeterministic checks that adding markers to the
+// fixture does not break byte-deterministic rendering or baseline stability
+// (the  requirement: “baseline is computed from final content; nothing should
+// change”).
 func TestRenderSingleBasicMarkersDeterministic(t *testing.T) {
 	values := settings.Values{"database": "postgres", "migrations": true, "brokers": []string{"kafka", "rabbitmq"}}
 	res1 := renderSingleBasic(t, filepath.Join(t.TempDir(), "a"), values)

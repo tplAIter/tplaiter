@@ -1,13 +1,13 @@
-// Package mcpsrv реализует MCP-сервер tplater: команды CLI выставлены наружу
-// как MCP-tools для AI-агентов (заимствование 6 из docs/research/clean-codegen.md
-// §1 — «MCP-сервер поверх CLI»). Архитектура — subprocess-паттерн goca: каждый
-// tool исполняет тот же бинарник tplater отдельным процессом с раздельными
-// аргументами (без shell-интерполяции), а НЕ вызывает cobra-команды in-process.
-// In-process вызов опасен: глобальное состояние флагов cobra протекает между
-// вызовами tool'ов; отдельный процесс на вызов даёт полную изоляцию.
+// Package mcpsrv implements the tplater MCP server: it exposes CLI commands as
+// MCP tools for AI agents (derivation 6 in docs/research/clean-codegen.md §1,
+// “MCP server over CLI”). Its architecture follows the goca subprocess pattern:
+// each tool executes the same tplater binary in a separate process with separate
+// arguments (without shell interpolation), rather than invoking Cobra commands
+// in process. In-process calls are unsafe because global Cobra flag state leaks
+// between tool calls; a process per call provides complete isolation.
 //
-// Транспорт — stdio JSON-RPC (server.ServeStdio). Логи сервера идут в stderr:
-// stdout занят протоколом.
+// The transport is stdio JSON-RPC (server.ServeStdio). Server logs go to stderr:
+// stdout is occupied by the protocol.
 package mcpsrv
 
 import (
@@ -19,21 +19,21 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
-// Server оборачивает *server.MCPServer вместе с путём к бинарнику tplater и
-// раннером подпроцессов (мокабельным в тестах через execx.RecordingRunner).
+// Server wraps *server.MCPServer with the tplater binary path and a child-process
+// runner, mockable in tests through execx.RecordingRunner.
 type Server struct {
 	exe    string
 	runner execx.Runner
 	mcp    *server.MCPServer
 }
 
-// New собирает MCP-сервер tplater: регистрирует все tools и resources.
+// New constructs the tplater MCP server and registers all tools and resources.
 //
-//	exe     — абсолютный путь к бинарнику tplater (обычно os.Executable());
-//	          каждый tool исполняет именно его как подпроцесс;
-//	version — версия tplater (для Implementation в initialize);
-//	runner  — исполнитель подпроцессов (в проде execx.Exec{}, в тестах
-//	          execx.RecordingRunner).
+//	exe     — absolute path to the tplater binary (usually os.Executable());
+//	          every tool executes it as its child process;
+//	version — tplater version (for Implementation in initialize);
+//	runner  — child-process runner (execx.Exec{} in production and
+//	          execx.RecordingRunner in tests).
 func New(exe, version string, runner execx.Runner) *Server {
 	m := server.NewMCPServer(
 		"tplaiter",
@@ -48,13 +48,13 @@ func New(exe, version string, runner execx.Runner) *Server {
 	return s
 }
 
-// MCP возвращает нижележащий *server.MCPServer — нужен тестам для подключения
-// in-process клиента (client.NewInProcessClient).
+// MCP returns the underlying *server.MCPServer, which tests need to connect an
+// in-process client (client.NewInProcessClient).
 func (s *Server) MCP() *server.MCPServer { return s.mcp }
 
-// ServeStdio запускает сервер на stdio JSON-RPC. Ошибки протокола логируются в
-// stderr (stdout занят протоколом). Блокирует до завершения (EOF на stdin или
-// SIGINT/SIGTERM — обрабатывается внутри ServeStdio).
+// ServeStdio runs the server over stdio JSON-RPC. Protocol errors are logged to
+// stderr because stdout belongs to the protocol. It blocks until termination
+// (stdin EOF or SIGINT/SIGTERM, handled inside ServeStdio).
 func (s *Server) ServeStdio() error {
 	errLog := log.New(os.Stderr, "tplaiter-mcp ", log.LstdFlags)
 	return server.ServeStdio(s.mcp, server.WithErrorLogger(errLog))

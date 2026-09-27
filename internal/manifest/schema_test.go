@@ -10,14 +10,15 @@ import (
 
 const schemaPath = "../../schema/template.manifest.schema.json"
 
-// TestSchema_ValidJSON: схема — синтаксически валидный JSON с ожидаемым каркасом.
+// TestSchema_ValidJSON: the schema is syntactically valid JSON with the
+// expected structure.
 //
-// Решение по валидации: НЕ тянем внешний валидатор JSON Schema
-// (santhosh-tekuri/jsonschema) ради одного теста — это добавило бы транзитивные
-// зависимости в go.mod. Вместо этого проверяем схему как валидный JSON плюс
-// smoke-покрытие: каждое поле верхнего уровня из полного примера (full.yaml)
-// присутствует в properties схемы. Полноценную JSON Schema-валидацию против
-// IDE делегируем редактору по $schema/$id.
+// Validation approach: do not add an external JSON Schema validator
+// (santhosh-tekuri/jsonschema) for one test, which would add transitive
+// dependencies to go.mod. Instead, validate the schema as JSON and perform a
+// smoke check: every top-level field from the full example (full.yaml) appears
+// in the schema's properties. Full JSON Schema validation for IDE use is left
+// to the editor via $schema/$id.
 func TestSchema_ValidJSON(t *testing.T) {
 	data, err := os.ReadFile(schemaPath)
 	if err != nil {

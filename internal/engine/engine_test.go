@@ -14,9 +14,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// fixturesRoot возвращает абсолютный путь к testdata/fixtures, вычисленный от
-// расположения этого тест-файла (internal/engine/), — устойчиво к рабочему
-// каталогу запуска `go test`.
+// fixturesRoot returns the absolute testdata/fixtures path relative to this
+// test file (internal/engine/), independent of the `go test` working directory.
 func fixturesRoot(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -26,7 +25,7 @@ func fixturesRoot(t *testing.T) string {
 	return filepath.Join(filepath.Dir(thisFile), "..", "..", "testdata", "fixtures")
 }
 
-// loadFixtureTemplate загружает и валидирует манифест шаблона-фикстуры.
+// loadFixtureTemplate loads and validates a fixture template manifest.
 func loadFixtureTemplate(t *testing.T, dir string) *manifest.Template {
 	t.Helper()
 	tpl, err := manifest.LoadTemplate(filepath.Join(dir, "template.manifest.yaml"))
@@ -39,7 +38,7 @@ func loadFixtureTemplate(t *testing.T, dir string) *manifest.Template {
 	return tpl
 }
 
-// resolveFixture — обёртка над settings.Resolve с t.Fatal на ошибке.
+// resolveFixture wraps settings.Resolve and calls t.Fatal on error.
 func resolveFixture(t *testing.T, tpl *manifest.Template, explicit settings.Values) settings.Resolved {
 	t.Helper()
 	resolved, err := settings.Resolve(tpl, explicit)
@@ -59,8 +58,8 @@ func demoProject() manifest.ProjectInfo {
 	}
 }
 
-// renderSingleBasic рендерит фикстуру single-basic с заданными настройками в
-// target, подключая её партиалы (files/../partials).
+// renderSingleBasic renders the single-basic fixture with the given settings
+// into target, loading its partials (files/../partials).
 func renderSingleBasic(t *testing.T, target string, explicit settings.Values) *Result {
 	t.Helper()
 	dir := filepath.Join(fixturesRoot(t), "single-basic")
@@ -115,13 +114,13 @@ func TestRenderSingleBasicDefaults(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "out")
 	renderSingleBasic(t, dir, settings.Values{})
 
-	// database=none, brokers=[] — все условные ветки выключены.
+	// database=none, brokers=[]: all conditional branches are disabled.
 	mustNotExist(t, filepath.Join(dir, "db", "schema.sql"))
 	mustNotExist(t, filepath.Join(dir, "brokers-enabled.txt"))
 	mustNotExist(t, filepath.Join(dir, "extra", "postgres-only.txt"))
-	// Ни kafka, ни rabbitmq — composite removal (when с &&) сработал.
+	// Neither kafka nor rabbitmq: composite removal (when with &&) applied.
 	mustNotExist(t, filepath.Join(dir, "integrations", "common.txt"))
-	// database=none и brokers=[] — legacy-заметка НЕ удалена (anyOf/OR ложен).
+	// database=none and brokers=[]: the legacy note was not removed (anyOf/OR is false).
 	mustExist(t, filepath.Join(dir, "legacy", "notice.txt"))
 
 	readme := readFileString(t, filepath.Join(dir, "README.md"))
@@ -146,7 +145,7 @@ func TestRenderSingleBasicDefaults(t *testing.T) {
 		t.Errorf("main.txt missing partial-rendered greeting:\n%s", main)
 	}
 
-	// Плейсхолдер __slug__ в имени файла.
+	// The __slug__ placeholder in a file name.
 	envFile := readFileString(t, filepath.Join(dir, "config", "demo_svc.env"))
 	if envFile != "SLUG=demo_svc\n" {
 		t.Errorf("config/demo_svc.env = %q, want SLUG=demo_svc\\n", envFile)
@@ -183,9 +182,9 @@ func TestRenderSingleBasicPostgresKafka(t *testing.T) {
 
 	mustExist(t, filepath.Join(dir, "brokers-enabled.txt"))
 	mustExist(t, filepath.Join(dir, "extra", "postgres-only.txt"))
-	// brokers=[kafka] — composite removal (when с &&) НЕ сработал.
+	// brokers=[kafka]: composite removal (when with &&) did not apply.
 	mustExist(t, filepath.Join(dir, "integrations", "common.txt"))
-	// database=postgres — anyOf/OR истинен (первый атом) — legacy удалена.
+	// database=postgres: anyOf/OR is true (the first atom), so legacy was removed.
 	mustNotExist(t, filepath.Join(dir, "legacy", "notice.txt"))
 
 	readme := readFileString(t, filepath.Join(dir, "README.md"))
@@ -193,18 +192,18 @@ func TestRenderSingleBasicPostgresKafka(t *testing.T) {
 		t.Errorf("README.md missing postgres/kafka markers:\n%s", readme)
 	}
 
-	// __if_database=postgres__ и __if_brokers__ вырезаны из путей.
+	// __if_database=postgres__ and __if_brokers__ were removed from paths.
 	mustNotExist(t, filepath.Join(dir, "__if_database=postgres__"))
 	mustNotExist(t, filepath.Join(dir, "__if_brokers__"))
 
-	// baseline: файл присутствует, но не входит в Result.Files.
+	// baseline: the file exists but is not included in Result.Files.
 	mustExist(t, filepath.Join(dir, filepath.FromSlash(BaselineRelPath)))
 	for _, f := range res.Files {
 		if f == BaselineRelPath {
 			t.Errorf("Result.Files не должен включать сам baseline: %v", res.Files)
 		}
 	}
-	// NOTES.tmpl/README.md фикстуры (вне Engine.Root) не попадают в вывод.
+	// Fixture NOTES.tmpl/README.md files outside Engine.Root are not output.
 	mustNotExist(t, filepath.Join(dir, "NOTES.tmpl"))
 	mustNotExist(t, filepath.Join(dir, "template.manifest.yaml"))
 
@@ -273,9 +272,9 @@ func TestRenderRequiresTemplateAndSource(t *testing.T) {
 	}
 }
 
-// TestRenderNamePlaceholders проверяет __slug__/__module__ в именах
-// файлов/каталогов на изолированном in-memory шаблоне (не фикстура — сценарий
-// специфичен для механики подстановки, не для содержательного рендера).
+// TestRenderNamePlaceholders checks __slug__/__module__ in file and directory
+// names using an isolated in-memory template (not a fixture; this scenario is
+// specific to substitution mechanics rather than content rendering).
 func TestRenderNamePlaceholders(t *testing.T) {
 	src := fstest.MapFS{
 		"files/__slug__/config/__slug__.txt.tmpl": {Data: []byte("id={{ .Project.Slug }}")},
@@ -316,8 +315,8 @@ func TestRenderNamePlaceholders(t *testing.T) {
 	}
 }
 
-// TestRenderMultiFixture проверяет, что оба мини-шаблона мульти-репо-фикстуры
-// (реализация /) рендерятся движком корректно — страховка от поломки фикстуры.
+// TestRenderMultiFixture checks that both mini-templates in the multi-repository
+// fixture (the / implementation) render correctly, guarding against fixture breakage.
 func TestRenderMultiFixture(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

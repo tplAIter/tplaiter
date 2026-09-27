@@ -10,19 +10,19 @@ import (
 	"path/filepath"
 )
 
-// BaselineSchema — версия схемы Baseline.
+// BaselineSchema is the Baseline schema version.
 const BaselineSchema = 1
 
-// BaselineRelPath — путь baseline-файла относительно корня проекта (
-// §8: `baseline: .tplaiter/baseline.json` в проектном маркере).
+// BaselineRelPath is the baseline file path relative to the project root
+// (§8: `baseline: .tplaiter/baseline.json` in the project marker).
 const BaselineRelPath = ".tplaiter/baseline.json"
 
-// Baseline — снимок сгенерированного дерева для update-механики: sha256
-// каждого файла + версия шаблона + хэш контекста рендера. Состав идентичен
-// go-template'овскому — реализация  (update/diff) переносится на нём без
-// изменений. Карта Files сериализуется детерминированно (encoding/json
-// сортирует строковые ключи), поэтому два рендера с одинаковым входом дают
-// побайтово идентичный baseline.
+// Baseline is a snapshot of the generated tree for the update mechanism: the
+// sha256 hash of each file, the template version, and the render-context hash.
+// Its structure matches go-template's; the  (update/diff) implementation is
+// carried over unchanged. Files is serialized deterministically (encoding/json
+// sorts string keys), so renders with identical input produce byte-identical
+// baselines.
 type Baseline struct {
 	Schema          int               `json:"schema"`
 	TemplateVersion string            `json:"templateVersion"`
@@ -30,8 +30,8 @@ type Baseline struct {
 	Files           map[string]string `json:"files"`
 }
 
-// ComputeBaseline вычисляет sha256-хэши перечисленных файлов (относительные
-// пути) внутри dir. Возвращает карту relpath→hex(sha256).
+// ComputeBaseline computes sha256 hashes for the listed files (relative paths)
+// inside dir. It returns a relpath→hex(sha256) map.
 func ComputeBaseline(dir string, files []string) (map[string]string, error) {
 	out := make(map[string]string, len(files))
 	for _, rel := range files {
@@ -44,7 +44,7 @@ func ComputeBaseline(dir string, files []string) (map[string]string, error) {
 	return out, nil
 }
 
-// hashFile возвращает hex-представление sha256 содержимого файла.
+// hashFile returns the hexadecimal sha256 representation of the file contents.
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -58,8 +58,8 @@ func hashFile(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// hashContext возвращает sha256 канонического JSON-представления контекста
-// рендера.
+// hashContext returns the sha256 hash of the canonical JSON representation of
+// the render context.
 func hashContext(c *Context) (string, error) {
 	data, err := json.Marshal(c)
 	if err != nil {
@@ -69,8 +69,8 @@ func hashContext(c *Context) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// Save сериализует baseline в dir/.tplaiter/baseline.json (отступ 2 пробела,
-// финальный \n).
+// Save serializes the baseline to dir/.tplaiter/baseline.json (two-space
+// indentation and a final \n).
 func (b *Baseline) Save(dir string) error {
 	data, err := json.MarshalIndent(b, "", "  ")
 	if err != nil {

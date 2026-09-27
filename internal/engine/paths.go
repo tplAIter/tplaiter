@@ -8,28 +8,27 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// ifPrefix/ifSuffix — обёртка условного сегмента пути.
+// ifPrefix/ifSuffix wrap a conditional path segment.
 const (
 	ifPrefix = "__if_"
 	ifSuffix = "__"
 )
 
-// evalIfSegment распознаёт условный сегмент пути и вычисляет его истинность на
-// values. Два вида:
+// evalIfSegment recognizes a conditional path segment and evaluates it against
+// values. There are two forms:
 //
-//   - __if_<group>__ — «истина по умолчанию для типа»: toggle=true, select —
-//     значение группы непусто (внимание: непустое значение — не то же самое,
-//     что «выбрана не служебная опция»; select с ненулевым default'ом вроде
-//     "none" будет истинным всегда, см. описание поведения), multiselect — список
-//     непуст, int — значение не 0.
-//   - __if_<group>=<value>__ — точечная проверка атома `group=value`
-//     ([manifest.ParseCondition] + [settings.Eval]), работает для любого типа
-//     группы (для multiselect — «содержит»).
+//   - __if_<group>__ — type-specific default truth: toggle=true, select has a
+//     non-empty group value (a non-empty value is not the same as selecting a
+//     non-special option; a select with a non-zero default such as "none" is
+//     always true), multiselect is non-empty, and int is not 0.
+//   - __if_<group>=<value>__ — an exact `group=value` atom check
+//     ([manifest.ParseCondition] + [settings.Eval]), supported for every group
+//     type (for multiselect, it means “contains”).
 //
-// ok=false — сегмент не условный (обычное имя каталога/файла), active/err
-// не имеют смысла. err != nil — сегмент условный, но ссылается на неизвестную
-// группу или синтаксически некорректен: это ошибка автора манифеста и она
-// прерывает рендер.
+// ok=false means the segment is not conditional (an ordinary directory/file
+// name), so active and err have no meaning. err != nil means the segment is
+// conditional but references an unknown group or is syntactically invalid;
+// this is a manifest authoring error that aborts rendering.
 func evalIfSegment(seg string, values settings.Values) (active, ok bool, err error) {
 	if !strings.HasPrefix(seg, ifPrefix) || !strings.HasSuffix(seg, ifSuffix) {
 		return false, false, nil
@@ -62,9 +61,9 @@ func evalIfSegment(seg string, values settings.Values) (active, ok bool, err err
 	return truthy(raw), true, nil
 }
 
-// truthy определяет типо-общую «истинность» значения группы настроек:
-// bool — сам по себе, string — непусто, []string — непусто, int — не 0.
-// Любой другой (в т.ч. отсутствующий) тип — false.
+// truthy determines the type-independent truthiness of a settings-group value:
+// bool is used as-is, string and []string are true when non-empty, and int is
+// true when non-zero. Any other type (including a missing value) is false.
 func truthy(v any) bool {
 	switch val := v.(type) {
 	case bool:
@@ -80,9 +79,9 @@ func truthy(v any) bool {
 	}
 }
 
-// transformPath применяет условные сегменты __if_<group>__/__if_<group>=<value>__
-// и подстановку плейсхолдеров имён (__slug__, __module__, перенос go-template
-// без изменений). Возвращает (путь, включать?, ошибка).
+// transformPath applies conditional segments __if_<group>__/__if_<group>=<value>__
+// and substitutes name placeholders (__slug__, __module__, carried over from
+// go-template unchanged). It returns (path, include?, error).
 func (r *renderer) transformPath(rel string) (string, bool, error) {
 	segs := strings.Split(rel, "/")
 	out := make([]string, 0, len(segs))

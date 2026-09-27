@@ -1,17 +1,17 @@
-// Package engine реализует движок рендера шаблонов на манифест-модели
-// ( §3.1, §4). Перенос с заменой источника метаданных:
-// вместо gotmpl-специфичного template.json + gotmpl.json — *manifest.Template
-// (engine-секция манифеста) и разрешённые настройки ([settings.Resolved]).
+// Package engine implements the manifest-model template rendering engine
+// ( §3.1, §4). It is a port with a different metadata source:
+// instead of gotmpl-specific template.json + gotmpl.json, it uses
+// *manifest.Template (the manifest engine section) and resolved settings
+// ([settings.Resolved]).
 //
-// Источник дерева файлов — произвольная fs.FS (в проде — репозиторий шаблона на
-// диске/из git worktree, в тестах — os.DirFS фикстуры). Layout внутри источника:
-// <Template.Engine.Root>/** (по умолчанию "files/"). Содержимое *.tmpl рендерится
-// через text/template с собственным FuncMap (без sprig — архитектурное решение
-// go-template §2.4, тот же принцип здесь); имена файлов шаблонизируются
-// строковой заменой плейсхолдеров (__slug__, __module__) и поддерживают условные
-// сегменты __if_<group>__ / __if_<group>=<value>__. Результат
-// детерминирован: Baseline (sha256 каждого файла + хэш контекста) стабилен при
-// одинаковом входе.
+// The file-tree source is any fs.FS (in production, a template repository on
+// disk/from a git worktree; in tests, an os.DirFS fixture). Its layout is
+// <Template.Engine.Root>/** ("files/" by default). *.tmpl contents are rendered
+// through text/template with a custom FuncMap (without sprig, as required by
+// go-template §2.4); file names use string placeholder substitution
+// (__slug__, __module__) and support conditional segments __if_<group>__ /
+// __if_<group>=<value>__. The result is deterministic: Baseline (sha256 of
+// each file plus the context hash) is stable for identical input.
 package engine
 
 import (
@@ -23,13 +23,13 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// tmplSuffix — суффикс файлов, содержимое которых рендерится через
+// tmplSuffix is the suffix of files whose contents are rendered through
 // text/template.
 const tmplSuffix = ".tmpl"
 
-// StaticFuncMap возвращает набор строково-преобразующих функций, не зависящих
-// от разрешённых настроек конкретного рендера (перенос go-template без
-// изменений — архитектурное решение: собственная реализация, без sprig).
+// StaticFuncMap returns string-transforming functions independent of the
+// resolved settings for a particular render (the go-template port is kept
+// unchanged by design: a custom implementation without sprig).
 func StaticFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"slug":   Slugify,
@@ -44,17 +44,17 @@ func StaticFuncMap() template.FuncMap {
 	}
 }
 
-// splitOn разбивает s по разделителю sep в []string (обёртка strings.Split с
-// порядком аргументов «строка, разделитель» — удобным для пайпа
-// `{{ .Name.Raw | split "." }}`). Нужна сниппетам генераторов, декомпозирующим
-// составные идентификаторы (напр. "payments.DebitAccount" → сервис + activity):
-// text/template не имеет встроенного split.
+// splitOn splits s by separator sep into []string (a strings.Split wrapper
+// with "string, separator" argument order, convenient for the pipeline
+// `{{ .Name.Raw | split "." }}`). Generators use it to decompose compound
+// identifiers (for example, "payments.DebitAccount" → service + activity):
+// text/template has no built-in split.
 func splitOn(sep, s string) []string { return strings.Split(s, sep) }
 
-// FuncMap возвращает полный набор функций рендера для заданного представления
-// настроек: [StaticFuncMap] плюс новые хелперы `is`/`has`,
-// обёртки над [settings.View.Is]/[settings.View.Has] — {{ if is "database"
-// "postgres" }}, {{ if has "brokers" "kafka" }}.
+// FuncMap returns the complete render function set for a settings view:
+// [StaticFuncMap] plus `is`/`has` helpers, wrappers around
+// [settings.View.Is]/[settings.View.Has] — {{ if is "database" "postgres" }},
+// {{ if has "brokers" "kafka" }}.
 func FuncMap(view settings.View) template.FuncMap {
 	fm := StaticFuncMap()
 	fm["is"] = view.Is
@@ -62,10 +62,10 @@ func FuncMap(view settings.View) template.FuncMap {
 	return fm
 }
 
-// splitWords разбивает произвольную строку на слова (в нижнем регистре) по
-// разделителям (_-. /), границам camelCase (aB) и границам аббревиатур
-// (HTTPServer → http, server). Основа для всех case-преобразований (перенос
-// go-template без изменений).
+// splitWords splits an arbitrary string into lowercase words at separators
+// (_-. /), camelCase boundaries (aB), and acronym boundaries
+// (HTTPServer → http, server). It is the basis for all case conversions (the
+// go-template port is unchanged).
 func splitWords(s string) []string {
 	runes := []rune(s)
 	var words []string
@@ -112,13 +112,13 @@ func upperFirst(w string) string {
 	return string(r)
 }
 
-// Snake преобразует строку в snake_case.
+// Snake converts a string to snake_case.
 func Snake(s string) string { return strings.Join(splitWords(s), "_") }
 
-// Kebab преобразует строку в kebab-case.
+// Kebab converts a string to kebab-case.
 func Kebab(s string) string { return strings.Join(splitWords(s), "-") }
 
-// Pascal преобразует строку в PascalCase.
+// Pascal converts a string to PascalCase.
 func Pascal(s string) string {
 	words := splitWords(s)
 	for i, w := range words {
@@ -127,7 +127,7 @@ func Pascal(s string) string {
 	return strings.Join(words, "")
 }
 
-// Camel преобразует строку в camelCase.
+// Camel converts a string to camelCase.
 func Camel(s string) string {
 	words := splitWords(s)
 	for i, w := range words {
@@ -139,7 +139,7 @@ func Camel(s string) string {
 	return strings.Join(words, "")
 }
 
-// Slugify приводит имя к slug'у в формате ^[a-z][a-z0-9_]*$ (snake_case).
-// Итоговую валидность (например, что slug не начинается с цифры) проверяет
-// вызывающий код команды создания проекта.
+// Slugify converts a name to a slug in the ^[a-z][a-z0-9_]*$ (snake_case)
+// format. The caller in the project-creation command checks final validity,
+// such as ensuring the slug does not begin with a digit.
 func Slugify(s string) string { return Snake(s) }

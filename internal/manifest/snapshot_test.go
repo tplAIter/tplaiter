@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-// TestSnapshot_Roundtrip проверяет стабильность сериализации: снимок,
-// перечитанный и сериализованный заново, байт-в-байт совпадает с исходным.
-// Сравниваем именно сериализованный вид (а не DeepEqual структур), т.к. теги
-// yaml намеренно без omitempty — иначе `default: false` терялся бы, — поэтому
-// пустой и nil-слайс на входе неразличимы после нормализации маршалером.
+// TestSnapshot_Roundtrip verifies serialization stability: a snapshot read back
+// and serialized again matches the original byte for byte. It compares the
+// serialized form rather than DeepEqual structures because yaml tags intentionally
+// omit omitempty (otherwise `default: false` would be lost), making empty and nil
+// input slices indistinguishable after marshaler normalization.
 func TestSnapshot_Roundtrip(t *testing.T) {
 	orig, err := LoadTemplate(fixture("full.yaml"))
 	if err != nil {
@@ -39,7 +39,7 @@ func TestSnapshot_Roundtrip(t *testing.T) {
 	if !bytes.Equal(first, second) {
 		t.Errorf("сериализация не стабильна после roundtrip\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
-	// Значимые нормализованные структуры совпадают (второй прогон load).
+	// Significant normalized structures match (the second load pass).
 	got2, err := LoadSnapshot(path)
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +50,7 @@ func TestSnapshot_Roundtrip(t *testing.T) {
 }
 
 func TestSnapshot_LoadValidates(t *testing.T) {
-	// Снимок проходит те же гейты apiVersion/kind, что и обычный манифест.
+	// A snapshot passes the same apiVersion/kind gates as a regular manifest.
 	orig, err := LoadTemplate(fixture("full.yaml"))
 	if err != nil {
 		t.Fatal(err)

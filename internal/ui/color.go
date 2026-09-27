@@ -6,16 +6,16 @@ import (
 	"golang.org/x/term"
 )
 
-// ColorEnabled сообщает, разрешён ли цветной вывод для stdout текущего
-// процесса. Правила (по приоритету):
-//  1. NO_COLOR задан (любое значение, см. https://no-color.org/) -> false;
-//  2. CLICOLOR_FORCE задан и не "0" -> true, даже если stdout не TTY;
-//  3. иначе — true только если stdout — терминал.
+// ColorEnabled reports whether color output is enabled for the current process's
+// stdout. Rules, in priority order:
+//  1. NO_COLOR is set (to any value; see https://no-color.org/) -> false;
+//  2. CLICOLOR_FORCE is set and not "0" -> true, even if stdout is not a TTY;
+//  3. otherwise true only when stdout is a terminal.
 func ColorEnabled() bool {
 	return colorEnabled(os.Getenv("NO_COLOR"), os.Getenv("CLICOLOR_FORCE"), isTerminal(os.Stdout))
 }
 
-// colorEnabled — чистая функция без побочных эффектов, вынесена для юнит-тестов.
+// colorEnabled is a pure, side-effect-free function extracted for unit tests.
 func colorEnabled(noColor, forceColor string, stdoutIsTTY bool) bool {
 	if noColor != "" {
 		return false
@@ -26,7 +26,7 @@ func colorEnabled(noColor, forceColor string, stdoutIsTTY bool) bool {
 	return stdoutIsTTY
 }
 
-// isTerminal сообщает, подключён ли f к терминалу.
+// isTerminal reports whether f is attached to a terminal.
 func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }

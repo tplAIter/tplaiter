@@ -14,10 +14,10 @@ import (
 
 const fakeExe = "tplater-fake"
 
-// newTestClient поднимает MCP-сервер in-process с подставным раннером
-// (execx.RecordingRunner) и подключает к нему in-memory клиента. Реальный
-// бинарник tplater не требуется: транспорт mcp-go и логика хендлеров
-// проверяются целиком, а подпроцесс сымитирован скриптом раннера.
+// newTestClient starts an in-process MCP server with a stub runner
+// (execx.RecordingRunner) and connects an in-memory client. A real tplater binary
+// is unnecessary: the mcp-go transport and handler logic are tested in full while
+// the runner script simulates the child process.
 func newTestClient(t *testing.T, runner execx.Runner) *client.Client {
 	t.Helper()
 
@@ -54,8 +54,8 @@ func resultText(t *testing.T, res *mcp.CallToolResult) string {
 	return b.String()
 }
 
-// TestProtocolListTools проверяет полный цикл initialize → tools/list и что
-// заявлен ожидаемый состав tools.
+// TestProtocolListTools checks the complete initialize-to-tools/list cycle and
+// the declared expected tool set.
 func TestProtocolListTools(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	c := newTestClient(t, runner)
@@ -90,9 +90,9 @@ func TestProtocolListTools(t *testing.T) {
 	}
 }
 
-// TestProjectNewAndGenLifecycleFlags проверяет публичную schema и сквозной
-// маппинг lifecycle-флагов к CLI. Это защищает от ситуации, когда поле есть в
-// Go-структуре, но не доступно MCP-клиенту.
+// TestProjectNewAndGenLifecycleFlags checks the public schema and end-to-end
+// mapping of lifecycle flags to the CLI. It prevents a field from existing in a
+// Go structure while remaining unavailable to an MCP client.
 func TestProjectNewAndGenLifecycleFlags(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	projectArgv := argvProjectNew("go/service", "billing", nil, false, true, true, true, true, 0)
@@ -157,9 +157,8 @@ func requireBooleanToolProperty(t *testing.T, tool mcp.Tool, field string) {
 	}
 }
 
-// TestRepoListSuccess: repo_list на пустом состоянии (сымитировано раннером) →
-// НЕ isError, текст содержит вывод подпроцесса, а сам подпроцесс вызван с
-// корректным argv.
+// TestRepoListSuccess: repo_list on empty state (simulated by the runner) is
+// NOT isError; its text contains child output and the child receives correct argv.
 func TestRepoListSuccess(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	runner.On(fakeExe, argvRepoList(), execx.Response{
@@ -222,8 +221,8 @@ func TestGenBatchSuccess(t *testing.T) {
 	}
 }
 
-// TestTemplateShowNotFound: ненулевой код возврата подпроцесса → isError с
-// полным stderr в тексте.
+// TestTemplateShowNotFound: a nonzero child exit code yields isError with full
+// stderr in its text.
 func TestTemplateShowNotFound(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	argv := argvTemplateShow("ghost/none")
@@ -252,8 +251,8 @@ func TestTemplateShowNotFound(t *testing.T) {
 	}
 }
 
-// TestLaunchFailure: сбой запуска подпроцесса (бинарник не найден, exitCode -1
-// без ExitError) → isError с текстом ошибки запуска.
+// TestLaunchFailure: child launch failure (binary absent, exitCode -1 without
+// ExitError) yields isError with the launch-error text.
 func TestLaunchFailure(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	runner.On(fakeExe, argvProjectsList(), execx.Response{

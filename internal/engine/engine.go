@@ -15,56 +15,54 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// defaultRoot — каталог дерева файлов внутри источника шаблона, если
-// Template.Engine.Root не задан.
+// defaultRoot is the template source's file-tree directory when
+// Template.Engine.Root is unset.
 const defaultRoot = "files"
 
-// Options — параметры рендера. Замена go-template'овского Options: метаданные
-// движка и файловая фильтрация теперь приходят из манифеста шаблона, а не из
-// template.json/Registry; фичи заменены на разрешённые настройки.
+// Options contains render parameters. Unlike go-template's Options, engine
+// metadata and file filtering come from the template manifest rather than
+// template.json/Registry; features are replaced by resolved settings.
 type Options struct {
-	// Source — корень репозитория шаблона (fs.FS: os.DirFS в проде/тестах,
-	// встроенная сборка (embed.FS) в собранных дистрибутивах). Дерево
-	// генерируемых файлов лежит внутри по пути Template.Engine.Root (по
-	// умолчанию "files").
+	// Source is the template repository root (fs.FS: os.DirFS in production and
+	// tests, embed.FS in built distributions). The generated-file tree is under
+	// Template.Engine.Root ("files" by default).
 	Source fs.FS
-	// Target — целевой каталог. Должен не существовать либо быть пустым.
+	// Target is the destination directory. It must be absent or empty.
 	Target string
-	// Template — манифест шаблона (источник Engine{Root,CopyWithoutRender,
-	// PostReplace}, Files-правил и метаданных Template.Version для baseline).
+	// Template is the template manifest (source of Engine{Root,CopyWithoutRender,
+	// PostReplace}, Files rules, and Template.Version metadata for the baseline).
 	Template *manifest.Template
-	// Resolved — разрешённые настройки шаблона (реализация ). Рендер использует
-	// ActiveValues — производный набор с обнулёнными неактивными вложенными
-	// группами (см. [settings.Resolved]).
+	// Resolved contains resolved template settings (the  implementation). Render
+	// uses ActiveValues, a derived set with inactive nested groups zeroed out
+	// (see [settings.Resolved]).
 	Resolved settings.Resolved
-	// Project — координаты создаваемого проекта (.Project в контексте).
+	// Project contains the coordinates of the created project (.Project in the context).
 	Project manifest.ProjectInfo
-	// Runtime — runtime-параметры проекта (.Runtime.Port в контексте).
+	// Runtime contains project runtime parameters (.Runtime.Port in the context).
 	Runtime manifest.ProjectRuntime
-	// Repo — координата репозитория, из которого взят шаблон (.Template.Repo
-	// в контексте и project.yaml). Манифест шаблона сам не хранит свой repo —
-	// это знание источника, поэтому передаётся отдельно вызывающим.
+	// Repo identifies the repository from which the template was obtained
+	// (.Template.Repo in the context and project.yaml). The template manifest
+	// does not store its repository, so the caller passes this source metadata separately.
 	Repo string
-	// Partials — дополнительные источники ассоциированных шаблонов: из каждого
-	// fs.FS парсятся все *.tmpl (ожидаются {{ define }}-блоки). Определённые
-	// имена доступны файлам шаблона через {{ template "<name>" . }}.
+	// Partials are additional sources of associated templates: every *.tmpl is
+	// parsed from each fs.FS ({{ define }} blocks are expected). Defined names are
+	// available to template files through {{ template "<name>" . }}.
 	Partials []fs.FS
 }
 
-// Result — итог рендера.
+// Result is the render result.
 type Result struct {
-	// Files — отсортированный список относительных путей сгенерированных
-	// файлов (без baseline.json).
+	// Files is the sorted list of relative paths for generated files (excluding
+	// baseline.json).
 	Files []string
-	// Baseline — снимок дерева, записанный в Target/.tplaiter/baseline.json.
+	// Baseline is the tree snapshot written to Target/.tplaiter/baseline.json.
 	Baseline *Baseline
-	// Context — контекст, использованный для рендера (переиспользуется
-	// вызывающим, например для рендера NOTES.tmpl тем же набором данных).
+	// Context is the context used for rendering (the caller can reuse it, for
+	// example to render NOTES.tmpl with the same data).
 	Context *Context
 }
 
-// renderer держит разобранный контекст и предвычисленные наборы для одного
-// прогона Render.
+// renderer holds the parsed context and precomputed sets for one Render run.
 type renderer struct {
 	src      fs.FS
 	root     string
@@ -84,12 +82,12 @@ type compiledPostReplace struct {
 	value       string
 }
 
-// Render генерирует проект из шаблона Source в каталог Target.
+// Render generates a project from Source into Target.
 //
-// Атомарность: рендер идёт в staging-каталог рядом с целью (гарантия того же
-// файлового тома для os.Rename), и лишь при полном успехе staging атомарно
-// переименовывается в Target. При любой ошибке staging удаляется, Target не
-// трогается. Требование: Target не существует или является пустым каталогом.
+// Atomicity: rendering runs in a staging directory beside the target (ensuring
+// the same filesystem for os.Rename), and staging is atomically renamed to
+// Target only after complete success. On any error staging is removed and
+// Target is untouched. Target must be absent or an empty directory.
 func Render(opts Options) (*Result, error) {
 	if opts.Template == nil {
 		return nil, errors.New("engine: Render: nil template")
@@ -183,8 +181,8 @@ func Render(opts Options) (*Result, error) {
 	return &Result{Files: r.written, Baseline: baseline, Context: ctx}, nil
 }
 
-// normalizeRoot приводит Template.Engine.Root к каноническому виду без
-// начальных/конечных `/`, подставляя [defaultRoot], если поле не задано.
+// normalizeRoot canonicalizes Template.Engine.Root by removing leading and
+// trailing `/`, using [defaultRoot] when the field is unset.
 func normalizeRoot(root string) string {
 	root = strings.Trim(strings.TrimSpace(root), "/")
 	if root == "" {
@@ -193,8 +191,8 @@ func normalizeRoot(root string) string {
 	return root
 }
 
-// renderTree обходит Template.Engine.Root источника и материализует дерево в
-// dst.
+// renderTree walks Template.Engine.Root in the source and materializes the tree
+// in dst.
 func (r *renderer) renderTree(dst string) error {
 	walkErr := fs.WalkDir(r.src, r.root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -212,9 +210,8 @@ func (r *renderer) renderTree(dst string) error {
 	return nil
 }
 
-// renderFile обрабатывает один файл шаблона: условные пути, файл-фильтрацию
-// (files-правила манифеста), рендер/копирование, postReplace, запись в
-// staging.
+// renderFile handles one template file: conditional paths, file filtering
+// (manifest files rules), rendering/copying, postReplace, and writing to staging.
 func (r *renderer) renderFile(dst, srcPath, rel string) error {
 	outRel, include, err := r.transformPath(rel)
 	if err != nil {
@@ -230,7 +227,7 @@ func (r *renderer) renderFile(dst, srcPath, rel string) error {
 		logicalRel = strings.TrimSuffix(outRel, tmplSuffix)
 	}
 
-	// Файл-фильтрация по files-правилам манифеста.
+	// File filtering by the manifest's files rules.
 	if r.excluded.matchAny(logicalRel) {
 		return nil
 	}
@@ -250,11 +247,11 @@ func (r *renderer) renderFile(dst, srcPath, rel string) error {
 		data = r.applyPostReplace(logicalRel, data)
 	}
 
-	// Внутрифайловые маркеры tplater:if/begin/end обрабатываются
-	// ПОСЛЕ текстового рендера и после byte-copy пути одинаково — маркеры
-	// живут в исходниках вообще, не только в *.tmpl. Единственное исключение —
-	// copyWithoutRender: такие файлы (обычно бинарные/сторонние дашборды)
-	// копируются буквально, без какой-либо интерпретации их содержимого.
+	// In-file tplater:if/begin/end markers are processed AFTER text rendering;
+	// the byte-copy path follows the same rule, so markers may occur in any
+	// source file, not only *.tmpl. The sole exception is copyWithoutRender:
+	// those files (usually binaries or external dashboards) are copied literally
+	// without interpreting their contents.
 	if !forceCopy {
 		data, err = processMarkers(logicalRel, data, r.values)
 		if err != nil {
@@ -269,9 +266,9 @@ func (r *renderer) renderFile(dst, srcPath, rel string) error {
 	return nil
 }
 
-// execTemplate рендерит содержимое через text/template с FuncMap движка.
-// Каждый файл получает клон базового набора partial'ов ({{ define }}-блоки),
-// поэтому может вызывать {{ template "<name>" . }}.
+// execTemplate renders content through text/template with the engine FuncMap.
+// Each file receives a clone of the base partial set ({{ define }} blocks), so
+// it can call {{ template "<name>" . }}.
 func (r *renderer) execTemplate(name string, data []byte) ([]byte, error) {
 	root, err := r.base.Clone()
 	if err != nil {
@@ -288,9 +285,9 @@ func (r *renderer) execTemplate(name string, data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// parsePartials собирает базовый шаблон из всех *.tmpl каждого источника.
-// Файлы обходятся в отсортированном порядке (детерминизм) и должны содержать
-// только {{ define }}-блоки (loose-текст вне define не исполняется).
+// parsePartials builds the base template from all *.tmpl files in each source.
+// Files are traversed in sorted order (determinism) and must contain only
+// {{ define }} blocks (loose text outside define is not executed).
 func parsePartials(sources []fs.FS, funcMap template.FuncMap) (*template.Template, error) {
 	base := template.New("__partials__").Funcs(funcMap)
 	for _, src := range sources {
@@ -321,8 +318,7 @@ func parsePartials(sources []fs.FS, funcMap template.FuncMap) (*template.Templat
 	return base, nil
 }
 
-// applyPostReplace выполняет строковые замены плейсхолдеров в байт-копируемых
-// файлах.
+// applyPostReplace performs placeholder string replacements in byte-copied files.
 func (r *renderer) applyPostReplace(logicalRel string, data []byte) []byte {
 	for _, rule := range r.postRepl {
 		if rule.matcher.matchAny(logicalRel) {
@@ -332,19 +328,18 @@ func (r *renderer) applyPostReplace(logicalRel string, data []byte) []byte {
 	return data
 }
 
-// writeFile создаёт родительские каталоги и пишет файл.
+// writeFile creates parent directories and writes the file.
 func writeFile(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("engine: mkdir %s: %w", filepath.Dir(path), err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: генерируемые исходники — обычные файлы 0644.
+	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: generated source files are regular 0644 files.
 		return fmt.Errorf("engine: write %s: %w", path, err)
 	}
 	return nil
 }
 
-// ensureEmptyTarget проверяет, что target отсутствует или является пустым
-// каталогом.
+// ensureEmptyTarget checks that target is absent or an empty directory.
 func ensureEmptyTarget(target string) error {
 	info, err := os.Stat(target)
 	if errors.Is(err, os.ErrNotExist) {
@@ -366,10 +361,10 @@ func ensureEmptyTarget(target string) error {
 	return nil
 }
 
-// commitStaging атомарно переносит staging в target (target — пустой/отсутствует).
+// commitStaging atomically moves staging to target (target is empty or absent).
 func commitStaging(staging, target string) error {
 	if _, err := os.Stat(target); err == nil {
-		// Пустой каталог существует — удаляем, чтобы Rename прошёл кроссплатформенно.
+		// An empty directory exists; remove it so Rename works cross-platform.
 		if err := os.Remove(target); err != nil {
 			return fmt.Errorf("engine: remove empty target: %w", err)
 		}

@@ -57,7 +57,7 @@ func TestEvalIfSegmentGenericTruthiness(t *testing.T) {
 		seg  string
 		want bool
 	}{
-		{"__if_database__", true}, // select "none" != zero-value "" — истинно (см. описание поведения)
+		{"__if_database__", true}, // select "none" != zero value "", so true (see behavior description)
 		{"__if_brokers__", true},
 		{"__if_empty__", false},
 		{"__if_active__", true},
