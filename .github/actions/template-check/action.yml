@@ -1,0 +1,24 @@
+name: tplAIter template check
+description: Lint and render a template repository with the pinned tplAIter checker
+runs:
+  using: composite
+  steps:
+    - id: render
+      name: Check template manifest and render fixtures
+      shell: bash
+      run: |
+        set -euo pipefail
+        action_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd -P)"
+        output_root="$RUNNER_TEMP/tplater-template-check"
+        (
+          cd "$action_root"
+          go run ./cmd/templatecheck \
+            --template "$GITHUB_WORKSPACE" \
+            --output "$output_root" \
+            --json
+        )
+        printf 'root=%s\n' "$output_root" >> "$GITHUB_OUTPUT"
+outputs:
+  render-root:
+    description: Runner-owned directory containing one rendered project per combination
+    value: ${{ steps.render.outputs.root }}
