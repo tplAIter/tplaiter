@@ -14,8 +14,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// runGenArgs вызывает runGen напрямую с заданными аргументами (без проекта) —
-// проверяет разбор позиционных <kind> <name> ДО резолва run-контекста.
+// runGenArgs calls runGen directly with the given arguments (without a project)
+// to verify positional <kind> <name> parsing BEFORE run-context resolution.
 func runGenArgs(t *testing.T, args ...string) error {
 	t.Helper()
 	cmd := &cobra.Command{Use: "gen"}
@@ -56,8 +56,8 @@ func TestRunGen_ArgValidation(t *testing.T) {
 	}
 }
 
-// TestRunGen_HelpArg: -h как первый аргумент печатает справку и не требует
-// проекта.
+// TestRunGen_HelpArg: -h as the first argument prints help and requires no
+// project.
 func TestRunGen_HelpArg(t *testing.T) {
 	cmd := &cobra.Command{Use: "gen"}
 	cmd.SetOut(&bytes.Buffer{})

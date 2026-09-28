@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// TestWorkspaceUseDirs — go.work-монорепо собирается помодульно (находка CG-4).
+// TestWorkspaceUseDirs — go.work monorepo builds per module (CG-4 finding).
 func TestWorkspaceUseDirs(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

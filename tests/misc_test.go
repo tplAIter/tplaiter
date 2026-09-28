@@ -2,12 +2,11 @@ package e2e
 
 import "testing"
 
-// TestMiscCommandsExitZero — таблица команд без побочных эффектов на
-// состояние (сценарий 5, требование реализацию): doctor / version / help должны
-// завершаться успешно на любой машине с go+git в PATH (doctor.go:
-// doctorCriticalTools требует именно go и git — оба обязательны, чтобы
-// собрать сам тестовый бинарник, так что критичных провалов здесь быть не
-// может).
+// TestMiscCommandsExitZero — table of commands without side effects on state
+// (scenario 5, implementation requirement): doctor / version / help must
+// succeed on any machine with go+git in PATH (doctor.go:
+// doctorCriticalTools specifically requires go and git — both are required to
+// build the test binary itself, so there can be no critical failures here).
 func TestMiscCommandsExitZero(t *testing.T) {
 	t.Parallel()
 
@@ -34,11 +33,10 @@ func TestMiscCommandsExitZero(t *testing.T) {
 	}
 }
 
-// TestVersionReportsBuildVersion проверяет, что `tplater version` печатает
-// РОВНО ту версию, что вкомпилирована ldflags в TestMain (buildVersion) —
-// единственная гарантия, что версия-гейт сценария 3 (requires.tplaiter)
-// проверяет то, что должен, а не "dev"-заглушку (см. комментарий
-// main_test.go:buildVersion).
+// TestVersionReportsBuildVersion verifies that `tplater version` prints
+// EXACTLY the version compiled in by ldflags in TestMain (buildVersion) — the
+// only guarantee that scenario 3's version gate (requires.tplaiter) checks the
+// intended value rather than a "dev" stub (see main_test.go:buildVersion).
 func TestVersionReportsBuildVersion(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)

@@ -15,8 +15,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// repoRunner — Runner для git/glab/gh команд управления репозиториями. Пакетная
-// переменная для подмены на execx.RecordingRunner в тестах (стиль auth.go).
+// repoRunner — runner for git/glab/gh repository-management commands. A package
+// variable that tests replace with execx.RecordingRunner (following auth.go).
 var repoRunner execx.Runner = execx.Exec{}
 
 func init() {
@@ -39,8 +39,8 @@ func newRepoCmd() *cobra.Command {
 	return c
 }
 
-// newManager собирает repo.Manager для команды: домашний каталог, стор токенов,
-// UI поверх потоков cobra. authStore закрывается вызывающим (возвращается для
+// newManager builds repo.Manager for the command: home directory, token store,
+// and UI over cobra streams. The caller closes authStore (returned for
 // defer Close).
 func newManager(cmd *cobra.Command) (*repo.Manager, *auth.Store, error) {
 	home, _, err := state.EnsureHome()

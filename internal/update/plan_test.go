@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// writeWork создаёт файл рабочего дерева.
+// writeWork creates a work-tree file.
 func writeWork(t *testing.T, dir, rel, content string) {
 	t.Helper()
 	full := filepath.Join(dir, filepath.FromSlash(rel))
@@ -18,7 +18,7 @@ func writeWork(t *testing.T, dir, rel, content string) {
 	}
 }
 
-// findAction ищет действие по пути.
+// findAction finds an action by path.
 func findAction(t *testing.T, p *Plan, rel string) Action {
 	t.Helper()
 	for _, a := range p.Actions {
@@ -31,7 +31,7 @@ func findAction(t *testing.T, p *Plan, rel string) Action {
 }
 
 func TestComputeUnmodifiedUpdated(t *testing.T) {
-	// (a) work == baseline, шаблон изменил файл → перезапись target.
+	// (a) work == baseline, template changed the file -> overwrite target.
 	dir := t.TempDir()
 	writeWork(t, dir, "a.txt", "v1\n")
 	base := map[string][]byte{"a.txt": []byte("v1\n")}
@@ -49,7 +49,7 @@ func TestComputeUnmodifiedUpdated(t *testing.T) {
 }
 
 func TestComputeTemplateUnchangedKeepsUserEdit(t *testing.T) {
-	// (b) base == target (шаблон не менял), work изменён пользователем → keep.
+	// (b) base == target (template unchanged), work user-edited -> keep.
 	dir := t.TempDir()
 	writeWork(t, dir, "a.txt", "user-edit\n")
 	base := map[string][]byte{"a.txt": []byte("v1\n")}
@@ -67,11 +67,11 @@ func TestComputeTemplateUnchangedKeepsUserEdit(t *testing.T) {
 }
 
 func TestComputeThreeWayMergeClean(t *testing.T) {
-	// (c) все три различны, непересекающиеся правки → merge без конфликта.
+	// (c) all three differ, non-overlapping edits -> clean merge.
 	dir := t.TempDir()
-	writeWork(t, dir, "a.txt", "USER\nb\nc\n") // пользователь изменил строку 1
+	writeWork(t, dir, "a.txt", "USER\nb\nc\n") // user changed line 1
 	base := map[string][]byte{"a.txt": []byte("a\nb\nc\n")}
-	target := map[string][]byte{"a.txt": []byte("a\nb\nTPL\n")} // шаблон изменил строку 3
+	target := map[string][]byte{"a.txt": []byte("a\nb\nTPL\n")} // template changed line 3
 	baseline := map[string]string{"a.txt": sha256Hex([]byte("a\nb\nc\n"))}
 
 	p, err := Compute(base, target, baseline, dir)
@@ -85,7 +85,7 @@ func TestComputeThreeWayMergeClean(t *testing.T) {
 }
 
 func TestComputeThreeWayConflict(t *testing.T) {
-	// (c) пересекающиеся правки → конфликт.
+	// (c) overlapping edits -> conflict.
 	dir := t.TempDir()
 	writeWork(t, dir, "a.txt", "a\nUSER\nc\n")
 	base := map[string][]byte{"a.txt": []byte("a\nb\nc\n")}
@@ -106,7 +106,7 @@ func TestComputeThreeWayConflict(t *testing.T) {
 }
 
 func TestComputeNewFileCreate(t *testing.T) {
-	// (d) файл есть только в target, work отсутствует → create.
+	// (d) file exists only in target, work absent -> create.
 	dir := t.TempDir()
 	base := map[string][]byte{}
 	target := map[string][]byte{"new.txt": []byte("hello\n")}
@@ -122,7 +122,7 @@ func TestComputeNewFileCreate(t *testing.T) {
 }
 
 func TestComputeNewFileConflict(t *testing.T) {
-	// (d) файл в target, work существует и отличается → конфликт.
+	// (d) target file exists, work exists and differs -> conflict.
 	dir := t.TempDir()
 	writeWork(t, dir, "new.txt", "local\n")
 	base := map[string][]byte{}
@@ -139,7 +139,7 @@ func TestComputeNewFileConflict(t *testing.T) {
 }
 
 func TestComputeRemovedCleanDeletes(t *testing.T) {
-	// (e) файл удалён в target, work == baseline → delete.
+	// (e) file deleted in target, work == baseline -> delete.
 	dir := t.TempDir()
 	writeWork(t, dir, "gone.txt", "v1\n")
 	base := map[string][]byte{"gone.txt": []byte("v1\n")}
@@ -157,7 +157,7 @@ func TestComputeRemovedCleanDeletes(t *testing.T) {
 }
 
 func TestComputeRemovedModifiedKept(t *testing.T) {
-	// (e) файл удалён в target, work изменён → keep + warning.
+	// (e) file deleted in target, work edited -> keep + warning.
 	dir := t.TempDir()
 	writeWork(t, dir, "gone.txt", "user-changed\n")
 	base := map[string][]byte{"gone.txt": []byte("v1\n")}
@@ -178,7 +178,7 @@ func TestComputeRemovedModifiedKept(t *testing.T) {
 }
 
 func TestComputeNoOpWhenIdentical(t *testing.T) {
-	// base==target, work==baseline → keep без изменений (повторный update).
+	// base==target, work==baseline -> keep unchanged (repeat update).
 	dir := t.TempDir()
 	writeWork(t, dir, "a.txt", "v1\n")
 	base := map[string][]byte{"a.txt": []byte("v1\n")}

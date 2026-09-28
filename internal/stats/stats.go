@@ -1,15 +1,15 @@
-// Package stats реализует отчёт дрейфа сгенерированного проекта от шаблона
-// (`tplater stats`): чистый рендер зафиксированной версии+ответов
-// (эталон, через internal/renderref — то же ядро, что у update) сравнивается с
-// рабочим деревом. По каждому файлу — статус (identical/modified/deleted/extra),
-// метрика % изменённых строк (LCS) и класс обновляемости (auto/conflict-prone/
-// manual-only). Итог — drift-score 0..100, топ по дрейфу, сломанные якоря;
-// `--json` даёт стабильную машиночитаемую схему для дашбордов.
+// Package stats reports drift of a generated project from its template
+// (`tplater stats`): a clean render of the pinned version and answers
+// (the reference from internal/renderref, shared with update) against the work
+// tree. Each file gets a status (identical/modified/deleted/extra), a changed
+// line percentage (LCS), and an updateability class (auto/conflict-prone/
+// manual-only). The result is drift-score 0..100, top drift files, and broken anchors.
+// `--json` provides a stable machine-readable schema for dashboards.
 //
-// Пакет НЕ импортирует internal/update: эталон рендерится напрямую через
-// renderref (checkout из кеша + рендер), historical-эвристика — рендер последних
-// N тегов и сравнение результатов. Это исключает связанность с update (его
-// параллельно рефакторит реализация ) и повторяет ту же оркестрацию рендера.
+// The package does not import internal/update: it renders the reference directly
+// through renderref (cache checkout plus render), and the historical heuristic
+// renders the last N tags and compares results. This avoids coupling to update
+// and repeats the same render orchestration.
 package stats
 
 import (
@@ -23,35 +23,34 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// historicalTags — сколько последних стабильных тегов шаблона учитывается в
-// эвристике conflict-prone (: «diff последних N версий шаблона»).
+// historicalTags is the number of latest stable template tags used by the
+// conflict-prone heuristic ("diff of the last N template versions").
 const historicalTags = 3
 
-// Options — параметры запуска [Run].
+// Options contains [Run] parameters.
 type Options struct {
-	// StartDir — рабочий каталог для поиска проекта (обычно os.Getwd).
+	// StartDir is the work directory for project lookup (usually os.Getwd).
 	StartDir string
-	// JSON — печатать машиночитаемый отчёт вместо человекочитаемого.
+	// JSON prints a machine-readable report instead of a human-readable one.
 	JSON bool
 }
 
-// Deps — внешние зависимости [Run], инъектируемые слоем cobra и тестами.
+// Deps contains [Run]'s external dependencies, injected by cobra and tests.
 type Deps struct {
-	// Manager — резолюция/checkout версий шаблона (repo-кеш).
+	// Manager resolves and checks out template versions (repository cache).
 	Manager *repo.Manager
-	// Home — домашний каталог tplater (не используется напрямую, задел под
-	// сверку реестра; оставлен для симметрии с update.Deps).
+	// Home is the tplater home directory (reserved for registry checks; retained
+	// for symmetry with update.Deps).
 	Home string
-	// Out, Err — потоки основного вывода и предупреждений.
+	// Out and Err are the main output and warning streams.
 	Out io.Writer
 	Err io.Writer
-	// Palette — палитра сообщений.
+	// Palette is the message palette.
 	Palette ui.Palette
 }
 
-// Run исполняет `tplater stats`: находит проект от StartDir, собирает отчёт
-// дрейфа и печатает его (текстом либо JSON). Ошибок с нестандартным кодом
-// выхода не порождает — stats только читает.
+// Run executes `tplater stats`: finds the project from StartDir, collects a drift
+// report, and prints it as text or JSON. It only reads and produces no special exit errors.
 func Run(ctx context.Context, d Deps, opts Options) error {
 	rep, err := Collect(ctx, d, opts.StartDir)
 	if err != nil {
@@ -67,8 +66,8 @@ func Run(ctx context.Context, d Deps, opts Options) error {
 	return nil
 }
 
-// Collect находит проект от startDir, рендерит эталон зафиксированной версии,
-// собирает историческую эвристику и анализирует дрейф рабочего дерева.
+// Collect finds the project from startDir, renders the pinned reference version,
+// gathers the historical heuristic, and analyzes work-tree drift.
 func Collect(ctx context.Context, d Deps, startDir string) (*Report, error) {
 	root, proj, err := project.FindRoot(startDir)
 	if err != nil {
@@ -114,9 +113,9 @@ func Collect(ctx context.Context, d Deps, startDir string) (*Report, error) {
 	return rep, nil
 }
 
-// renderVersion выкачивает версию шаблона по резолву res и рендерит её в память
-// с координатами/значениями проекта in. Checkout очищается перед возвратом.
-// Дублирует update.RenderVersion (пакет update намеренно не импортируется).
+// renderVersion checks out the template version resolved by res and renders it
+// in memory with project coordinates/values from in. Checkout is cleaned up
+// before return. Duplicates update.RenderVersion (update is intentionally not imported).
 func renderVersion(ctx context.Context, mgr *repo.Manager, res repo.Resolved, in renderref.Input) (*renderref.Result, error) {
 	src, cleanup, err := mgr.Checkout(ctx, res.RepoAlias, res.GitRef, res.Entry.Path)
 	if err != nil {
@@ -126,13 +125,11 @@ func renderVersion(ctx context.Context, mgr *repo.Manager, res repo.Resolved, in
 	return renderref.Render(src, in)
 }
 
-// historicalChurn собирает множество эталонных путей, которые шаблон менял между
-// последними N стабильными тегами (эвристика conflict-prone):
-// рендерит каждый из последних N тегов теми же значениями и относит к churn
-// путь, содержимое которого различается между любыми двумя рендерами (в т.ч.
-// появление/исчезновение файла). Возвращает множество и признак доступности
-// эвристики (>=2 успешно отрендеренных тегов). Best-effort: не отрендерившийся
-// тег пропускается, не роняя stats.
+// historicalChurn collects reference paths changed by the template among the
+// latest N stable tags (the conflict-prone heuristic). It renders each tag with
+// the same values and marks paths whose content differs between any renders,
+// including file appearance/disappearance. It returns the set and whether the
+// heuristic is available (>=2 successful renders). Best effort: failed tags are skipped.
 func historicalChurn(ctx context.Context, mgr *repo.Manager, ref repo.Resolved, in renderref.Input) (map[string]struct{}, bool) {
 	tags := ref.Entry.Tags
 	if len(tags) > historicalTags {
@@ -174,8 +171,8 @@ func historicalChurn(ctx context.Context, mgr *repo.Manager, ref repo.Resolved, 
 	return churn, true
 }
 
-// pathVaries сообщает, различается ли содержимое пути p между рендерами (включая
-// отсутствие файла в части рендеров).
+// pathVaries reports whether path p's content differs between renders, including
+// absence from some renders.
 func pathVaries(renders []map[string][]byte, p string) bool {
 	first := renders[0][p]
 	firstHas := hasKey(renders[0], p)

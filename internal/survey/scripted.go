@@ -7,30 +7,27 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// ScriptedPrompter — тестовая реализация [Prompter] без TTY. Проигрывает
-// заранее заданные ответы: на i-й вызов Ask берётся Answers[i] (карта id
-// группы → значение), на i-й вызов Confirm — Confirms[i]. Активные группы
-// (с учётом выбора родителей по проигранным ответам) вычисляются той же
-// логикой, что и боевой опросник, а их порядок фиксируется в AskCalls для
-// проверок «что реально спрашивалось».
+// ScriptedPrompter — TTY-free test [Prompter]. It replays predefined answers:
+// Ask call i uses Answers[i] (group ID → value), Confirm call i uses Confirms[i].
+// Active groups (including parent choices from replayed answers) use the same
+// logic as the production questionnaire, and order is recorded in AskCalls.
 type ScriptedPrompter struct {
-	// Answers — очередь наборов ответов, по одному на вызов Ask.
+	// Answers — answer-set queue, one per Ask call.
 	Answers []settings.Values
-	// Confirms — очередь результатов подтверждения, по одному на вызов Confirm.
+	// Confirms — confirmation-result queue, one per Confirm call.
 	Confirms []bool
 
-	// AskCalls — записанные (в порядке опроса) id активных групп каждого Ask.
+	// AskCalls — active-group IDs recorded for each Ask, in question order.
 	AskCalls [][]string
-	// Summaries — сводки, переданные в Confirm (для инспекции в тестах).
+	// Summaries — summaries passed to Confirm (for test inspection).
 	Summaries []string
 
 	askIdx  int
 	confIdx int
 }
 
-// Ask проигрывает очередной набор ответов: обходит активные группы дерева
-// (учитывая выбор родителей по проигранным значениям), фиксирует их id в
-// AskCalls и возвращает значения этих групп.
+// Ask replays the next answer set: traverses active groups (respecting parent
+// choices from replayed values), records their IDs in AskCalls, and returns values.
 func (s *ScriptedPrompter) Ask(groups []manifest.SettingGroup, current settings.Values) (settings.Values, error) {
 	if s.askIdx >= len(s.Answers) {
 		s.askIdx++
@@ -58,9 +55,8 @@ func (s *ScriptedPrompter) Ask(groups []manifest.SettingGroup, current settings.
 	return out, nil
 }
 
-// Confirm возвращает очередной запланированный результат подтверждения
-// (по исчерпании очереди — true, чтобы одиночный успешный сценарий не требовал
-// явного Confirms).
+// Confirm returns the next planned confirmation result (true after the queue is
+// exhausted, so a single successful scenario needs no explicit Confirms).
 func (s *ScriptedPrompter) Confirm(summary string) (bool, error) {
 	s.Summaries = append(s.Summaries, summary)
 	v := true

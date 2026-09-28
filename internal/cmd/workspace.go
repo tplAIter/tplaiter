@@ -23,19 +23,19 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// forcedWorkflowGroup — имя settings-группы, которую `workspace add-service`
-// best-effort форсирует в true, если она есть в манифесте шаблона сервиса
-// (см. allSets/serviceTemplateHasGroup ниже и isUnknownForcedGroupError).
+// forcedWorkflowGroup — settings group name that `workspace add-service`
+// best-effort forces to true when present in the service template manifest
+// (see allSets/serviceTemplateHasGroup below and isUnknownForcedGroupError).
 const forcedWorkflowGroup = "workflow"
 
 func init() {
 	rootCmd.AddCommand(newWorkspaceCmd())
 }
 
-// newWorkspaceCmd — команда `tplater workspace`, объединяющая функции CLI,
-// завязанные на kind=workspace проекта (см. docs/workspace-temporal.md
-// репозитория шаблонов go-template — спека живёт там, не в tplater;
-// §2.3): не команды манифеста, а отдельная логика самого tplater.
+// newWorkspaceCmd — `tplater workspace`, grouping CLI functions tied to
+// kind=workspace projects (see docs/workspace-temporal.md in the go-template
+// repository; the spec lives there, not in tplater; §2.3): this is tplater
+// logic, not a manifest command.
 func newWorkspaceCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "workspace",
@@ -46,12 +46,12 @@ func newWorkspaceCmd() *cobra.Command {
 	return c
 }
 
-// newWorkspaceAddServiceCmd создаёт `tplater workspace add-service <name>`
-// (см. docs/workspace-temporal.md репозитория шаблонов go-template): разворачивает
-// сервис-action шаблоном того же репозитория, что и текущий workspace (тип
-// `service`), под services/<slug>, best-effort форсирует настройку
-// workflow=true (сервис = Temporal activities; при отсутствии группы в
-// манифесте шаблона — предупреждение вместо ошибки), включает каталог в go.work.
+// newWorkspaceAddServiceCmd creates `tplater workspace add-service <name>`
+// (see docs/workspace-temporal.md in the go-template repository): it renders a
+// service action using a `service` template from the same repository as the
+// current workspace into services/<slug>, best-effort forces workflow=true
+// (a service is a Temporal activity; missing group means a warning), and adds
+// the directory to go.work.
 func newWorkspaceAddServiceCmd() *cobra.Command {
 	var (
 		module      string
@@ -121,15 +121,13 @@ func newWorkspaceAddServiceCmd() *cobra.Command {
 			svcRef := proj.Template.Repo + "/" + svcName
 			pal := ui.Default()
 
-			// workflow=true форсируется best-effort (docs/workspace-temporal.md
-			// репозитория шаблонов go-template): сервис-action в workspace обязан
-			// быть Temporal-воркером. Но не любой шаблон сервиса обязан объявлять
-			// группу workflow — если её нет в манифесте, форсировать нечего:
-			// вместо жёсткого падения предупреждаем и продолжаем без
-			// forced-значения (находка ревью). Если группа есть, пользовательский
-			// --set той же группы не может отключить форс — добавляем
-			// forced-значение последним, оно перекрывает более ранние --set той же
-			// группы при разборе (survey.AskFlow берёт последнее вхождение группы).
+			// workflow=true is forced best-effort (docs/workspace-temporal.md in the
+			// go-template repository): a workspace service action must be a Temporal
+			// worker. Service templates need not declare workflow; when absent there is
+			// nothing to force, so warn and continue without the forced value. When the
+			// group exists, a user --set cannot disable the force: append the forced
+			// value last, overriding earlier --set entries (survey.AskFlow uses the
+			// last group occurrence).
 			allSets := slices.Clone(sets)
 			hasWorkflow, err := serviceTemplateHasGroup(cmd, mgr, svcRef, forcedWorkflowGroup)
 			if err != nil {
@@ -178,11 +176,11 @@ func newWorkspaceAddServiceCmd() *cobra.Command {
 				Palette:  pal,
 			}
 			if err := newcmd.Run(cmd.Context(), opts, d); err != nil {
-				// Защитный фолбэк: serviceTemplateHasGroup уже проверил наличие
-				// forcedWorkflowGroup выше, поэтому в норме сюда не попадаем — но
-				// newcmd.Run делает собственный checkout манифеста, и если он вдруг
-				// разошёлся с проверкой (гонка, ошибка резолвера), даём то же понятное
-				// пояснение, а не сырую ошибку settings.ParseSet.
+				// Defensive fallback: serviceTemplateHasGroup already checked for
+				// forcedWorkflowGroup above, so this should be unreachable. However,
+				// newcmd.Run checks out the manifest independently; if it diverges due to
+				// a race or resolver error, return the same clear explanation instead of
+				// the raw settings.ParseSet error.
 				if isUnknownForcedGroupError(err, forcedWorkflowGroup) {
 					return fmt.Errorf(
 						"workspace add-service: шаблон сервиса %s/%s не содержит настройки %q "+
@@ -219,16 +217,13 @@ func newWorkspaceAddServiceCmd() *cobra.Command {
 	return c
 }
 
-// findWorkspaceRoot ищет ближайший (вверх по дереву от startDir) проект
-// tplater и, если он не kind=workspace, пробует продолжить подъём от его
-// родительского каталога — на один уровень выше настоящего workspace-корня
-// может найтись собственный вложенный проект (например, services/<slug>,
-// зарегистрированный этой же командой через свой .tplaiter/project.yaml),
-// который иначе затенил бы workspace-корень для project.FindRoot (у неё
-// побеждает ближайший маркер). Если выше подлинного workspace нет —
-// возвращается исходно найденный (не-workspace) проект без изменений, чтобы
-// сохранить прежнее поведение и сообщение об ошибке для случая, когда
-// команда запущена вне workspace вовсе.
+// findWorkspaceRoot finds the nearest tplater project while walking upward from
+// startDir. If it is not kind=workspace, it continues from the parent: a nested
+// project such as services/<slug> (registered by this command with its own
+// .tplaiter/project.yaml) may otherwise hide the workspace root from
+// project.FindRoot, which prefers the nearest marker. If no real workspace is
+// found above, it returns the original non-workspace project unchanged, keeping
+// the previous behavior and error for invocation outside any workspace.
 func findWorkspaceRoot(home, startDir string) (root string, proj *manifest.Project, tpl *manifest.Template, err error) {
 	root, proj, err = project.FindRoot(startDir)
 	if err != nil {
@@ -253,31 +248,29 @@ func findWorkspaceRoot(home, startDir string) (root string, proj *manifest.Proje
 	return root, proj, tpl, nil
 }
 
-// isUnknownForcedGroupError сообщает, вызвана ли ошибка (settings.ParseSet
-// напрямую в [serviceTemplateHasGroup] либо провалившийся newcmd.Run) именно
-// отсутствием группы group в манифесте шаблона сервиса — settings.ParseSet
-// возвращает такой текст для любой неизвестной группы (сентинел-ошибки у неё
-// нет), поэтому сверяем по тексту. Используется, чтобы отличить провал
-// форсированного --set (добавлен самим tplater) от ошибки в
-// пользовательском --set/--answers той же команды.
+// isUnknownForcedGroupError reports whether an error (settings.ParseSet directly
+// in [serviceTemplateHasGroup] or a failed newcmd.Run) is caused by group being
+// absent from the service template manifest. settings.ParseSet uses this text
+// for every unknown group and has no sentinel error, so compare the text. This
+// distinguishes a failed forced --set (added by tplater) from an error in the
+// user's --set/--answers for the same command.
 func isUnknownForcedGroupError(err error, group string) bool {
 	return strings.Contains(err.Error(), fmt.Sprintf("неизвестная группа %q", group))
 }
 
-// serviceTemplateHasGroup сообщает, объявлена ли в манифесте шаблона сервиса
-// ref (repoAlias/templateName — тот же формат, что уходит в
-// newcmd.Options.Ref) settings-группа group. Вызывающий код (RunE
-// newWorkspaceAddServiceCmd) использует результат, чтобы решить, форсировать
-// ли --set workflow=true: best-effort — шаблон сервиса не обязан объявлять
-// эту группу, и её отсутствие не должно валить команду.
+// serviceTemplateHasGroup reports whether the service template manifest at ref
+// (repoAlias/templateName, the same format passed to newcmd.Options.Ref)
+// declares settings group group. The caller (RunE in
+// newWorkspaceAddServiceCmd) uses this to decide whether to force
+// --set workflow=true: service templates need not declare the group, and its
+// absence must not fail the command.
 //
-// Checkout и разбор манифеста — тем же путём, что runTemplateShow
-// (template.go): ResolveRef → Checkout → чтение и разбор
-// template.manifest.yaml. Наличие группы проверяем через settings.ParseSet (а
-// не ручной обход tpl.Settings), чтобы учитывать вложенные группы
-// (Option.Settings) той же логикой, что реальная установка настроек в
-// newcmd.Run — иначе эта проверка могла бы разойтись с фактическим поведением
-// (например, для группы, видимой только под выбранной опцией).
+// Manifest checkout and parsing follow runTemplateShow (template.go):
+// ResolveRef → Checkout → read and parse template.manifest.yaml. Check group
+// presence through settings.ParseSet rather than manually walking tpl.Settings,
+// so nested groups (Option.Settings) use the same logic as real settings
+// installation in newcmd.Run; otherwise the check could diverge from actual
+// behavior, such as a group visible only under a selected option.
 func serviceTemplateHasGroup(cmd *cobra.Command, mgr *repo.Manager, ref, group string) (bool, error) {
 	resolved, err := mgr.ResolveRef(ref)
 	if err != nil {
@@ -302,20 +295,18 @@ func serviceTemplateHasGroup(cmd *cobra.Command, mgr *repo.Manager, ref, group s
 		if isUnknownForcedGroupError(err, group) {
 			return false, nil
 		}
-		// Группа с именем group есть, но несовместима со значением "true"
-		// (например, тип select/int вместо toggle) — это уже не «группы нет»,
-		// а реальный конфликт форсируемого значения с манифестом, скрывать
-		// его best-effort-логикой не стоит.
+		// Group group exists but is incompatible with value "true" (for example,
+		// select/int rather than toggle). This is a real conflict with the
+		// manifest, not a missing group, and best-effort logic must not hide it.
 		return false, fmt.Errorf("группа %q объявлена в манифесте шаблона, но несовместима с форсируемым значением true: %w", group, err)
 	}
 	return true, nil
 }
 
-// resolveServiceTemplateName ищет в репозитории repoAlias ровно один шаблон с
-// лейблом type=service ( индекс шаблонов) — это шаблон сервиса-action
-// для `workspace add-service`. Несколько или ноль совпадений — ошибка с
-// перечислением найденного (неоднозначность разрешает пользователь явным --ref
-// в будущей версии команды).
+// resolveServiceTemplateName finds exactly one template with label type=service
+// in repository repoAlias (the index entry), the service-action template for
+// `workspace add-service`. Zero or multiple matches are errors listing the
+// findings; a future command version may resolve ambiguity with explicit --ref.
 func resolveServiceTemplateName(mgr interface {
 	Templates() (map[string][]state.TemplateEntry, error)
 }, repoAlias string,
@@ -341,9 +332,9 @@ func resolveServiceTemplateName(mgr interface {
 	}
 }
 
-// addWorkspaceUse дописывает use-директиву diskPath в go.work корня root, если
-// её там ещё нет (идемпотентно — повторный add-service с уже
-// зарегистрированным путём не дублирует строку).
+// addWorkspaceUse adds a use directive for diskPath to root's go.work when it
+// is not already present (idempotent: repeating add-service does not duplicate
+// an existing path).
 func addWorkspaceUse(root, diskPath string) error {
 	workPath := filepath.Join(root, "go.work")
 	data, err := os.ReadFile(workPath)
@@ -354,14 +345,14 @@ func addWorkspaceUse(root, diskPath string) error {
 	if err != nil {
 		return fmt.Errorf("разбор go.work: %w", err)
 	}
-	// filepath.Clean normalizes "./services/<slug>" (что передаём мы) и
-	// эквивалентные ручные директивы вида "use services/<slug>" (без "./",
-	// валидный синтаксис go.work) к одному виду — иначе AddUse задваивает use
-	// на тот же каталог, если строку уже дописали руками без "./".
+	// filepath.Clean normalizes "./services/<slug>" (what we pass) and equivalent
+	// manual directives such as "use services/<slug>" (valid go.work syntax) to
+	// one form; otherwise AddUse would duplicate a path manually written without
+	// "./".
 	cleanDiskPath := filepath.Clean(diskPath)
 	for _, u := range wf.Use {
 		if filepath.Clean(u.Path) == cleanDiskPath {
-			return nil // уже зарегистрирован
+			return nil // already registered
 		}
 	}
 	if err := wf.AddUse(diskPath, ""); err != nil {
@@ -369,9 +360,9 @@ func addWorkspaceUse(root, diskPath string) error {
 	}
 	wf.Cleanup()
 	out := modfile.Format(wf.Syntax)
-	// go.work.sum рядом не трогаем — `go work sync`/`tplater run sync`
-	// пересоберёт его штатно после регистрации нового модуля.
-	if err := os.WriteFile(workPath, out, 0o644); err != nil { //nolint:gosec // G306: go.work не секрет, 0644 намеренно (как в manifest.SaveSnapshot).
+	// Leave the neighboring go.work.sum alone; `go work sync`/`tplater run sync`
+	// will regenerate it normally after the new module is registered.
+	if err := os.WriteFile(workPath, out, 0o644); err != nil { //nolint:gosec // G306: go.work is not secret; 0644 is intentional (as in manifest.SaveSnapshot).
 		return fmt.Errorf("запись go.work: %w", err)
 	}
 	return nil

@@ -6,22 +6,22 @@ import (
 	"strings"
 )
 
-// semver — распарсенная версия vMAJOR.MINOR.PATCH. Пре-релизы (суффикс `-...`)
-// считаются нестабильными и в индекс релизных тегов не попадают (:
-// умолчание — «старший стабильный тег»).
+// semver is a parsed vMAJOR.MINOR.PATCH version. Prereleases (the `-...`
+// suffix) are unstable and are excluded from the release-tag index (the
+// default is the highest stable tag).
 type semver struct {
 	major, minor, patch int
 }
 
-// parseStableSemver разбирает строку версии `vX.Y.Z` (ведущий `v` обязателен).
-// Возвращает ok=false для пустого ввода, некорректного формата или пре-релиза
-// (`vX.Y.Z-rc1`, `+build`) — такие теги стабильными не считаются.
+// parseStableSemver parses a `vX.Y.Z` version (the leading `v` is required).
+// It returns ok=false for empty input, an invalid format, or a prerelease.
+// (`vX.Y.Z-rc1`, `+build`) — such tags are not considered stable.
 func parseStableSemver(v string) (semver, bool) {
 	if len(v) < 2 || v[0] != 'v' {
 		return semver{}, false
 	}
 	core := v[1:]
-	// Пре-релиз/метаданные сборки — не стабильный релиз.
+	// Prerelease/build metadata is not a stable release.
 	if strings.ContainsAny(core, "-+") {
 		return semver{}, false
 	}
@@ -40,7 +40,7 @@ func parseStableSemver(v string) (semver, bool) {
 	return semver{major: nums[0], minor: nums[1], patch: nums[2]}, true
 }
 
-// less сообщает, меньше ли a чем b (лексикографически по major/minor/patch).
+// less reports whether a is less than b, lexicographically by major/minor/patch.
 func (a semver) less(b semver) bool {
 	switch {
 	case a.major != b.major:
@@ -52,21 +52,20 @@ func (a semver) less(b semver) bool {
 	}
 }
 
-// tagVersion — тег вместе с его распарсенной версией (для сортировки).
+// tagVersion is a tag with its parsed version (for sorting).
 type tagVersion struct {
-	tag     string // полный git-тег: "v1.2.0" или "name/v1.2.0"
-	version string // версия-суффикс: "v1.2.0"
+	tag     string // Full git tag: "v1.2.0" or "name/v1.2.0".
+	version string // Version suffix: "v1.2.0".
 	ver     semver
 }
 
-// stableTagsFor фильтрует allTags, оставляя стабильные релизные теги,
-// применимые к шаблону templateName в репозитории вида kind (single/multi), и
-// возвращает их в полном git-виде, отсортированными по УБЫВАНИЮ версии
-// (result[0] — старший стабильный тег).
+// stableTagsFor filters allTags to stable release tags applicable to
+// templateName in a repository of kind (single/multi), returning full git tags
+// sorted by descending version (result[0] is the highest stable tag).
 //
-// Правила соответствия:
-//   - single: тег вида `vX.Y.Z` (без префикса);
-//   - multi:  тег вида `<templateName>/vX.Y.Z`.
+// Matching rules:
+//   - single: a `vX.Y.Z` tag (without a prefix);
+//   - multi: a `<templateName>/vX.Y.Z` tag.
 func stableTagsFor(allTags []string, templateName string, multi bool) []string {
 	matched := make([]tagVersion, 0, len(allTags))
 	prefix := templateName + "/"
@@ -82,7 +81,7 @@ func stableTagsFor(allTags []string, templateName string, multi bool) []string {
 			}
 			versionPart = strings.TrimPrefix(tag, prefix)
 		} else {
-			// single: только теги без «/» (иначе это чужой namespaced-тег).
+			// single: only tags without "/" (otherwise it is another namespaced tag).
 			if strings.Contains(tag, "/") {
 				continue
 			}
@@ -96,7 +95,7 @@ func stableTagsFor(allTags []string, templateName string, multi bool) []string {
 	}
 
 	sort.Slice(matched, func(i, j int) bool {
-		// По убыванию версии; при равенстве — по имени тега для детерминизма.
+		// Descending version; tag name breaks ties deterministically.
 		if matched[i].ver.less(matched[j].ver) {
 			return false
 		}
@@ -113,9 +112,9 @@ func stableTagsFor(allTags []string, templateName string, multi bool) []string {
 	return out
 }
 
-// tagVersionSuffix извлекает версию-суффикс из полного git-тега относительно
-// имени шаблона: `name/v1.0.0` → `v1.0.0`, `v1.0.0` → `v1.0.0`. Используется при
-// сопоставлении пользовательского `@vX.Y.Z` с сохранёнными тегами.
+// tagVersionSuffix extracts the version suffix from a full git tag relative to
+// the template name: `name/v1.0.0` → `v1.0.0`, `v1.0.0` → `v1.0.0`. It is used
+// when matching a user-supplied `@vX.Y.Z` against stored tags.
 func tagVersionSuffix(tag, templateName string) string {
 	return strings.TrimPrefix(tag, templateName+"/")
 }

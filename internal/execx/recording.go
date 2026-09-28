@@ -8,31 +8,30 @@ import (
 	"sync"
 )
 
-// Call — одна записанная инвокация [RecordingRunner.Run].
+// Call — one recorded invocation of [RecordingRunner.Run].
 type Call struct {
 	Name string
 	Args []string
 	Opts Options
 }
 
-// Response — заскриптованный ответ на вызов Run.
+// Response — scripted response to a Run call.
 type Response struct {
 	Result Result
 	Err    error
 }
 
-// RecordingRunner — тестовый дублёр [Runner]: отвечает по заранее заданному
-// скрипту и запоминает все вызовы для последующих проверок в тестах.
+// RecordingRunner — [Runner] test double: responds according to a predefined
+// script and records all calls for later test assertions.
 //
-// Ответы на Run ищутся в таком порядке:
-//  1. точное совпадение "name arg1 arg2 ..." (см. [RecordingRunner.On]);
-//  2. совпадение только по name (см. [RecordingRunner.OnCommand]);
-//  3. Default, если задан;
-//  4. иначе — ошибка "нет заскриптованного ответа".
+// Run responses are looked up in this order:
+//  1. exact match "name arg1 arg2 ..." (see [RecordingRunner.On]);
+//  2. name-only match (see [RecordingRunner.OnCommand]);
+//  3. Default, if set;
+//  4. otherwise, error "no scripted response".
 //
-// Каждый ключ хранит очередь ответов (FIFO): повторные вызовы с тем же
-// ключом последовательно потребляют её, последний ответ переиспользуется
-// после исчерпания очереди.
+// Each key stores a FIFO response queue: repeated calls with the same key
+// consume it in order, and the last response is reused after the queue is exhausted.
 type RecordingRunner struct {
 	mu sync.Mutex
 
@@ -41,15 +40,15 @@ type RecordingRunner struct {
 	byExact map[string][]Response
 	byName  map[string][]Response
 
-	// Default — ответ, когда для вызова не нашлось скрипта. Если HasDefault
-	// не выставлен через SetDefault, отсутствие скрипта — это ошибка теста.
+	// Default — response when no script matches a call. If HasDefault was not set
+	// through SetDefault, a missing script is a test error.
 	Default    Response
 	hasDefault bool
 
 	lookups map[string]string
 }
 
-// NewRecordingRunner создаёт пустой RecordingRunner.
+// NewRecordingRunner creates an empty RecordingRunner.
 func NewRecordingRunner() *RecordingRunner {
 	return &RecordingRunner{
 		byExact: make(map[string][]Response),
@@ -58,7 +57,7 @@ func NewRecordingRunner() *RecordingRunner {
 	}
 }
 
-// On заскриптовывает ответ на вызов с точным совпадением name и args.
+// On scripts a response for a call with an exact name and args match.
 func (r *RecordingRunner) On(name string, args []string, resp Response) *RecordingRunner {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -67,8 +66,8 @@ func (r *RecordingRunner) On(name string, args []string, resp Response) *Recordi
 	return r
 }
 
-// OnCommand заскриптовывает ответ на вызов name с любыми аргументами
-// (используется, если точное совпадение по [RecordingRunner.On] не найдено).
+// OnCommand scripts a response for name with any arguments (used when no exact
+// match from [RecordingRunner.On] is found).
 func (r *RecordingRunner) OnCommand(name string, resp Response) *RecordingRunner {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -76,7 +75,7 @@ func (r *RecordingRunner) OnCommand(name string, resp Response) *RecordingRunner
 	return r
 }
 
-// SetDefault задаёт ответ-фоллбек для вызовов без скрипта.
+// SetDefault sets a fallback response for calls without a script.
 func (r *RecordingRunner) SetDefault(resp Response) *RecordingRunner {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -85,7 +84,7 @@ func (r *RecordingRunner) SetDefault(resp Response) *RecordingRunner {
 	return r
 }
 
-// SetLookPath заскриптовывает результат LookPath(name) = path, ok=true.
+// SetLookPath scripts the result LookPath(name) = path, ok=true.
 func (r *RecordingRunner) SetLookPath(name, path string) *RecordingRunner {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -93,7 +92,7 @@ func (r *RecordingRunner) SetLookPath(name, path string) *RecordingRunner {
 	return r
 }
 
-// Run реализует [Runner]. Записывает вызов и возвращает заскриптованный ответ.
+// Run implements [Runner]. It records the call and returns the scripted response.
 func (r *RecordingRunner) Run(_ context.Context, name string, args []string, opts Options) (Result, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -121,8 +120,8 @@ func (r *RecordingRunner) Run(_ context.Context, name string, args []string, opt
 	return resp.Result, resp.Err
 }
 
-// LookPath реализует [Runner]. Возвращает заскриптованный путь либо
-// exec.ErrNotFound, если SetLookPath для name не вызывался.
+// LookPath implements [Runner]. It returns the scripted path or exec.ErrNotFound
+// if SetLookPath was not called for name.
 func (r *RecordingRunner) LookPath(name string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -132,10 +131,9 @@ func (r *RecordingRunner) LookPath(name string) (string, error) {
 	return "", &exec.Error{Name: name, Err: exec.ErrNotFound}
 }
 
-// popResponse достаёт первый ответ из очереди по ключу key. Последний
-// оставшийся элемент переиспользуется повторно (очередь не опустошается
-// ниже одного элемента), чтобы длинные тестовые сценарии не требовали
-// заранее знать точное число вызовов.
+// popResponse takes the first response from the queue for key. The last
+// remaining element is reused (the queue never shrinks below one element), so
+// long test scenarios need not know the exact call count in advance.
 func popResponse(m map[string][]Response, key string) (Response, bool) {
 	queue, ok := m[key]
 	if !ok || len(queue) == 0 {
@@ -148,7 +146,7 @@ func popResponse(m map[string][]Response, key string) (Response, bool) {
 	return resp, true
 }
 
-// commandKey строит ключ скрипта из имени команды и аргументов.
+// commandKey builds a script key from a command name and arguments.
 func commandKey(name string, args []string) string {
 	if len(args) == 0 {
 		return name

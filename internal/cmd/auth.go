@@ -17,12 +17,12 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// authRunner — Runner для внешних инструментов (glab/gh) команд auth. Вынесен в
-// пакетную переменную, чтобы тесты подставляли execx.RecordingRunner вместо
-// реального запуска.
+// authRunner — runner for external tools (glab/gh) used by auth commands. It is
+// a package variable so tests can substitute execx.RecordingRunner for a real
+// invocation.
 var authRunner execx.Runner = execx.Exec{}
 
-// dateLayout — формат флага --expires.
+// dateLayout — format of the --expires flag.
 const dateLayout = "2006-01-02"
 
 func init() {
@@ -129,7 +129,7 @@ func newAuthAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// Токен НИКОГДА не печатаем — только факт сохранения.
+			// NEVER print the token — report only that it was saved.
 			fmt.Fprintf(cmd.OutOrStdout(), "Токен сохранён: id=%d host=%s\n", id, args[0])
 			return nil
 		},
@@ -192,9 +192,9 @@ func newAuthGitCredentialCmd() *cobra.Command {
 	}
 }
 
-// newAuthImportCmd строит `auth import-<tool>`: получает токен через
-// `<bin> auth token [--hostname h]` (мокается в тестах через authRunner) и
-// сохраняет его в стор с указанным tool.
+// newAuthImportCmd builds `auth import-<tool>`: it obtains a token through
+// `<bin> auth token [--hostname h]` (mocked in tests through authRunner) and
+// saves it in the store under the specified tool.
 func newAuthImportCmd(use, bin, toolName, defaultHost string) *cobra.Command {
 	var hostname string
 	c := &cobra.Command{
@@ -247,10 +247,10 @@ func newAuthImportCmd(use, bin, toolName, defaultHost string) *cobra.Command {
 	return c
 }
 
-// readToken получает токен: из stdin (--token-stdin, для пайпа) либо
-// интерактивным скрытым вводом через golang.org/x/term (уже в go.mod; huh/charm
-// не тянем ради одной строки ввода). Если stdin не терминал и --token-stdin не
-// задан — просим использовать --token-stdin.
+// readToken obtains a token from stdin (--token-stdin, for a pipe) or through
+// hidden interactive input using golang.org/x/term (already in go.mod; we do
+// not pull in huh/charm for one input line). If stdin is not a terminal and
+// --token-stdin is not set, it asks the user to use --token-stdin.
 func readToken(cmd *cobra.Command, fromStdin bool) (string, error) {
 	if fromStdin {
 		data, err := io.ReadAll(cmd.InOrStdin())
@@ -272,7 +272,7 @@ func readToken(cmd *cobra.Command, fromStdin bool) (string, error) {
 	return strings.TrimSpace(string(b)), nil
 }
 
-// dash возвращает "-" для пустой строки (для табличного вывода).
+// dash returns "-" for an empty string (for table output).
 func dash(s string) string {
 	if s == "" {
 		return "-"
@@ -280,7 +280,7 @@ func dash(s string) string {
 	return s
 }
 
-// dashTime форматирует время как YYYY-MM-DD либо "-" для нулевого.
+// dashTime formats a time as YYYY-MM-DD or "-" for the zero value.
 func dashTime(t time.Time) string {
 	if t.IsZero() {
 		return "-"

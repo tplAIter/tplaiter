@@ -10,8 +10,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// Operation — одна типизированная операция пакетного скаффолдинга. Params и
-// Fields уже должны быть разрешены вызывающей стороной через [ResolveParams].
+// Operation — one typed batch-scaffolding operation. Params and Fields must
+// already be resolved by the caller through [ResolveParams].
 type Operation struct {
 	Kind   string
 	Name   string
@@ -19,7 +19,7 @@ type Operation struct {
 	Params map[string]any
 }
 
-// BatchResult — результат всех успешно применённых операций batch.
+// BatchResult — result of all successfully applied batch operations.
 type BatchResult struct {
 	Results      []Result
 	CreatedFiles []string
@@ -32,11 +32,10 @@ type batchPlan struct {
 	anchors []pendingAnchor
 }
 
-// GenerateBatch применяет несколько scaffolds как одну транзакцию файловой
-// системы. До записи планируются все операции, включая коллизии таргетов и
-// вставки в общие якоря. Затем Go-проекты форматируются и выполняется один
-// финальный manifest build-gate; любая ошибка записи или build полностью восстанавливает
-// исходные файлы.
+// GenerateBatch applies multiple scaffolds as one filesystem transaction. All
+// operations are planned before writing, including target collisions and shared
+// anchor insertions. Go projects are then formatted and one final manifest build
+// gate runs; any write or build error fully restores the original files.
 func GenerateBatch(ctx context.Context, tpl *manifest.Template, operations []Operation, opts Options) (*BatchResult, error) {
 	if len(operations) == 0 {
 		return nil, errors.New("gen batch: требуется хотя бы одна операция")
@@ -81,9 +80,9 @@ func GenerateBatch(ctx context.Context, tpl *manifest.Template, operations []Ope
 			for _, a := range allAnchors {
 				_ = os.WriteFile(a.abs, a.original, 0o600)
 			}
-			// Директории, которых не было до batch, тоже не должны пережить
-			// неуспешную транзакцию. Идём от листьев к корню; Remove безопасно
-			// оставит каталог, если сторонний процесс успел положить в него файл.
+			// Directories absent before the batch must not survive a failed
+			// transaction either. Walk from leaves to root; Remove safely leaves a
+			// directory if another process managed to place a file in it.
 			for _, dir := range createdDirs {
 				_ = os.Remove(dir)
 			}
@@ -100,7 +99,7 @@ func GenerateBatch(ctx context.Context, tpl *manifest.Template, operations []Ope
 				}
 				if err := os.WriteFile(p.abs, p.content, 0o600); err != nil {
 					rollback()
-					return nil, fmt.Errorf("gen batch: запись %s: %w", p.rel, err)
+					return nil, fmt.Errorf("gen batch: writing %s: %w", p.rel, err)
 				}
 				createdAbs = append(createdAbs, p.abs)
 				createdRels = append(createdRels, p.rel)
@@ -118,7 +117,7 @@ func GenerateBatch(ctx context.Context, tpl *manifest.Template, operations []Ope
 			a := allAnchors[abs]
 			if err := os.WriteFile(a.abs, a.updated, 0o600); err != nil {
 				rollback()
-				return nil, fmt.Errorf("gen batch: запись %s: %w", a.rel, err)
+					return nil, fmt.Errorf("gen batch: writing %s: %w", a.rel, err)
 			}
 			log("edited  %s (anchor %s)", a.rel, a.anchor)
 			editedSet[a.rel] = struct{}{}
@@ -133,7 +132,7 @@ func GenerateBatch(ctx context.Context, tpl *manifest.Template, operations []Ope
 			log("step: %s", gateName)
 			if err != nil {
 				rollback()
-				return nil, fmt.Errorf("gen batch: сгенерированный код не собирается — изменения откачены:\n%s", out)
+					return nil, fmt.Errorf("gen batch: generated code does not build — changes rolled back:\n%s", out)
 			}
 		}
 
@@ -146,9 +145,9 @@ func GenerateBatch(ctx context.Context, tpl *manifest.Template, operations []Ope
 	*/
 }
 
-// mkdirAllTracked создаёт dir и запоминает только действительно новые
-// директории для последующего rollback. Слайс строится от листа к уже
-// существующему родителю, то есть его естественный порядок подходит Remove.
+// mkdirAllTracked creates dir and records only genuinely new directories for
+// rollback. The slice is built from the leaf toward an existing parent, so its
+// natural order is suitable for Remove.
 func mkdirAllTracked(dir string, created *[]string) error {
 	missing := make([]string, 0)
 	for current := dir; ; current = filepath.Dir(current) {

@@ -15,10 +15,10 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// writeProjectsFixtureAt создаёт .tplaiter/project.yaml + .tplaiter/baseline.json
-// в dir — минимальную фикстуру, достаточную и для project.FindRoot
-// (internal/project), и для projectsync.SyncCurrent (нужен baseline.json,
-// чтобы посчитать baselineSHA).
+// writeProjectsFixtureAt creates .tplaiter/project.yaml plus
+// .tplaiter/baseline.json in dir, a minimal fixture sufficient for both
+// project.FindRoot (internal/project) and projectsync.SyncCurrent (baseline.json
+// is needed to compute baselineSHA).
 func writeProjectsFixtureAt(t *testing.T, dir, id string) {
 	t.Helper()
 	tplDir := filepath.Join(dir, ".tplaiter")
@@ -37,8 +37,8 @@ func writeProjectsFixtureAt(t *testing.T, dir, id string) {
 	}
 }
 
-// seedProjectsRegistry записывает projects.yaml с заданными записями под
-// home, минуя WithLock (тест не конкурирует сам с собой).
+// seedProjectsRegistry writes projects.yaml with the given entries under home,
+// bypassing WithLock (the test does not contend with itself).
 func seedProjectsRegistry(t *testing.T, home string, refs ...state.ProjectRef) {
 	t.Helper()
 	p := state.DefaultProjects()
@@ -56,7 +56,7 @@ func TestProjectsListCmd_OkAndMissingStatuses(t *testing.T) {
 
 	okDir := t.TempDir()
 	writeProjectsFixtureAt(t, okDir, "proj-ok")
-	missingDir := filepath.Join(t.TempDir(), "gone") // каталог никогда не создавался.
+	missingDir := filepath.Join(t.TempDir(), "gone") // directory never created.
 
 	seedProjectsRegistry(
 		t, home,
@@ -213,9 +213,8 @@ func TestProjectSyncPreRun_SkipsForSkipList(t *testing.T) {
 	}
 }
 
-// withCwd меняет рабочий каталог процесса на dir на время теста, восстанавливая
-// прежний по завершении (см. internal/cmd/run_test.go:newRunFixture — тот же
-// приём).
+// withCwd changes the process working directory to dir for the test and restores
+// it afterward (see internal/cmd/run_test.go:newRunFixture, the same pattern).
 func withCwd(t *testing.T, dir string) {
 	t.Helper()
 	prevWD, err := os.Getwd()
@@ -228,11 +227,10 @@ func withCwd(t *testing.T, dir string) {
 	t.Cleanup(func() { _ = os.Chdir(prevWD) })
 }
 
-// newProjectSyncIntegrationRoot строит минимальное дерево cobra (root + одна
-// подкоманда leafName), скомпонованное так же, как rootCmd (PersistentPreRunE
-// = rootPreRun) — без использования пакетного rootCmd, чтобы не тащить общее
-// состояние зарегистрированных командой init() подкоманд (см. соответствующий
-// приём в TestRootPreRun_BareInvocationSkipsFirstRunAndSuggest).
+// newProjectSyncIntegrationRoot builds a minimal cobra tree (root plus one
+// leafName subcommand) composed like rootCmd (PersistentPreRunE = rootPreRun),
+// without package rootCmd and its shared init-registered command state (see the
+// same technique in TestRootPreRun_BareInvocationSkipsFirstRunAndSuggest).
 func newProjectSyncIntegrationRoot(leafName string) *cobra.Command {
 	leaf := &cobra.Command{
 		Use: leafName,
@@ -251,7 +249,7 @@ func TestProjectSyncPreRun_Integration_CommandInProjectUpdatesLastSeen(t *testin
 	withUpgradeFlag(t, false)
 
 	rec := execx.NewRecordingRunner()
-	scriptLsRemote(rec, "") // suggestUpdatePreRun тоже в цепочке — не должен ходить в реальную сеть.
+	scriptLsRemote(rec, "") // suggestUpdatePreRun is in the chain and must not use real network.
 	withRunner(t, rec)
 
 	projectDir := t.TempDir()
@@ -285,7 +283,7 @@ func TestProjectSyncPreRun_Integration_HelpDoesNotTrigger(t *testing.T) {
 	withUpgradeFlag(t, false)
 
 	rec := execx.NewRecordingRunner()
-	withRunner(t, rec) // ни одного вызова не ожидается — completion/help не доходят до suggest/sync.
+	withRunner(t, rec) // no calls expected; completion/help do not reach suggest/sync.
 
 	projectDir := t.TempDir()
 	writeProjectsFixtureAt(t, projectDir, "proj-help")

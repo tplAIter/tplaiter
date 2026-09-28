@@ -14,7 +14,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// TestNewContextDerivations проверяет производные имена (Pascal/Camel/Snake/Kebab).
+// TestNewContextDerivations checks derived names (Pascal/Camel/Snake/Kebab).
 func TestNewContextDerivations(t *testing.T) {
 	cases := []struct {
 		raw, pascal, camel, snake, kebab string
@@ -64,7 +64,7 @@ func TestEvalGate(t *testing.T) {
 		t.Errorf("expected available: ok=%v err=%v", ok, err)
 	}
 
-	// OR-семантика: истинности ОДНОГО условия списка достаточно.
+	// OR semantics: one TRUE condition in the list is sufficient.
 	ok, err = evalGate([]string{"brokers=rabbitmq", "brokers=kafka"}, values)
 	if err != nil || !ok {
 		t.Errorf("expected OR semantics to make this available: ok=%v err=%v", ok, err)
@@ -76,7 +76,7 @@ func TestEvalGate(t *testing.T) {
 	}
 }
 
-// writeFile создаёт файл с содержимым content, создавая недостающие каталоги.
+// writeFile creates a file with content, creating missing directories.
 func writeFile(t *testing.T, dir, rel, content string) {
 	t.Helper()
 	p := filepath.Join(dir, filepath.FromSlash(rel))
@@ -166,8 +166,8 @@ const usecaseWiringTmpl = `	{{ .Marker }}
 	_ = usecase.{{ .Name.Pascal }}UseCase{}
 `
 
-// setupProject создаёт минимальный проект: go.mod, app.go с якорем CODEGEN:WIRING,
-// пакет usecase, и каталог .tplaiter/generators со сниппетами use-case.
+// setupProject creates a minimal project: go.mod, app.go with a CODEGEN:WIRING
+// anchor, the usecase package, and a .tplaiter/generators directory with use-case snippets.
 func setupProject(t *testing.T) (dir string, tpl *manifest.Template) {
 	t.Helper()
 	dir = t.TempDir()
@@ -237,7 +237,7 @@ func TestGenerate_WhenGateBlocks(t *testing.T) {
 		t.Errorf("expected when-gate error mentioning `settings set`, got %v", err)
 	}
 
-	// Даже при валидной настройке выполнение остаётся недоступным.
+	// Even with valid settings, execution remains unavailable.
 	opts.Values = settings.Values{"brokers": []string{"kafka"}}
 	before := snapshotTree(t, dir)
 	_, err = Generate(context.Background(), tpl, "kafka-consumer", "Foo", opts)
@@ -247,7 +247,7 @@ func TestGenerate_WhenGateBlocks(t *testing.T) {
 
 func TestGenerate_MissingAnchorFails(t *testing.T) {
 	dir, tpl := setupProject(t)
-	// Портим app.go — якоря там больше нет.
+	// Corrupt app.go — its anchor is gone.
 	writeFile(t, dir, "internal/app/app.go", "package app\n")
 
 	opts := Options{ProjectRoot: dir, GeneratorsDir: filepath.Join(dir, GeneratorsRelPath), NoBuild: true}
@@ -255,7 +255,7 @@ func TestGenerate_MissingAnchorFails(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "якорь") {
 		t.Errorf("expected anchor-not-found error, got %v", err)
 	}
-	// Ничего не должно быть создано при ошибке подготовки якорей (до записи).
+	// Nothing should be created when anchor preparation fails (before writing).
 	if _, statErr := os.Stat(filepath.Join(dir, "internal/usecase/foo.go")); statErr == nil {
 		t.Error("target file must not be created when anchor preparation fails")
 	}
@@ -265,10 +265,10 @@ func TestGenerate_MissingAnchorFails(t *testing.T) {
 // contract; generation now denies before any filesystem effect.
 func TestGenerate_RollbackOnBuildFailure(t *testing.T) {
 	dir, tpl := setupProject(t)
-	// Ломаем сниппет: незакрытая скобка структуры.
+	// Corrupt the snippet: an unclosed struct brace.
 	writeFile(t, dir, ".tplaiter/generators/use-case.go.tmpl", "package usecase\n\ntype {{ .Name.Pascal }}UseCase struct {\n")
 
-	opts := Options{ProjectRoot: dir, GeneratorsDir: filepath.Join(dir, GeneratorsRelPath)} // NoBuild: false (по умолчанию)
+	opts := Options{ProjectRoot: dir, GeneratorsDir: filepath.Join(dir, GeneratorsRelPath)} // NoBuild: false (default)
 
 	before := snapshotTree(t, dir)
 	_, err := Generate(context.Background(), tpl, "use-case", "Foo", opts)

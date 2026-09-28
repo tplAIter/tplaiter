@@ -1,14 +1,14 @@
-// Package contribute реализует `tplater upgrade`: разработчик,
-// доработавший код в сгенерированном проекте, предлагает эти изменения самому
-// шаблону — обратной параметризацией (де-рендер) правок и открытием MR/PR в
-// репозитории шаблона (либо серией git-патчей в --patch-режиме).
+// Package contribute implements `tplater upgrade`: a developer who changed
+// code in a generated project proposes those changes to the template itself by
+// reverse-parameterizing (derendering) the changes and opening an MR/PR in the
+// template repository (or producing a series of git patches in --patch mode).
 //
-// Флоу: диф work↔эталонный рендер (переиспользуется ядро internal/stats и
-// internal/renderref) → кандидаты (изменённые файлы эталона + extra по --files)
-// → интерактивный выбор (huh-мультиселект) → де-рендер (slug/module/... →
-// плейсхолдеры) → ветка в кеш-клоне репозитория шаблона → commit →
-// push + glab/gh MR (по типу репо) ИЛИ git format-patch (--patch/plain git).
-// Кеш-клон после операции возвращается на исходный ref — кеш не портится.
+// Flow: diff work↔reference render (reusing internal/stats and
+// internal/renderref) → candidates (changed reference files + --files extras)
+// → interactive selection (huh multiselect) → derender (slug/module/... →
+// placeholders) → branch in a cached template-repository clone → commit →
+// push + glab/gh MR (by repository type) OR git format-patch (--patch/plain git).
+// The cached clone returns to its original ref after the operation.
 package contribute
 
 import (
@@ -35,100 +35,100 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// defaultRoot — каталог дерева генерируемых файлов внутри шаблона по умолчанию
-// (совпадает с engine.defaultRoot; тот не экспортирован).
+// defaultRoot — default generated-file tree directory inside a template
+// (matching engine.defaultRoot, which is not exported).
 const defaultRoot = "files"
 
-// tmplSuffix — суффикс исходников, рендерящихся движком (engine.tmplSuffix).
+// tmplSuffix — suffix of sources rendered by the engine (engine.tmplSuffix).
 const tmplSuffix = ".tmpl"
 
-// excludedFromCandidates — файлы, всегда исключаемые из кандидатов дрейфа
-//: go.mod/go.sum шумят локальными replace'ами и версиями и
-// почти никогда не являются осмысленным вкладом в шаблон.
+// excludedFromCandidates — files always excluded from drift candidates:
+// go.mod/go.sum are noisy due to local replaces and versions and almost never
+// represent a meaningful template contribution.
 var excludedFromCandidates = map[string]struct{}{
 	"go.mod": {},
 	"go.sum": {},
 }
 
-// Options — параметры запуска [Upgrade].
+// Options — [Upgrade] run parameters.
 type Options struct {
-	// StartDir — рабочий каталог для поиска проекта (обычно os.Getwd).
+	// StartDir — working directory for finding the project (usually os.Getwd).
 	StartDir string
-	// Files — glob-паттерны extra-файлов (отсутствующих в эталоне), которые
-	// добавляются к кандидатам. Непустой список также обходит интерактив.
+	// Files — glob patterns for extra files (absent from the reference) added to
+	// candidates. A non-empty list also bypasses interactive selection.
 	Files []string
-	// Title — заголовок MR/PR (по умолчанию генерируется из проекта).
+	// Title — MR/PR title (generated from the project by default).
 	Title string
-	// Draft — открыть MR/PR черновиком.
+	// Draft — open the MR/PR as a draft.
 	Draft bool
-	// Patch — форсировать patch-режим (git format-patch вместо push+MR).
+	// Patch — force patch mode (git format-patch instead of push+MR).
 	Patch bool
-	// Yes — не задавать интерактивных вопросов (выбрать всех кандидатов).
+	// Yes — ask no interactive questions (select all candidates).
 	Yes bool
 }
 
-// Deps — внешние зависимости [Upgrade], инъектируемые слоем cobra и тестами.
+// Deps — external [Upgrade] dependencies injected by cobra and tests.
 type Deps struct {
-	// Manager — резолюция/checkout версий шаблона и git-операции в кеш-клоне.
+	// Manager — template-version resolution/checkout and git operations in the cached clone.
 	Manager *repo.Manager
-	// Runner — запуск glab/gh (в тестах — execx.RecordingRunner). Отделён от
-	// git-раннера менеджера, чтобы e2e мог гонять реальный git, но мокать MR-CLI.
+	// Runner — glab/gh execution (execx.RecordingRunner in tests). Separate from
+	// the manager's git runner so e2e can run real git while mocking the MR CLI.
 	Runner execx.Runner
-	// Home — домашний каталог tplater (для чтения реестра репозиториев).
+	// Home — tplater home directory (for reading the repository registry).
 	Home string
-	// Out, Err — потоки основного вывода и предупреждений.
+	// Out, Err — main output and warning streams.
 	Out io.Writer
 	Err io.Writer
-	// Palette — палитра сообщений.
+	// Palette — message palette.
 	Palette ui.Palette
-	// Picker — интерактивный выбор файлов (huh в проде, scripted в тестах).
+	// Picker — interactive file selection (huh in production, scripted in tests).
 	Picker FilePicker
-	// Now — источник времени для имени ветки/каталога патчей (тесты фиксируют).
+	// Now — time source for branch/patch-directory names (fixed in tests).
 	Now func() time.Time
 }
 
-// Result — итог `tplater upgrade` (для тестов и печати).
+// Result — result of `tplater upgrade` (for tests and printing).
 type Result struct {
-	// Mode — "mr" (push+MR/PR) либо "patch" (git format-patch).
+	// Mode — "mr" (push+MR/PR) or "patch" (git format-patch).
 	Mode string
-	// Branch — созданная ветка вклада.
+	// Branch — created contribution branch.
 	Branch string
-	// Files — де-параметризованные исходные пути шаблона (в порядке применения).
+	// Files — derendered template source paths (in application order).
 	Files []string
-	// PatchDir — каталог с патчами (только для Mode=="patch").
+	// PatchDir — patch directory (only for Mode=="patch").
 	PatchDir string
-	// MRArgs — аргументы вызванной MR-CLI (glab/gh; только для Mode=="mr").
+	// MRArgs — arguments passed to the MR CLI (glab/gh; only for Mode=="mr").
 	MRArgs []string
 }
 
-// modeMR/modePatch — значения Result.Mode.
+// modeMR/modePatch — Result.Mode values.
 const (
 	modeMR    = "mr"
 	modePatch = "patch"
 )
 
-// fileChange — один файл, применяемый к дереву шаблона.
+// fileChange — one file applied to the template tree.
 type fileChange struct {
-	logical    string // логический путь в проекте (churned.txt)
-	sourceRel  string // путь исходника в шаблоне относительно каталога шаблона (files/churned.txt.tmpl)
-	content    []byte // де-параметризованное содержимое
-	condition  string // условие вертикали, если файл к ней принадлежит
-	reviewDesc bool   // пометку ревью не удалось поставить в файл — уходит в описание MR
+	logical    string // logical project path (churned.txt)
+	sourceRel  string // template source path relative to the template directory (files/churned.txt.tmpl)
+	content    []byte // derendered content
+	condition  string // vertical condition, if the file belongs to one
+	reviewDesc bool   // review marker could not be put in the file — added to MR description
 }
 
-// reference — результат резолюции+рендера эталонной версии шаблона проекта.
+// reference — result of resolving and rendering the project's template reference version.
 type reference struct {
 	res      repo.Resolved
 	rendered *renderref.Result
-	// srcMap — логический путь эталона → путь исходника в дереве шаблона
-	// (относительно каталога шаблона, с .tmpl-суффиксом для рендерящихся файлов).
+	// srcMap — reference logical path → source path in the template tree
+	// (relative to the template directory, with a .tmpl suffix for rendered files).
 	srcMap map[string]string
 }
 
-// Upgrade исполняет `tplater upgrade`: находит проект, вычисляет кандидатов
-// дрейфа, выбирает файлы, де-параметризует их и открывает MR/PR (или формирует
-// патчи). Инвариант: кеш-клон репозитория шаблона возвращается на исходный ref
-// независимо от исхода после создания ветки.
+// Upgrade runs `tplater upgrade`: finds the project, computes drift candidates,
+// selects files, derenders them, and opens an MR/PR (or creates patches).
+// Invariant: the cached template-repository clone returns to its original ref
+// regardless of the outcome after branch creation.
 func Upgrade(ctx context.Context, d Deps, opts Options) (*Result, error) {
 	if d.Now == nil {
 		d.Now = time.Now
@@ -174,7 +174,7 @@ func Upgrade(ctx context.Context, d Deps, opts Options) (*Result, error) {
 		return nil, err
 	}
 
-	// Реестр: URL и тип репозитория (для выбора push+MR vs patch и auth push).
+	// Registry: URL and repository type (to choose push+MR versus patch and push auth).
 	repoEntry, err := repoRef(d.Home, ref.res.RepoAlias)
 	if err != nil {
 		return nil, err
@@ -197,10 +197,10 @@ func Upgrade(ctx context.Context, d Deps, opts Options) (*Result, error) {
 	return out, nil
 }
 
-// renderReference резолвит версию шаблона проекта, рендерит эталон и строит
-// srcMap (логический путь → путь исходника) обходом дерева checkout, пока тот
-// жив. Checkout очищается перед возвратом — байты эталона и карта исходников
-// уже в памяти.
+// renderReference resolves the project's template version, renders the reference,
+// and builds srcMap (logical path → source path) by walking the checkout while
+// it exists. The checkout is cleaned before returning; reference bytes and the
+// source map are already in memory.
 func renderReference(ctx context.Context, mgr *repo.Manager, proj *manifest.Project) (reference, error) {
 	in := renderref.Input{
 		Values:  renderref.Values(proj.Settings),
@@ -229,10 +229,10 @@ func renderReference(ctx context.Context, mgr *repo.Manager, proj *manifest.Proj
 	return reference{res: res, rendered: rendered, srcMap: srcMap}, nil
 }
 
-// buildSourceMap обходит дерево генерируемых файлов checkout (engineRoot) и
-// строит карту: логический путь (без .tmpl) → фактический путь исходника
-// относительно каталога шаблона. Это точное определение «.tmpl vs byte-copy»
-// по реальному дереву, а не по эвристике содержимого.
+// buildSourceMap walks the checkout's generated-file tree (engineRoot) and
+// builds a map from logical paths (without .tmpl) to actual source paths relative
+// to the template directory. This precisely distinguishes .tmpl from byte-copy
+// using the real tree rather than content heuristics.
 func buildSourceMap(src fs.FS, engineRoot string) map[string]string {
 	out := map[string]string{}
 	if info, err := fs.Stat(src, engineRoot); err != nil || !info.IsDir() {
@@ -240,7 +240,7 @@ func buildSourceMap(src fs.FS, engineRoot string) map[string]string {
 	}
 	_ = fs.WalkDir(src, engineRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			return nil //nolint:nilerr // сбойный файл просто не попадёт в карту.
+			return nil //nolint:nilerr // a failed file simply is not added to the map.
 		}
 		rel := strings.TrimPrefix(p, engineRoot+"/")
 		logical := strings.TrimSuffix(rel, tmplSuffix)
@@ -250,9 +250,9 @@ func buildSourceMap(src fs.FS, engineRoot string) map[string]string {
 	return out
 }
 
-// selectCandidates строит список путей-кандидатов: изменённые файлы эталона
-// (StatusModified/ModifiedBinary) кроме go.mod/go.sum + extra-файлы, попавшие
-// под --files глобы. Результат отсортирован и без дублей.
+// selectCandidates builds candidate paths: modified reference files
+// (StatusModified/ModifiedBinary) except go.mod/go.sum, plus extra files matching
+// --files globs. The result is sorted and deduplicated.
 func selectCandidates(report *stats.Report, fileGlobs []string) []string {
 	out := make([]string, 0, len(report.Files))
 	for _, f := range report.Files {
@@ -276,8 +276,8 @@ func selectCandidates(report *stats.Report, fileGlobs []string) []string {
 	return dedupStrings(out)
 }
 
-// chooseFiles выбирает подмножество кандидатов: неинтерактивно (--yes/--files)
-// берёт всех; иначе показывает мультиселект (все предвыбраны).
+// chooseFiles selects a subset of candidates: non-interactively (--yes/--files)
+// it takes all; otherwise it shows a multiselect (all preselected).
 func chooseFiles(d Deps, opts Options, candidates []string) ([]string, error) {
 	if opts.Yes || len(opts.Files) > 0 || d.Picker == nil {
 		return candidates, nil
@@ -285,10 +285,9 @@ func chooseFiles(d Deps, opts Options, candidates []string) ([]string, error) {
 	return d.Picker.Pick(candidates)
 }
 
-// buildChanges превращает выбранные логические пути в fileChange: определяет
-// исходный путь в шаблоне (по srcMap; для новых extra-файлов — эвристикой),
-// читает содержимое из рабочего дерева, применяет де-рендер и, для файлов
-// условной вертикали, пометку ревью.
+// buildChanges turns selected logical paths into fileChange values: determines
+// the template source path (from srcMap; heuristically for new extras), reads
+// work-tree content, applies derendering, and marks files in conditional verticals.
 func buildChanges(root string, proj manifest.ProjectInfo, ref reference, selected []string) ([]fileChange, error) {
 	engineRoot := normalizeRoot(ref.rendered.Template.Engine.Root)
 	subs := buildSubstitutions(proj)
@@ -322,11 +321,11 @@ func buildChanges(root string, proj manifest.ProjectInfo, ref reference, selecte
 	return changes, nil
 }
 
-// sourceRelFor вычисляет путь исходника в шаблоне для логического пути rel.
-// Если rel есть в srcMap (файл входит в дерево эталона) — берётся точный путь
-// исходника (.tmpl или byte-copy). Иначе rel — новый extra-файл: пишем как
-// .tmpl, только если де-рендер вставил плейсхолдеры (иначе plain, чтобы не
-// прогонять статический файл через движок зря).
+// sourceRelFor computes the template source path for logical path rel. If rel
+// is in srcMap (the file is in the reference tree), use the exact source path
+// (.tmpl or byte-copy). Otherwise rel is a new extra file: write it as .tmpl
+// only if derendering inserted placeholders (otherwise plain, avoiding needless
+// engine processing for a static file).
 func sourceRelFor(srcMap map[string]string, engineRoot, rel string, derenderChanged bool) string {
 	if src, ok := srcMap[rel]; ok {
 		return src
@@ -338,9 +337,9 @@ func sourceRelFor(srcMap map[string]string, engineRoot, rel string, derenderChan
 	return plain
 }
 
-// applyInClone ведёт всю git-часть в кеш-клоне: ветка от ref проекта, запись
-// файлов, commit, затем push+MR или format-patch. Кеш-клон гарантированно
-// возвращается на исходную ветку, а созданная ветка удаляется локально.
+// applyInClone performs all git work in the cached clone: branch from the
+// project ref, write files, commit, then push+MR or format-patch. The cached
+// clone always returns to the original branch, and the created branch is deleted locally.
 func applyInClone(ctx context.Context, d Deps, repoEntry state.RepoRef, changes []fileChange, out *Result, opts Options, proj *manifest.Project, ref reference, root string) error {
 	clone := d.Manager.CloneDir(repoEntry.Alias)
 
@@ -353,7 +352,7 @@ func applyInClone(ctx context.Context, d Deps, repoEntry state.RepoRef, changes 
 	if err := runGit(ctx, d.Manager, clone, "switch", "-c", out.Branch, startPoint); err != nil {
 		return fmt.Errorf("upgrade: создание ветки %s: %w", out.Branch, err)
 	}
-	// Инвариант: вернуть клон на исходный ref и удалить ветку в любом исходе.
+	// Invariant: return the clone to the original ref and delete the branch on any outcome.
 	defer func() {
 		_ = runGit(ctx, d.Manager, clone, "switch", orig)
 		_ = runGit(ctx, d.Manager, clone, "branch", "-D", out.Branch)
@@ -365,7 +364,7 @@ func applyInClone(ctx context.Context, d Deps, repoEntry state.RepoRef, changes 
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 			return fmt.Errorf("upgrade: подготовка каталога для %s: %w", ch.sourceRel, err)
 		}
-		if err := os.WriteFile(dest, ch.content, 0o644); err != nil { //nolint:gosec // G306: исходники шаблона — обычные файлы 0644 (уходят в git, режим не секрет).
+		if err := os.WriteFile(dest, ch.content, 0o644); err != nil { //nolint:gosec // G306: template sources are ordinary 0644 files (committed to git, mode is not secret).
 			return fmt.Errorf("upgrade: запись %s: %w", ch.sourceRel, err)
 		}
 	}
@@ -383,7 +382,7 @@ func applyInClone(ctx context.Context, d Deps, repoEntry state.RepoRef, changes 
 	return pushAndOpenMR(ctx, d, repoEntry, out, opts, proj, ref, changes)
 }
 
-// formatPatch формирует серию патчей (startPoint..HEAD) в ./tplater-upgrade-<date>/.
+// formatPatch creates a patch series (startPoint..HEAD) in ./tplater-upgrade-<date>/.
 func formatPatch(ctx context.Context, d Deps, clone, startPoint string, out *Result, root string) error {
 	dir := filepath.Join(root, "tplater-upgrade-"+d.Now().Format("20060102-1504"))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -396,7 +395,7 @@ func formatPatch(ctx context.Context, d Deps, clone, startPoint string, out *Res
 	return nil
 }
 
-// pushAndOpenMR пушит ветку в origin и открывает MR/PR через glab/gh.
+// pushAndOpenMR pushes the branch to origin and opens an MR/PR through glab/gh.
 func pushAndOpenMR(ctx context.Context, d Deps, repoEntry state.RepoRef, out *Result, opts Options, proj *manifest.Project, ref reference, changes []fileChange) error {
 	clone := d.Manager.CloneDir(repoEntry.Alias)
 	pushEnv := auth.HelperEnv(repoEntry.URL)
@@ -422,7 +421,7 @@ func pushAndOpenMR(ctx context.Context, d Deps, repoEntry state.RepoRef, out *Re
 	return nil
 }
 
-// runGit — обёртка над Manager.RunGit без доп-окружения (для операций в клоне).
+// runGit — wrapper around Manager.RunGit without extra environment (for clone operations).
 func runGit(ctx context.Context, mgr *repo.Manager, clone string, args ...string) error {
 	res, err := mgr.RunGit(ctx, clone, args, nil)
 	if err != nil {
@@ -431,7 +430,7 @@ func runGit(ctx context.Context, mgr *repo.Manager, clone string, args ...string
 	return nil
 }
 
-// currentBranch возвращает текущую символическую ветку клона (для восстановления).
+// currentBranch returns the clone's current symbolic branch (for restoration).
 func currentBranch(ctx context.Context, mgr *repo.Manager, clone string) (string, error) {
 	res, err := mgr.RunGit(ctx, clone, []string{"symbolic-ref", "--short", "-q", "HEAD"}, nil)
 	b := strings.TrimSpace(res.Stdout)
@@ -441,9 +440,9 @@ func currentBranch(ctx context.Context, mgr *repo.Manager, clone string) (string
 	return b, nil
 }
 
-// resolveStartPoint выбирает точку ветвления: origin/<ref>, если такая ссылка
-// есть (актуальный @latest после fetch живёт в origin/<branch>), иначе <ref>
-// (тег/коммит). Повторяет логику repo.Manager.Checkout.
+// resolveStartPoint selects the branch point: origin/<ref> if that ref exists
+// (the current @latest after fetch lives at origin/<branch>), otherwise <ref>
+// (tag/commit). Mirrors repo.Manager.Checkout logic.
 func resolveStartPoint(ctx context.Context, mgr *repo.Manager, clone, gitRef string) string {
 	if _, err := mgr.RunGit(ctx, clone, []string{"rev-parse", "--verify", "--quiet", "origin/" + gitRef}, nil); err == nil {
 		return "origin/" + gitRef
@@ -451,7 +450,7 @@ func resolveStartPoint(ctx context.Context, mgr *repo.Manager, clone, gitRef str
 	return gitRef
 }
 
-// repoRef достаёт запись реестра репозитория alias из config.yaml.
+// repoRef retrieves repository alias's registry entry from config.yaml.
 func repoRef(home, alias string) (state.RepoRef, error) {
 	cfg, err := state.LoadConfig(home)
 	if err != nil {
@@ -465,10 +464,10 @@ func repoRef(home, alias string) (state.RepoRef, error) {
 	return state.RepoRef{}, fmt.Errorf("upgrade: репозиторий %q не найден в реестре", alias)
 }
 
-// --- вспомогательные ---
+// --- helpers ---
 
-// normalizeRoot приводит Engine.Root к каноническому виду (копия
-// engine.normalizeRoot — не экспортирована).
+// normalizeRoot converts Engine.Root to its canonical form (copy of the
+// unexported engine.normalizeRoot).
 func normalizeRoot(root string) string {
 	root = strings.Trim(strings.TrimSpace(root), "/")
 	if root == "" {
@@ -477,8 +476,8 @@ func normalizeRoot(root string) string {
 	return root
 }
 
-// normalizeTemplatePath приводит Entry.Path к каталогу без ведущих/замыкающих
-// слэшей; "." и "" означают корень репозитория.
+// normalizeTemplatePath converts Entry.Path to a directory without leading or
+// trailing slashes; "." and "" mean the repository root.
 func normalizeTemplatePath(p string) string {
 	p = strings.Trim(strings.TrimSpace(p), "/")
 	if p == "." {
@@ -487,23 +486,23 @@ func normalizeTemplatePath(p string) string {
 	return p
 }
 
-// branchName формирует имя ветки вклада: tplater/upgrade-<slug>-<YYYYMMDD-HHmm>.
+// branchName forms a contribution branch name: tplater/upgrade-<slug>-<YYYYMMDD-HHmm>.
 func branchName(slug string, now time.Time) string {
 	return fmt.Sprintf("tplater/upgrade-%s-%s", slug, now.Format("20060102-1504"))
 }
 
-// defaultTitle — заголовок MR по умолчанию.
+// defaultTitle — default MR title.
 func defaultTitle(proj *manifest.Project) string {
 	return "tplater: вклад из проекта " + proj.Project.Slug
 }
 
-// commitMessage — сообщение коммита.
+// commitMessage — commit message.
 func commitMessage(proj *manifest.Project, res repo.Resolved) string {
 	return fmt.Sprintf("tplater upgrade: вклад из %s (%s/%s@%s)",
 		proj.Project.Slug, res.RepoAlias, res.Entry.Name, res.Version)
 }
 
-// mrBinary возвращает CLI открытия MR/PR по типу репозитория.
+// mrBinary returns the MR/PR CLI for the repository type.
 func mrBinary(kind state.RepoKind) string {
 	if kind == state.RepoKindGitHub {
 		return "gh"
@@ -511,7 +510,7 @@ func mrBinary(kind state.RepoKind) string {
 	return "glab"
 }
 
-// mrArgs формирует аргументы glab/gh для создания MR/PR.
+// mrArgs builds glab/gh arguments for creating an MR/PR.
 func mrArgs(kind state.RepoKind, branch, title, desc string, draft bool) []string {
 	if kind == state.RepoKindGitHub {
 		args := []string{"pr", "create", "--head", branch, "--title", title, "--body", desc}
@@ -527,8 +526,8 @@ func mrArgs(kind state.RepoKind, branch, title, desc string, draft bool) []strin
 	return args
 }
 
-// buildDescription собирает описание MR: автоблок метаданных (шаблон+версия,
-// проект, снимок настроек, список файлов, пометки TPLATER-REVIEW).
+// buildDescription builds the MR description: an automatic metadata block
+// (template+version, project, settings snapshot, file list, TPLATER-REVIEW markers).
 func buildDescription(proj *manifest.Project, res repo.Resolved, changes []fileChange) string {
 	var b strings.Builder
 	b.WriteString("## tplater upgrade\n\n")
@@ -564,8 +563,8 @@ func buildDescription(proj *manifest.Project, res repo.Resolved, changes []fileC
 	return b.String()
 }
 
-// settingsSnapshot форматирует снимок настроек проекта в стабильную строку
-// key=value (ключи отсортированы).
+// settingsSnapshot formats the project settings snapshot as a stable key=value
+// string (keys sorted).
 func settingsSnapshot(s map[string]any) string {
 	keys := make([]string, 0, len(s))
 	for k := range s {
@@ -579,7 +578,7 @@ func settingsSnapshot(s map[string]any) string {
 	return strings.Join(parts, ", ")
 }
 
-// printSummary печатает итог операции пользователю.
+// printSummary prints the operation result for the user.
 func printSummary(d Deps, out *Result, repoEntry state.RepoRef) {
 	switch out.Mode {
 	case modePatch:
@@ -616,7 +615,7 @@ func dedupStrings(in []string) []string {
 	return out
 }
 
-// hostOf извлекает host из git-URL для подсказки про auth.
+// hostOf extracts the host from a git URL for the auth hint.
 func hostOf(raw string) string {
 	if i := strings.Index(raw, "://"); i >= 0 {
 		rest := raw[i+3:]

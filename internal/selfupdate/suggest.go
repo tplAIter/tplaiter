@@ -11,24 +11,23 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// suggestInterval — минимальный интервал между фоновыми проверками новой
-// версии: раз в 24ч, не при каждом запуске.
+// suggestInterval is the minimum interval between background version checks:
+// once every 24h, not on every launch.
 const suggestInterval = 24 * time.Hour
 
-// MaybeSuggest — ненавязчивая фоновая проверка обновлений,
-// вызывается из PersistentPreRunE корневой команды. Никогда не мешает и не
-// прерывает работу текущей команды:
-//   - не чаще раза в [suggestInterval] (таймстемп в state.RunState.LastUpdateCheck,
-//     домашний каталог home, момент "сейчас" передаётся аргументом now — для
-//     тестируемости, а не time.Now() внутри);
-//   - `updates.check: false` в config.yaml — проверка пропускается;
-//   - любая ошибка (чтение state/config, сеть) — проглатывается молча, без
-//     вывода и без прерывания; таймаут на сетевой поход (ls-remote) — забота
-//     вызывающего кода через ctx (см. internal/cmd/selfupgrade.go);
-//   - при обнаруженном отставании печатает ровно одну приглушённую строку в out.
+// MaybeSuggest performs a quiet background update check from the root command's
+// PersistentPreRunE. It never interferes with or interrupts the current command:
+//   - no more often than [suggestInterval] (the timestamp is
+//     state.RunState.LastUpdateCheck; home and the current time now are passed
+//     as arguments for testability rather than using time.Now() internally);
+//   - `updates.check: false` in config.yaml — the check is skipped;
+//   - any error (state/config reading or network) is silently swallowed, with
+//     no output or interruption; the caller controls the ls-remote timeout via
+//     ctx (see internal/cmd/selfupgrade.go);
+//   - when outdated, it prints exactly one subdued line to out.
 //
-// current — текущая версия CLI (обычно internal/cmd.resolveVersion()); принят
-// параметром, а не вычислен внутри, чтобы избежать цикла импортов
+// current is the current CLI version (usually internal/cmd.resolveVersion()); it
+// is passed in rather than computed here to avoid an import cycle.
 // selfupdate<->cmd.
 func MaybeSuggest(ctx context.Context, runner execx.Runner, home, current string, now time.Time, out io.Writer) {
 	cfg, err := state.LoadConfig(home)
@@ -44,9 +43,9 @@ func MaybeSuggest(ctx context.Context, runner execx.Runner, home, current string
 		return
 	}
 
-	// Таймстемп обновляем ДО сетевого похода: даже сорвавшаяся по таймауту
-	// или неудачная проверка не должна повторяться на каждом следующем
-	// запуске — раз в 24ч означает раз в 24ч независимо от исхода.
+	// Update the timestamp BEFORE the network call: even a timeout or failed
+	// check must not repeat on every launch; once per 24h means once per 24h
+	// regardless of the outcome.
 	rs.LastUpdateCheck = now
 	_ = state.SaveRunState(home, rs)
 

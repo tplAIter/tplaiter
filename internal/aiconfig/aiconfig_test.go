@@ -10,9 +10,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// fixtureTemplate — манифест шаблона с деревом settings (database/brokers),
-// достаточным для валидации module.when и гейтинга Filter/Render в тестах
-// этого пакета — перенос go-template'овских reg.HasFlag-фикстур на манифест.
+// fixtureTemplate — template manifest with a settings tree (database/brokers)
+// sufficient to validate module.when and Filter/Render gating in this package;
+// it migrates go-template's reg.HasFlag fixtures to the manifest.
 func fixtureTemplate() *manifest.Template {
 	return &manifest.Template{
 		Metadata: manifest.TemplateMeta{Name: "ai-fixture", Version: "0.1.0"},
@@ -29,9 +29,9 @@ func fixtureTemplate() *manifest.Template {
 	}
 }
 
-// writeSyntheticSource создаёт минимальный валидный источник ai-config в
-// temp dir: config.json + два модуля (00-base безусловный, 06-kafka с
-// when=brokers=kafka) + targets/*.tmpl, достаточные для Render.
+// writeSyntheticSource creates a minimal valid ai-config source in a temp dir:
+// config.json plus two modules (unconditional 00-base, 06-kafka with
+// when=brokers=kafka) plus targets/*.tmpl sufficient for Render.
 func writeSyntheticSource(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -67,8 +67,8 @@ func writeSyntheticSource(t *testing.T) string {
 	return dir
 }
 
-// cursorMDCTmpl — per-module .mdc с frontmatter, ветвящимся по activation
-// (перенос go-template без изменений — формат не относится к when/feature).
+// cursorMDCTmpl — per-module .mdc with frontmatter branching on activation
+// (an unchanged go-template migration; the format is unrelated to when/feature).
 const cursorMDCTmpl = `{{ define "cursor_mdc.tmpl" }}---
 {{- if eq .Module.Activation "always" }}
 alwaysApply: true
@@ -145,7 +145,7 @@ func TestFilterUnknownGroupErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	// Портим when одного модуля на ссылку на несуществующую группу.
+	// Change one module's when to reference a nonexistent group.
 	for i := range src.Modules {
 		if src.Modules[i].ID == "06-kafka" {
 			src.Modules[i].When = "nope=1"
@@ -190,7 +190,7 @@ func TestRenderCursorFrontmatter(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, ".cursor", "docs", "base.md")); err != nil {
 		t.Errorf("base.md doc not written: %v", err)
 	}
-	// kafka off -> 06-kafka.mdc не должен существовать.
+	// kafka off -> 06-kafka.mdc must not exist.
 	if _, err := os.Stat(filepath.Join(root, ".cursor", "rules", "06-kafka.mdc")); err == nil {
 		t.Error("06-kafka.mdc must not exist when brokers does not contain kafka")
 	}

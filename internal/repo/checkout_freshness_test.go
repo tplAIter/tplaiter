@@ -10,9 +10,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
-// TestCheckoutLatestSeesFetchedCommits — регресс: fetch в не-bare клоне двигает
-// только origin/<ветка>, поэтому checkout @latest обязан использовать
-// origin-реф и видеть новые коммиты после repo update (находка верификации ).
+// TestCheckoutLatestSeesFetchedCommits is a regression test: fetch in a
+// non-bare clone moves only origin/<branch>, so checkout @latest must use the
+// origin ref and see new commits after repo update.
 func TestCheckoutLatestSeesFetchedCommits(t *testing.T) {
 	requireGit(t)
 	ctx := context.Background()
@@ -27,7 +27,7 @@ func TestCheckoutLatestSeesFetchedCommits(t *testing.T) {
 		t.Fatalf("Add: %v", err)
 	}
 
-	// Новый коммит в origin ПОСЛЕ add.
+	// New commit in origin AFTER add.
 	writeFile(t, filepath.Join(origin, "fresh.txt"), "новый\n")
 	commitAll(t, origin, "fresh commit")
 
@@ -50,13 +50,12 @@ func TestCheckoutLatestSeesFetchedCommits(t *testing.T) {
 	}
 }
 
-// TestUpdate_WorkingTreeAdvancesAfterFetch — регресс: `repo update` делал
-// только `git fetch`, не подтягивая рабочее дерево кеш-клона к новому
-// origin/<branch>; кеш на диске (и, как следствие, содержимое
-// template.manifest.yaml, которым пользуется scanRepo при переиндексации)
-// оставался на старом коммите, хотя команда рапортовала успех. Проверяем и
-// HEAD клона, и содержимое файла на диске напрямую (без Checkout, который
-// уже использует origin-реф и это маскирует баг).
+// TestUpdate_WorkingTreeAdvancesAfterFetch is a regression test: `repo update`
+// used only `git fetch`, leaving the cache working tree at the old
+// origin/<branch>. The on-disk cache and template.manifest.yaml used by scanRepo
+// therefore stayed stale while the command reported success. Check both the
+// clone HEAD and file contents directly, without Checkout masking the bug by
+// using the origin ref.
 func TestUpdate_WorkingTreeAdvancesAfterFetch(t *testing.T) {
 	requireGit(t)
 	ctx := context.Background()
@@ -73,7 +72,7 @@ func TestUpdate_WorkingTreeAdvancesAfterFetch(t *testing.T) {
 
 	beforeHEAD := runGitOutput(t, origin, "rev-parse", "HEAD")
 
-	// Новый коммит в origin ПОСЛЕ add — меняет и HEAD, и содержимое hello.txt.
+	// New commit in origin AFTER add changes both HEAD and hello.txt.
 	writeFile(t, filepath.Join(origin, "hello.txt"), "v2\n")
 	commitAll(t, origin, "fresh commit")
 	afterHEAD := runGitOutput(t, origin, "rev-parse", "HEAD")
@@ -100,8 +99,8 @@ func TestUpdate_WorkingTreeAdvancesAfterFetch(t *testing.T) {
 	}
 }
 
-// runGitOutput — как runGit, но возвращает обрезанный stdout (для rev-parse и
-// подобных однострочных команд).
+// runGitOutput is like runGit but returns trimmed stdout (for rev-parse and
+// similar one-line commands).
 func runGitOutput(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	res, err := gitExec.Run(context.Background(), "git", args, execx.Options{Dir: dir, Env: gitEnv()})

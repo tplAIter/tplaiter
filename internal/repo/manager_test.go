@@ -84,19 +84,19 @@ func TestIsHTTPURL(t *testing.T) {
 func TestStableTagsFor(t *testing.T) {
 	all := []string{"v1.0.0", "v1.1.0", "v2.0.0-rc1", "svc/v0.1.0", "other/v9.9.9", "not-a-tag"}
 
-	// single: только `vX.Y.Z` без «/», без пре-релизов, по убыванию.
+	// single: only `vX.Y.Z` without "/", without prereleases, descending.
 	single := stableTagsFor(all, "whatever", false)
 	if want := []string{"v1.1.0", "v1.0.0"}; !equalStrings(single, want) {
 		t.Errorf("single tags = %v, want %v", single, want)
 	}
 
-	// multi: только `svc/vX.Y.Z`.
+	// multi: only `svc/vX.Y.Z`.
 	multi := stableTagsFor(all, "svc", true)
 	if want := []string{"svc/v0.1.0"}; !equalStrings(multi, want) {
 		t.Errorf("multi tags = %v, want %v", multi, want)
 	}
 
-	// multi для несуществующего имени → пусто.
+	// multi for a nonexistent name is empty.
 	if got := stableTagsFor(all, "nope", true); len(got) != 0 {
 		t.Errorf("multi tags for unknown = %v, want empty", got)
 	}

@@ -1,32 +1,29 @@
-// Package update реализует обновление сгенерированного проекта на новую версию
-// шаблона (`tplater update`) по 3-way-модели cruft.
+// Package update upgrades a generated project to a new template version
+// (`tplater update`) using a cruft 3-way model.
 //
-// Ядро — построчный diff3-merge (см. diff3.go): base (общий предок — чистый
-// рендер зафиксированной версии шаблона), ours (рабочее дерево проекта), theirs
-// (чистый рендер целевой версии). Непересекающиеся правки объединяются
-// автоматически; пересекающиеся дают конфликт-маркеры
-// <<<<<<< ours / ======= / >>>>>>> template. Реализация diff3 собственная (без
-// внешней зависимости): алгоритм компактен (LCS + сшивка по общим якорям), а
-// добавление внешнего пакета ради ~150 строк расширяет поверхность зависимостей.
-// Механика перенесена из go-template/cli/gotmpl/internal/update и обобщена на
-// манифест-модель tplater (рендер двух git-ref-ов вместо version/features).
+// The core is a line-based diff3 merge: base (clean render of the pinned
+// template), ours (project work tree), and theirs (clean target render).
+// Non-overlapping edits merge automatically; overlaps produce
+// <<<<<<< ours / ======= / >>>>>>> template markers. The implementation is local:
+// compact LCS plus stitching at common anchors avoids an external dependency.
+// The mechanism was adapted from go-template/cli/gotmpl/internal/update for the
+// tplater manifest model (two git-ref renders instead of version/features).
 package update
 
 import "strings"
 
-// Маркеры конфликта. Формат совместим с git и сканером ScanConflicts.
+// Conflict markers. The format is compatible with git and ScanConflicts.
 const (
 	markerOurs      = "<<<<<<< ours"
 	markerSeparator = "======="
 	markerTheirs    = ">>>>>>> template"
 )
 
-// pair — сопоставленная пара индексов (в base и в другой последовательности).
+// pair is a matched index pair in base and another sequence.
 type pair struct{ a, b int }
 
-// lcsPairs возвращает пары индексов наибольшей общей подпоследовательности a и b
-// в возрастающем порядке по обеим координатам. O(n*m) по времени и памяти —
-// приемлемо для файлов шаблона.
+// lcsPairs returns longest-common-subsequence index pairs for a and b in
+// increasing order on both coordinates. O(n*m) time and memory is acceptable for template files.
 func lcsPairs(a, b []string) []pair {
 	n, m := len(a), len(b)
 	if n == 0 || m == 0 {
@@ -64,8 +61,8 @@ func lcsPairs(a, b []string) []pair {
 	return out
 }
 
-// baseAlign строит отображение baseIdx→otherIdx по LCS(base, other). Монотонно
-// по baseIdx (свойство LCS), что гарантирует согласованность якорей в merge.
+// baseAlign maps baseIdx to otherIdx using LCS(base, other). Monotonicity in
+// baseIdx (an LCS property) keeps merge anchors consistent.
 func baseAlign(base, other []string) map[int]int {
 	pairs := lcsPairs(base, other)
 	m := make(map[int]int, len(pairs))
@@ -75,15 +72,14 @@ func baseAlign(base, other []string) map[int]int {
 	return m
 }
 
-// diff3Merge выполняет построчное трёхстороннее слияние.
+// diff3Merge performs a line-based three-way merge.
 //
-// Возвращает объединённые строки и признак конфликта. Якоря — строки base,
-// совпавшие И с ours, И с theirs; между соседними якорями лежат «регионы», для
-// которых решение принимается независимо:
-//   - ours==theirs (одинаковая правка) → берём ours;
-//   - ours==base (изменил только theirs) → берём theirs;
-//   - theirs==base (изменил только ours) → берём ours;
-//   - иначе → конфликт с маркерами.
+// It returns merged lines and a conflict flag. Anchors are base lines matching
+// both ours and theirs; regions between adjacent anchors are decided independently:
+//   - ours==theirs (same edit) -> ours;
+//   - ours==base (only theirs changed) -> theirs;
+//   - theirs==base (only ours changed) -> ours;
+//   - otherwise -> conflict markers.
 func diff3Merge(ours, base, theirs []string) (merged []string, conflict bool) {
 	ao := baseAlign(base, ours)   // baseIdx -> oursIdx
 	at := baseAlign(base, theirs) // baseIdx -> theirsIdx
@@ -131,7 +127,7 @@ func diff3Merge(ours, base, theirs []string) (merged []string, conflict bool) {
 	return out, conflict
 }
 
-// equalLines сравнивает два среза строк поэлементно.
+// equalLines compares two line slices element by element.
 func equalLines(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -144,9 +140,9 @@ func equalLines(a, b []string) bool {
 	return true
 }
 
-// splitLines разбивает содержимое на строки так, что joinLines обращает split
-// побайтово. Пустое содержимое → nil (join(nil) == ""), поэтому пустой и
-// однострочный файлы различимы. Финальный \n сохраняется как хвостовой "".
+// splitLines splits content so joinLines reverses it byte-for-byte. Empty content
+// -> nil (join(nil) == ""), keeping empty and one-line files distinct. A final
+// \n is preserved as a trailing "".
 func splitLines(content []byte) []string {
 	if len(content) == 0 {
 		return nil
@@ -154,12 +150,12 @@ func splitLines(content []byte) []string {
 	return strings.Split(string(content), "\n")
 }
 
-// joinLines собирает строки обратно в байтовое содержимое.
+// joinLines assembles lines back into byte content.
 func joinLines(lines []string) []byte {
 	return []byte(strings.Join(lines, "\n"))
 }
 
-// merge3 — удобная обёртка над diff3Merge для байтовых входов.
+// merge3 is a convenience wrapper around diff3Merge for byte inputs.
 func merge3(base, ours, theirs []byte) (merged []byte, conflict bool) {
 	lines, c := diff3Merge(splitLines(ours), splitLines(base), splitLines(theirs))
 	return joinLines(lines), c

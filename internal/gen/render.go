@@ -10,10 +10,10 @@ import (
 	"github.com/tplAIter/tplaiter/internal/engine"
 )
 
-// renderTemplateFile читает и рендерит файл-сниппет path (сниппет либо
-// вставка якоря) через text/template с полным [engine.FuncMap] (не только
-// [engine.StaticFuncMap] — сниппетам доступны и `is`/`has`, дополнительно к
-// case-хелперам, без обратной несовместимости: FuncMap строго расширяет
+// renderTemplateFile reads and renders snippet path (snippet or anchor
+// insertion) through text/template with the full [engine.FuncMap] (not only
+// [engine.StaticFuncMap]; snippets also get `is`/`has` in addition to case
+// helpers, without backward incompatibility because FuncMap is a strict superset).
 // StaticFuncMap).
 func renderTemplateFile(path string, data Context) ([]byte, error) {
 	raw, err := os.ReadFile(path)
@@ -31,7 +31,7 @@ func renderTemplateFile(path string, data Context) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// renderTargetPath рендерит шаблон целевого пути генератора (Generator.Target,
+// renderTargetPath renders the generator target-path template (Generator.Target,
 // : `"internal/usecase/{{ .Name.Snake }}.go"`).
 func renderTargetPath(pattern string, data Context) (string, error) {
 	tmpl, err := template.New("target").Funcs(engine.FuncMap(data.Settings)).Parse(pattern)

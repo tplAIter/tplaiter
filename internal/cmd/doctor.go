@@ -17,7 +17,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// rowStatus — семантический статус одной строки отчёта doctor.
+// rowStatus — semantic status of one doctor report row.
 type rowStatus int
 
 const (
@@ -26,8 +26,8 @@ const (
 	rowFail
 )
 
-// doctorRow — одна проверенная позиция отчёта (инструмент окружения,
-// инструмент шаблона, элемент состояния ~/.tplaiter).
+// doctorRow — one checked report item (environment tool, template tool, or
+// ~/.tplaiter state item).
 type doctorRow struct {
 	Name   string
 	Status rowStatus
@@ -35,23 +35,23 @@ type doctorRow struct {
 	Hint   string
 }
 
-// doctorSection — именованная группа строк ("Среда", "Инструменты шаблона",
-// "Состояние", SPEC-03 §4).
+// doctorSection — named group of rows ("Environment", "Template tools",
+// "State", SPEC-03 §4).
 type doctorSection struct {
 	Title string
 	Rows  []doctorRow
 }
 
-// doctorCriticalTools — инструменты, чьё отсутствие/несоответствие делает
-// `tplater doctor` неуспешным (ненулевой exit code). Остальные проблемы —
-// только предупреждения в отчёте (SPEC-03 §4: "exit 1 при критичных ✗
+// doctorCriticalTools — tools whose absence/mismatch makes `tplater doctor`
+// fail (non-zero exit code). Other problems are only warnings in the report
+// (SPEC-03 §4: "exit 1 on critical ✗
 // (go, git)").
 var doctorCriticalTools = map[string]bool{
 	"go":  true,
 	"git": true,
 }
 
-// newDoctorCmd создаёт команду `tplater doctor`.
+// newDoctorCmd creates `tplater doctor`.
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
@@ -69,9 +69,8 @@ func newDoctorCmd() *cobra.Command {
 	}
 }
 
-// buildDoctorReport собирает все секции отчёта. critical — true, если хотя
-// бы одна строка из [doctorCriticalTools] провалилась (Found/Satisfies не
-// оба true).
+// buildDoctorReport assembles all report sections. critical is true if at least
+// one [doctorCriticalTools] row failed (Found and Satisfies are not both true).
 func buildDoctorReport(ctx context.Context, runner execx.Runner, cwd, home string) (sections []doctorSection, critical bool) {
 	// A doctor report is useful without becoming an authority or running a
 	// manifest-selected executable.  The old probe path remains unavailable
@@ -96,8 +95,8 @@ func buildDoctorReport(ctx context.Context, runner execx.Runner, cwd, home strin
 	*/
 }
 
-// environmentSection — базовый набор инструментов, не зависящий от того,
-// запущен ли doctor внутри проекта шаблона (SPEC-03 §4).
+// environmentSection — base set of tools, independent of whether doctor runs
+// inside a template project (SPEC-03 §4).
 func environmentSection(ctx context.Context, runner execx.Runner) (doctorSection, bool) {
 	tools := []manifest.Tool{
 		{
@@ -136,9 +135,9 @@ func environmentSection(ctx context.Context, runner execx.Runner) (doctorSection
 	return section, critical
 }
 
-// templateToolsSection проверяет requires.tools снимка манифеста текущего
-// проекта. ok=false, если cwd не является проектом tplater (снимка нет) —
-// секция целиком пропускается вызывающим.
+// templateToolsSection checks requires.tools in the current project's manifest
+// snapshot. ok=false when cwd is not a tplater project (no snapshot); the
+// caller skips the entire section.
 func templateToolsSection(ctx context.Context, runner execx.Runner, cwd string) (doctorSection, bool) {
 	snapshotPath := filepath.Join(cwd, manifest.SnapshotRelPath)
 	if _, err := os.Stat(snapshotPath); err != nil {
@@ -173,8 +172,8 @@ func templateToolsSection(ctx context.Context, runner execx.Runner, cwd string) 
 	return section, true
 }
 
-// stateSection проверяет домашний каталог tplater (~/.tplaiter) и
-// читаемость config.yaml в нём.
+// stateSection checks the tplater home directory (~/.tplaiter) and whether its
+// config.yaml can be read.
 func stateSection(home string) doctorSection {
 	section := doctorSection{Title: "Состояние"}
 
@@ -211,8 +210,8 @@ func stateSection(home string) doctorSection {
 	return section
 }
 
-// toolRow превращает [deps.ToolStatus] в строку отчёта: required-инструмент
-// не в порядке -> rowFail, необязательный -> rowWarn, иначе rowOK.
+// toolRow turns [deps.ToolStatus] into a report row: a required tool that is
+// not OK becomes rowFail, an optional one becomes rowWarn, otherwise rowOK.
 func toolRow(st deps.ToolStatus) doctorRow {
 	row := doctorRow{Name: st.Tool.Name}
 
@@ -237,7 +236,7 @@ func toolRow(st deps.ToolStatus) doctorRow {
 	return row
 }
 
-// toolIssueDetail описывает, что именно не так с инструментом.
+// toolIssueDetail describes what exactly is wrong with a tool.
 func toolIssueDetail(st deps.ToolStatus) string {
 	switch {
 	case !st.Found:
@@ -251,10 +250,10 @@ func toolIssueDetail(st deps.ToolStatus) string {
 	}
 }
 
-// installHint формирует рецепт установки для отчёта: платформенный план
-// через [deps.InstallPlan], фоллбек на brew/apt/url манифеста, если план не
-// применим ни к одной ветке (например, doctor исполняется на платформе без
-// подходящего рецепта, но манифест декларирует хоть что-то).
+// installHint builds an installation recipe for the report: a platform plan
+// through [deps.InstallPlan], falling back to the manifest's brew/apt/url when
+// the plan applies to no branch (for example, doctor runs on a platform with
+// no suitable recipe but the manifest declares something).
 func installHint(tool manifest.Tool) string {
 	action := deps.InstallPlan(tool, deps.DetectPlatform(execx.Exec{}))
 	if action.Kind != deps.ActionNone {
@@ -272,8 +271,8 @@ func installHint(tool manifest.Tool) string {
 	}
 }
 
-// renderDoctorReport печатает секции report как ui.Table в out, с символами
-// ✓/✗/! и рецептами установки для строк не в порядке.
+// renderDoctorReport prints report sections as ui.Table to out, with ✓/✗/!
+// symbols and installation recipes for rows that are not OK.
 func renderDoctorReport(out io.Writer, pal ui.Palette, sections []doctorSection) {
 	for _, section := range sections {
 		ui.Section(out, pal, section.Title)
@@ -287,11 +286,10 @@ func renderDoctorReport(out io.Writer, pal ui.Palette, sections []doctorSection)
 	}
 }
 
-// statusCell формирует последнюю (не выравниваемую отступами) колонку
-// таблицы — символ статуса, окрашенный палитрой, плюс рецепт установки для
-// строк не в порядке. Колонка выбрана последней в таблице намеренно: ANSI-
-// коды палитры прибавляют "невидимые" руны, которые сломали бы выравнивание
-// ЛЮБОЙ колонки, кроме последней ([ui.Table] не дополняет её пробелами).
+// statusCell builds the last (not padded for alignment) table column: a
+// palette-colored status symbol plus an installation recipe for non-OK rows.
+// The column is intentionally last: palette ANSI codes add "invisible" runes
+// that would break alignment of ANY other column ([ui.Table] does not pad it).
 func statusCell(pal ui.Palette, row doctorRow) string {
 	var symbol string
 	switch row.Status {

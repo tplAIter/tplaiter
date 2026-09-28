@@ -15,10 +15,10 @@ func init() {
 	rootCmd.AddCommand(newStatsCmd())
 }
 
-// newStatsCmd создаёт команду `tplater stats`: отчёт дрейфа
-// сгенерированного проекта от чистого рендера зафиксированной версии шаблона —
-// статусы файлов, % изменённых строк (LCS), классификация обновляемости
-// (auto/conflict-prone/manual-only), суммарный drift-score и сломанные якоря.
+// newStatsCmd creates `tplater stats`: a drift report comparing the generated
+// project with a clean render of the pinned template version — file statuses,
+// percentage of changed lines (LCS), updateability classification
+// (auto/conflict-prone/manual-only), total drift score, and broken anchors.
 func newStatsCmd() *cobra.Command {
 	var asJSON bool
 

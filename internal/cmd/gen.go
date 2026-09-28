@@ -13,26 +13,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// genRunner — Runner formatter/build-gate пост-шагов [gen.Generate].
-// Пакетная переменная по образцу runRunner (run.go) — подмена в тестах при
-// появлении cmd-уровневых тестов gen.
+// genRunner — runner for formatter/build-gate post-steps of [gen.Generate].
+// A package variable like runRunner (run.go), replaceable in command-level
+// gen tests.
 var genRunner execx.Runner = execx.Exec{}
 
 func init() {
 	rootCmd.AddCommand(newGenCmd())
 }
 
-// newGenCmd создаёт команду `tplater gen <kind> <name> [--<param> ...]`
-// (SPEC-01 §6, CG-1): скаффолдер проекта на основе Generators манифеста
-// шаблона, привязанного к текущему проекту (см. [loadRunContext]).
+// newGenCmd creates `tplater gen <kind> <name> [--<param> ...]` (SPEC-01 §6,
+// CG-1): a project scaffolder based on the linked template's Generators
+// manifest (see [loadRunContext]).
 //
-// Решение по динамическим флагам: набор флагов зависит от параметров
-// конкретного генератора (Generator.Params), а вид (kind) известен лишь во
-// время исполнения. Поэтому команда объявлена с DisableFlagParsing=true —
-// cobra НЕ парсит флаги сама; мы вручную выделяем позиционные <kind> <name>,
-// затем строим pflag.FlagSet по params найденного генератора (+ общий
-// --no-build) и разбираем остаток аргументов. Подкоманда `gen list` работает
-// как обычно: cobra маршрутизирует к ней по имени до разбора флагов родителя.
+// Dynamic flags are handled manually because the set depends on the selected
+// generator's parameters (Generator.Params), while kind is known only at run
+// time. The command therefore uses DisableFlagParsing=true: cobra does not
+// parse flags; we extract positional <kind> <name>, build a pflag.FlagSet from
+// the generator params (plus --no-build), and parse the remaining arguments.
+// The `gen list` subcommand works normally: cobra routes to it by name before
+// parsing the parent's flags.
 func newGenCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "gen <kind> <name> [--<param> ...]",
@@ -54,9 +54,9 @@ func newGenCmd() *cobra.Command {
 	return c
 }
 
-// runGen — ручной разбор аргументов команды `gen` (DisableFlagParsing=true).
+// runGen — manual parsing of `gen` arguments (DisableFlagParsing=true).
 func runGen(cmd *cobra.Command, args []string) error {
-	// -h/--help как первый аргумент — печатаем справку и выходим.
+	// -h/--help as the first argument prints help and exits.
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
 		return cmd.Help()
 	}
@@ -83,19 +83,19 @@ func runGen(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		// Строим FlagSet по параметрам генератора + общий --no-build.
+		// Build the FlagSet from generator params plus the shared --no-build.
 		fs := pflag.NewFlagSet("gen "+kind, pflag.ContinueOnError)
 		fs.SetOutput(cmd.OutOrStderr())
-		noBuild := fs.Bool("no-build", false, "пропустить build-gate после генерации")
+		noBuild := fs.Bool("no-build", false, "skip the build gate after generation")
 		for i := range g.Params {
 			p := &g.Params[i]
 			fs.String(p.Name, gen.DefaultFor(p), paramUsage(p))
 		}
 		if err := fs.Parse(rest); err != nil {
-			return fmt.Errorf("gen %s: разбор флагов: %w", kind, err)
+			return fmt.Errorf("gen %s: flag parsing: %w", kind, err)
 		}
 
-		// Собираем только ЯВНО заданные флаги-параметры (Changed) для ResolveParams.
+		// Collect only EXPLICITLY set parameter flags (Changed) for ResolveParams.
 		provided := make(map[string]string)
 		fs.Visit(func(f *pflag.Flag) {
 			if f.Name == "no-build" {
@@ -128,7 +128,7 @@ func runGen(cmd *cobra.Command, args []string) error {
 	*/
 }
 
-// paramUsage формирует строку справки флага-параметра (тип + описание).
+// paramUsage builds parameter-flag help text (type plus description).
 func paramUsage(p *manifest.Param) string {
 	usage := "[" + p.Type + "]"
 	if p.Required {
@@ -140,7 +140,7 @@ func paramUsage(p *manifest.Param) string {
 	return usage
 }
 
-// newGenListCmd создаёт `tplater gen list`.
+// newGenListCmd creates `tplater gen list`.
 func newGenListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -157,18 +157,18 @@ func newGenListCmd() *cobra.Command {
 	}
 }
 
-// genBatchInput — JSON-представление одной batch-операции CLI/MCP. Параметры
-// оставлены строками, как у MCP tool gen: их типизация выполняется только
-// после Lookup конкретного generator через gen.ResolveParams.
+// genBatchInput — JSON representation of one CLI/MCP batch operation. Parameters
+// remain strings, as for the MCP gen tool; typing occurs only after looking up
+// the specific generator through gen.ResolveParams.
 type genBatchInput struct {
 	Kind   string            `json:"kind"`
 	Name   string            `json:"name"`
 	Params map[string]string `json:"params"`
 }
 
-// newGenBatchCmd создаёт `tplater gen batch --operations <JSON>`. JSON нужен
-// CLI как переносимый неинтерактивный формат сложного списка операций; MCP
-// предоставляет поверх него типизированный массив operations (см. gen_batch).
+// newGenBatchCmd creates `tplater gen batch --operations <JSON>`. JSON gives the
+// CLI a portable non-interactive format for a complex operation list; MCP adds
+// a typed operations array on top (see gen_batch).
 func newGenBatchCmd() *cobra.Command {
 	var operationsJSON string
 	var noBuild bool
@@ -200,18 +200,18 @@ func newGenBatchCmd() *cobra.Command {
 			return actionUnavailable()
 			/*
 				if operationsJSON == "" {
-					return errors.New("gen batch: обязателен --operations с JSON-массивом операций")
+					return errors.New("gen batch: --operations with a JSON array of operations is required")
 				}
 				var input []genBatchInput
 				if err := json.Unmarshal([]byte(operationsJSON), &input); err != nil {
-					return fmt.Errorf("gen batch: разбор --operations JSON: %w", err)
+					return fmt.Errorf("gen batch: parsing --operations JSON: %w", err)
 				}
 				if len(input) == 0 {
-					return errors.New("gen batch: список операций пуст")
+					return errors.New("gen batch: operation list is empty")
 				}
 				for i, item := range input {
 					if item.Kind == "" || item.Name == "" {
-						return fmt.Errorf("gen batch: операция %d требует kind и name", i+1)
+						return fmt.Errorf("gen batch: operation %d requires kind and name", i+1)
 					}
 				}
 
@@ -223,14 +223,14 @@ func newGenBatchCmd() *cobra.Command {
 				for i, item := range input {
 					g, lookupErr := gen.Lookup(tpl, item.Kind)
 					if lookupErr != nil {
-						return fmt.Errorf("gen batch: операция %d: %w", i+1, lookupErr)
+						return fmt.Errorf("gen batch: operation %d: %w", i+1, lookupErr)
 					}
 					if err := validateGenBatchParams(g.Params, item.Params); err != nil {
-						return fmt.Errorf("gen batch: операция %d (%s %s): %w", i+1, item.Kind, item.Name, err)
+						return fmt.Errorf("gen batch: operation %d (%s %s): %w", i+1, item.Kind, item.Name, err)
 					}
 					params, fields, resolveErr := gen.ResolveParams(g, item.Params)
 					if resolveErr != nil {
-						return fmt.Errorf("gen batch: операция %d (%s %s): %w", i+1, item.Kind, item.Name, resolveErr)
+						return fmt.Errorf("gen batch: operation %d (%s %s): %w", i+1, item.Kind, item.Name, resolveErr)
 					}
 					operations = append(operations, gen.Operation{Kind: item.Kind, Name: item.Name, Params: params, Fields: fields})
 				}
@@ -266,7 +266,7 @@ func validateGenBatchParams(declared []manifest.Param, provided map[string]strin
 	return nil
 }
 
-// printGenResult печатает список созданных/изменённых файлов.
+// printGenResult prints created/changed files.
 func printGenResult(cmd *cobra.Command, res *gen.Result) error {
 	out := cmd.OutOrStdout()
 	for _, f := range res.CreatedFiles {
@@ -289,8 +289,8 @@ func printGenBatchResult(cmd *cobra.Command, res *gen.BatchResult) error {
 	return nil
 }
 
-// printGenList печатает таблицу KIND/DESCRIPTION/AVAILABLE (недоступные виды
-// приглушены палитрой с причиной — по образцу [whenCell] в run.go).
+// printGenList prints a KIND/DESCRIPTION/AVAILABLE table (unavailable kinds
+// are dimmed with the reason, following [whenCell] in run.go).
 func printGenList(cmd *cobra.Command, statuses []gen.Status) error {
 	out := cmd.OutOrStdout()
 	if len(statuses) == 0 {
@@ -309,8 +309,8 @@ func printGenList(cmd *cobra.Command, statuses []gen.Status) error {
 	return nil
 }
 
-// genAvailableCell формирует последнюю колонку `gen list`: "да" либо
-// приглушённая пометка "нет — требуется <условие>".
+// genAvailableCell builds the last `gen list` column: "yes" or a dimmed
+// "no — requires <condition>" mark.
 func genAvailableCell(pal ui.Palette, st gen.Status) string {
 	if st.Available {
 		return ui.StatusIcon(pal, ui.StatusOK) + " да"

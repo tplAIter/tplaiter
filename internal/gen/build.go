@@ -15,11 +15,10 @@ import (
 
 var errWorkspacePathUnsafe = errors.New("gen: unsafe workspace path")
 
-// runPostFormat запускает gofumpt -w либо стандартный gofmt -w best-effort по
-// изменённым .go файлам. gofmt — обязательный fallback: на чистом CI/сервере
-// gofumpt часто не установлен, но генератор всё равно должен оставлять
-// gofmt-clean исходники. Неудача форматирования не проваливает gen; итоговый
-// build-gate по-прежнему отвечает за валидность кода.
+// runPostFormat best-effort runs gofumpt -w or standard gofmt -w on changed
+// .go files. gofmt is mandatory fallback: gofumpt is often absent on clean CI
+// or servers, but the generator must still leave gofmt-clean sources. Formatting
+// failure does not fail gen; the final build gate remains responsible for code validity.
 func runPostFormat(ctx context.Context, opts Options, changed []string, log func(format string, args ...any)) error {
 	goFiles := make([]string, 0, len(changed))
 	for _, f := range changed {
@@ -33,9 +32,9 @@ func runPostFormat(ctx context.Context, opts Options, changed []string, log func
 	return ErrExecutionUnavailable
 }
 
-// isGoProject ограничивает gofumpt/gofmt проектами с Go-модулем или
-// workspace. Генераторы Rust и других языков не должны получать Go formatter
-// лишь потому, что post-generation gate существует у всех шаблонов.
+// isGoProject limits gofumpt/gofmt to projects with a Go module or workspace.
+// Rust and other-language generators must not receive a Go formatter merely
+// because every template has a post-generation gate.
 func isGoProject(root string) bool {
 	for _, name := range []string{"go.mod", "go.work"} {
 		if _, err := os.Stat(filepath.Join(root, name)); err == nil {
@@ -45,24 +44,24 @@ func isGoProject(root string) bool {
 	return false
 }
 
-// runBuildGate запускает объявленный в manifest commands.build.run build-gate
-// один раз в корне проекта. Команда — уже доверенный текст манифеста, поэтому
-// исполняется так же, как `tplater run`, через POSIX shell. Старые Go manifest
-// без build-команды сохраняют workspace-aware fallback `go build ./...`.
+// runBuildGate runs the manifest's commands.build.run build gate once at the
+// project root. The command is trusted manifest text and therefore runs like
+// `tplater run`, through a POSIX shell. Older Go manifests without a build
+// command retain the workspace-aware `go build ./...` fallback.
 func runBuildGate(ctx context.Context, tpl *manifest.Template, opts Options) (string, string, error) {
 	return "", "", ErrExecutionUnavailable
 }
 
-// findFormatter предпочитает gofumpt из PATH/~/go/bin, затем использует
-// стандартный gofmt из Go toolchain.
+// findFormatter prefers gofumpt from PATH/~/go/bin, then uses the standard gofmt
+// from the Go toolchain.
 func findFormatter() (path, name string, err error) {
 	return "", "", ErrExecutionUnavailable
 }
 
-// goBuild запускает `go build ./...` в ProjectRoot, возвращая объединённый
-// вывод при ошибке. В go.work-монорепо (корень — не модуль) сборка идёт
-// помодульно по use-директориям воркспейса (находка CG-4: иначе build-гейт
-// всегда падал и откатывал генерацию в workspace-проектах).
+// goBuild runs `go build ./...` in ProjectRoot, returning combined output on
+// failure. In a go.work monorepo (root is not a module), it builds per workspace
+// use directory (CG-4 finding: otherwise the build gate always failed and rolled
+// back generation in workspace projects).
 func goBuild(ctx context.Context, opts Options) (string, error) {
 	dirs, err := workspaceUseDirs(opts.ProjectRoot)
 	if err != nil {
@@ -75,8 +74,8 @@ func goBuild(ctx context.Context, opts Options) (string, error) {
 	return "", ErrExecutionUnavailable
 }
 
-// workspaceUseDirs возвращает use-директории go.work в корне проекта
-// (nil — go.work нет, обычный модуль).
+// workspaceUseDirs returns go.work use directories at the project root (nil when
+// there is no go.work, indicating a normal module).
 func workspaceUseDirs(root string) ([]string, error) {
 	data, err := os.ReadFile(filepath.Join(root, "go.work"))
 	if err != nil {

@@ -1,9 +1,8 @@
-# golangci-lint config модуля tests/ (e2e-харнесс, e2e harness) — та же база,
-# что и корневой .golangci.yml, БЕЗ depguard-правила "execx": оно запрещает
-# прямой os/exec вне internal/execx корневого модуля (мокабельность
-# запуска процессов), но у tests/ этого слоя нет и не должно быть — сам смысл
-# черноящичного e2e-теста в том, чтобы запускать РЕАЛЬНЫЙ бинарник через
-# os/exec, а не через internal-Runner.
+# golangci-lint config for tests/ (the e2e harness), based on the root config
+# WITHOUT the depguard "execx" rule. That rule forbids direct os/exec outside
+# root internal/execx for process mockability, but tests/ has no such layer and
+# must not have one: black-box e2e tests intentionally run the REAL binary via
+# os/exec rather than an internal runner.
 version: "2"
 
 run:
@@ -50,9 +49,9 @@ linters:
         main:
           deny:
             - pkg: io/ioutil
-              desc: устарело; используйте io и os.
+              desc: deprecated; use io and os.
             - pkg: github.com/pkg/errors
-              desc: используйте стандартные errors и fmt.Errorf с %w.
+              desc: use standard errors and fmt.Errorf with %w.
     exhaustive:
       default-signifies-exhaustive: true
     nakedret:
@@ -84,8 +83,8 @@ linters:
       - legacy
       - std-error-handling
     rules:
-      # Весь модуль — тесты (*_test.go по контракту go test), gosec/noctx
-      # избыточно строги для e2e-харнесса (запуск процессов, временные файлы).
+      # The entire module is tests (*_test.go by go test contract); gosec/noctx
+      # are overly strict for the e2e harness (processes and temporary files).
       - path: _test\.go
         linters:
           - dupl

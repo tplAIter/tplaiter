@@ -39,7 +39,7 @@ func TestHome_DefaultsUnderUserHomeDir(t *testing.T) {
 
 func TestEnsureHome_CreatesSkeletonOnce(t *testing.T) {
 	dir := t.TempDir()
-	root := filepath.Join(dir, "tplater-home") // не существует до первого вызова
+	root := filepath.Join(dir, "tplater-home") // does not exist before the first call
 	t.Setenv(HomeEnv, root)
 
 	home, created, err := EnsureHome()
@@ -56,7 +56,7 @@ func TestEnsureHome_CreatesSkeletonOnce(t *testing.T) {
 		t.Errorf("EnsureHome() did not create repos/ subdir: stat error = %v", statErr)
 	}
 
-	// Второй вызов: каталог уже существует -> created=false, ничего не сломано.
+	// Second call: the directory exists, so created=false and nothing breaks.
 	_, created2, err := EnsureHome()
 	if err != nil {
 		t.Fatalf("EnsureHome() second call error = %v", err)

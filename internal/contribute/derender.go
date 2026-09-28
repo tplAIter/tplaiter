@@ -10,37 +10,34 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// minSubstLen — минимальная длина значения проекта, ниже которой обратная
-// замена не выполняется ( уточнение реализации ): короткие slug'и вроде
-// "app"/"api" слишком часто встречаются в коде случайно, и их замена на
-// плейсхолдер испортила бы содержимое. Module (go-путь) всегда длиннее и
-// заменяется всегда.
+// minSubstLen — minimum project-value length below which reverse substitution
+// is not performed (implementation detail): short slugs such as "app"/"api"
+// occur too often accidentally in code, and replacing them with a placeholder
+// would corrupt the content. Module (the Go path) is always longer and is always replaced.
 const minSubstLen = 4
 
-// reviewMarker — текст пометки, которую upgrade вставляет в шапку файла,
-// принадлежащего условной вертикали (files-глоб опции). Полная обратная
-// трансформация условных блоков алгоритмически ненадёжна — честно
-// оставляем ревьюеру шаблона.
+// reviewMarker — text inserted by upgrade into the header of a file belonging
+// to a conditional vertical (files glob option). A complete reverse
+// transformation of conditional blocks is algorithmically unreliable, so the
+// template reviewer handles it explicitly.
 const reviewMarker = "TPLATER-REVIEW: файл принадлежит условной вертикали"
 
-// substitution — одна обратная замена: литеральное значение проекта value →
-// плейсхолдер go-template placeholder.
+// substitution — one reverse substitution: literal project value → go-template placeholder.
 type substitution struct {
 	value       string
 	placeholder string
 }
 
-// buildSubstitutions собирает упорядоченный список обратных замен из координат
-// проекта. Порядок применения — по убыванию длины value, так
-// что более специфичные/длинные вхождения (прежде всего Module — go-путь,
-// содержащий Slug как подстроку) заменяются раньше и не портятся более короткими
-// заменами. Значения с одинаковым содержимым дедуплицируются: при совпадении
-// Slug==Name==Snake (частый случай) остаётся одна замена с самым каноничным
-// плейсхолдером (приоритет Slug над Snake/Name).
+// buildSubstitutions builds an ordered list of reverse substitutions from the
+// project coordinates. They are applied in descending value length, so more
+// specific/longer occurrences (especially Module, the Go path containing Slug)
+// are replaced first and are not damaged by shorter replacements. Equal values
+// are deduplicated: when Slug==Name==Snake (common), one substitution remains
+// with the most canonical placeholder (Slug takes priority over Snake/Name).
 func buildSubstitutions(p manifest.ProjectInfo) []substitution {
 	slug := p.Slug
-	// Кандидаты в порядке приоритета плейсхолдера при дедупликации по value.
-	// Module первым: это самое длинное и специфичное значение (go-путь).
+	// Candidates in placeholder-priority order for value deduplication.
+	// Module first: it is the longest and most specific value (the Go path).
 	candidates := []substitution{
 		{p.Module, "{{ .Project.Module }}"},
 		{slug, "{{ .Project.Slug }}"},
@@ -57,27 +54,27 @@ func buildSubstitutions(p manifest.ProjectInfo) []substitution {
 	subs := make([]substitution, 0, len(candidates))
 	for _, c := range candidates {
 		if len(c.value) < minSubstLen {
-			continue // слишком короткое/пустое значение — не заменяем (шум).
+			continue // value too short/empty — do not replace (noise).
 		}
 		if _, dup := seen[c.value]; dup {
-			continue // дедуп: значение уже покрыто более приоритетным плейсхолдером.
+			continue // deduplication: value is already covered by a higher-priority placeholder.
 		}
 		seen[c.value] = struct{}{}
 		subs = append(subs, c)
 	}
 
-	// Применять в порядке убывания длины value: длинные (Module) раньше коротких,
-	// иначе замена короткого Slug разорвала бы вхождение Module.
+	// Apply in descending value length: long values (Module) before short ones,
+	// otherwise replacing the short Slug would split a Module occurrence.
 	sort.SliceStable(subs, func(i, j int) bool {
 		return len(subs[i].value) > len(subs[j].value)
 	})
 	return subs
 }
 
-// derender применяет обратные замены к содержимому work-файла (де-рендер): для
-// каждой подстановки заменяет все литеральные вхождения value на placeholder.
-// Возвращает результат и признак того, была ли выполнена хотя бы одна замена
-// (нужно для эвристики «extra-файл → .tmpl, только если появились плейсхолдеры»).
+// derender applies reverse substitutions to work-file content: for each
+// substitution, it replaces all literal occurrences of value with placeholder.
+// Returns the result and whether at least one replacement occurred (needed for
+// the "extra file -> .tmpl only if placeholders appeared" heuristic).
 func derender(content []byte, subs []substitution) (out []byte, changed bool) {
 	out = content
 	for _, s := range subs {
@@ -91,10 +88,10 @@ func derender(content []byte, subs []substitution) (out []byte, changed bool) {
 	return out, changed
 }
 
-// commentStyle возвращает открывающий/закрывающий фрагменты строкового
-// комментария для файла logicalPath (по расширению; .tmpl-суффикс снимается).
-// ok=false для форматов без известного стиля комментария (бинарные/JSON и т.п.)
-// — для таких файлов пометка ревью уходит в описание MR, а не в тело файла.
+// commentStyle returns opening/closing fragments for a line comment in
+// logicalPath (based on extension; the .tmpl suffix is removed). ok=false for
+// formats without a known comment style (binary/JSON, etc.); for those files,
+// the review marker goes into the MR description rather than the file body.
 func commentStyle(logicalPath string) (open, closeTag string, ok bool) {
 	name := strings.TrimSuffix(logicalPath, ".tmpl")
 	base := path.Base(name)
@@ -115,7 +112,7 @@ func commentStyle(logicalPath string) (open, closeTag string, ok bool) {
 		return "-- ", "", true
 	}
 
-	// Файлы без расширения, узнаваемые по имени.
+	// Extensionless files recognized by name.
 	switch base {
 	case "Dockerfile", "Makefile", "Makefile.mk", ".gitignore", ".dockerignore",
 		".editorconfig", ".gitattributes":
@@ -124,12 +121,12 @@ func commentStyle(logicalPath string) (open, closeTag string, ok bool) {
 	return "", "", false
 }
 
-// markReview вставляет строку-пометку reviewMarker в шапку содержимого файла
-// logicalPath, если формат допускает комментарий. condition — условие вертикали
-// (When/AnyOf files-правила), включается в текст пометки. Для shebang-скриптов
-// пометка ставится ПОСЛЕ строки `#!...`, чтобы не сломать интерпретатор.
-// Возвращает (контент, true) при успехе; (контент, false), если стиль
-// комментария неизвестен (тогда вызывающий добавит пометку в описание MR).
+// markReview inserts reviewMarker into the header of logicalPath when its
+// format supports comments. condition is the vertical condition (When/AnyOf
+// files rule) included in the marker. For shebang scripts, the marker is placed
+// AFTER the `#!...` line so the interpreter keeps working. Returns (content,
+// true) on success and (content, false) when the comment style is unknown (the
+// caller then adds the marker to the MR description).
 func markReview(content []byte, logicalPath, condition string) ([]byte, bool) {
 	open, closeTag, ok := commentStyle(logicalPath)
 	if !ok {
@@ -142,12 +139,12 @@ func markReview(content []byte, logicalPath, condition string) ([]byte, bool) {
 	text += "; проверьте условные блоки"
 	line := open + text + closeTag + "\n"
 
-	// Уже помечен — не дублируем.
+	// Already marked — do not duplicate.
 	if bytes.Contains(content, []byte(reviewMarker)) {
 		return content, true
 	}
 
-	// Shebang: пометка после первой строки.
+	// Shebang: marker after the first line.
 	if bytes.HasPrefix(content, []byte("#!")) {
 		if nl := bytes.IndexByte(content, '\n'); nl >= 0 {
 			var b bytes.Buffer
@@ -161,11 +158,11 @@ func markReview(content []byte, logicalPath, condition string) ([]byte, bool) {
 	return append([]byte(line), content...), true
 }
 
-// conditionForPath возвращает условие files-правила (When или AnyOf через " | "),
-// чьи Paths-глобы покрывают logicalPath, и признак принадлежности условной
-// вертикали. Правила без условия (no-op) игнорируются. Учитываются только Paths
-// (включение вертикали); Remove-правила описывают удаление и к «принадлежности
-// вертикали» не относятся.
+// conditionForPath returns the files-rule condition (When or AnyOf joined by
+// " | ") whose Paths globs cover logicalPath, and whether it belongs to a
+// conditional vertical. Rules without a condition (no-op) are ignored. Only
+// Paths (vertical inclusion) count; Remove rules describe deletion and do not
+// establish vertical membership.
 func conditionForPath(rules []manifest.FileRule, logicalPath string) (string, bool) {
 	for i := range rules {
 		r := &rules[i]
@@ -174,7 +171,7 @@ func conditionForPath(rules []manifest.FileRule, logicalPath string) (string, bo
 		}
 		cond := ruleCondition(r)
 		if cond == "" {
-			continue // безусловное правило — не «вертикаль».
+			continue // unconditional rule — not a "vertical".
 		}
 		if newGlobMatcher(r.Paths).match(logicalPath) {
 			return cond, true
@@ -183,7 +180,7 @@ func conditionForPath(rules []manifest.FileRule, logicalPath string) (string, bo
 	return "", false
 }
 
-// ruleCondition форматирует условие files-правила в человекочитаемую строку.
+// ruleCondition formats a files-rule condition as a human-readable string.
 func ruleCondition(r *manifest.FileRule) string {
 	if r.When != "" {
 		return r.When

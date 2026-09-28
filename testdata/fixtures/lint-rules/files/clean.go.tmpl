@@ -2,7 +2,7 @@ package lintrules
 
 import "context"
 
-// DoWork — экспортируемая функция с ctx первым параметром: не нарушает
+// DoWork — exported function with ctx as its first parameter: satisfies
 // ctx-first.
 func DoWork(ctx context.Context, id string) error {
 	_ = ctx
@@ -10,26 +10,26 @@ func DoWork(ctx context.Context, id string) error {
 	return nil
 }
 
-// NoParams — экспортируемая функция без параметров: ctx-first её пропускает.
+// NoParams — exported function without parameters: ctx-first skips it.
 func NoParams() {
 }
 
-// Worker — тип с экспортируемым методом, принимающим ctx первым.
+// Worker — type with an exported method accepting ctx first.
 type Worker struct{}
 
-// NewWorker — конструктор, исключён из ctx-first по префиксу New.
+// NewWorker — constructor excluded from ctx-first by the New prefix.
 func NewWorker() *Worker {
 	return &Worker{}
 }
 
-// Run — метод с ресивером, ctx первым параметром — ок.
+// Run — method with a receiver and ctx as its first parameter — valid.
 func (w *Worker) Run(ctx context.Context, opts ...string) error {
 	_ = ctx
 	_ = opts
 	return nil
 }
 
-// helper — неэкспортируемая функция без ctx: правило её не касается.
+// helper — unexported function without ctx: the rule does not apply to it.
 func helper() int {
 	return 1
 }

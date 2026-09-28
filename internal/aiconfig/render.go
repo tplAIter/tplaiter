@@ -13,7 +13,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// Целевые инструменты.
+// Target tools.
 const (
 	TargetCursor   = "cursor"
 	TargetClaude   = "claude"
@@ -21,7 +21,7 @@ const (
 	TargetGemini   = "gemini"
 )
 
-// Имена шаблонов в каталоге targets/.
+// Template names in the targets/ directory.
 const (
 	tmplCursorrules = "cursorrules.tmpl"
 	tmplCursorMDC   = "cursor_mdc.tmpl"
@@ -30,28 +30,28 @@ const (
 	tmplGemini      = "gemini.tmpl"
 )
 
-// RenderOptions управляет генерацией.
+// RenderOptions controls generation.
 type RenderOptions struct {
-	// TargetRoot — корень проекта, куда пишутся артефакты.
+	// TargetRoot — project root where artifacts are written.
 	TargetRoot string
-	// Values — разрешённые настройки проекта (гейтинг модулей через
+	// Values — resolved project settings (module gating through
 	// [Source.Filter]).
 	Values settings.Values
-	// Targets — какие инструменты генерировать; пусто → берётся config.targets.
+	// Targets — tools to generate; empty means config.targets is used.
 	Targets []string
-	// Project — метаданные проекта для шапок артефактов.
+	// Project — project metadata for artifact headers.
 	Project manifest.ProjectInfo
 }
 
-// Result — итог генерации: относительные пути записанных и пропущенных файлов.
+// Result — generation result: relative paths of written and skipped files.
 type Result struct {
-	// Written — записанные файлы (относительно TargetRoot), отсортированы.
+	// Written — written files (relative to TargetRoot), sorted.
 	Written []string
-	// SkippedProtected — файлы 99-* / 99-project.*, которые генератор не трогает.
+	// SkippedProtected — 99-* / 99-project.* files left untouched by the generator.
 	SkippedProtected []string
 }
 
-// aggregateCtx — данные для «сводных» шаблонов (CLAUDE.md/AGENTS.md/GEMINI.md/.cursorrules).
+// aggregateCtx — data for aggregate templates (CLAUDE.md/AGENTS.md/GEMINI.md/.cursorrules).
 type aggregateCtx struct {
 	Config  Config
 	Project manifest.ProjectInfo
@@ -59,21 +59,21 @@ type aggregateCtx struct {
 	Base    *LoadedModule
 }
 
-// moduleCtx — данные для per-module шаблона .mdc.
+// moduleCtx — data for the per-module .mdc template.
 type moduleCtx struct {
 	Config  Config
 	Project manifest.ProjectInfo
 	Module  LoadedModule
 }
 
-// funcMap — вспомогательные функции шаблонов.
+// funcMap — template helper functions.
 var funcMap = template.FuncMap{
 	"joinComma": func(items []string) string { return strings.Join(items, ", ") },
 	"trimSpace": strings.TrimSpace,
 }
 
-// Render рендерит выбранные targets в TargetRoot. Существующие 99-project.*
-// и .cursor/rules/99-*.mdc не перезаписываются (проектные дополнения).
+// Render renders selected targets into TargetRoot. Existing 99-project.* and
+// .cursor/rules/99-*.mdc files are not overwritten (project additions).
 func (s *Source) Render(opts RenderOptions) (*Result, error) {
 	targets := opts.Targets
 	if len(targets) == 0 {
@@ -111,7 +111,7 @@ func (s *Source) Render(opts RenderOptions) (*Result, error) {
 	return res, nil
 }
 
-// renderTarget рендерит один инструмент.
+// renderTarget renders one tool.
 func (s *Source) renderTarget(target string, tmpl *template.Template, agg aggregateCtx, opts RenderOptions, res *Result) error {
 	switch target {
 	case TargetCursor:
@@ -127,7 +127,7 @@ func (s *Source) renderTarget(target string, tmpl *template.Template, agg aggreg
 	}
 }
 
-// renderCursor пишет .cursorrules, .cursor/rules/<NN-name>.mdc и .cursor/docs/<name>.md.
+// renderCursor writes .cursorrules, .cursor/rules/<NN-name>.mdc, and .cursor/docs/<name>.md.
 func (s *Source) renderCursor(tmpl *template.Template, agg aggregateCtx, opts RenderOptions, res *Result) error {
 	if err := renderAggregate(tmpl, tmplCursorrules, ".cursorrules", agg, opts, res); err != nil {
 		return err
@@ -146,12 +146,12 @@ func (s *Source) renderCursor(tmpl *template.Template, agg aggregateCtx, opts Re
 	return nil
 }
 
-// renderAggregate рендерит один сводный файл из именованного шаблона.
+// renderAggregate renders one aggregate file from a named template.
 func renderAggregate(tmpl *template.Template, name, rel string, agg aggregateCtx, opts RenderOptions, res *Result) error {
 	return renderTemplate(tmpl, name, rel, agg, opts, res)
 }
 
-// renderTemplate исполняет шаблон name с данными data и пишет результат в rel.
+// renderTemplate executes template name with data and writes the result to rel.
 func renderTemplate(tmpl *template.Template, name, rel string, data any, opts RenderOptions, res *Result) error {
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
@@ -160,7 +160,7 @@ func renderTemplate(tmpl *template.Template, name, rel string, data any, opts Re
 	return writeFile(rel, buf.Bytes(), opts, res)
 }
 
-// writeFile создаёт каталоги и пишет файл, пропуская защищённые 99-пути.
+// writeFile creates directories and writes a file, skipping protected 99 paths.
 func writeFile(rel string, content []byte, opts RenderOptions, res *Result) error {
 	if isProtected(rel) {
 		res.SkippedProtected = append(res.SkippedProtected, rel)
@@ -177,14 +177,14 @@ func writeFile(rel string, content []byte, opts RenderOptions, res *Result) erro
 	return nil
 }
 
-// isProtected сообщает, относится ли путь к проектным дополнениям (99-*),
-// которые генератор никогда не перезаписывает.
+// isProtected reports whether a path is a project addition (99-*), which the
+// generator never overwrites.
 func isProtected(rel string) bool {
 	base := filepath.Base(rel)
 	return strings.HasPrefix(base, "99-")
 }
 
-// parseTargets парсит все шаблоны из targets/ в единый набор.
+// parseTargets parses all templates from targets/ into one set.
 func (s *Source) parseTargets() (*template.Template, error) {
 	pattern := filepath.Join(s.Dir, "targets", "*.tmpl")
 	tmpl, err := template.New("targets").Funcs(funcMap).ParseGlob(pattern)
@@ -194,7 +194,7 @@ func (s *Source) parseTargets() (*template.Template, error) {
 	return tmpl, nil
 }
 
-// findBase возвращает модуль 00-base (для сводных шаблонов), если он в наборе.
+// findBase returns the 00-base module (for aggregate templates), if present in the set.
 func findBase(modules []LoadedModule) *LoadedModule {
 	for i := range modules {
 		if modules[i].ID == "00-base" {

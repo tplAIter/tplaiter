@@ -6,29 +6,28 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
-// FilePicker выбирает подмножество файлов-кандидатов для вклада в шаблон
-//. Боевая реализация — huh-мультиселект ([HuhPicker]); тесты
-// подставляют детерминированный [ScriptedPicker]. survey.Prompter здесь не
-// подходит: он опрашивает дерево групп настроек манифеста, а не произвольный
-// список путей.
+// FilePicker selects a subset of candidate files to contribute to the template.
+// The production implementation is a huh multiselect ([HuhPicker]); tests use
+// deterministic [ScriptedPicker]. survey.Prompter is unsuitable here: it asks
+// about the manifest's settings-group tree rather than an arbitrary path list.
 type FilePicker interface {
-	// Pick показывает мультиселект по candidates (все предвыбраны) и возвращает
-	// отмеченные пути. Пустой список candidates → пустой результат без диалога.
+	// Pick shows a multiselect for candidates (all preselected) and returns the
+	// selected paths. An empty candidates list returns empty without a dialog.
 	Pick(candidates []string) ([]string, error)
 }
 
-// HuhPicker — мультиселект поверх charmbracelet/huh (тот же движок, что у
-// survey.HuhPrompter). Zero-value пригоден: ввод/вывод по умолчанию — os.Stdin/
-// os.Stdout, тема — стандартная тема huh.
+// HuhPicker — multiselect over charmbracelet/huh (the same engine as
+// survey.HuhPrompter). The zero value is usable: input/output default to
+// os.Stdin/os.Stdout, and the theme defaults to huh's standard theme.
 type HuhPicker struct {
-	// In, Out — необязательные потоки формы (по умолчанию os.Stdin/os.Stdout).
+	// In, Out — optional form streams (defaulting to os.Stdin/os.Stdout).
 	In  io.Reader
 	Out io.Writer
-	// Theme — необязательная тема huh (по умолчанию huh.ThemeCharm).
+	// Theme — optional huh theme (defaulting to huh.ThemeCharm).
 	Theme *huh.Theme
 }
 
-// Pick реализует [FilePicker] через huh.MultiSelect с предвыбранными опциями.
+// Pick implements [FilePicker] through huh.MultiSelect with preselected options.
 func (p HuhPicker) Pick(candidates []string) ([]string, error) {
 	if len(candidates) == 0 {
 		return nil, nil
@@ -57,21 +56,21 @@ func (p HuhPicker) Pick(candidates []string) ([]string, error) {
 		form.WithTheme(p.Theme)
 	}
 	if err := form.Run(); err != nil {
-		return nil, err // включая huh.ErrUserAborted
+		return nil, err // including huh.ErrUserAborted
 	}
 	return selected, nil
 }
 
-// ScriptedPicker — детерминированная реализация [FilePicker] для тестов и
-// неинтерактивных сценариев. Nil-значение полей задаёт поведение: Choose=nil →
-// вернуть все кандидаты (предвыбор по умолчанию); Choose!=nil → вернуть ровно
-// то, что вернёт функция.
+// ScriptedPicker — deterministic [FilePicker] implementation for tests and
+// non-interactive scenarios. Nil fields define the behavior: Choose=nil returns
+// all candidates (the default selection); Choose!=nil returns exactly what the
+// function returns.
 type ScriptedPicker struct {
-	// Choose, если задана, полностью определяет результат по списку кандидатов.
+	// Choose, when set, fully determines the result for the candidate list.
 	Choose func(candidates []string) []string
 }
 
-// Pick реализует [FilePicker].
+// Pick implements [FilePicker].
 func (p ScriptedPicker) Pick(candidates []string) ([]string, error) {
 	if p.Choose != nil {
 		return p.Choose(candidates), nil

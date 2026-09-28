@@ -24,16 +24,16 @@ import (
 	"github.com/tplAIter/tplaiter/internal/update"
 )
 
-// updateRunner — Runner для postUpdate-хуков команды `tplater update`. Пакетная
-// переменная по образцу newRunner/runRunner для подмены в тестах.
+// updateRunner — runner for `tplater update` post-update hooks. A package
+// variable following newRunner/runRunner for substitution in tests.
 var updateRunner execx.Runner = execx.Exec{}
 
 func init() {
 	rootCmd.AddCommand(newUpdateCmd())
 }
 
-// newUpdateCmd создаёт команду `tplater update`: 3-way обновление
-// проекта на новую версию шаблона с отчётом по 5 категориям и конфликт-маркерами.
+// newUpdateCmd creates `tplater update`: a 3-way update of the project to a new
+// template version with a five-category report and conflict markers.
 func newUpdateCmd() *cobra.Command {
 	var (
 		to          string

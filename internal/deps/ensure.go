@@ -9,33 +9,29 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// EnsureOptions настраивает поведение [EnsureTools] для неинтерактивных
-// сценариев (`tplater new`, CI).
+// EnsureOptions configures [EnsureTools] for non-interactive scenarios
+// (`tplater new`, CI).
 type EnsureOptions struct {
-	// AutoYes — установка подтверждается автоматически, без интерактивного
-	// вопроса (соответствует `--yes` CLI-флагу, SPEC-03 §4). Полноценный
-	// интерактивный confirm (huh) — задача опросника (C2/tp-U1); здесь
-	// AutoYes — единственный источник согласия.
+	// AutoYes — automatically confirm installation without an interactive question
+	// (the `--yes` CLI flag, SPEC-03 §4). Full interactive confirmation (huh) is
+	// the survey task (C2/tp-U1); here AutoYes is the sole source of consent.
 	AutoYes bool
-	// SkipInstall полностью отключает предложения установки — только
-	// проверка (соответствует `--no-deps-check` в части инсталляции;
-	// сама проверка версий всё равно выполняется, чтобы отчёт был честным).
+	// SkipInstall completely disables installation offers — check only (corresponds
+	// to `--no-deps-check` for installation; version checks still run for an honest report).
 	SkipInstall bool
 }
 
-// ErrMissingRequiredTools возвращается [EnsureTools], если после проверки
-// (и попытки установки) хотя бы один required-инструмент так и не найден
-// либо не satisfies constraint. errors.Is отличает эту ситуацию от прочих
-// ошибок оркестрации.
+// ErrMissingRequiredTools is returned by [EnsureTools] when, after checking (and
+// attempting installation), at least one required tool remains missing or does
+// not satisfy its constraint. errors.Is distinguishes this from other orchestration errors.
 var ErrMissingRequiredTools = errors.New("deps: отсутствуют обязательные инструменты окружения")
 
-// EnsureTools — оркестрация проверки и (опциональной) установки tools для
-// `tplater new` (SPEC-03 §4): проверка -> предложение установки для
-// отсутствующих/несоответствующих -> повторная проверка -> провал, если
-// после этого остались required-инструменты не в порядке.
+// EnsureTools — orchestration of checking and (optionally) installing tools for
+// `tplater new` (SPEC-03 §4): check -> offer installation for missing/mismatched
+// tools -> check again -> fail if required tools remain unavailable.
 //
-// required=false инструменты, оставшиеся не в порядке, только
-// предупреждаются через out.Warn и не влияют на итоговую ошибку.
+// Tools with required=false that remain unavailable only produce an out.Warn and
+// do not affect the final error.
 func EnsureTools(ctx context.Context, runner execx.Runner, out UI, tools []manifest.Tool, opts EnsureOptions) error {
 	statuses := Check(ctx, runner, tools)
 

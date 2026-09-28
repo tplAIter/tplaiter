@@ -13,20 +13,20 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// HuhPrompter — боевая реализация [Prompter] поверх charmbracelet/huh. Zero-value
-// пригоден к использованию: ввод/вывод по умолчанию — os.Stdin/os.Stdout, тема —
-// стандартная тема huh.
+// HuhPrompter — production [Prompter] implementation over charmbracelet/huh.
+// The zero value is usable: input/output default to os.Stdin/os.Stdout and the
+// theme to huh's standard theme.
 type HuhPrompter struct {
-	// In, Out — необязательные потоки формы (по умолчанию os.Stdin/os.Stdout).
+	// In, Out — optional form streams (default os.Stdin/os.Stdout).
 	In  io.Reader
 	Out io.Writer
-	// Theme — необязательная тема huh (по умолчанию huh.ThemeCharm).
+	// Theme — optional huh theme (default huh.ThemeCharm).
 	Theme *huh.Theme
 }
 
-// binding хранит связанное с полем формы значение группы и указатель, который
-// huh мутирует по ходу ввода. Для select/string/int используется s (int —
-// строкой с int-валидацией), для multiselect — list, для toggle — b.
+// binding stores a group's form-field value and the pointer huh mutates during
+// input. select/string/int use s (int as a string with integer validation),
+// multiselect uses list, and toggle uses b.
 type binding struct {
 	g    *manifest.SettingGroup
 	s    string
@@ -34,7 +34,7 @@ type binding struct {
 	b    bool
 }
 
-// value возвращает текущее значение биндинга в каноническом типе группы.
+// value returns the binding's current value in the group's canonical type.
 func (bd *binding) value() any {
 	switch bd.g.Type {
 	case manifest.TypeMultiselect:
@@ -53,8 +53,8 @@ func (bd *binding) value() any {
 	}
 }
 
-// newBinding создаёт биндинг группы, засеянный текущим значением cur (из
-// дефолтов/preset/прошлой итерации опроса).
+// newBinding creates a group binding seeded with cur (from defaults/preset/the
+// previous questionnaire iteration).
 func newBinding(g *manifest.SettingGroup, cur any) *binding {
 	bd := &binding{g: g}
 	switch g.Type {
@@ -86,9 +86,8 @@ func newBinding(g *manifest.SettingGroup, cur any) *binding {
 	return bd
 }
 
-// field строит поле формы huh для группы, привязывая его к биндингу. Ошибка
-// возвращается только при некомпилируемом pattern (валидатор манифеста обязан
-// это отсекать раньше, но защищаемся).
+// field builds a huh form field for a group and binds it. Errors occur only for
+// an uncompilable pattern (the manifest validator should reject it earlier).
 func (bd *binding) field() (huh.Field, error) {
 	title := groupTitle(bd.g)
 	switch bd.g.Type {
@@ -140,9 +139,9 @@ func (bd *binding) field() (huh.Field, error) {
 	}
 }
 
-// buildForm строит форму huh по дереву групп: одна huh-группа на настройку,
-// вложенные скрыты через WithHideFunc до выбора активирующей опции предка.
-// Возвращает форму и карту биндингов по id группы.
+// buildForm builds a huh form from the group tree: one huh group per setting;
+// nested groups stay hidden through WithHideFunc until their ancestor option is selected.
+// Returns the form and bindings by group ID.
 func buildForm(groups []manifest.SettingGroup, current settings.Values) (*huh.Form, map[string]*binding, error) {
 	binds := make(map[string]*binding)
 	var hgroups []*huh.Group
@@ -172,8 +171,8 @@ func buildForm(groups []manifest.SettingGroup, current settings.Values) (*huh.Fo
 	return huh.NewForm(hgroups...), binds, nil
 }
 
-// ancestorsActive сообщает, что вся цепочка активирующих опций выбрана (значит
-// вложенная группа должна быть видимой).
+// ancestorsActive reports whether every activating option in the chain is selected
+// (so the nested group should be visible).
 func ancestorsActive(anc []ancestor, binds map[string]*binding) bool {
 	for _, a := range anc {
 		bd, ok := binds[a.group]
@@ -187,9 +186,9 @@ func ancestorsActive(anc []ancestor, binds map[string]*binding) bool {
 	return true
 }
 
-// Ask строит и запускает форму по активным группам, затем собирает значения
-// только фактически активных групп (скрытые вложенные не попадают в результат —
-// их разрешит [settings.Resolve] по выбору родителя).
+// Ask builds and runs the form for active groups, then collects values only for
+// actually active groups (hidden nested groups are omitted; [settings.Resolve]
+// resolves them from the parent choice).
 func (p HuhPrompter) Ask(groups []manifest.SettingGroup, current settings.Values) (settings.Values, error) {
 	if len(groups) == 0 {
 		return settings.Values{}, nil
@@ -200,7 +199,7 @@ func (p HuhPrompter) Ask(groups []manifest.SettingGroup, current settings.Values
 	}
 	p.configure(form)
 	if err := form.Run(); err != nil {
-		return nil, err // включая huh.ErrUserAborted
+		return nil, err // including huh.ErrUserAborted
 	}
 
 	out := make(settings.Values)
@@ -218,7 +217,7 @@ func (p HuhPrompter) Ask(groups []manifest.SettingGroup, current settings.Values
 	return out, nil
 }
 
-// Confirm показывает сводку и запрашивает согласие через huh.Confirm.
+// Confirm shows the summary and asks for approval through huh.Confirm.
 func (p HuhPrompter) Confirm(summary string) (bool, error) {
 	var ok bool
 	form := huh.NewForm(huh.NewGroup(
@@ -236,7 +235,7 @@ func (p HuhPrompter) Confirm(summary string) (bool, error) {
 	return ok, nil
 }
 
-// configure применяет необязательные потоки и тему к форме.
+// configure applies optional streams and theme to the form.
 func (p HuhPrompter) configure(form *huh.Form) {
 	if p.In != nil {
 		form.WithInput(p.In)
@@ -249,8 +248,8 @@ func (p HuhPrompter) configure(form *huh.Form) {
 	}
 }
 
-// selectableOptions разбивает опции группы на выбираемые (для huh) и planned
-// (в подсказку). Для multiselect отмечает предвыбранные из preselected.
+// selectableOptions splits group options into selectable (for huh) and planned
+// (for the hint). For multiselect it marks preselected values.
 func selectableOptions(g *manifest.SettingGroup, preselected []string) (opts []huh.Option[string], planned []string) {
 	for i := range g.Options {
 		o := &g.Options[i]
@@ -270,8 +269,8 @@ func selectableOptions(g *manifest.SettingGroup, preselected []string) (opts []h
 	return opts, planned
 }
 
-// fieldDescription собирает подсказку поля: описание группы плюс строку о
-// planned-опциях (huh не умеет disabled-опции — честно перечисляем их отдельно).
+// fieldDescription builds a field hint: group description plus planned options
+// (huh cannot disable options, so they are listed separately).
 func fieldDescription(g *manifest.SettingGroup, planned []string) string {
 	d := g.Description
 	if len(planned) > 0 {
@@ -285,7 +284,7 @@ func fieldDescription(g *manifest.SettingGroup, planned []string) string {
 	return d
 }
 
-// intValidator проверяет, что ввод — целое число.
+// intValidator checks that input is an integer.
 func intValidator(s string) error {
 	if _, err := strconv.Atoi(s); err != nil {
 		return fmt.Errorf("значение %q не является целым числом", s)
@@ -293,7 +292,7 @@ func intValidator(s string) error {
 	return nil
 }
 
-// patternValidator компилирует pattern один раз и возвращает валидатор ввода.
+// patternValidator compiles pattern once and returns an input validator.
 func patternValidator(pattern string) (func(string) error, error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
@@ -307,7 +306,7 @@ func patternValidator(pattern string) (func(string) error, error) {
 	}, nil
 }
 
-// groupTitle возвращает заголовок группы (title или id как запасной вариант).
+// groupTitle returns the group title (or ID as fallback).
 func groupTitle(g *manifest.SettingGroup) string {
 	if g.Title != "" {
 		return g.Title
@@ -315,7 +314,7 @@ func groupTitle(g *manifest.SettingGroup) string {
 	return g.Group
 }
 
-// optionTitle возвращает заголовок опции (title или id как запасной вариант).
+// optionTitle returns the option title (or ID as fallback).
 func optionTitle(o *manifest.Option) string {
 	if o.Title != "" {
 		return o.Title

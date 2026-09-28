@@ -11,9 +11,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// toolForKind сопоставляет вид репозитория инструменту auth (колонка tool в
-// сторе; для самого git-credential-протокола инструмент не важен — findForHost
-// его игнорирует, — но он нужен для показа и для выбора glab/gh).
+// toolForKind maps a repository kind to the auth tool (the tool column in the
+// store). The git-credential protocol does not need the tool—findForHost ignores
+// it—but it is needed for display and choosing glab/gh.
 func toolForKind(kind state.RepoKind) string {
 	switch kind {
 	case state.RepoKindGitLab:
@@ -25,16 +25,13 @@ func toolForKind(kind state.RepoKind) string {
 	}
 }
 
-// resolveGitAuth готовит окружение git-операций для repo add.
+// resolveGitAuth prepares the environment for git operations during repo add.
 //
-// Для не-http(s) URL (ssh, file://) credential-helper не нужен — возвращает nil.
-// Для http(s): если токен для host уже в сторе — сразу возвращает helper-env
-// (auth.HelperEnv). Иначе — auth-флоу:
-//   - tokenStdin: читаем токен из stdin, сохраняем, возвращаем helper-env;
-//   - неинтерактивный режим (нет TTY и не stdin): пропускаем (git пойдёт без
-//     наших кредов — подходит для публичных репозиториев);
-//   - интерактивный: предлагаем (t) ввести токен, (g) импорт из glab/gh,
-//     (s) пропустить.
+// Non-http(s) URLs (ssh, file://) need no credential helper and return nil.
+// For http(s), an existing host token immediately returns helper-env
+// (auth.HelperEnv). Otherwise the auth flow is: tokenStdin reads and stores a
+// token; non-interactive mode skips credentials; interactive mode offers (t)
+// token input, (g) import from glab/gh, or (s) skip.
 func (m *Manager) resolveGitAuth(ctx context.Context, repoURL string, kind state.RepoKind, tokenStdin bool) ([]string, error) {
 	if !isHTTPURL(repoURL) {
 		return nil, nil
@@ -60,9 +57,9 @@ func (m *Manager) resolveGitAuth(ctx context.Context, repoURL string, kind state
 	return m.interactiveAuth(ctx, repoURL, host, kind, tool)
 }
 
-// resolveGitAuthQuiet — auth для repo update (без диалогов): использует токен из
-// стора, если он есть; иначе идёт без кредов (для приватного репо fetch упадёт с
-// внятной ошибкой git — пользователь сделает `auth add`).
+// resolveGitAuthQuiet handles auth for repo update without prompts: it uses a
+// stored token when available, otherwise runs without credentials (a private
+// repository fetch fails with a clear git error; the user can run `auth add`).
 func (m *Manager) resolveGitAuthQuiet(repoURL string, kind state.RepoKind) ([]string, error) {
 	if !isHTTPURL(repoURL) || m.authStore == nil {
 		return nil, nil
@@ -76,9 +73,9 @@ func (m *Manager) resolveGitAuthQuiet(repoURL string, kind state.RepoKind) ([]st
 	return nil, nil
 }
 
-// interactiveAuth ведёт диалог выбора способа аутентификации. Полноценный
-// интерактив (huh/скрытый ввод) — реализация ; здесь текстовые подсказки и чтение
-// строки из ui.In (для токена — через ui.ReadSecret, если задан).
+// interactiveAuth runs the authentication method selection dialog. Full
+// interactive behavior (huh/hidden input) is implemented here with text prompts
+// and reading from ui.In (using ui.ReadSecret for tokens when configured).
 func (m *Manager) interactiveAuth(ctx context.Context, repoURL, host string, kind state.RepoKind, tool string) ([]string, error) {
 	if m.authStore == nil {
 		m.warnf("хранилище токенов недоступно — продолжаю без аутентификации\n")
@@ -115,7 +112,7 @@ func (m *Manager) interactiveAuth(ctx context.Context, repoURL, host string, kin
 	}
 }
 
-// importBinFor возвращает бинарник импорта токена для вида репозитория.
+// importBinFor returns the token-import binary for a repository kind.
 func importBinFor(kind state.RepoKind) (bin string, ok bool) {
 	switch kind {
 	case state.RepoKindGitLab:
@@ -127,9 +124,9 @@ func importBinFor(kind state.RepoKind) (bin string, ok bool) {
 	}
 }
 
-// importAndStore импортирует токен через glab/gh (auth.ImportFromTool) и, при
-// успехе, возвращает helper-env. Отсутствие бинарника/логина даёт понятную
-// ошибку с рецептом (её порождает auth.ImportFromTool).
+// importAndStore imports a token through glab/gh (auth.ImportFromTool) and
+// returns helper-env on success. A missing binary or login produces a clear
+// instructional error from auth.ImportFromTool.
 func (m *Manager) importAndStore(ctx context.Context, bin, tool, host, repoURL string) ([]string, error) {
 	m.printf("Пробую импортировать токен через `%s auth token`…\n", bin)
 	if _, err := auth.ImportFromTool(ctx, m.authStore, m.runner, bin, tool, host); err != nil {
@@ -139,8 +136,8 @@ func (m *Manager) importAndStore(ctx context.Context, bin, tool, host, repoURL s
 	return auth.HelperEnv(repoURL), nil
 }
 
-// storeTokenInteractive запрашивает токен (скрытый ввод, если задан ReadSecret)
-// и сохраняет его на уровне хоста.
+// storeTokenInteractive prompts for a token (hidden when ReadSecret is set) and
+// stores it for the host.
 func (m *Manager) storeTokenInteractive(host, tool, repoURL string) ([]string, error) {
 	hint := tokenHint(tool)
 	if hint != "" {
@@ -162,7 +159,7 @@ func (m *Manager) storeTokenInteractive(host, tool, repoURL string) ([]string, e
 	return m.putToken(host, tool, repoURL, strings.TrimSpace(token))
 }
 
-// storeTokenFromReader читает токен из ui.In целиком (режим --token-stdin).
+// storeTokenFromReader reads the complete token from ui.In (--token-stdin mode).
 func (m *Manager) storeTokenFromReader(host, tool, repoURL string) ([]string, error) {
 	if m.ui.In == nil {
 		return nil, errors.New("repo: --token-stdin задан, но stdin не подключён")
@@ -190,7 +187,7 @@ func (m *Manager) putToken(host, tool, repoURL, token string) ([]string, error) 
 	return auth.HelperEnv(repoURL), nil
 }
 
-// readLine читает одну строку из ui.In (без завершающего перевода строки).
+// readLine reads one line from ui.In without the trailing newline.
 func (m *Manager) readLine() (string, error) {
 	if m.in == nil {
 		return "", errors.New("repo: ввод недоступен (stdin не подключён)")
@@ -202,7 +199,7 @@ func (m *Manager) readLine() (string, error) {
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
-// tokenHint подсказывает, где выпустить токен и какие scopes нужны.
+// tokenHint explains where to issue a token and which scopes are needed.
 func tokenHint(tool string) string {
 	switch tool {
 	case "gitlab":

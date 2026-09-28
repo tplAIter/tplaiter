@@ -1,12 +1,11 @@
-// Package survey реализует интерактивный опросник настроек шаблона:
-// строит формы charmbracelet/huh по дереву групп [manifest.SettingGroup],
-// оркестрирует опрос (AskFlow), а результат прогоняет через резолвер
-// [settings.Resolve] с докладом довключений и сводкой источников значений.
+// Package survey implements an interactive template-settings questionnaire:
+// it builds charmbracelet/huh forms from [manifest.SettingGroup] trees,
+// orchestrates asking (AskFlow), and resolves results through [settings.Resolve]
+// with implied-value reports and a value-source summary.
 //
-// Пакет надстраивается над [settings] (модель значений и резолвер) и
-// [manifest] (структура дерева групп) и не изменяет их. Точка тестируемости —
-// интерфейс [Prompter]: боевая реализация [HuhPrompter] рисует TUI, тестовая
-// [ScriptedPrompter] проигрывает заранее заданные ответы без TTY.
+// The package builds on [settings] (values/resolver) and [manifest] (group-tree
+// structure) without changing them. Testability is through [Prompter]:
+// production [HuhPrompter] draws a TUI, while [ScriptedPrompter] replays answers without TTY.
 package survey
 
 import (
@@ -14,46 +13,44 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// Prompter — абстракция ввода настроек, отделяющая оркестрацию опроса от
-// конкретного UI. Ask опрашивает переданное (уже урезанное до незаданных)
-// дерево групп, отталкиваясь от текущих значений current; Confirm показывает
-// сводку и запрашивает подтверждение. Обе операции возвращают
-// [huh.ErrUserAborted] при прерывании пользователем (Ctrl+C) — оркестратор
-// пробрасывает её наружу.
+// Prompter abstracts settings input from questionnaire orchestration. Ask queries
+// the supplied tree (already reduced to unset groups) from current values; Confirm
+// shows a summary and asks for approval. Both return [huh.ErrUserAborted] on Ctrl+C,
+// which the orchestrator propagates.
 type Prompter interface {
-	// Ask опрашивает активные группы дерева groups, начиная со значений current,
-	// и возвращает значения только фактически заданных (активных) групп.
+	// Ask queries active groups in groups from current values and returns values
+	// only for groups actually set (active).
 	Ask(groups []manifest.SettingGroup, current settings.Values) (settings.Values, error)
-	// Confirm показывает summary и возвращает согласие пользователя.
+	// Confirm shows summary and returns the user's approval.
 	Confirm(summary string) (bool, error)
 }
 
-// Проверки соответствия интерфейсу на этапе компиляции.
+// Compile-time interface conformance checks.
 var (
 	_ Prompter = HuhPrompter{}
 	_ Prompter = (*ScriptedPrompter)(nil)
 )
 
-// Source — источник итогового значения группы для сводки.
+// Source — source of a group's final value for the summary.
 type Source string
 
-// Возможные источники значения настройки.
+// Possible sources of a setting value.
 const (
-	SourceSet     Source = "set"     // из --set
-	SourceAnswer  Source = "answer"  // из --answers
-	SourceDefault Source = "default" // дефолт манифеста
-	SourcePrompt  Source = "prompt"  // введено в опросе
-	SourceImplied Source = "implied" // довключено резолвером
+	SourceSet     Source = "set"     // from --set
+	SourceAnswer  Source = "answer"  // from --answers
+	SourceDefault Source = "default" // manifest default
+	SourcePrompt  Source = "prompt"  // entered in questionnaire
+	SourceImplied Source = "implied" // implied by resolver
 )
 
-// ancestor — активирующая пара (группа, опция) на пути к вложенной группе.
+// ancestor — activating (group, option) pair on the path to a nested group.
 type ancestor struct {
 	group  string
 	option string
 }
 
-// optionSelected сообщает, выбрана ли опция optID в группе типа select/
-// multiselect при значении val.
+// optionSelected reports whether optID is selected in a select/multiselect group
+// for value val.
 func optionSelected(typ string, val any, optID string) bool {
 	switch typ {
 	case manifest.TypeSelect:
@@ -72,9 +69,8 @@ func optionSelected(typ string, val any, optID string) bool {
 	}
 }
 
-// selectedOptionIDs возвращает id выбранных опций группы при значении val
-// (для select — не более одной, для multiselect — список). Для не-опционных
-// типов — nil.
+// selectedOptionIDs returns selected option IDs for val (at most one for select,
+// a list for multiselect). It returns nil for non-option types.
 func selectedOptionIDs(g *manifest.SettingGroup, val any) []string {
 	switch g.Type {
 	case manifest.TypeSelect:
@@ -89,9 +85,9 @@ func selectedOptionIDs(g *manifest.SettingGroup, val any) []string {
 	return nil
 }
 
-// walkActive обходит дерево групп в порядке объявления, вызывая fn для каждой
-// АКТИВНОЙ группы: корневые активны всегда, вложенные — когда в родительской
-// группе выбрана активирующая опция (значение берётся через valueOf).
+// walkActive traverses groups in declaration order, calling fn for each ACTIVE
+// group: roots are always active; nested groups are active when their parent's
+// activating option is selected (value obtained through valueOf).
 func walkActive(groups []manifest.SettingGroup, valueOf func(id string) any, fn func(g *manifest.SettingGroup)) {
 	for i := range groups {
 		g := &groups[i]
@@ -105,9 +101,8 @@ func walkActive(groups []manifest.SettingGroup, valueOf func(id string) any, fn 
 	}
 }
 
-// flattenTree обходит ВСЁ дерево (без учёта выбора — динамику берёт на себя
-// huh через WithHideFunc), передавая fn каждую группу с её цепочкой
-// активирующих предков.
+// flattenTree traverses the ENTIRE tree regardless of selections (huh handles
+// dynamics through WithHideFunc), passing each group and its activating-ancestor chain to fn.
 func flattenTree(groups []manifest.SettingGroup, anc []ancestor, fn func(g *manifest.SettingGroup, anc []ancestor)) {
 	for i := range groups {
 		g := &groups[i]
@@ -122,17 +117,14 @@ func flattenTree(groups []manifest.SettingGroup, anc []ancestor, fn func(g *mani
 	}
 }
 
-// pruneForPrompt возвращает поддерево групп, которое нужно опросить
-// интерактивно: группы, уже зафиксированные preset (--set/--answers), из
-// вопросов исключаются, а всё ещё активные вложенные уточнения выбранной
-// preset-опции поднимаются на текущий уровень (их родитель зафиксирован —
-// значит они безусловно активны и не нуждаются в WithHideFunc). Группы, не
-// заданные в preset, сохраняют вложенность (динамическое раскрытие остаётся за
-// опросником).
+// pruneForPrompt returns the group subtree to ask interactively: preset-fixed
+// groups (--set/--answers) are excluded, while active nested refinements of a
+// selected preset option are promoted to the current level (their parent is fixed,
+// so they are unconditionally active and need no WithHideFunc). Unset groups retain nesting.
 func pruneForPrompt(groups []manifest.SettingGroup, preset settings.Values) []manifest.SettingGroup {
 	out := make([]manifest.SettingGroup, 0, len(groups))
 	for i := range groups {
-		g := groups[i] // копия узла (Options переопределим ниже)
+		g := groups[i] // copy node (Options is replaced below)
 		if presetVal, fixed := preset[g.Group]; fixed {
 			for _, sel := range selectedOptionIDs(&g, presetVal) {
 				for j := range g.Options {
@@ -155,8 +147,8 @@ func pruneForPrompt(groups []manifest.SettingGroup, preset settings.Values) []ma
 	return out
 }
 
-// mergeValues накладывает наборы значений в порядке слоёв (последний
-// побеждает), копируя []string-срезы, чтобы исключить алиасинг.
+// mergeValues overlays value sets by layer (last wins), copying []string slices
+// to avoid aliasing.
 func mergeValues(layers ...settings.Values) settings.Values {
 	out := make(settings.Values)
 	for _, layer := range layers {

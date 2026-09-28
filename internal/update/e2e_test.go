@@ -23,7 +23,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/update"
 )
 
-// --- git-инфраструктура (реальный git, file://-репо, как в internal/newcmd) ---
+// --- git infrastructure (real git, file:// repository, as in internal/newcmd) ---
 
 var gitExec = execx.Exec{}
 
@@ -63,8 +63,8 @@ func writeFiles(t *testing.T, root string, files map[string]string) {
 	}
 }
 
-// initTwoTagOrigin создаёт origin с двумя коммитами и тегами v0.1.0 (файлы v1) и
-// v0.2.0 (файлы v2): файлы, отсутствующие в v2, удаляются из индекса.
+// initTwoTagOrigin creates an origin with commits and tags v0.1.0 (v1 files) and
+// v0.2.0 (v2 files); files absent in v2 are removed from the index.
 func initTwoTagOrigin(t *testing.T, v1, v2 map[string]string) string {
 	t.Helper()
 	origin := filepath.Join(t.TempDir(), "origin")
@@ -78,7 +78,7 @@ func initTwoTagOrigin(t *testing.T, v1, v2 map[string]string) string {
 	runGit(t, origin, "commit", "-m", "v1")
 	runGit(t, origin, "tag", "v0.1.0")
 
-	// Удаляем файлы, которых нет в v2.
+	// Remove files absent in v2.
 	for rel := range v1 {
 		if _, ok := v2[rel]; !ok {
 			_ = os.Remove(filepath.Join(origin, filepath.FromSlash(rel)))
@@ -116,16 +116,16 @@ requires:
 	return m + hooks
 }
 
-// v1Files/v2Files — набор дерева, упражняющий все 5 категорий отчёта.
+// v1Files/v2Files are trees exercising all five report categories.
 func v1Files() map[string]string {
 	return map[string]string{
 		"template.manifest.yaml": manifestYAML("0.1.0", "hooks:\n  postUpdate:\n    - run: \"echo postUpdate-done\"\n"),
-		"files/main.txt.tmpl":    "slug={{ .Project.Slug }}\n", // не меняется — untouched
-		"files/readme.txt":       "# readme v1\nstable\n",      // (a) обновится, если не правлен
-		"files/keep.txt":         "constant\n",                 // (b) шаблон не меняет, правит юзер
-		"files/merge.txt":        "l1\nl2\nl3\n",               // (c) чистый merge
-		"files/conflict.txt":     "x\ny\nz\n",                  // (c) конфликт
-		"files/removed.txt":      "old\n",                      // (e) удалится
+		"files/main.txt.tmpl":    "slug={{ .Project.Slug }}\n", // unchanged — untouched
+		"files/readme.txt":       "# readme v1\nstable\n",      // (a) updated if unedited
+		"files/keep.txt":         "constant\n",                 // (b) template unchanged, user edits
+		"files/merge.txt":        "l1\nl2\nl3\n",               // (c) clean merge
+		"files/conflict.txt":     "x\ny\nz\n",                  // (c) conflict
+		"files/removed.txt":      "old\n",                      // (e) removed
 	}
 }
 
@@ -137,12 +137,12 @@ func v2Files() map[string]string {
 		"files/keep.txt":         "constant\n",
 		"files/merge.txt":        "l1\nl2\nCHANGED3\n",
 		"files/conflict.txt":     "x\nTPL\nz\n",
-		"files/added.txt":        "brand new\n", // (d) создастся
+		"files/added.txt":        "brand new\n", // (d) created
 	}
 }
 
-// setup поднимает home + репо example с шаблоном svc (два тега) и создаёт проект на
-// v0.1.0 в отдельном каталоге, применяя пользовательские правки.
+// setup creates home and an example repository with svc (two tags), then creates
+// a project at v0.1.0 in a separate directory with user edits.
 func setup(t *testing.T, edit func(projectDir string)) (mgr *repo.Manager, home, projDir string) {
 	t.Helper()
 	requireGit(t)
@@ -212,7 +212,7 @@ func absent(t *testing.T, dir, rel string) bool {
 	return os.IsNotExist(err)
 }
 
-// --- e2e: полная матрица v0.1.0 → v0.2.0 с конфликтом ---
+// --- e2e: full v0.1.0 -> v0.2.0 matrix with a conflict ---
 
 func TestUpdate_E2E_Matrix(t *testing.T) {
 	if err := update.Run(context.Background(), update.Deps{}, update.Options{StartDir: filepath.Join(t.TempDir(), "missing")}); !errors.Is(err, update.ErrLifecycleUnavailable) {
@@ -220,7 +220,7 @@ func TestUpdate_E2E_Matrix(t *testing.T) {
 	}
 }
 
-// --check ловит оставшиеся маркеры (exit 1).
+// --check catches remaining markers (exit 1).
 func TestUpdate_Check_CatchesMarkers(t *testing.T) {
 	root := t.TempDir()
 	writeFiles(t, root, map[string]string{"conflict.txt": "<<<<<<< local\n"})
@@ -232,21 +232,21 @@ func TestUpdate_Check_CatchesMarkers(t *testing.T) {
 	}
 }
 
-// no-op: обновление на ту же версию без правок → пустой план.
+// no-op: same-version update without edits -> empty plan.
 func TestUpdate_NoOp(t *testing.T) {
 	if err := update.Run(context.Background(), update.Deps{}, update.Options{StartDir: filepath.Join(t.TempDir(), "missing"), To: "v0.1.0"}); !errors.Is(err, update.ErrLifecycleUnavailable) {
 		t.Fatalf("legacy update error = %v", err)
 	}
 }
 
-// dry-run ничего не пишет.
+// dry-run writes nothing.
 func TestUpdate_DryRun(t *testing.T) {
 	if err := update.Run(context.Background(), update.Deps{}, update.Options{StartDir: filepath.Join(t.TempDir(), "missing"), DryRun: true}); !errors.Is(err, update.ErrLifecycleUnavailable) {
 		t.Fatalf("legacy dry-run error = %v", err)
 	}
 }
 
-// --all по двум проектам (один конфликтный): сводка и продолжение.
+// --all across two projects (one conflicting): summary and continuation.
 func TestUpdate_All_TwoProjects(t *testing.T) {
 	if err := update.Run(context.Background(), update.Deps{}, update.Options{All: true}); !errors.Is(err, update.ErrLifecycleUnavailable) {
 		t.Fatalf("legacy --all error = %v", err)

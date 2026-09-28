@@ -1,20 +1,21 @@
-// Package aiconfig загружает централизованный источник AI-правил (каталог
-// ai-config/) и рендерит из него per-tool артефакты (CLAUDE.md,
-// .cursor/**, AGENTS.md, GEMINI.md) в корень проекта.
+// Package aiconfig loads the centralized source of AI rules (the ai-config/
+// directory) and renders per-tool artifacts (CLAUDE.md, .cursor/**,
+// AGENTS.md, GEMINI.md) into the project root.
 //
-// Источник (перенос go-template WP-19, ставшего частью контракта tplater)
-// состоит из:
-//   - config.json          — язык, целевые инструменты, длина строки;
-//   - modules/NN-*.json     — декларации модулей правил (активация, globs, when);
-//   - rules/NN-*.md         — «быстрая справка» (компактные примеры);
-//   - docs/*.md             — «толстые» доки с эталонным кодом;
-//   - targets/*.tmpl        — text/template композиции под каждый инструмент.
+// The source (the go-template WP-19 migration, now part of the tplater
+// contract) consists of:
+//   - config.json           — language, target tools, line length;
+//   - modules/NN-*.json     — rule module declarations (activation, globs, when);
+//   - rules/NN-*.md         — "quick reference" (compact examples);
+//   - docs/*.md             — "full" documentation with canonical code;
+//   - targets/*.tmpl        — text/template compositions for each tool.
 //
-// Главное отличие от go-template: гейтинг модуля — поле `when` в терминах
-// мини-языка условий §3.2 (settings.Eval), а не булева `feature` из бинарного
-// реестра фич. Как и в [gen], сам источник (каталог ai-config) — не встроенный
-// в бинарник embed, а копия внутри проекта: [AIConfigRelPath] — контракт с
-// связанными компонентами /, симметричный gen.GeneratorsRelPath.
+// The main difference from go-template is that module gating uses the `when`
+// field in the §3.2 condition mini-language (settings.Eval), rather than the
+// boolean `feature` from the binary feature registry. As with [gen], the source
+// (the ai-config directory) is not embedded in the binary, but copied into the
+// project: [AIConfigRelPath] is the contract with related / components,
+// symmetric to gen.GeneratorsRelPath.
 package aiconfig
 
 import (
@@ -29,22 +30,22 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// ConfigFileName — имя корневого конфига источника.
+// ConfigFileName — name of the source root configuration file.
 const ConfigFileName = "config.json"
 
-// AIConfigRelPath — путь каталога-копии ai-config в сгенерированном проекте
-// относительно его корня. `tplater new` копирует сюда каталог,
-// на который указывает aiConfig.path манифеста шаблона (контракт с /).
+// AIConfigRelPath — path to the copied ai-config directory in the generated
+// project, relative to its root. `tplater new` copies here the directory
+// referenced by the template manifest's aiConfig.path (the contract with /).
 const AIConfigRelPath = ".tplaiter/ai-config"
 
-// Activation-типы модулей (соответствуют способам подключения правил в Cursor).
+// Activation types for modules (corresponding to ways of attaching rules in Cursor).
 const (
 	ActivationAlways   = "always"
 	ActivationGlobs    = "globs"
 	ActivationSemantic = "semantic"
 )
 
-// Config — модель config.json.
+// Config — model of config.json.
 type Config struct {
 	Language     string   `json:"language"`
 	CodeLanguage string   `json:"code_language"`
@@ -52,9 +53,9 @@ type Config struct {
 	LineLength   int      `json:"line_length"`
 }
 
-// Module — декларация одного модуля правил (modules/NN-*.json). When — условие
-// активации в терминах §3.2 (пусто — модуль безусловный); замена
-// go-template'овского Feature *string.
+// Module — declaration of one rule module (modules/NN-*.json). When is the
+// activation condition in §3.2 terms (empty means an unconditional module),
+// replacing go-template's Feature *string.
 type Module struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
@@ -66,34 +67,34 @@ type Module struct {
 	DocFile     string   `json:"doc_file"`
 }
 
-// LoadedModule — модуль с прочитанным содержимым rule/doc и производными именами.
+// LoadedModule — module with the loaded rule/doc contents and derived names.
 type LoadedModule struct {
 	Module
 
-	// Rule — содержимое rule_file (быстрая справка).
+	// Rule — contents of rule_file (quick reference).
 	Rule string
-	// Doc — содержимое doc_file (толстый док).
+	// Doc — contents of doc_file (full documentation).
 	Doc string
-	// DocBase — базовое имя doc-файла с расширением (напр. "base.md").
+	// DocBase — base name of the doc file with its extension (e.g. "base.md").
 	DocBase string
-	// DocName — базовое имя doc-файла без расширения (напр. "base").
+	// DocName — base name of the doc file without its extension (e.g. "base").
 	DocName string
-	// RuleName — базовое имя rule-файла без расширения (напр. "00-base").
+	// RuleName — base name of the rule file without its extension (e.g. "00-base").
 	RuleName string
 }
 
-// Source — загруженный источник ai-config (конфиг + все модули).
+// Source — loaded ai-config source (configuration plus all modules).
 type Source struct {
-	// Dir — корневой каталог источника (ai-config/).
+	// Dir — source root directory (ai-config/).
 	Dir string
-	// Config — прочитанный config.json.
+	// Config — parsed config.json.
 	Config Config
-	// Modules — все модули, отсортированные по ID.
+	// Modules — all modules, sorted by ID.
 	Modules []LoadedModule
 }
 
-// Load читает config.json и все модули из каталога dir, читает их rule/doc-файлы.
-// Валидация схемы выполняется отдельно методом [Source.Validate].
+// Load reads config.json and all modules from dir, including their rule/doc files.
+// Schema validation is performed separately by [Source.Validate].
 func Load(dir string) (*Source, error) {
 	cfg, err := loadConfig(dir)
 	if err != nil {
@@ -106,7 +107,7 @@ func Load(dir string) (*Source, error) {
 	return &Source{Dir: dir, Config: cfg, Modules: modules}, nil
 }
 
-// loadConfig читает и парсит config.json.
+// loadConfig reads and parses config.json.
 func loadConfig(dir string) (Config, error) {
 	path := filepath.Join(dir, ConfigFileName)
 	data, err := os.ReadFile(path)
@@ -122,7 +123,7 @@ func loadConfig(dir string) (Config, error) {
 	return cfg, nil
 }
 
-// loadModules читает modules/*.json, подтягивает содержимое rule/doc и сортирует по ID.
+// loadModules reads modules/*.json, loads the rule/doc contents, and sorts by ID.
 func loadModules(dir string) ([]LoadedModule, error) {
 	modulesDir := filepath.Join(dir, "modules")
 	entries, err := os.ReadDir(modulesDir)
@@ -146,7 +147,7 @@ func loadModules(dir string) ([]LoadedModule, error) {
 	return modules, nil
 }
 
-// loadModule парсит один module-json и читает связанные rule/doc-файлы.
+// loadModule parses one module JSON file and reads its related rule/doc files.
 func loadModule(root, path string) (LoadedModule, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -180,18 +181,18 @@ func loadModule(root, path string) (LoadedModule, error) {
 	return loaded, nil
 }
 
-// baseName возвращает имя файла без каталога и расширения.
+// baseName returns the file name without its directory and extension.
 func baseName(p string) string {
 	b := filepath.Base(p)
 	return strings.TrimSuffix(b, filepath.Ext(b))
 }
 
-// Filter возвращает модули, применимые при заданных значениях настроек:
-// безусловные (When == "") плюс те, чьё when истинно (settings.Eval, §3.2).
-// Неразбираемое условие или ссылка на неизвестную группу — ошибка (аборт):
-// такой module.when — баг ai-config, который должен ловить [Source.Validate]
-// заранее, а не тихо исключать модуль из вывода молча (симметрично решению
-// engine.compileFileRules для files-правил).
+// Filter returns modules applicable to the given settings values:
+// unconditional modules (When == "") plus those whose when condition is true
+// (settings.Eval, §3.2). An unparsable condition or reference to an unknown
+// group is an error (abort): such a module.when is an ai-config bug that
+// [Source.Validate] must catch in advance, rather than silently excluding the
+// module from output (symmetric with engine.compileFileRules for file rules).
 func (s *Source) Filter(values settings.Values) ([]LoadedModule, error) {
 	out := make([]LoadedModule, 0, len(s.Modules))
 	for _, m := range s.Modules {
@@ -210,7 +211,7 @@ func (s *Source) Filter(values settings.Values) ([]LoadedModule, error) {
 	return out, nil
 }
 
-// evalWhen разбирает и вычисляет условие when модуля (§3.2, конъюнкция через &&).
+// evalWhen parses and evaluates a module's when condition (§3.2, conjunction via &&).
 func evalWhen(when string, values settings.Values) (bool, error) {
 	cond, err := manifest.ParseCondition(when)
 	if err != nil {

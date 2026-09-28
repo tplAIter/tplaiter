@@ -1,9 +1,10 @@
-# lint-rules — фикстура arch-lint секции lint (реализация проверку). Минимальный Go-
-# проект: два переключаемых файла (dirty.go/generated.go рендерятся в чистом
-# ИЛИ нарушающем виде по toggle violations) + всегда-чистый clean.go + main.go
-# (панику в main правило no-panic разрешает). Цель — е2e lint-template: toggle
-# off (defaults) зелёный, toggle on (all-on/max, генерируются [Combos]
-# автоматически для toggle-групп) красный со списком нарушений всех 4 правил.
+# lint-rules — arch-lint lint-section fixture (implementation check). Minimal
+# Go project: two toggled files (dirty.go/generated.go render in clean OR
+# violating form according to the violations toggle) + always-clean clean.go +
+# main.go (the no-panic rule permits panic in main). Goal — e2e lint-template:
+# toggle off (defaults) is green, toggle on (all-on/max, generated
+# automatically for toggle groups by [Combos]) is red with violations from all
+# 4 rules.
 apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:

@@ -1,6 +1,6 @@
-# Манифест шаблона. Скелет с двумя примерными группами настроек,
-# files-правилом, командами-заглушками, хуком, генератором, ai-config и
-# плейбуком окружения. Прогоняйте `tplaiter lint-template` после правок.
+# Template manifest. Skeleton with two example settings groups, a files rule,
+# placeholder commands, a hook, generator, ai-config, and environment playbook.
+# Run `tplaiter lint-template` after edits.
 apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -21,21 +21,20 @@ engine:
 requires:
   tplater: ">=0.1.0"
 
-# ── Группы настроек ─────────────────────────────────────────────
-# Правило: значение группы попадает в контекст рендера как .Settings.<group> и
-# в хелперы is/has. Вложенные уточнения (Option.settings) активны только когда
-# выбрана их родительская опция.
+# ── Settings groups ─────────────────────────────────────────────
+# Rule: a group value enters render context as .Settings.<group> and the is/has
+# helpers. Nested refinements (Option.settings) are active only when their parent
+# option is selected.
 settings:
-  # toggle — простой флаг. Управляет условным каталогом files/__if_feature_x__/
-  # и внутрифайловыми маркерами tplater:if.
+  # toggle — simple flag. Controls files/__if_feature_x__/ and in-file tplater:if markers.
   - group: feature_x
     title: "Feature X"
     description: "Пример toggle-флага: включает дополнительный файл и блоки."
     type: toggle
     default: false
 
-  # select с двумя опциями; опция advanced несёт вложенное уточнение (toggle
-  # verbose) — оно спрашивается/активно только при variant=advanced.
+  # select with two options; advanced carries a nested refinement (verbose
+  # toggle), prompted/active only when variant=advanced.
   - group: variant
     title: "Вариант"
     description: "Пример select-группы с вложенным уточнением."
@@ -53,16 +52,16 @@ settings:
             type: toggle
             default: false
 
-# ── files-правила ──────────────────────────────────────────────
-# Добавляя вертикаль, описывайте её каталог здесь (paths — «включить при true»,
-# remove — «удалить при true»). Условные каталоги __if_<group>__ и внутрифайловые
-# маркеры tplater:if/begin/end — альтернатива для точечных включений.
+# ── Files rules ──────────────────────────────────────────────
+# When adding a vertical, describe its directory here (paths — "include when
+# true", remove — "remove when true"). Conditional __if_<group>__ directories
+# and tplater:if/begin/end markers provide precise alternatives.
 files:
   - when: "variant=advanced"
     paths: ["advanced/**"]
 
-# ── Команды проекта (`tplaiter run`) ─────────────────────────────────────────
-# TODO(мейнтейнер): замените echo-заглушки на реальные команды вашей вертикали.
+# ── Project commands (`tplaiter run`) ─────────────────────────────────────────
+# TODO(maintainer): replace echo placeholders with your vertical's real commands.
 commands:
   dev:
     run: "echo 'TODO: замените на реальный dev-запуск'"
@@ -71,13 +70,13 @@ commands:
     run: "echo 'TODO: замените на реальный прогон тестов'"
     description: "Прогон тестов (заглушка)"
 
-# ── Хуки жизненного цикла ────────────────────────────────────────────────────
+# ── Lifecycle hooks ────────────────────────────────────────────────────
 hooks:
   postCreate:
     - run: "echo 'проект создан из шаблона << .Name >>'"
       optional: true
 
-# ── Генераторы (`tplaiter gen`) ──────────────────────────────────────────────
+# ── Generators (`tplaiter gen`) ──────────────────────────────────────────────
 generators:
   - kind: example
     description: "Пример генератора: создаёт файл и вставляет строку по якорю."
@@ -92,7 +91,7 @@ generators:
 aiConfig:
   path: ai-config
 
-# ── Окружение ───────────────────────────────────────────────────
+# ── Environment ───────────────────────────────────────────────────
 environment:
   playbooks:
     - name: setup

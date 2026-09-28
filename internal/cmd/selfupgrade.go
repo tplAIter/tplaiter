@@ -13,30 +13,27 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// runner — Runner для команд самообновления/suggest-проверки. Переменная
-// пакета (а не execx.Exec{} напрямую в вызовах) — юниты подменяют её
-// [execx.RecordingRunner], не трогая реальные git/go install.
+// runner — runner for self-update/suggest-check commands. A package variable
+// (rather than execx.Exec{} directly in calls) lets unit tests replace it with
+// [execx.RecordingRunner] without touching real git/go install.
 var runner execx.Runner = execx.Exec{}
 
-// detectInstallChannel — обёртка над [selfupdate.DetectChannel] как
-// переменная пакета: юниты подставляют фиксированный канал. Нужна, потому
-// что реальная детекция смотрит на os.Executable()/BuildInfo текущего
-// процесса — у тестового бинарника (`go test`) это ни один из известных
-// путей и BuildInfo.Main.Version почти всегда "(devel)", так что
-// [selfupdate.DetectChannel] в тестах стабильно вернул бы [selfupdate.ChannelUnknown]
-// независимо от того, что тест хочет проверить.
+// detectInstallChannel wraps [selfupdate.DetectChannel] as a package variable
+// so unit tests can provide a fixed channel. Real detection examines
+// os.Executable()/BuildInfo of the current process; a `go test` binary matches
+// none of the known paths and BuildInfo.Main.Version is usually "(devel),"
+// so tests would always get [selfupdate.ChannelUnknown].
 var detectInstallChannel = selfupdate.DetectChannel
 
-// suggestCheckTimeout — верхняя граница на сетевой поход `git ls-remote` в
-// фоновой suggest-проверке: проверка обновлений не должна
-// заметно замедлять обычные команды даже при недоступном/медленном
-// репозитории.
+// suggestCheckTimeout — upper bound for the `git ls-remote` network request in
+// the background suggest check: update checks must not noticeably slow normal
+// commands even when the repository is unavailable or slow.
 const suggestCheckTimeout = 2 * time.Second
 
-// suggestSkip — top-level команды, для которых suggest-проверка не имеет
-// смысла: справка/версия и completion уже покрыты firstRunSkip по тем же
-// причинам (см. firstrun.go), плюс сама self-upgrade (нет смысла
-// подсказывать --upgrade прямо во время его выполнения) и init-shell (алиас
+// suggestSkip — top-level commands for which the suggest check is meaningless:
+// help/version and completion are already covered by firstRunSkip for the same
+// reasons (see firstrun.go), plus self-upgrade (no point suggesting --upgrade
+// during its own execution) and init-shell (an alias
 // completion).
 var suggestSkip = map[string]bool{
 	"help":         true,
@@ -46,12 +43,11 @@ var suggestSkip = map[string]bool{
 	"self-upgrade": true,
 }
 
-// suggestUpdatePreRun — часть PersistentPreRunE корневой команды (см.
-// [rootPreRun] в root.go): ненавязчивая фоновая проверка новой версии раз в
-// 24ч. Никогда не возвращает ошибку и не прерывает выполнение вызывающей
-// команды — вся логика гейтов/поглощения ошибок в
-// [selfupdate.MaybeSuggest], здесь только сборка аргументов (home, таймаут
-// на сеть, поток вывода).
+// suggestUpdatePreRun — part of the root command's PersistentPreRunE (see
+// [rootPreRun] in root.go): an unobtrusive background check for a new version
+// once every 24 hours. It never returns an error or interrupts the invoking
+// command; [selfupdate.MaybeSuggest] owns all gates and error suppression,
+// while this function only assembles arguments (home, network timeout, output).
 func suggestUpdatePreRun(cmd *cobra.Command, _ []string) {
 	if suggestSkip[topLevelCommand(cmd).Name()] {
 		return
@@ -63,10 +59,10 @@ func suggestUpdatePreRun(cmd *cobra.Command, _ []string) {
 
 	parent := cmd.Context()
 	if parent == nil {
-		// cmd.Context() — nil, только если PersistentPreRunE вызван мимо
-		// cobra Execute()/ExecuteContext() (например, напрямую из юнит-теста
-		// на синтетическом *cobra.Command); в реальном запуске cobra всегда
-		// проставляет как минимум context.Background() перед preRun-цепочкой.
+		// cmd.Context() is nil only when PersistentPreRunE is called outside
+		// cobra Execute()/ExecuteContext() (for example, directly from a unit test
+		// on a synthetic *cobra.Command); in real execution cobra sets at least
+		// context.Background() before the preRun chain.
 		parent = context.Background()
 	}
 	ctx, cancel := context.WithTimeout(parent, suggestCheckTimeout)
@@ -75,8 +71,8 @@ func suggestUpdatePreRun(cmd *cobra.Command, _ []string) {
 	selfupdate.MaybeSuggest(ctx, runner, home, resolveVersion(), time.Now(), cmd.ErrOrStderr())
 }
 
-// newSelfUpgradeCmd создаёт команду `tplaiter self-upgrade` (алиас для флага
-// `tplaiter --upgrade` на root, см. root.go) — самообновление CLI.
+// newSelfUpgradeCmd creates `tplaiter self-upgrade` (the root
+// `tplaiter --upgrade` alias; see root.go) for CLI self-updates.
 func newSelfUpgradeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "self-upgrade",
@@ -86,12 +82,12 @@ func newSelfUpgradeCmd() *cobra.Command {
 	}
 }
 
-// runSelfUpgrade определяет канал установки, сверяет текущую версию со
-// старшим тегом канонического репозитория ([selfupdate.RepoURL]) и запускает
-// обновление либо печатает инструкцию для неавтоматизируемых каналов
-//. Сбой сверки версий (сеть недоступна и т.п.) не прерывает
-// команду — обновление всё равно пробуется, просто без предварительного
-// «доступна vX.Y.Z» сообщения.
+// runSelfUpgrade determines the installation channel, compares the current
+// version with the latest tag in the canonical repository ([selfupdate.RepoURL]),
+// and updates or prints instructions for channels that cannot be automated.
+// A version-check failure (network unavailable, etc.) does not stop the command;
+// the update is still attempted, just without a preliminary "vX.Y.Z is
+// available" message.
 func runSelfUpgrade(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
@@ -108,18 +104,18 @@ func runSelfUpgrade(cmd *cobra.Command, _ []string) error {
 		case selfupdate.CompareOutdated:
 			fmt.Fprintf(out, "доступна новая версия: %s -> %s\n", current, latest)
 		case selfupdate.CompareUnknown:
-			// current — не SemVer (обычно "dev"-сборка): продолжаем ниже,
-			// сравнение не запрещает попытку обновиться.
+			// current is not SemVer (usually a "dev" build): continue below;
+			// comparison does not prevent attempting an update.
 		}
 	}
 
 	return selfupdate.Upgrade(ctx, runner, detectInstallChannel(), mainModulePath(), out)
 }
 
-// mainModulePath возвращает путь Go-модуля текущего процесса
-// (debug.BuildInfo.Main.Path) — аргумент для `go install <modulePath>@latest`
-// в [selfupdate.Upgrade]. Пустая строка, если BuildInfo недоступен (сборка
-// без модульного режима — на практике не встречается для `go install`).
+// mainModulePath returns the current process's Go module path
+// (debug.BuildInfo.Main.Path), the argument for `go install <modulePath>@latest`
+// in [selfupdate.Upgrade]. It returns an empty string when BuildInfo is
+// unavailable (a non-module build, not expected in practice for go install).
 func mainModulePath() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
@@ -128,18 +124,18 @@ func mainModulePath() string {
 	return info.Main.Path
 }
 
-// initShellGenerators сопоставляет допустимые оболочки init-shell генератору
-// автодополнения cobra — `tplaiter init-shell <shell>` печатает тот же скрипт,
-// что встроенная `tplaiter completion <shell>`.
+// initShellGenerators maps supported init-shell names to cobra completion
+// generators — `tplaiter init-shell <shell>` prints the same script as the
+// built-in `tplaiter completion <shell>`.
 var initShellGenerators = map[string]func(cmd *cobra.Command) error{
 	"bash": func(cmd *cobra.Command) error { return cmd.Root().GenBashCompletionV2(cmd.OutOrStdout(), true) },
 	"zsh":  func(cmd *cobra.Command) error { return cmd.Root().GenZshCompletion(cmd.OutOrStdout()) },
 	"fish": func(cmd *cobra.Command) error { return cmd.Root().GenFishCompletion(cmd.OutOrStdout(), true) },
 }
 
-// newInitShellCmd создаёт команду `tplaiter init-shell [bash|zsh|fish]` —
-// тонкий алиас над встроенной cobra `completion` с короткой
-// подсказкой, куда прописать вывод для постоянной загрузки.
+// newInitShellCmd creates `tplaiter init-shell [bash|zsh|fish]`, a thin alias
+// over cobra's built-in `completion` with a short hint about where to put the
+// output for permanent loading.
 func newInitShellCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init-shell [bash|zsh|fish]",

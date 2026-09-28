@@ -80,8 +80,8 @@ func TestParseFields_Errors(t *testing.T) {
 	}
 }
 
-// TestParseFields_UnknownTypeListsAllowed: сообщение об ошибке перечисляет
-// допустимые типы (в т.ч. форму []T).
+// TestParseFields_UnknownTypeListsAllowed: the error message lists allowed
+// types (including the []T form).
 func TestParseFields_UnknownTypeListsAllowed(t *testing.T) {
 	_, err := ParseFields("x:decimal")
 	if err == nil {

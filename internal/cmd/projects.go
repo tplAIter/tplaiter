@@ -21,10 +21,10 @@ func init() {
 	rootCmd.AddCommand(newProjectsCmd())
 }
 
-// projectSyncSkip — top-level команды, для которых синхронизация реестра
-// проектов не имеет смысла: справка/версия/автодополнение — те
-// же причины, что и у [firstRunSkip]/[suggestSkip] (см. firstrun.go,
-// selfupgrade.go), плюс init-shell (тонкий алиас completion).
+// projectSyncSkip — top-level commands for which project registry sync is
+// meaningless: help/version/completion for the same reasons as
+// [firstRunSkip]/[suggestSkip] (see firstrun.go, selfupgrade.go), plus init-shell
+// (a thin completion alias).
 var projectSyncSkip = map[string]bool{
 	"help":       true,
 	"version":    true,
@@ -32,17 +32,16 @@ var projectSyncSkip = map[string]bool{
 	"init-shell": true,
 }
 
-// projectSyncPreRun — третий (и последний) элемент цепочки
-// PersistentPreRunE корневой команды (см. [rootPreRun] в root.go,
-// §1): если рабочий каталог находится внутри проекта tplater, приводит его
-// запись в ~/.tplaiter/projects.yaml в соответствие с фактическим состоянием
-// — [projectsync.SyncCurrent] делает всю работу.
+// projectSyncPreRun — third (and last) element of the root command's
+// PersistentPreRunE chain (see [rootPreRun] in root.go, §1): when the working
+// directory is inside a tplater project, it reconciles its entry in
+// ~/.tplaiter/projects.yaml with actual state; [projectsync.SyncCurrent] does
+// the work.
 //
-// В отличие от firstRunPreRun, ошибка НЕ прерывает выполнение вызывающей
-// команды: реестр — удобство навигации, а не источник истины.
-// При сбое (недоступен home, занят лок, побитый .tplaiter/project.yaml)
-// диагностика печатается только при --verbose; обычный прогон остаётся
-// молчаливым.
+// Unlike firstRunPreRun, an error does not stop the invoking command: the
+// registry is a navigation convenience, not the source of truth. On failure
+// (unavailable home, busy lock, or corrupt .tplaiter/project.yaml), diagnostics
+// are printed only with --verbose; normal runs stay silent.
 func projectSyncPreRun(cmd *cobra.Command, _ []string) {
 	if projectSyncSkip[topLevelCommand(cmd).Name()] {
 		return
@@ -70,8 +69,8 @@ func logProjectSyncErr(cmd *cobra.Command, err error) {
 	fmt.Fprintf(cmd.ErrOrStderr(), "tplater: синхронизация реестра проектов: %v\n", err)
 }
 
-// newProjectsCmd создаёт команду `tplater projects`: просмотр и
-// уборка локального реестра ~/.tplaiter/projects.yaml.
+// newProjectsCmd creates `tplater projects`: viewing and pruning the local
+// ~/.tplaiter/projects.yaml registry.
 func newProjectsCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "projects",
@@ -183,10 +182,9 @@ func newProjectsPruneCmd() *cobra.Command {
 	return c
 }
 
-// confirmPrune запрашивает подтверждение удаления n записей: интерактивно
-// через huh, если stdin — терминал; иначе требует явного --yes, а не
-// предполагает согласие по умолчанию (удаление из реестра — операция без
-// отмены).
+// confirmPrune asks for confirmation before deleting n entries: interactively
+// through huh when stdin is a terminal; otherwise it requires explicit --yes
+// instead of assuming consent (registry deletion cannot be undone).
 func confirmPrune(cmd *cobra.Command, n int) (bool, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return false, errors.New("cmd: projects prune: неинтерактивный режим — подтвердите флагом --yes")
@@ -204,8 +202,8 @@ func confirmPrune(cmd *cobra.Command, n int) (bool, error) {
 	return ok, nil
 }
 
-// missingRefs возвращает подмножество items со статусом missing — тот же
-// критерий, что [state.Projects.Prune] использует для реального удаления.
+// missingRefs returns the subset of items with missing status, the same
+// criterion [state.Projects.Prune] uses for actual deletion.
 func missingRefs(items []state.ProjectRef) []state.ProjectRef {
 	var out []state.ProjectRef
 	for _, ref := range items {
@@ -216,10 +214,10 @@ func missingRefs(items []state.ProjectRef) []state.ProjectRef {
 	return out
 }
 
-// projectRefExists проверяет STATUS=ok для одной записи реестра: каталог по
-// ref.Path существует и в нём читается .tplaiter/project.yaml. Единственная
-// проверка os.Stat маркера покрывает оба случая missing (удалён каталог
-// целиком или только маркер внутри него), см. Long команды `projects list`.
+// projectRefExists checks STATUS=ok for one registry entry: ref.Path exists and
+// its .tplaiter/project.yaml can be read. A single os.Stat of the marker covers
+// both missing cases (the whole directory or only the marker was removed); see
+// the `projects list` command's Long text.
 func projectRefExists(ref state.ProjectRef) bool {
 	_, err := os.Stat(filepath.Join(ref.Path, project.MarkerRelPath))
 	return err == nil

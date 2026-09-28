@@ -15,9 +15,9 @@ import (
 
 const pairIndexStub = "index\n# CODEGEN:PAIR\n"
 
-// setupMultiProject строит проект с мультифайловым генератором pair: 2 таргета
-// (entity + record) + якорь в out/index.txt + параметр fields. record-таргет
-// помечен numbered: goose и пишется в out/migrations.
+// setupMultiProject builds a project with the pair multifile generator: two
+// targets (entity + record), an out/index.txt anchor, and a fields parameter.
+// The record target has numbered: goose and writes to out/migrations.
 func setupMultiProject(t *testing.T) (dir string, tpl *manifest.Template) {
 	t.Helper()
 	dir = t.TempDir()
@@ -175,7 +175,7 @@ func TestGenerate_Multifile_CreatesBothTargetsAndAnchor(t *testing.T) {
 	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
-// TestGenerate_Multifile_MigrationSeq: каталог с 00001, 00002 → следующий 00003.
+// TestGenerate_Multifile_MigrationSeq: directory with 00001, 00002 → next 00003.
 func TestGenerate_Multifile_MigrationSeq(t *testing.T) {
 	dir, tpl := setupMultiProject(t)
 	writeFile(t, dir, "out/migrations/00001_first.txt", "x\n")
@@ -188,14 +188,14 @@ func TestGenerate_Multifile_MigrationSeq(t *testing.T) {
 	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
-// TestGenerate_Multifile_TargetWhenGate: target.when гейтит один из таргетов по
-// настройкам — при выключенной настройке второй файл не создаётся.
+// TestGenerate_Multifile_TargetWhenGate: target.when gates one target by settings;
+// with the setting off, the second file is not created.
 func TestGenerate_Multifile_TargetWhenGate(t *testing.T) {
 	dir, tpl := setupMultiProject(t)
-	// Гейтим record-таргет по toggle-настройке migrations.
+	// Gate the record target by the migrations toggle setting.
 	tpl.Generators[0].Targets[1].When = []string{"migrations=true"}
 
-	// migrations выключена: target selection is pure, execution is denied.
+	// migrations disabled: target selection is pure, execution is denied.
 	opts := multiOpts(dir, mustFields(t, "a:int"))
 	opts.Values = settings.Values{"migrations": false}
 	before := snapshotTree(t, dir)
@@ -203,7 +203,7 @@ func TestGenerate_Multifile_TargetWhenGate(t *testing.T) {
 	assertExecutionUnavailable(t, err)
 	assertTreeEqual(t, before, snapshotTree(t, dir))
 
-	// migrations включена → оба файла.
+	// migrations enabled → both files.
 	dir2, tpl2 := setupMultiProject(t)
 	tpl2.Generators[0].Targets[1].When = []string{"migrations=true"}
 	opts2 := multiOpts(dir2, mustFields(t, "a:int"))
@@ -214,13 +214,13 @@ func TestGenerate_Multifile_TargetWhenGate(t *testing.T) {
 	assertTreeEqual(t, before2, snapshotTree(t, dir2))
 }
 
-// TestGenerate_Multifile_RollbackOnBuildFailure: второй таргет генерит невалидный
-// Go → `go build` падает → откат ПЕРВОГО файла, второго и якоря.
+// TestGenerate_Multifile_RollbackOnBuildFailure: the second target generates
+// invalid Go → `go build` fails → roll back the FIRST file, second file, and anchor.
 func TestGenerate_Multifile_RollbackOnBuildFailure(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.invalid/demo\n\ngo 1.26\n")
 	writeFile(t, dir, "internal/reg/reg.go", "package reg\n\n// CODEGEN:PAIR\nvar Registered []string\n")
-	// Первый таргет — валидный Go; второй — синтаксически битый.
+	// First target is valid Go; second is syntactically broken.
 	writeFile(t, dir, ".tplaiter/generators/a.go.tmpl", "package domain\n\ntype {{ .Name.Pascal }} struct{}\n")
 	writeFile(t, dir, ".tplaiter/generators/b.go.tmpl", "package usecase\n\ntype {{ .Name.Pascal }} struct {\n")
 	writeFile(t, dir, ".tplaiter/generators/reg.anchor.tmpl", "{{ .Marker }}\n\t_ = \"{{ .Name.Snake }}\"\n")
@@ -248,11 +248,11 @@ func TestGenerate_Multifile_RollbackOnBuildFailure(t *testing.T) {
 	assertTreeEqual(t, before, snapshotTree(t, dir))
 }
 
-// TestGenerate_Multifile_RenderErrorNoWrites: ошибка рендера второго сниппета
-// (до записи) не создаёт ни одного файла и не трогает якорь (атомарность).
+// TestGenerate_Multifile_RenderErrorNoWrites: an error rendering the second
+// snippet (before writing) creates no files and leaves the anchor untouched (atomicity).
 func TestGenerate_Multifile_RenderErrorNoWrites(t *testing.T) {
 	dir, tpl := setupMultiProject(t)
-	// Ломаем шаблон второго таргета — синтаксическая ошибка text/template.
+	// Break the second target template — text/template syntax error.
 	writeFile(t, dir, ".tplaiter/generators/pair/record.txt.tmpl", "record {{ .Name.Pascal ")
 
 	opts := multiOpts(dir, mustFields(t, "a:int"))
@@ -268,10 +268,10 @@ func TestGenerate_Multifile_RenderErrorNoWrites(t *testing.T) {
 	}
 }
 
-// TestGenerate_BackwardCompat_SingleForm: старая одиночная форма (snippet+target)
-// продолжает работать без targets[] — тот же контракт, что и до CG-1.
+// TestGenerate_BackwardCompat_SingleForm: the old single form (snippet+target)
+// still works without targets[] — the same contract as before CG-1.
 func TestGenerate_BackwardCompat_SingleForm(t *testing.T) {
-	dir, tpl := setupProject(t) // одиночный use-case генератор
+	dir, tpl := setupProject(t) // single use-case generator
 	opts := Options{
 		ProjectRoot:   dir,
 		GeneratorsDir: filepath.Join(dir, GeneratorsRelPath),

@@ -29,8 +29,8 @@ func TestCheckAndMigrate_OlderWithoutRegisteredMigrationErrors(t *testing.T) {
 
 func TestCheckAndMigrate_AppliesRegisteredMigrationChain(t *testing.T) {
 	const testKind fileKind = "test-kind"
-	// Реестр — package-level var; регистрируем и подчищаем за собой, чтобы не
-	// протечь в остальные тесты пакета.
+	// The registry is a package-level var; register and clean up after ourselves
+	// so the change does not leak into other package tests.
 	migrations[testKind] = map[int]migrationFunc{
 		0: func(data []byte) ([]byte, error) { return append(data, []byte("-migrated-to-1")...), nil },
 		1: func(data []byte) ([]byte, error) { return append(data, []byte("-migrated-to-2")...), nil },

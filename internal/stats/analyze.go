@@ -13,38 +13,38 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// Статусы файла относительно эталонного рендера.
+// File statuses relative to the reference render.
 const (
-	// StatusIdentical — рабочий файл побайтово совпадает с эталоном.
+	// StatusIdentical means the work file matches the reference byte-for-byte.
 	StatusIdentical = "identical"
-	// StatusModified — рабочий файл отличается (есть построчная метрика).
+	// StatusModified means the work file differs (with a line metric).
 	StatusModified = "modified"
-	// StatusModifiedBinary — рабочий файл отличается, но бинарный (без
-	// построчной метрики: added/removed=0, percent=0).
+	// StatusModifiedBinary means the work file differs but is binary (no line
+	// metric: added/removed=0, percent=0).
 	StatusModifiedBinary = "modified-binary"
-	// StatusDeleted — файл есть в эталоне, но отсутствует в рабочем дереве.
+	// StatusDeleted means the file exists in the reference but not in the work tree.
 	StatusDeleted = "deleted"
-	// StatusExtra — файл есть в рабочем дереве, но отсутствует в эталоне
-	// (в drift-score НЕ входит, выводится отдельной секцией).
+	// StatusExtra means the file exists in the work tree but not in the reference
+	// (excluded from drift-score and shown separately).
 	StatusExtra = "extra"
 )
 
-// Классы обновляемости файла.
+// File updateability classes.
 const (
-	// ClassNone — для identical (класс не применяется).
+	// ClassNone is used for identical files (no class applies).
 	ClassNone = ""
-	// ClassAuto — правки пользователя, которые update приведёт 3-way чисто:
-	// шаблон исторически этот файл не менял.
+	// ClassAuto means update can cleanly 3-way merge user edits: the template has
+	// not historically changed this file.
 	ClassAuto = "auto"
-	// ClassConflictProne — правки в файле, который шаблон исторически менял
-	// (пересечение с diff последних N тегов) — вероятен конфликт при update.
+	// ClassConflictProne means edits to a file historically changed by the template
+	// (overlap with the last N tag diffs), so update may conflict.
 	ClassConflictProne = "conflict-prone"
-	// ClassManualOnly — update НЕ приведёт к шаблону сам: удалённый эталонный
-	// файл, сломанный якорь CODEGEN, правка в copyWithoutRender-артефакте.
+	// ClassManualOnly means update cannot bring the file to the template itself:
+	// deleted reference file, broken CODEGEN anchor, or edit to a copyWithoutRender artifact.
 	ClassManualOnly = "manual-only"
 )
 
-// FileStat — дрейф одного файла.
+// FileStat describes one file's drift.
 type FileStat struct {
 	Path         string  `json:"path"`
 	Status       string  `json:"status"`
@@ -54,55 +54,55 @@ type FileStat struct {
 	Percent      float64 `json:"percent"`
 }
 
-// Report — итог сравнения проекта с эталоном (машиночитаемая схема `--json`
-// стабильна: {score, files, extras, brokenAnchors}; поля вне схемы помечены
+// Report is the comparison result (the `--json` schema is stable:
+// {score, files, extras, brokenAnchors}; fields outside the schema are marked
 // json:"-").
 type Report struct {
-	// Score — суммарный drift-score 0..100 (взвешенное среднее по файлам
-	// эталона; extra не входит).
+	// Score is total drift-score 0..100 (weighted average over reference files;
+	// extras are excluded).
 	Score int `json:"score"`
-	// Files — файлы эталона (identical/modified/deleted), отсортированы по пути.
+	// Files are reference files (identical/modified/deleted), sorted by path.
 	Files []FileStat `json:"files"`
-	// Extras — пути рабочих файлов, отсутствующих в эталоне (не входят в score).
+	// Extras are work-file paths absent from the reference (excluded from score).
 	Extras []string `json:"extras"`
-	// BrokenAnchors — пути файлов, где якорь CODEGEN эталона отсутствует в work.
+	// BrokenAnchors are paths where a reference CODEGEN anchor is absent in work.
 	BrokenAnchors []string `json:"brokenAnchors"`
-	// Warnings — предупреждения (например, недоступность исторической
-	// эвристики); в JSON-схему не входят.
+	// Warnings are warnings (for example, unavailable historical heuristic); they
+	// are outside the JSON schema.
 	Warnings []string `json:"-"`
-	// OldVersion — версия шаблона проекта (для заголовка текстового отчёта).
+	// OldVersion is the project template version (for the text report heading).
 	OldVersion string `json:"-"`
 }
 
-// AnalyzeInput — чистый вход [Analyze]: результат рендера эталона плюс
-// исторический контекст. Отделён от [Collect], чтобы анализ тестировался без
-// git (монотонность score, классификация, JSON-схема).
+// AnalyzeInput is the pure [Analyze] input: reference render plus historical
+// context. It is separate from [Collect] so analysis can be tested without git
+// (score monotonicity, classification, and JSON schema).
 type AnalyzeInput struct {
-	// RefFiles — эталонный рендер: относительный slash-путь → содержимое.
+	// RefFiles is the reference render: relative slash path -> content.
 	RefFiles map[string][]byte
-	// WorkDir — корень рабочего дерева проекта.
+	// WorkDir is the project work-tree root.
 	WorkDir string
-	// CopyGlobs — engine.copyWithoutRender шаблона (файлы под ними manual-only).
+	// CopyGlobs are the template's engine.copyWithoutRender globs (manual-only files).
 	CopyGlobs []string
-	// Generators — генераторы манифеста (источник якорей CODEGEN).
+	// Generators are manifest generators (the source of CODEGEN anchors).
 	Generators []manifest.Generator
-	// Churn — множество эталонных путей, которые шаблон менял между последними
-	// N тегами (историческая эвристика conflict-prone).
+	// Churn contains reference paths changed by the template across the last N tags
+	// (the historical conflict-prone heuristic).
 	Churn map[string]struct{}
-	// HistAvailable — доступна ли историческая эвристика (>=2 тегов). При false
-	// все modified классифицируются как auto.
+	// HistAvailable says whether the historical heuristic is available (>=2 tags).
+	// When false, all modified files are classified as auto.
 	HistAvailable bool
 }
 
-// stdExcludes — каталоги, исключаемые из обхода рабочего дерева: служебный
-// .tplaiter/ (baseline/снимок/реестр не входят в эталон) и .git/.
+// stdExcludes are work-tree directories excluded from traversal: .tplaiter/
+// (baseline/snapshot/registry are not reference files) and .git/.
 var stdExcludes = map[string]struct{}{
 	".tplaiter": {},
 	".git":      {},
 }
 
-// Analyze сравнивает эталонный рендер с рабочим деревом и строит отчёт дрейфа
-//. Чистая функция над готовыми входами.
+// Analyze compares the reference render with the work tree and builds a drift
+// report. Pure function over prepared inputs.
 func Analyze(in AnalyzeInput) (*Report, error) {
 	copyMatcher := newGlobMatcher(in.CopyGlobs)
 
@@ -141,7 +141,7 @@ func Analyze(in AnalyzeInput) (*Report, error) {
 	return rep, nil
 }
 
-// classifyCtx — контекст классификации одного файла.
+// classifyCtx is the classification context for one file.
 type classifyCtx struct {
 	copyMatcher   *globMatcher
 	broken        map[string]struct{}
@@ -149,7 +149,7 @@ type classifyCtx struct {
 	histAvailable bool
 }
 
-// classify вычисляет статус, класс и метрику одного эталонного файла.
+// classify computes status, class, and metric for one reference file.
 func classify(rel string, refContent, workContent []byte, exists bool, ctx classifyCtx) FileStat {
 	fsStat := FileStat{Path: rel}
 
@@ -164,7 +164,7 @@ func classify(rel string, refContent, workContent []byte, exists bool, ctx class
 		return fsStat
 	}
 
-	// Файл изменён. Метрика — только для текстовых файлов.
+	// The file changed. The metric applies only to text files.
 	if isBinary(refContent) || isBinary(workContent) {
 		fsStat.Status = StatusModifiedBinary
 	} else {
@@ -179,7 +179,7 @@ func classify(rel string, refContent, workContent []byte, exists bool, ctx class
 	return fsStat
 }
 
-// classifyModified определяет класс обновляемости изменённого файла.
+// classifyModified determines the updateability class of a modified file.
 func classifyModified(rel string, ctx classifyCtx) string {
 	if _, ok := ctx.broken[rel]; ok {
 		return ClassManualOnly
@@ -188,7 +188,7 @@ func classifyModified(rel string, ctx classifyCtx) string {
 		return ClassManualOnly
 	}
 	if !ctx.histAvailable {
-		// Историческая эвристика недоступна (<2 тегов) — все правки auto.
+		// Historical heuristic unavailable (<2 tags): all edits are auto.
 		return ClassAuto
 	}
 	if _, ok := ctx.churn[rel]; ok {
@@ -197,10 +197,9 @@ func classifyModified(rel string, ctx classifyCtx) string {
 	return ClassAuto
 }
 
-// scoreFor — вклад файла в drift-score: identical=0; deleted и
-// прочие manual-only=100 за файл; modified auto=%*0.5, conflict-prone=%*1.0.
-// Для modified-binary % не измерим — берётся 100 как база (файл считается
-// полностью дрейфующим).
+// scoreFor is a file's drift-score contribution: identical=0; deleted and
+// other manual-only=100; modified auto=%*0.5, conflict-prone=%*1.0. For a
+// modified binary, % cannot be measured, so 100 is used as the fully drifting base.
 func scoreFor(f FileStat) float64 {
 	switch f.Status {
 	case StatusIdentical, StatusExtra:
@@ -221,8 +220,8 @@ func scoreFor(f FileStat) float64 {
 	return base * 0.5
 }
 
-// averageScore — среднее scoreFor по файлам эталона (extra исключены Analyze,
-// сюда не попадают). Пустой список → 0.
+// averageScore is the mean scoreFor over reference files (Analyze excludes
+// extras, so they do not reach this function). Empty list -> 0.
 func averageScore(files []FileStat) float64 {
 	if len(files) == 0 {
 		return 0
@@ -234,10 +233,10 @@ func averageScore(files []FileStat) float64 {
 	return sum / float64(len(files))
 }
 
-// brokenAnchors собирает пути файлов, где якорь CODEGEN эталона (Generator.
-// Anchors[].Anchor в файле Anchors[].File) отсутствует в рабочем файле. Учитывает
-// только якоря, реально присутствующие в эталоне (файл сгенерирован и якорь в
-// нём есть) — иначе якорь для этой конфигурации не ожидается.
+// brokenAnchors collects paths where a reference CODEGEN anchor (Generator.
+// Anchors[].Anchor in Anchors[].File) is absent from the work file. It considers
+// only anchors actually present in the reference (the file was generated and
+// contains the anchor); otherwise that configuration does not expect the anchor.
 func brokenAnchors(refFiles map[string][]byte, workDir string, gens []manifest.Generator) (map[string]struct{}, error) {
 	out := map[string]struct{}{}
 	for i := range gens {
@@ -247,7 +246,7 @@ func brokenAnchors(refFiles map[string][]byte, workDir string, gens []manifest.G
 			}
 			refContent, ok := refFiles[a.File]
 			if !ok || !bytes.Contains(refContent, []byte(a.Anchor)) {
-				continue // якорь не ожидается в этой конфигурации.
+				continue // The anchor is not expected for this configuration.
 			}
 			workContent, exists, err := readWork(workDir, a.File)
 			if err != nil {
@@ -261,8 +260,8 @@ func brokenAnchors(refFiles map[string][]byte, workDir string, gens []manifest.G
 	return out, nil
 }
 
-// walkExtras обходит рабочее дерево (исключая .tplaiter/ и .git/) и возвращает
-// отсортированные slash-пути файлов, отсутствующих в эталоне.
+// walkExtras traverses the work tree (excluding .tplaiter/ and .git/) and
+// returns sorted slash paths absent from the reference.
 func walkExtras(workDir string, refFiles map[string][]byte) ([]string, error) {
 	var extras []string
 	root := filepath.Clean(workDir)
@@ -293,7 +292,7 @@ func walkExtras(workDir string, refFiles map[string][]byte) ([]string, error) {
 	return extras, nil
 }
 
-// readWork читает файл рабочего дерева по slash-пути rel.
+// readWork reads a work-tree file by slash path rel.
 func readWork(workDir, rel string) ([]byte, bool, error) {
 	full := filepath.Join(workDir, filepath.FromSlash(rel))
 	data, err := os.ReadFile(full)
@@ -306,8 +305,8 @@ func readWork(workDir, rel string) ([]byte, bool, error) {
 	return data, true, nil
 }
 
-// isBinary эвристически определяет бинарный файл наличием NUL-байта в первых
-// 8000 байтах (та же эвристика, что у git). Пустой файл — не бинарный.
+// isBinary heuristically detects a binary file by a NUL byte in the first 8000
+// bytes (the same heuristic as git). An empty file is not binary.
 func isBinary(data []byte) bool {
 	n := len(data)
 	if n > 8000 {
@@ -316,7 +315,7 @@ func isBinary(data []byte) bool {
 	return bytes.IndexByte(data[:n], 0) >= 0
 }
 
-// roundPct округляет процент до 2 знаков для стабильного JSON.
+// roundPct rounds a percentage to 2 places for stable JSON.
 func roundPct(p float64) float64 {
 	return math.Round(p*100) / 100
 }

@@ -12,22 +12,22 @@ import (
 	"time"
 )
 
-// runResult — результат одного запуска бинарника tplater.
+// runResult — result of one tplater binary invocation.
 type runResult struct {
 	Stdout   string
 	Stderr   string
 	ExitCode int
 }
 
-// gitIdentityEnv — переменные окружения git для ДЕТЕРМИНИРОВАННЫХ коммитов
-// без зависимости от глобального ~/.gitconfig машины (по образцу
-// internal/newcmd/newcmd_test.go:gitEnv). Передаются И нашим служебным git-
-// командам (сборка origin-фикстур), И самому тестируемому бинарнику tplater
-// (repo add клонирует, init-template делает git init+commit) — иначе
-// `tplater init-template` внутри процесса без user.name/user.email просто
-// понижает сбой коммита до предупреждения (см. inittemplate.go:initGit) и
-// сценарий 1 не увидел бы .git с реальным коммитом на CI-раннере без
-// настроенной git-идентичности.
+// gitIdentityEnv — git environment variables for DETERMINISTIC commits
+// without relying on the machine's global ~/.gitconfig (following
+// internal/newcmd/newcmd_test.go:gitEnv). They are passed BOTH to our helper
+// git commands (building origin fixtures) AND to the tplater binary under test
+// (repo add clones, init-template runs git init+commit); otherwise
+// `tplater init-template` without user.name/user.email merely downgrades a
+// commit failure to a warning (see inittemplate.go:initGit), and scenario 1
+// would not see a .git directory with a real commit on a CI runner without
+// configured git identity.
 func gitIdentityEnv() []string {
 	return []string{
 		"GIT_AUTHOR_NAME=e2e", "GIT_AUTHOR_EMAIL=e2e@example.com",
@@ -36,17 +36,17 @@ func gitIdentityEnv() []string {
 	}
 }
 
-// newHome создаёт изолированный TPLAITER_HOME для одного теста и
-// предзаполняет config.yaml с updates.check=false — иначе ЛЮБАЯ команда
-// (кроме help/version/completion/self-upgrade, см.
-// internal/cmd/selfupgrade.go:suggestSkip) на первом же запуске в свежем
-// TPLAITER_HOME запускает фоновую `git ls-remote --tags
-// <канонический-репозиторий-tplater>` (internal/selfupdate.MaybeSuggest) —
-// сетевой поход с таймаутом до 2с на КАЖДЫЙ тест, лишний и потенциально
-// нестабильный на раннере без доступа к сети. Формат — ровно то, что пишет
-// state.SaveConfig (internal/state/config.go), проверено юнит-тестами того
-// пакета; здесь не импортируем internal-пакеты (черный ящик), поэтому пишем
-// тот же YAML текстом.
+// newHome creates an isolated TPLAITER_HOME for one test and pre-populates
+// config.yaml with updates.check=false; otherwise EVERY command
+// (except help/version/completion/self-upgrade, see
+// internal/cmd/selfupgrade.go:suggestSkip) on its first run in a fresh
+// TPLAITER_HOME starts a background `git ls-remote --tags
+// <canonical-tplater-repository>` (internal/selfupdate.MaybeSuggest) — a
+// network request with a timeout of up to 2s for EVERY test, unnecessary and
+// potentially unstable on a runner without network access. The format is
+// exactly what state.SaveConfig (internal/state/config.go) writes, verified by
+// that package's unit tests; this black-box package does not import internal
+// packages, so it writes the same YAML as text.
 func newHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
@@ -57,11 +57,11 @@ func newHome(t *testing.T) string {
 	return home
 }
 
-// run запускает бинарник tplater с TPLAITER_HOME=home и рабочим каталогом dir
-// (пустая строка — временный пустой каталог, т.е. заведомо НЕ внутри
-// какого-либо проекта/шаблона). Никогда не вызывает t.Fatal на ненулевой
-// код возврата — само по себе это не ошибка теста, лишь на сбой запуска
-// процесса (бинарник не найден и т.п.).
+// run starts the tplater binary with TPLAITER_HOME=home and working directory
+// dir (an empty string means a temporary empty directory, therefore certainly
+// NOT inside any project/template). It never calls t.Fatal for a non-zero exit
+// code; that alone is not a test error, only a process launch failure (missing
+// binary, etc.) is.
 func run(t *testing.T, home, dir string, args ...string) runResult {
 	t.Helper()
 	if dir == "" {
@@ -74,8 +74,8 @@ func run(t *testing.T, home, dir string, args ...string) runResult {
 		os.Environ(),
 		"TPLAITER_HOME="+home,
 		"NO_COLOR=1",
-		// $SHELL — используется `tplater run`/hooks (execRunCommand); нормализуем
-		// на POSIX shell, независимо от shell окружения раннера/разработчика.
+		// $SHELL is used by `tplater run`/hooks (execRunCommand); normalize it to
+		// a POSIX shell regardless of the runner/developer shell environment.
 		"SHELL=/bin/sh",
 	), gitIdentityEnv()...)
 
@@ -96,8 +96,8 @@ func run(t *testing.T, home, dir string, args ...string) runResult {
 	return runResult{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: code}
 }
 
-// mustRun — вариант run, который проваливает тест немедленно, если
-// exit-код ненулевой (для шагов сценария, обязанных пройти чисто).
+// mustRun — run variant that fails the test immediately on a non-zero exit
+// code (for scenario steps that must succeed cleanly).
 func mustRun(t *testing.T, home, dir string, args ...string) runResult {
 	t.Helper()
 	res := run(t, home, dir, args...)
@@ -107,9 +107,9 @@ func mustRun(t *testing.T, home, dir string, args ...string) runResult {
 	return res
 }
 
-// requireGit скипает тест, если git не найден в PATH — тот же контракт, что
-// у internal/newcmd/newcmd_test.go и internal/inittemplate/e2e_test.go (git
-// нужен и харнессу для сборки origin-фикстур, и самому tplater для repo
+// requireGit skips the test if git is not found in PATH — the same contract as
+// internal/newcmd/newcmd_test.go and internal/inittemplate/e2e_test.go (git is
+// needed both by the harness to build origin fixtures and by tplater for repo
 // add/init-template).
 func requireGit(t *testing.T) {
 	t.Helper()
@@ -118,10 +118,10 @@ func requireGit(t *testing.T) {
 	}
 }
 
-// runGit исполняет git-команду с детерминированной идентичностью
-// (gitIdentityEnv) — используется ТОЛЬКО харнессом для подготовки
-// origin-репозиториев фикстур, не для самого tplater (тот запускает git
-// сам через свой Runner).
+// runGit executes a git command with deterministic identity
+// (gitIdentityEnv). It is used ONLY by the harness to prepare fixture origin
+// repositories, not by tplater itself (tplater runs git through its own
+// Runner).
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -135,11 +135,11 @@ func runGit(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// copyTree копирует дерево файлов src в dst (создавая dst), сохраняя
-// относительную структуру — используется для материализации origin-
-// репозиториев из testdata/fixtures (мы не коммитим git-объекты в
-// testdata — фикстуры остаются обычными файлами для остальных пакетов,
-// каждый e2e-тест строит свой временный git-репозиторий из их копии).
+// copyTree copies the file tree from src to dst (creating dst), preserving
+// relative structure. It materializes origin repositories from
+// testdata/fixtures (we do not commit git objects into testdata; fixtures
+// remain ordinary files for the other packages, and each e2e test builds its
+// own temporary git repository from a copy).
 func copyTree(t *testing.T, src, dst string) {
 	t.Helper()
 	err := filepath.WalkDir(src, func(p string, d os.DirEntry, err error) error {
@@ -168,9 +168,9 @@ func copyTree(t *testing.T, src, dst string) {
 	}
 }
 
-// initGitOrigin инициализирует git-репозиторий в dir (уже наполненном
-// файлами: copyTree/os.WriteFile до вызова) — init + commit + опциональные
-// теги. Возвращает dir как есть, для удобства цепочки вызовов.
+// initGitOrigin initializes a git repository in dir (already populated with
+// files by copyTree/os.WriteFile before the call), then runs init + commit +
+// optional tags. It returns dir unchanged for convenient call chaining.
 func initGitOrigin(t *testing.T, dir string, tags ...string) string {
 	t.Helper()
 	runGit(t, dir, "init", "-b", "main")
@@ -183,9 +183,9 @@ func initGitOrigin(t *testing.T, dir string, tags ...string) string {
 	return dir
 }
 
-// fixturesDir — корень testdata/fixtures основного репозитория (единственная
-// зависимость e2e-харнесса от файловой системы главного модуля — сами
-// фикстуры, не Go-код: single-basic/multi, см. testdata/fixtures/README.md).
+// fixturesDir — root of testdata/fixtures in the main repository (the e2e
+// harness's only dependency on the main module's filesystem is the fixtures
+// themselves, not Go code: single-basic/multi; see testdata/fixtures/README.md).
 func fixturesDir(t *testing.T) string {
 	t.Helper()
 	abs, err := filepath.Abs(filepath.Join("..", "testdata", "fixtures"))
@@ -198,10 +198,10 @@ func fixturesDir(t *testing.T) string {
 	return abs
 }
 
-// buildSingleOrigin материализует одиночный шаблон-репозиторий (одно дерево
-// с template.manifest.yaml в корне) из каталога src, тегирует его
-// stable-тегами tags (формат "vX.Y.Z" — internal/repo/version.go:stableTagsFor
-// для single ждёт тег БЕЗ префикса) и возвращает путь к origin-каталогу.
+// buildSingleOrigin materializes a single-template repository (one tree with
+// template.manifest.yaml at its root) from src, tags it with stable tags
+// (format "vX.Y.Z" — internal/repo/version.go:stableTagsFor expects a tag
+// WITHOUT a prefix for single repositories), and returns the origin path.
 func buildSingleOrigin(t *testing.T, src string, tags ...string) string {
 	t.Helper()
 	origin := filepath.Join(t.TempDir(), "origin")
@@ -209,13 +209,12 @@ func buildSingleOrigin(t *testing.T, src string, tags ...string) string {
 	return initGitOrigin(t, origin, tags...)
 }
 
-// gateFixtureManifest — минимальный манифест шаблона с версия-гейтом
-// requires.tplaiter, недостижимым ни одной реальной версией tplater
-// (">=99.0.0") — единственный способ детерминированно упражнять
-// checkTplaterVersion (internal/newcmd/slug.go) в чёрном ящике: тестовый
-// бинарник собран с фиксированной версией buildVersion (см. main_test.go), а
-// ни один существующий фикстурный шаблон такого гейта не объявляет
-// (testdata/fixtures/single-basic требует лишь >=0.1.0).
+// gateFixtureManifest — minimal template manifest with a requires.tplaiter
+// version gate unreachable by any real tplater version (">=99.0.0"). This is
+// the only deterministic way to exercise checkTplaterVersion
+// (internal/newcmd/slug.go) as a black box: the test binary is built with a
+// fixed buildVersion (see main_test.go), and no existing fixture template
+// declares such a gate (testdata/fixtures/single-basic requires only >=0.1.0).
 const gateFixtureManifest = `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -229,10 +228,10 @@ requires:
   tplater: ">=99.0.0"
 `
 
-// buildVersionGateOrigin строит одиночный шаблон-репозиторий, чей манифест
-// требует tplater >=99.0.0 — `tplater new` из него обязан провалиться на
-// checkTplaterVersion ДО любого создания файлов (сценарий 3, документацию проекта/требование
-// реализацию: "version-гейт").
+// buildVersionGateOrigin builds a single-template repository whose manifest
+// requires tplater >=99.0.0. `tplater new` from it must fail at
+// checkTplaterVersion BEFORE creating any files (scenario 3, project
+// documentation/implementation requirement: "version gate").
 func buildVersionGateOrigin(t *testing.T) string {
 	t.Helper()
 	origin := filepath.Join(t.TempDir(), "origin")
@@ -248,10 +247,10 @@ func buildVersionGateOrigin(t *testing.T) string {
 	return initGitOrigin(t, origin, "v1.0.0")
 }
 
-// mustContain проваливает тест, если s не содержит sub. Используется только
-// для СТАБИЛЬНЫХ подстрок (имена шаблонов/алиасов/групп настроек — данные из
-// фикстур этой же реализации), НЕ для декоративного текста cmd/internal/ui,
-// который полирует параллельная реализация реализацию (см. пакетный комментарий
+// mustContain fails the test if s does not contain sub. It is used only for
+// STABLE substrings (template/alias/settings-group names from this
+// implementation's fixtures), NOT for decorative cmd/internal/ui text, which
+// the parallel implementation is polishing (see the package comment in
 // main_test.go).
 func mustContain(t *testing.T, s, sub, what string) {
 	t.Helper()
@@ -260,9 +259,9 @@ func mustContain(t *testing.T, s, sub, what string) {
 	}
 }
 
-// mustReadFile читает файл path целиком как строку, проваливая тест при
-// ошибке — используется для ассертов на содержимое, отрендеренное движком из
-// НАШИХ фикстур (не декоративный вывод cmd/internal/ui).
+// mustReadFile reads the entire file at path as a string and fails the test on
+// error. It is used for assertions on content rendered by the engine from OUR
+// fixtures (not decorative cmd/internal/ui output).
 func mustReadFile(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -272,9 +271,9 @@ func mustReadFile(t *testing.T, path string) string {
 	return string(data)
 }
 
-// exists — короткая проверка наличия файла/каталога по пути (для ассертов
-// «файл создан/удалён» — контракт реализации реализацию: ассерты на существование
-// файлов, не на точные строки вывода).
+// exists — short file/directory existence check (for “file created/removed”
+// assertions, an implementation contract: assert file existence rather than
+// exact output strings).
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil

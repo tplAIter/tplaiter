@@ -92,7 +92,7 @@ commands:
   migrate-up: { run: "make migrate-up", description: "миграции", when: "database=postgres" }
 
 generators:
-  # Одиночная форма: snippet+target — обратно совместима, НЕ трогать.
+  # Single form: snippet+target — backward-compatible; do not change.
   - kind: use-case
     description: "Сценарий (Request/Result/Code/Response)"
     snippet: generators/use-case.go.tmpl
@@ -100,9 +100,9 @@ generators:
     anchors:
       - { file: internal/app/app.go, anchor: "// CODEGEN:WIRING", insert: generators/use-case.anchor.tmpl }
     when: []
-  # Мультифайловая форма (проверку): targets[] + params(fields) + numbered goose +
-  # target.when-гейт (activity только при workflow=temporal). Демонстрирует
-  # весь расширенный контракт Generator.
+  # Multi-file form (verification): targets[] + params(fields) + numbered goose +
+  # target.when gate (activity only when workflow=temporal). Demonstrates the
+  # full extended Generator contract.
   - kind: crud
     description: "CRUD-разворот сущности (entity + usecase + миграция + activity)"
     params:

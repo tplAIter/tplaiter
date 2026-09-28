@@ -16,17 +16,17 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// runRunner — Runner для исполнения команд манифеста. Вынесен в пакетную
-// переменную по образцу authRunner (см. auth.go), чтобы тесты могли
-// подставить свой Runner; по умолчанию — реальный execx.Exec{}, так как сама
-// суть `tplater run` — реально исполнить команду проекта, а не подделать это.
+// runRunner — runner for executing manifest commands. It is a package variable
+// like authRunner (see auth.go), allowing tests to substitute a Runner; the
+// default is real execx.Exec{}, since `tplater run` must execute the project
+// command for real.
 var runRunner execx.Runner = execx.Exec{}
 
 func init() {
 	rootCmd.AddCommand(newRunCmd())
 }
 
-// newRunCmd создаёт команду `tplater run` (SPEC-01 §5, SPEC-04 §4).
+// newRunCmd creates `tplater run` (SPEC-01 §5, SPEC-04 §4).
 func newRunCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "run [name] [-- args...]",
@@ -56,8 +56,8 @@ func newRunCmd() *cobra.Command {
 	}
 }
 
-// loadRunContext находит корень проекта от текущего рабочего каталога и
-// разрешает манифест шаблона, к которому проект привязан (см.
+// loadRunContext finds the project root from the current working directory and
+// resolves the manifest of the template to which the project is linked (see
 // project.FindRoot/LoadManifestForProject).
 func loadRunContext() (tpl *manifest.Template, proj *manifest.Project, root string, err error) {
 	cwd, err := os.Getwd()
@@ -80,16 +80,14 @@ func loadRunContext() (tpl *manifest.Template, proj *manifest.Project, root stri
 	return tpl, proj, root, nil
 }
 
-// settingsValues приводит manifest.Project.Settings (карта как она разобрана
-// yaml.v3 из .tplaiter/project.yaml) к [settings.Values] для [settings.Eval].
-// Значения переносятся как есть — scalar-типы (string/bool/int), которые
-// yaml.v3 уже раскладывает в родные Go-типы при разборе в map[string]any, не
-// трогаются. Единственная нормализация: multiselect-группы yaml.v3 отдаёт как
-// []any (список интерфейсов), а не []string, которого ждёт [settings.Eval] —
-// без этого шага when-условия на multiselect-группы (`brokers=kafka`) были бы
-// всегда false. Не строгая типизация ([settings.ParseSet]/[settings.LoadAnswersFile]
-// его делают со сверкой опций манифеста) — просто устранение артефакта
-// разбора YAML.
+// settingsValues converts manifest.Project.Settings (the map decoded by yaml.v3
+// from .tplaiter/project.yaml) to [settings.Values] for [settings.Eval]. Scalar
+// values (string/bool/int) are kept as decoded Go types. The only normalization
+// is for multiselect groups: yaml.v3 returns []any rather than the []string
+// expected by [settings.Eval]; without it, when conditions on multiselect
+// groups (`brokers=kafka`) would always be false. This is not strict typing
+// ([settings.ParseSet]/[settings.LoadAnswersFile] validate against manifest
+// options), only removal of a YAML decoding artifact.
 func settingsValues(raw map[string]any) settings.Values {
 	out := make(settings.Values, len(raw))
 	for k, v := range raw {
@@ -108,9 +106,8 @@ func settingsValues(raw map[string]any) settings.Values {
 	return out
 }
 
-// evalWhen разбирает и вычисляет строку when-условия команды манифеста.
-// Пустая строка when здесь не встречается — это ответственность вызывающего
-// (означает "условий нет, всегда доступна").
+// evalWhen parses and evaluates a manifest command's when condition string.
+// An empty when is not passed here; the caller treats it as always available.
 func evalWhen(when string, values settings.Values) (bool, error) {
 	cond, err := manifest.ParseCondition(when)
 	if err != nil {
@@ -119,11 +116,11 @@ func evalWhen(when string, values settings.Values) (bool, error) {
 	return settings.Eval(cond, values)
 }
 
-// listRunCommands печатает таблицу команд манифеста: NAME/DESCRIPTION/WHEN.
-// Команды с невыполненным (или неразрешимым — например, ссылка на
-// неизвестную группу) when показываются приглушённо палитрой с пометкой
-// "недоступно" — по образцу [statusCell] в doctor.go, цвет только в
-// последней колонке, чтобы не сломать выравнивание таблицы ANSI-кодами.
+// listRunCommands prints the manifest command table: NAME/DESCRIPTION/WHEN.
+// Commands with unmet or unresolvable when conditions (for example, a
+// reference to an unknown group) are dimmed and marked "unavailable", like
+// [statusCell] in doctor.go. Color is used only in the last column so ANSI
+// codes do not break table alignment.
 func listRunCommands(cmd *cobra.Command, commands map[string]manifest.Command, values settings.Values) error {
 	out := cmd.OutOrStdout()
 	if len(commands) == 0 {
@@ -147,10 +144,9 @@ func listRunCommands(cmd *cobra.Command, commands map[string]manifest.Command, v
 	return nil
 }
 
-// whenCell формирует последнюю колонку списка команд: пусто, если у команды
-// нет when; сам условие как есть, если оно выполнено; приглушённая пометка
-// "недоступно", если нет (в том числе если условие ссылается на неизвестную
-// группу — такую команду тоже исполнить нельзя).
+// whenCell builds the last command-list column: empty when the command has no
+// when; the condition itself when it is true; or a dimmed "unavailable" mark
+// when false, including when it references an unknown group.
 func whenCell(pal ui.Palette, when string, values settings.Values) string {
 	if when == "" {
 		return ""
@@ -162,21 +158,19 @@ func whenCell(pal ui.Palette, when string, values settings.Values) string {
 	return ui.StatusIcon(pal, ui.StatusOK) + " " + when
 }
 
-// execRunCommand исполняет run именованной команды манифеста через
-// $SHELL -c в корне проекта root, передавая extraArgs команде и пересылая ей
-// сигналы INT/TERM. Код возврата команды пробрасывается наружу через
-// [ExitError] — main() транслирует его в exit-код процесса.
+// execRunCommand executes the named manifest command through $SHELL -c in
+// project root, passing extraArgs and forwarding INT/TERM signals. The command
+// exit code is returned through [ExitError], which main() converts to a process
+// exit code.
 //
-// Способ передачи extraArgs: `$SHELL -c '<run> "$@"' sh arg1 arg2 ...` —
-// классический POSIX-приём (см. `man sh`: -c с дополнительными операндами
-// после script задаёт $0/$1/.../"$@"). Аргументы уходят в exec как отдельные
-// элементы argv, а не конкатенируются в текст скрипта — поэтому кавычки/
-// спецсимволы в args (например, `--race`, пути с пробелами) не нужно
-// экранировать самим и невозможно случайно сломать синтаксис скрипта
-// инъекцией. Литерал "sh" — это просто метка $0 подпроцесса (не влияет на
-// исполнение), нужна только затем, чтобы "$@" начинался с $1, а не поглощал
-// первый реальный аргумент под видом $0; принимается любым POSIX-совместимым
-// shell (bash/zsh/dash/ash), включая /bin/sh-фоллбек.
+// extraArgs are passed as `$SHELL -c '<run> "$@"' sh arg1 arg2 ...`, the
+// classic POSIX mechanism (see `man sh`: operands after the script set
+// $0/$1/.../"$@"). Arguments remain separate exec argv elements rather than
+// being concatenated into the script, so quoting and special characters in
+// args (such as `--race` or paths with spaces) need no escaping and cannot
+// inject broken script syntax. The literal "sh" is only the subprocess $0
+// label, ensuring "$@" starts at $1; any POSIX shell (bash/zsh/dash/ash),
+// including the /bin/sh fallback, accepts it.
 func execRunCommand(
 	cmd *cobra.Command,
 	commands map[string]manifest.Command,
@@ -190,13 +184,13 @@ func execRunCommand(
 	/*
 		c, ok := commands[name]
 		if !ok {
-			return fmt.Errorf("cmd: run: неизвестная команда %q — доступные: %s", name, availableNames(commands))
+			return fmt.Errorf("cmd: run: unknown command %q — available: %s", name, availableNames(commands))
 		}
 
 		if c.When != "" {
 			ok, err := evalWhen(c.When, values)
 			if err != nil || !ok {
-				return fmt.Errorf("команда недоступна при текущих настройках: %s", c.When)
+				return fmt.Errorf("command unavailable with current settings: %s", c.When)
 			}
 		}
 
@@ -207,11 +201,10 @@ func execRunCommand(
 		script := c.Run + ` "$@"`
 		shellArgs := append([]string{"-c", script, "sh"}, extraArgs...)
 
-		// Сигналы, полученные самим tplater (Ctrl+C и т.п.), пересылаются
-		// исполняемой команде — см. execx.Options.Signals и
-		// execx.runWithSignalForwarding (запускает $SHELL в отдельной группе
-		// процессов, чтобы сигнал доставался и реальной программе, не только
-		// самой оболочке).
+		// Signals received by tplater itself (Ctrl+C, etc.) are forwarded to the
+		// executed command; see execx.Options.Signals and
+		// execx.runWithSignalForwarding (it starts $SHELL in a separate process
+		// group so the signal reaches the real program, not only the shell).
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 		defer signal.Stop(sigCh)
@@ -232,8 +225,8 @@ func execRunCommand(
 	*/
 }
 
-// availableNames возвращает отсортированный список имён команд манифеста —
-// подсказка в сообщении об ошибке "неизвестная команда".
+// availableNames returns sorted manifest command names for the "unknown
+// command" error hint.
 func availableNames(commands map[string]manifest.Command) string {
 	names := make([]string, 0, len(commands))
 	for name := range commands {

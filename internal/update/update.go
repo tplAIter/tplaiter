@@ -26,64 +26,62 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// Options — параметры одного запуска [Run].
+// Options contains parameters for one [Run].
 type Options struct {
-	// StartDir — рабочий каталог для поиска проекта (обычно os.Getwd) в режиме
-	// одного проекта; игнорируется при All.
+	// StartDir is the project lookup directory (usually os.Getwd) for single-project mode; ignored with All.
 	StartDir string
-	// To — явная целевая версия шаблона (`--to`); пусто — старший стабильный тег.
+	// To is the explicit target template version (`--to`); empty means highest stable tag.
 	To string
-	// DryRun — вычислить план и отчёт, ничего не менять (`--dry-run`).
+	// DryRun computes the plan and report without changing anything (`--dry-run`).
 	DryRun bool
-	// Check — только просканировать рабочее дерево на маркеры конфликта
-	// (`--check`); при находке exit 1.
+	// Check only scans the work tree for conflict markers
+    // (`--check`); exits 1 when a marker is found.
 	Check bool
-	// All — обновить все проекты реестра со статусом ok (`--all`).
+	// All updates all registry projects with status ok (`--all`).
 	All bool
-	// Verbose — печатать унифицированные diff'ы «локальных отклонений».
+	// Verbose prints unified diffs for local deviations.
 	Verbose bool
 }
 
-// Deps — внешние зависимости [Run], инъектируемые слоем cobra (боевые) и тестами.
+// Deps contains [Run]'s external dependencies, injected by cobra and tests.
 type Deps struct {
-	// Manager — резолюция/checkout версий шаблона (repo-кеш).
+	// Manager resolves and checks out template versions (repository cache).
 	Manager *repo.Manager
-	// Runner — запуск postUpdate-хуков (shell/ansible).
+	// Runner runs postUpdate hooks (shell/ansible).
 	Runner execx.Runner
-	// Home — домашний каталог tplater (реестр проектов, лок).
+	// Home is the tplater home directory (project registry and lock).
 	Home string
-	// Out, Err — потоки основного вывода и предупреждений.
+	// Out and Err are the main output and warning streams.
 	Out io.Writer
 	Err io.Writer
-	// Palette — палитра сообщений.
+	// Palette is the message palette.
 	Palette ui.Palette
-	// Now — источник времени регистрации (переопределяется в тестах).
+	// Now supplies registration time (overridden in tests).
 	Now func() time.Time
 }
 
-// Result — итог обновления одного проекта.
+// Result is the result of updating one project.
 type Result struct {
 	ID         string
 	Path       string
 	OldVersion string
 	NewVersion string
-	// Report — структурированный отчёт по 5 категориям (nil в режиме --check).
+	// Report is the five-category report (nil in --check mode).
 	Report *Report
-	// Conflicts — файлы с маркерами: план (обычный режим) или ScanConflicts
+	// Conflicts are files with markers: from the plan (normal mode) or ScanConflicts
 	// (--check).
 	Conflicts []string
-	// NoOp — план ничего не меняет (обновление на ту же версию с теми же values).
+	// NoOp means the plan changes nothing (same version and values).
 	NoOp bool
-	// Applied — план был применён (не DryRun/Check).
+	// Applied means the plan was applied (not DryRun/Check).
 	Applied bool
-	// DryRun — план вычислен, но не применён.
+	// DryRun means the plan was computed but not applied.
 	DryRun bool
 }
 
-// ExitCodeError несёт нестандартный код выхода: 1 (--check нашёл маркеры) или 2
-// (update оставил конфликт-маркеры). Слой cobra транслирует его в
-// process-exit-код. Отдельный от internal/cmd тип — пакет update не должен
-// зависеть от cobra-слоя.
+// ExitCodeError carries a nonstandard exit code: 1 when --check finds markers or
+// 2 when update leaves conflicts. The cobra layer converts it to a process exit
+// code; this package does not depend on cobra.
 type ExitCodeError struct {
 	Code int
 	Err  error
@@ -126,21 +124,20 @@ func inspectAllowed(d Deps, opts Options) error {
 	return exitFor(res, opts)
 }
 
-// runCurrent обновляет проект, найденный от StartDir вверх по дереву.
+// runCurrent updates the project found by walking upward from StartDir.
 func runCurrent(ctx context.Context, d Deps, opts Options) error {
 	return ErrLifecycleUnavailable
 }
 
-// updateOne — ядро обновления одного проекта (без печати). root — корень
-// проекта, proj — его разобранный маркер.
+// updateOne is the core update for one project (without printing). root is the
+// project root and proj its parsed marker.
 func updateOne(ctx context.Context, d Deps, opts Options, root string, proj *manifest.Project) (*Result, error) {
 	return nil, ErrLifecycleUnavailable
 }
 
-// applyUpdate материализует план и фиксирует новую версию: пишет файлы,
-// поднимает версию в маркере, сохраняет снимок нового манифеста, чистый
-// target-baseline, перекопирует ресурсы .tplaiter/, гоняет postUpdate-хуки и
-// обновляет baselineSHA в реестре проектов.
+// applyUpdate materializes the plan and commits the new version: writes files,
+// updates the marker, saves the new manifest snapshot and clean target baseline,
+// recopies .tplaiter resources, runs postUpdate hooks, and updates registry baselineSHA.
 func applyUpdate(
 	ctx context.Context, d Deps, root string, proj *manifest.Project,
 	plan *Plan, tgt *renderref.Result, tgtSrc fs.FS, targetRef repo.Resolved,
@@ -163,7 +160,7 @@ func applyLegacyUpdate(
 	if err := manifest.SaveSnapshot(filepath.Join(root, manifest.SnapshotRelPath), tgt.Template); err != nil {
 		return fmt.Errorf("update: сохранение снимка манифеста: %w", err)
 	}
-	// baseline = чистый рендер target (НЕ смерженные файлы с маркерами).
+	// baseline is the clean target render (NOT merged files containing markers).
 	if err := tgt.Baseline.Save(root); err != nil {
 		return err
 	}
@@ -176,23 +173,22 @@ func applyLegacyUpdate(
 	return updateRegistry(d, root, proj, targetRef)
 }
 
-// ThreeWay — план и отчёт одной 3-way-операции: общее ядро `tplater update`
-// (две версии шаблона) и `tplater settings set/edit` (одна версия, старые vs
-// новые значения — реализация ). Выделено из [updateOne] аддитивно, без изменения
-// поведения update.
+// ThreeWay is the plan and report for one 3-way operation: shared by `tplater update`
+// (two template versions) and `tplater settings set/edit` (one version, old vs new values).
+// Extracted from [updateOne] additively without changing update behavior.
 type ThreeWay struct {
-	// Plan — набор файловых решений (см. [Plan]).
+	// Plan is the set of file decisions (see [Plan]).
 	Plan *Plan
-	// Report — структурированный отчёт по 5 категориям (см. [Report]).
+	// Report is the five-category report (see [Report]).
 	Report *Report
 }
 
-// ComputeThreeWay строит 3-way-план и отчёт по чистым рендерам base (общий
-// предок) и target (цель) и baseline-хешам рабочего дерева workDir. Это ровно та
-// связка [Compute]+buildReport, что исполняет [updateOne]; вынесена, чтобы
-// `tplater settings set` (реализация ) переиспользовал механику без дублирования:
-// settings подставляет base = рендер СТАРЫХ значений, target = рендер НОВЫХ на
-// ОДНОЙ версии шаблона (у update это две разные версии).
+// ComputeThreeWay builds a 3-way plan and report from clean base and target
+// renders plus baseline hashes for workDir. It is the [Compute]+buildReport
+// sequence used by [updateOne], extracted so
+// `tplater settings set` (the implementation) reuses the mechanism without duplication:
+// settings can use base = old-values render and target = new-values render at one
+// template version (update uses two different versions).
 func ComputeThreeWay(baseFiles, targetFiles map[string][]byte, baseline map[string]string, workDir string) (*ThreeWay, error) {
 	plan, err := Compute(baseFiles, targetFiles, baseline, workDir)
 	if err != nil {
@@ -201,18 +197,17 @@ func ComputeThreeWay(baseFiles, targetFiles map[string][]byte, baseline map[stri
 	return &ThreeWay{Plan: plan, Report: buildReport(plan, baseFiles, workDir)}, nil
 }
 
-// LoadBaselineHashes читает карту sha256 файлов из .tplaiter/baseline.json
-// проекта projectDir (отсутствие файла — пустая карта, не ошибка). Экспорт
-// [loadBaselineHashes] для settings-команды (реализация ), которой нужен тот же
-// baseline для детекта пользовательских правок.
+// LoadBaselineHashes reads file sha256 values from .tplaiter/baseline.json
+// projectDir (a missing file is an empty map, not an error). Exported for the
+// settings command, which needs the same baseline to detect user edits.
 func LoadBaselineHashes(projectDir string) (map[string]string, error) {
 	return loadBaselineHashes(projectDir)
 }
 
-// RenderVersion выкачивает версию шаблона по резолву res и рендерит её в память
-// с координатами/значениями проекта in. checkout очищается перед возвратом —
-// вызывающему нужны только байты (для base-предка 3-way; target рендерится
-// отдельно, потому что его checkout нужен ещё и для копирования ресурсов).
+// RenderVersion checks out the template version in res and renders it in memory
+// with project coordinates/values from in. Checkout is cleaned up before return;
+// callers need only bytes (for the 3-way base; target is rendered separately
+// because its checkout is also needed for copying resources).
 func RenderVersion(ctx context.Context, mgr *repo.Manager, res repo.Resolved, in renderref.Input) (*renderref.Result, error) {
 	src, cleanup, err := mgr.Checkout(ctx, res.RepoAlias, res.GitRef, res.Entry.Path)
 	if err != nil {
@@ -222,8 +217,8 @@ func RenderVersion(ctx context.Context, mgr *repo.Manager, res repo.Resolved, in
 	return renderref.Render(src, in)
 }
 
-// writeUpdatedMarker поднимает template.version в .tplaiter/project.yaml до
-// newVersion, сохраняя остальной снимок (settings/runtime/id) без изменений.
+// writeUpdatedMarker raises template.version in .tplaiter/project.yaml to
+// newVersion while preserving the rest of the snapshot (settings/runtime/id).
 func writeUpdatedMarker(root string, proj *manifest.Project, newVersion string) error {
 	proj.Template.Version = newVersion
 	data, err := yaml.Marshal(proj)
@@ -231,14 +226,14 @@ func writeUpdatedMarker(root string, proj *manifest.Project, newVersion string) 
 		return fmt.Errorf("update: сериализация project.yaml: %w", err)
 	}
 	path := filepath.Join(root, project.MarkerRelPath)
-	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: маркер не секрет.
+	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: marker is not secret.
 		return fmt.Errorf("update: запись project.yaml: %w", err)
 	}
 	return nil
 }
 
-// updateRegistry обновляет baselineSHA/path/lastSeenAt записи проекта в реестре
-//; Template/CreatedAt существующей записи сохраняет Upsert.
+// updateRegistry updates baselineSHA/path/lastSeenAt in the project registry;
+// Upsert preserves Template/CreatedAt of an existing entry.
 func updateRegistry(d Deps, root string, proj *manifest.Project, targetRef repo.Resolved) error {
 	baselineSHA, err := hashFile(filepath.Join(root, engine.BaselineRelPath))
 	if err != nil {
@@ -267,8 +262,8 @@ func updateRegistry(d Deps, root string, proj *manifest.Project, targetRef repo.
 	})
 }
 
-// loadBaselineHashes читает карту sha256 из .tplaiter/baseline.json проекта.
-// Отсутствие файла — не ошибка (пустая карта; детект правок опирается на base).
+// loadBaselineHashes reads sha256 values from the project's .tplaiter/baseline.json.
+// A missing file is not an error (empty map; edit detection uses base).
 func loadBaselineHashes(projectDir string) (map[string]string, error) {
 	path := filepath.Join(projectDir, filepath.FromSlash(engine.BaselineRelPath))
 	data, err := os.ReadFile(path)
@@ -288,7 +283,7 @@ func loadBaselineHashes(projectDir string) (map[string]string, error) {
 	return b.Files, nil
 }
 
-// hashFile возвращает hex(sha256) содержимого файла.
+// hashFile returns hex(sha256) of file content.
 func hashFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -297,9 +292,9 @@ func hashFile(path string) (string, error) {
 	return sha256Hex(data), nil
 }
 
-// runPostUpdateHooks исполняет hooks.postUpdate по порядку: run —
-// через $SHELL -c в корне проекта, ansible — через envsetup.RunPlaybook. Провал
-// обязательного хука прерывает; optional — понижается до предупреждения.
+// runPostUpdateHooks executes hooks.postUpdate in order: run through $SHELL -c
+// at the project root, ansible through envsetup.RunPlaybook. Required-hook
+// failure aborts; optional failure becomes a warning.
 func runPostUpdateHooks(
 	ctx context.Context, d Deps, root string, tpl *manifest.Template,
 	res settings.Resolved, projInfo manifest.ProjectInfo,

@@ -10,14 +10,14 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// ResolveParams резолвит объявленные параметры генератора g из сырых значений
-// флагов CLI. provided содержит только ЯВНО заданные флаги (имя → строковое
-// значение); отсутствие ключа означает «флаг не задан» → берётся Default.
+// ResolveParams resolves generator g's declared parameters from raw CLI-flag
+// values. provided contains only EXPLICITLY supplied flags (name → string
+// value); an absent key means the flag was not set and Default is used.
 //
-// Возвращает карту значений по имени (тип значения соответствует Param.Type:
-// string→string, bool→bool, int→int, fields→[]Field) и разобранные поля из
-// параметра типа fields (для удобства сниппетов как Context.Fields). Ошибки:
-// required-параметр без значения и без default, невалидное значение (int,
+// Returns a name-to-value map (value type follows Param.Type: string→string,
+// bool→bool, int→int, fields→[]Field) and parsed fields from a fields parameter
+// (for convenient access as Context.Fields). Errors include a required
+// parameter without a value or default and invalid values (int,
 // fields).
 func ResolveParams(g *manifest.Generator, provided map[string]string) (map[string]any, []Field, error) {
 	params := make(map[string]any, len(g.Params))
@@ -60,18 +60,18 @@ func ResolveParams(g *manifest.Generator, provided map[string]string) (map[strin
 	return params, fields, nil
 }
 
-// validateParamPattern проверяет raw-значение до преобразования типа. Это
-// единственная точка runtime-валидации Param: и одиночный CLI gen, и batch,
-// и MCP сначала вызывают ResolveParams, поэтому запись файлов не начинается
-// до отказа некорректного значения.
+// validateParamPattern checks a raw value before type conversion. This is the
+// sole runtime-validation point for Param: single CLI gen, batch, and MCP all
+// call ResolveParams first, so file writes do not begin before rejecting an
+// invalid value.
 func validateParamPattern(p *manifest.Param, raw string) error {
 	if p.Pattern == "" {
 		return nil
 	}
 	re, err := regexp.Compile(p.Pattern)
 	if err != nil {
-		// Нормальный путь отсекает manifest.Validate; эта ветка защищает
-		// библиотечные вызовы с вручную собранным манифестом.
+		// The normal path rejects this through manifest.Validate; this branch
+		// protects library calls with a manually assembled manifest.
 		return fmt.Errorf("некорректный pattern %q: %w", p.Pattern, err)
 	}
 	if !re.MatchString(raw) {
@@ -87,7 +87,7 @@ func defaultRawValue(p *manifest.Param) string {
 	case int:
 		return strconv.Itoa(v)
 	default:
-		// defaultParamValue вернёт более точную ошибку несовпадения типов.
+		// defaultParamValue returns a more precise type-mismatch error.
 		return ""
 	}
 }
@@ -99,8 +99,8 @@ func requiredParamErr(p *manifest.Param) error {
 	return fmt.Errorf("параметр --%s обязателен", p.Name)
 }
 
-// convertParam преобразует строковое значение флага в типизированное значение
-// согласно Param.Type (для fields — дополнительно возвращает []Field).
+// convertParam converts a flag string to a typed value according to Param.Type
+// (for fields, it also returns []Field).
 func convertParam(p *manifest.Param, raw string) (any, []Field, error) {
 	switch p.Type {
 	case manifest.ParamTypeString:
@@ -130,9 +130,9 @@ func convertParam(p *manifest.Param, raw string) (any, []Field, error) {
 	}
 }
 
-// ParseList разбирает список через запятую "a,b,c" в []string. Элементы
-// обрезаются по пробелам; пустые (напр. от хвостовой запятой) отбрасываются.
-// Пустая/пробельная строка даёт nil — валидное «список не задан».
+// ParseList parses a comma-separated list "a,b,c" into []string. Elements are
+// trimmed; empty elements (for example, from a trailing comma) are discarded.
+// An empty/whitespace string returns nil, a valid "list not set" value.
 func ParseList(raw string) []string {
 	parts := strings.Split(raw, ",")
 	out := make([]string, 0, len(parts))
@@ -147,8 +147,8 @@ func ParseList(raw string) []string {
 	return out
 }
 
-// defaultParamValue строит значение параметра из Param.Default (или нулевого
-// значения типа, если Default не задан).
+// defaultParamValue builds a parameter value from Param.Default (or the type's
+// zero value when Default is not set).
 func defaultParamValue(p *manifest.Param) (any, []Field, error) {
 	switch p.Type {
 	case manifest.ParamTypeString:
@@ -205,9 +205,9 @@ func defaultParamValue(p *manifest.Param) (any, []Field, error) {
 	}
 }
 
-// DefaultFor возвращает строковое представление Param.Default для регистрации
-// значения по умолчанию в pflag.FlagSet (cmd/gen.go). Для fields/string это
-// сама строка; для bool/int — их строковая форма; nil → "".
+// DefaultFor returns Param.Default as a string for registering the default in a
+// pflag.FlagSet (cmd/gen.go). For fields/string it is the string itself; for
+// bool/int their string form; nil → "".
 func DefaultFor(p *manifest.Param) string {
 	if p.Default == nil {
 		return ""

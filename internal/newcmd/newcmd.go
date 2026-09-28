@@ -1,13 +1,13 @@
-// Package newcmd оркестрирует сборочную команду `tplaiter new`:
-// резолюция и checkout шаблона, версия-гейт и проверка инструментов окружения,
-// опрос настроек, атомарный рендер проекта, копирование ресурсов в .tplaiter/,
-// снимок манифеста и проектный маркер, постсоздание (hooks/AI/env setup),
-// регистрация в реестре проектов и печать NOTES.
+// Package newcmd orchestrates the `tplaiter new` command:
+// template resolution and checkout, the version gate and environment-tool
+// checks, settings prompts, atomic project rendering, resource copying into
+// .tplaiter/, the manifest snapshot and project marker, post-creation
+// (hooks/AI/env setup), project-registry registration, and NOTES output.
 //
-// Пакет назван newcmd, а не new: last — зарезервированное имя во многих
-// контекстах и путает соседством с ключевым словом. Оркестрация вынесена из
-// internal/cmd, чтобы её можно было тестировать без cobra, подставляя
-// [survey.Prompter] и [execx.Runner]; тонкая обёртка живёт в
+// The package is named newcmd rather than new: new is reserved in many
+// contexts and is easy to confuse with the keyword. Orchestration lives
+// outside internal/cmd so it can be tested without cobra by injecting
+// [survey.Prompter] and [execx.Runner]; the thin wrapper lives in
 // internal/cmd/new.go.
 package newcmd
 
@@ -41,89 +41,90 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// templateManifestFileName — имя манифеста шаблона в корне checkout'а (та же
-// приватная константа, что и в internal/repo/scan.go и internal/cmd/template.go).
+// templateManifestFileName is the template manifest name at the checkout root
+// (the same private constant as in internal/repo/scan.go and internal/cmd/template.go).
 const templateManifestFileName = "template.manifest.yaml"
 
-// partialsDirName — каталог ассоциированных {{ define }}-шаблонов внутри
-// checkout'а шаблона (см. фикстуру single-basic/partials).
+// partialsDirName is the directory of associated {{ define }} templates inside
+// the template checkout (see the single-basic/partials fixture).
 const partialsDirName = "partials"
 
-// defaultPort — порт по умолчанию для .Runtime.Port, если --port не задан.
+// defaultPort is the default value for .Runtime.Port when --port is omitted.
 const defaultPort = 8080
 
-// Options — параметры одного запуска [Run], разобранные из флагов `tplaiter new`
-//. Слой cobra (internal/cmd/new.go) заполняет их и добавляет
-// runtime-контекст (Interactive, CLIVersion).
+// Options contains parameters for one [Run], parsed from `tplaiter new` flags.
+// The cobra layer (internal/cmd/new.go) fills them and adds runtime context
+// (Interactive, CLIVersion).
 type Options struct {
-	// Ref — ссылка на шаблон `<repo>/<name>[@version]`.
+	// Ref is a template reference: `<repo>/<name>[@version]`.
 	Ref string
-	// ProjectName — человекочитаемое имя проекта (источник slug).
+	// ProjectName is the human-readable project name and slug source.
 	ProjectName string
-	// Dir — целевой каталог (пусто → ./<slug>).
+	// Dir is the target directory (empty means ./<slug>).
 	Dir string
-	// Module — go-module проекта (пусто → git.example.test/<slug>).
+	// Module is the project's Go module (empty means git.example.test/<slug>).
 	Module string
-	// System, Domain — необязательные координаты проекта (.Project.System/Domain).
+	// System and Domain are optional project coordinates (.Project.System/Domain).
 	System string
 	Domain string
-	// Sets — значения --set (повторяемый флаг), формат group=value.
+	// Sets contains --set values (a repeatable flag) in group=value format.
 	Sets []string
-	// AnswersFile — путь файла --answers (YAML).
+	// AnswersFile is the path passed to --answers (YAML).
 	AnswersFile string
-	// Defaults — --defaults: не опрашивать, взять дефолты (+ preset).
+	// Defaults means --defaults: skip prompts and use defaults (+ preset).
 	Defaults bool
-	// NoHooks — --no-hooks: пропустить hooks.postCreate.
+	// NoHooks means --no-hooks: skip hooks.postCreate.
 	NoHooks bool
-	// NoDepsCheck — --no-deps-check: пропустить проверку инструментов окружения.
+	// NoDepsCheck means --no-deps-check: skip environment-tool checks.
 	NoDepsCheck bool
-	// EnvSetup управляет предложением env setup после постсоздания: nil — спросить
-	// интерактивно, &true — запустить (--env-setup), &false — пропустить
+	// EnvSetup controls the post-creation env setup prompt: nil asks
+	// interactively, &true runs it (--env-setup), and &false skips it
 	// (--no-env-setup).
 	EnvSetup *bool
-	// Yes — --yes: авто-подтверждение (установка инструментов + env setup).
+	// Yes means --yes: automatically confirm tool installation and env setup.
 	Yes bool
-	// Port — --port: .Runtime.Port (0 → defaultPort).
+	// Port is --port: .Runtime.Port (0 means defaultPort).
 	Port int
-	// Interactive — доступен ли TTY на stdin (детект вызывающим слоем). При false
-	// опрос запрещён (CI): незаданные настройки берут дефолт.
+	// Interactive reports whether stdin has a TTY (detected by the caller).
+	// When false, prompting is forbidden (CI) and unset settings use defaults.
 	Interactive bool
-	// CLIVersion — версия самого tplaiter (resolveVersion в cmd) для версия-гейта
-	// requires.tplaiter.
+	// CLIVersion is the tplaiter version (resolveVersion in cmd) used for the
+	// requires.tplaiter version gate.
 	CLIVersion string
 }
 
-// Deps — внешние зависимости [Run], инъектируемые вызывающим слоем для
-// тестируемости (боевые реализации — в internal/cmd/new.go, тестовые дублёры —
-// в тестах пакета).
+// Deps contains [Run]'s external dependencies, injected by the caller for
+// testability (production implementations are in internal/cmd/new.go and
+// test doubles are in package tests).
 type Deps struct {
-	// Manager — резолюция/checkout шаблона (repo).
+	// Manager resolves and checks out templates (repo).
 	Manager *repo.Manager
-	// Runner — запуск внешних процессов (deps-check, hooks, ansible/env setup).
+	// Runner starts external processes (deps-check, hooks, ansible/env setup).
 	Runner execx.Runner
-	// Home — домашний каталог tplaiter (state.Home) для реестра проектов и лока.
+	// Home is the tplaiter home directory (state.Home) for the project registry
+	// and location lookup.
 	Home string
-	// Prompter — интерактивный опрос настроек (survey). В неинтерактивном режиме
-	// не вызывается, но должен быть не nil (используется только при Interactive).
+	// Prompter performs the interactive settings survey (survey). It is not
+	// called in non-interactive mode, but must be non-nil when Interactive.
 	Prompter survey.Prompter
-	// Confirm — интерактивное подтверждение (env setup). nil трактуется как
-	// «нет» — предложение пропускается, если только не задан --env-setup/--yes.
+	// Confirm performs interactive confirmation (env setup). nil means “no”, so
+	// the offer is skipped unless --env-setup or --yes is set.
 	Confirm func(prompt string) (bool, error)
-	// Out, Err — потоки основного вывода и предупреждений/ошибок.
+	// Out and Err are the main output and warning/error streams.
 	Out io.Writer
 	Err io.Writer
-	// Palette — палитра сообщений.
+	// Palette is the message palette.
 	Palette ui.Palette
-	// Now — источник времени регистрации (переопределяется в тестах).
+	// Now supplies registration time (overridden in tests).
 	Now func() time.Time
 }
 
-// Run исполняет полный флоу `tplaiter new`. Все шаги ДО создания
-// целевого каталога (резолюция, checkout, гейты, опрос) при ошибке/прерывании
-// ничего не создают. После успешного рендера любой провал обязательного шага
-// (копирование ресурсов, снимок, маркер, обязательный hook, регистрация) удаляет
-// целевой каталог целиком (атомарность); провалы опциональных шагов
-// (optional-hook, AI-таргеты, env setup, NOTES) понижаются до предупреждения.
+// Run executes the complete `tplaiter new` flow. Before the target directory
+// is created, resolution, checkout, gates, and prompting create nothing on
+// failure or cancellation. After a successful render, any required-step
+// failure (resource copy, snapshot, marker, required hook, or registration)
+// removes the entire target directory (atomicity); optional-step failures
+// (optional hooks, AI targets, env setup, and NOTES) are downgraded to warnings.
 func Run(ctx context.Context, opts Options, d Deps) (err error) {
 	// Live creation has no authorized lifecycle consumer in T5. This guard is
 	// deliberately the first observable action: legacy inputs must not select a
@@ -132,7 +133,7 @@ func Run(ctx context.Context, opts Options, d Deps) (err error) {
 	return ErrLifecycleUnavailable
 }
 
-// run держит рабочее состояние одного вызова [Run].
+// run holds the working state for one [Run] call.
 type run struct {
 	opts Options
 	d    Deps
@@ -140,7 +141,7 @@ type run struct {
 }
 
 func (r *run) execute(ctx context.Context) error {
-	// --- фаза 1: подготовка (ничего не создаётся) ---
+	// --- phase 1: preparation (nothing is created) ---
 	slug, err := Slugify(r.opts.ProjectName)
 	if err != nil {
 		return err
@@ -149,8 +150,8 @@ func (r *run) execute(ctx context.Context) error {
 	if target == "" {
 		target = "./" + slug
 	}
-	// Ранняя проверка занятости каталога — до опроса, чтобы повторный `new`
-	// падал сразу, не тратя ввод пользователя и не трогая существующий каталог.
+	// Check directory occupancy before prompting so a repeated `new` fails
+	// immediately without consuming user input or touching the existing directory.
 	if err := ensureVacant(target); err != nil {
 		return err
 	}
@@ -217,7 +218,7 @@ func (r *run) execute(ctx context.Context) error {
 		port = defaultPort
 	}
 
-	// --- фаза 2: создание (атомарный рендер + пост-шаги) ---
+	// --- phase 2: creation (atomic render + post-steps) ---
 	renderRes, err := r.render(src, target, tpl, res, projInfo, port, resolved.RepoAlias)
 	if err != nil {
 		return err
@@ -228,7 +229,7 @@ func (r *run) execute(ctx context.Context) error {
 		return fmt.Errorf("newcmd: определение абсолютного пути %s: %w", target, err)
 	}
 
-	// С этого момента каталог создан: любой провал обязательного шага удаляет его.
+	// From this point the directory exists: any required-step failure removes it.
 	committed := false
 	defer func() {
 		if !committed {
@@ -247,8 +248,8 @@ func (r *run) execute(ctx context.Context) error {
 		return err
 	}
 
-	// hooks.postCreate: обязательные хуки при провале удаляют каталог; optional —
-	// понижаются до предупреждения (см. runHooks).
+	// hooks.postCreate: required-hook failures remove the directory; optional
+	// failures are downgraded to warnings (see runHooks).
 	if !r.opts.NoHooks {
 		if err := r.runHooks(ctx, absTarget, tpl, res, projInfo); err != nil {
 			return err
@@ -260,7 +261,7 @@ func (r *run) execute(ctx context.Context) error {
 	}
 	committed = true
 
-	// --- фаза 3: пост-создание (только предупреждения, каталог уже зафиксирован) ---
+	// --- phase 3: post-creation (warnings only; the directory is committed) ---
 	r.renderAITargets(absTarget, tpl, res, projInfo)
 	r.offerEnvSetup(ctx, absTarget, tpl, res, projInfo)
 	r.printNotes(src, tpl, renderRes)
@@ -270,7 +271,7 @@ func (r *run) execute(ctx context.Context) error {
 	return nil
 }
 
-// ensureTools прогоняет проверку/установку инструментов окружения.
+// ensureTools checks and installs environment tools.
 func (r *run) ensureTools(ctx context.Context, tpl *manifest.Template) error {
 	if len(tpl.Requires.Tools) == 0 {
 		return nil
@@ -279,9 +280,9 @@ func (r *run) ensureTools(ctx context.Context, tpl *manifest.Template) error {
 	return deps.EnsureTools(ctx, r.d.Runner, out, tpl.Requires.Tools, deps.EnsureOptions{AutoYes: r.opts.Yes})
 }
 
-// buildPreset собирает preset настроек из --answers (базовый слой) и --set
-// (перекрывает), попутно размечая источники для сводки опроса. --set и
-// --answers приоритетнее интерактивного ввода.
+// buildPreset builds a settings preset from --answers (base layer) and --set
+// (overrides), while recording sources for the survey summary. --set and
+// --answers take precedence over interactive input.
 func (r *run) buildPreset(tpl *manifest.Template) (settings.Values, map[string]survey.Source, error) {
 	preset := settings.Values{}
 	presetSrc := map[string]survey.Source{}
@@ -307,7 +308,7 @@ func (r *run) buildPreset(tpl *manifest.Template) (settings.Values, map[string]s
 	return preset, presetSrc, nil
 }
 
-// moduleOrDefault возвращает заданный --module либо нейтральный default <slug>.
+// moduleOrDefault returns the supplied --module or the neutral default <slug>.
 func (r *run) moduleOrDefault(slug string) string {
 	if r.opts.Module != "" {
 		return r.opts.Module
@@ -315,7 +316,7 @@ func (r *run) moduleOrDefault(slug string) string {
 	return "example.com/" + slug
 }
 
-// render запускает атомарный рендер движка, собирая partials из checkout'а.
+// render runs the engine's atomic render, collecting partials from the checkout.
 func (r *run) render(
 	src fs.FS, target string, tpl *manifest.Template, res settings.Resolved,
 	projInfo manifest.ProjectInfo, port int, repoAlias string,
@@ -344,14 +345,14 @@ func (r *run) render(
 	return renderRes, nil
 }
 
-// projectMarker — данные, нужные [run.register] после записи маркера.
+// projectMarker contains the data needed by [run.register] after writing the marker.
 type projectMarker struct {
 	ID string
 }
 
-// writeProjectMarker строит и пишет .tplaiter/project.yaml: id-UUID,
-// координаты шаблона, идентификация проекта, ПОЛНЫЙ снимок настроек (не Active —
-// основа для update/переопроса), runtime и путь baseline.
+// writeProjectMarker builds and writes .tplaiter/project.yaml: a UUID, template
+// coordinates, project identity, the FULL settings snapshot (not Active, which
+// is the basis for update and re-prompting), runtime, and the baseline path.
 func (r *run) writeProjectMarker(
 	target string, tpl *manifest.Template, res settings.Resolved,
 	projInfo manifest.ProjectInfo, port int, resolved repo.Resolved,
@@ -383,14 +384,14 @@ func (r *run) writeProjectMarker(
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
 		return projectMarker{}, fmt.Errorf("newcmd: создание каталога .tplaiter: %w", err)
 	}
-	if err := os.WriteFile(markerPath, data, 0o644); err != nil { //nolint:gosec // G306: маркер не секрет.
+	if err := os.WriteFile(markerPath, data, 0o644); err != nil { //nolint:gosec // G306: the marker is not secret.
 		return projectMarker{}, fmt.Errorf("newcmd: запись project.yaml: %w", err)
 	}
 	return projectMarker{ID: id}, nil
 }
 
-// register регистрирует проект в ~/.tplaiter/projects.yaml под межпроцессным
-// локом. BaselineSHA — sha256 файла baseline.json.
+// register adds the project to ~/.tplaiter/projects.yaml under an interprocess
+// lock. BaselineSHA is the sha256 of baseline.json.
 func (r *run) register(target string, tpl *manifest.Template, resolved repo.Resolved, id string) error {
 	baselineSHA, err := hashFile(filepath.Join(target, engine.BaselineRelPath))
 	if err != nil {
@@ -419,10 +420,10 @@ func (r *run) register(target string, tpl *manifest.Template, resolved repo.Reso
 	})
 }
 
-// runHooks исполняет hooks.postCreate по порядку: run-хуки через
-// $SHELL -c в каталоге проекта со стримингом вывода; ansible-хуки — через
-// envsetup.RunPlaybook. Провал обязательного (optional=false) хука прерывает
-// создание; провал optional-хука понижается до предупреждения.
+// runHooks executes hooks.postCreate in order: run hooks through $SHELL -c in
+// the project directory with streamed output, and ansible hooks through
+// envsetup.RunPlaybook. A required hook failure (optional=false) aborts
+// creation; an optional hook failure is downgraded to a warning.
 func (r *run) runHooks(
 	ctx context.Context, target string, tpl *manifest.Template,
 	res settings.Resolved, projInfo manifest.ProjectInfo,
@@ -450,7 +451,7 @@ func (r *run) runHooks(
 	return nil
 }
 
-// runShellHook исполняет run-хук через $SHELL -c в каталоге проекта.
+// runShellHook executes a run hook through $SHELL -c in the project directory.
 func (r *run) runShellHook(ctx context.Context, target, script string) error {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -465,9 +466,9 @@ func (r *run) runShellHook(ctx context.Context, target, script string) error {
 	return err
 }
 
-// runAnsibleHook исполняет ansible-хук через envsetup.RunPlaybook. Файл хука
-// адресуется относительно .tplaiter/environment (должен быть скопирован
-// copyResources как часть каталога окружения).
+// runAnsibleHook executes an ansible hook through envsetup.RunPlaybook. The
+// hook file is addressed relative to .tplaiter/environment and must have been
+// copied by copyResources as part of the environment directory.
 func (r *run) runAnsibleHook(
 	ctx context.Context, target string, h manifest.Hook,
 	res settings.Resolved, projInfo manifest.ProjectInfo,
@@ -483,9 +484,9 @@ func (r *run) runAnsibleHook(
 	})
 }
 
-// renderAITargets рендерит AI-артефакты из скопированного .tplaiter/ai-config
-//, если шаблон объявляет aiConfig. Любая ошибка — предупреждение
-// (не фейл) с подсказкой `tplaiter ai gen`.
+// renderAITargets renders AI artifacts from the copied .tplaiter/ai-config
+// when the template declares aiConfig. Any error is a warning, not a failure,
+// with a hint to run `tplaiter ai gen`.
 func (r *run) renderAITargets(target string, tpl *manifest.Template, res settings.Resolved, projInfo manifest.ProjectInfo) {
 	if tpl.AIConfig.Path == "" {
 		return
@@ -508,10 +509,10 @@ func (r *run) warnAI(err error) {
 	r.warnf("AI-таргеты не сгенерированы: %v — можно повторить `tplaiter ai gen`", err)
 }
 
-// offerEnvSetup после постсоздания предлагает прогнать playbook "setup"
-//. --no-env-setup пропускает; --env-setup/--yes запускают сразу;
-// иначе — интерактивное подтверждение. Провал — предупреждение (не фейл):
-// каталог уже зафиксирован.
+// offerEnvSetup offers to run the "setup" playbook after creation.
+// --no-env-setup skips it; --env-setup/--yes run it immediately; otherwise
+// the user is asked interactively. Failure is a warning, not a failure:
+// the directory has already been committed.
 func (r *run) offerEnvSetup(ctx context.Context, target string, tpl *manifest.Template, res settings.Resolved, projInfo manifest.ProjectInfo) {
 	pb, ok := findSetupPlaybook(tpl.Environment.Playbooks)
 	if !ok {
@@ -550,9 +551,9 @@ func (r *run) offerEnvSetup(ctx context.Context, target string, tpl *manifest.Te
 	}
 }
 
-// printNotes рендерит и печатает metadata.notes (helm-стиль «что дальше»),
-// используя тот же контекст, что и рендер дерева. Notes короткий и plain —
-// печатается как есть, без glamour. Ошибки — предупреждение.
+// printNotes renders and prints metadata.notes (Helm-style "what next") using
+// the same context as the tree render. Notes are short and plain, printed as
+// is without glamour. Errors are warnings.
 func (r *run) printNotes(src fs.FS, tpl *manifest.Template, renderRes *engine.Result) {
 	if tpl.Metadata.Notes == "" {
 		return
@@ -590,7 +591,7 @@ func (r *run) warnf(format string, a ...any) {
 	fmt.Fprintf(r.d.Err, format+"\n", a...)
 }
 
-// findSetupPlaybook ищет playbook с именем "setup" среди environment.playbooks.
+// findSetupPlaybook finds the playbook named "setup" among environment.playbooks.
 func findSetupPlaybook(playbooks []manifest.Playbook) (manifest.Playbook, bool) {
 	for _, pb := range playbooks {
 		if pb.Name == "setup" {
@@ -600,7 +601,7 @@ func findSetupPlaybook(playbooks []manifest.Playbook) (manifest.Playbook, bool) 
 	return manifest.Playbook{}, false
 }
 
-// loadTemplateFromFS читает и валидирует манифест из корня checkout'а шаблона.
+// loadTemplateFromFS reads and validates the manifest from the template checkout root.
 func loadTemplateFromFS(src fs.FS) (*manifest.Template, error) {
 	data, err := fs.ReadFile(src, templateManifestFileName)
 	if err != nil {
@@ -616,12 +617,12 @@ func loadTemplateFromFS(src fs.FS) (*manifest.Template, error) {
 	return tpl, nil
 }
 
-// templatePartials собирает partials-источник из checkout'а, если каталог
-// partials/ существует (иначе — nil, движок обходится без него).
+// templatePartials builds a partials source from the checkout when partials/
+// exists (otherwise nil, and the engine runs without it).
 func templatePartials(src fs.FS) ([]fs.FS, error) {
 	info, err := fs.Stat(src, partialsDirName)
 	if err != nil || !info.IsDir() {
-		return nil, nil //nolint:nilerr // отсутствие partials/ — норма, не ошибка.
+		return nil, nil //nolint:nilerr // Missing partials/ is normal, not an error.
 	}
 	sub, err := fs.Sub(src, partialsDirName)
 	if err != nil {
@@ -630,9 +631,9 @@ func templatePartials(src fs.FS) ([]fs.FS, error) {
 	return []fs.FS{sub}, nil
 }
 
-// ensureVacant проверяет, что target пригоден для создания проекта: не
-// существует либо пустой каталог. Непустой каталог или файл —
-// ошибка (повторный `new` — только `tplaiter update`).
+// ensureVacant checks that target is suitable for project creation: it must be
+// absent or an empty directory. A non-empty directory or file is an error
+// (repeat creation requires `tplaiter update`).
 func ensureVacant(target string) error {
 	info, err := os.Stat(target)
 	if errors.Is(err, os.ErrNotExist) {
@@ -654,7 +655,7 @@ func ensureVacant(target string) error {
 	return nil
 }
 
-// hashFile возвращает hex-представление sha256 содержимого файла.
+// hashFile returns the hex representation of a file's sha256 contents.
 func hashFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

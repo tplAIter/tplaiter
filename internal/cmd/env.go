@@ -14,23 +14,23 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// envRunner — Runner для ansible-playbook/brew (envsetup, деп-установка).
-// Пакетная переменная по образцу runRunner/repoRunner — тесты подставляют
-// execx.RecordingRunner, по умолчанию реальный os/exec.
+// envRunner — runner for ansible-playbook/brew (environment setup and dependency
+// installation). A package variable like runRunner/repoRunner; tests substitute
+// execx.RecordingRunner, while the default uses real os/exec.
 var envRunner execx.Runner = execx.Exec{}
 
-// envAutoYes — `--yes` команды `tplater env setup`: подтверждает установку
-// ansible без интерактивного вопроса (SPEC-03 §4). Полноценный huh-confirm —
-// задача опросника (C2/tp-U1); здесь единственный источник согласия для
-// неинтерактивных сценариев (CI, скрипты).
+// envAutoYes — `--yes` for `tplater env setup`: confirms ansible installation
+// without an interactive prompt (SPEC-03 §4). A full huh-confirm belongs to
+// the questionnaire task (C2/tp-U1); this is the sole consent source for
+// non-interactive scenarios (CI, scripts).
 var envAutoYes bool
 
 func init() {
 	rootCmd.AddCommand(newEnvCmd())
 }
 
-// newEnvCmd создаёт команду `tplater env` (SPEC-03 §4): единая точка запуска
-// ansible-плейбуков окружения, которые везёт с собой шаблон.
+// newEnvCmd creates `tplater env` (SPEC-03 §4): the single entry point for
+// environment ansible playbooks shipped with the template.
 func newEnvCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "env",
@@ -45,7 +45,7 @@ func newEnvCmd() *cobra.Command {
 	return c
 }
 
-// newEnvListCmd создаёт `tplater env list`.
+// newEnvListCmd creates `tplater env list`.
 func newEnvListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -61,7 +61,7 @@ func newEnvListCmd() *cobra.Command {
 	}
 }
 
-// newEnvSetupCmd создаёт `tplater env setup [name]` (по умолчанию name=setup,
+// newEnvSetupCmd creates `tplater env setup [name]` (name=setup by default,
 // SPEC-03 §4).
 func newEnvSetupCmd() *cobra.Command {
 	c := &cobra.Command{
@@ -110,7 +110,7 @@ func newEnvSetupCmd() *cobra.Command {
 	return c
 }
 
-// findPlaybook ищет плейбук с именем name среди playbooks манифеста.
+// findPlaybook finds the playbook named name among the manifest playbooks.
 func findPlaybook(playbooks []manifest.Playbook, name string) (manifest.Playbook, error) {
 	for _, pb := range playbooks {
 		if pb.Name == name {
@@ -122,8 +122,8 @@ func findPlaybook(playbooks []manifest.Playbook, name string) (manifest.Playbook
 	)
 }
 
-// availablePlaybookNames возвращает отсортированный список имён плейбуков —
-// подсказка в сообщении об ошибке "неизвестный плейбук".
+// availablePlaybookNames returns a sorted list of playbook names for the
+// "unknown playbook" error hint.
 func availablePlaybookNames(playbooks []manifest.Playbook) string {
 	if len(playbooks) == 0 {
 		return "(манифест не объявляет плейбуков окружения — environment.playbooks)"
@@ -136,8 +136,8 @@ func availablePlaybookNames(playbooks []manifest.Playbook) string {
 	return strings.Join(names, ", ")
 }
 
-// renderPlaybookList печатает таблицу NAME/DESCRIPTION/AVAILABLE плейбуков
-// окружения манифеста (по образцу listRunCommands в run.go).
+// renderPlaybookList prints the manifest environment playbooks as a
+// NAME/DESCRIPTION/AVAILABLE table (following listRunCommands in run.go).
 func renderPlaybookList(cmd *cobra.Command, tpl *manifest.Template, values settings.Values) error {
 	out := cmd.OutOrStdout()
 	infos := envsetup.ListPlaybooks(tpl, values)
@@ -155,9 +155,9 @@ func renderPlaybookList(cmd *cobra.Command, tpl *manifest.Template, values setti
 	return nil
 }
 
-// availableCell формирует последнюю колонку списка плейбуков: "да" (успех),
-// либо приглушённое "нет" с причиной (when, который не выполнен либо
-// неразрешим) — по образцу whenCell/statusCell в run.go/doctor.go.
+// availableCell builds the last column of the playbook list: "yes" (success),
+// or a dimmed "no" with the reason (a when condition that is unmet or cannot
+// be resolved), following whenCell/statusCell in run.go/doctor.go.
 func availableCell(pal ui.Palette, info envsetup.PlaybookInfo) string {
 	if info.Available {
 		return ui.StatusIcon(pal, ui.StatusOK) + " да"

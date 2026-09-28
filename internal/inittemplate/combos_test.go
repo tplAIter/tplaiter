@@ -7,9 +7,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// comboTemplate — манифест с select (2 опции), multiselect (2 опции), toggle и
-// вложенным toggle под select-опцией; опция requires другую группу
-// (транзитивность).
+// comboTemplate — manifest with select (2 options), multiselect (2 options), a
+// toggle, and a nested toggle under a select option; an option requires another
+// group (transitivity).
 func comboTemplate() *manifest.Template {
 	return &manifest.Template{
 		Settings: []manifest.SettingGroup{
@@ -34,7 +34,7 @@ func comboTemplate() *manifest.Template {
 			{
 				Group: "auth", Type: manifest.TypeMultiselect,
 				Options: []manifest.Option{
-					// requires транзитивно тянет database=postgres.
+					// requires transitively pulls database=postgres.
 					{ID: "sso", Requires: []string{"database=postgres"}},
 				},
 			},
@@ -66,19 +66,19 @@ func TestCombos_Composition(t *testing.T) {
 		}
 	}
 
-	// planned-опция nats не должна порождать комбо.
+	// The planned nats option must not produce a combo.
 	if _, ok := got["brokers=nats"]; ok {
 		t.Errorf("planned-опция nats не должна давать комбо")
 	}
 
-	// all-on выставляет ВСЕ toggle (включая вложенный migrations) в true.
+	// all-on sets ALL toggles (including nested migrations) to true.
 	allOn := got["all-on"]
 	if allOn["cache"] != true || allOn["migrations"] != true {
 		t.Errorf("all-on должен включать все toggle: %#v", allOn)
 	}
 
-	// max: toggle=true + multiselect выбраны целиком (без planned) + select на
-	// последней опции.
+	// max: toggle=true + multiselect fully selected (without planned) + select on
+	// its last option.
 	maxVals := got["max"]
 	if maxVals["database"] != "postgres" {
 		t.Errorf("max.database ожидался postgres (последняя опция), получено %v", maxVals["database"])
@@ -100,8 +100,8 @@ func TestCombos_RequiresTransitivity(t *testing.T) {
 		t.Fatal("нет комбо auth=sso")
 	}
 
-	// Комбо задаёт только auth=[sso]; Resolve обязан транзитивно дотянуть
-	// database=postgres через requires опции sso.
+	// The combo sets only auth=[sso]; Resolve must transitively pull
+	// database=postgres through sso's requires option.
 	resolved, err := settings.Resolve(comboTemplate(), authCombo.Explicit)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)

@@ -8,25 +8,24 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ProjectsVersion — текущая поддерживаемая версия формата projects.yaml.
+// ProjectsVersion is the currently supported projects.yaml format version.
 const ProjectsVersion = 1
 
-// projectsFileName — имя файла в домашнем каталоге tplater.
+// projectsFileName is the file name in the tplater home directory.
 const projectsFileName = "projects.yaml"
 
-// TemplateSelection — шаблон, из которого сгенерирован проект: зафиксированные
-// репозиторий/имя/версия .
+// TemplateSelection is the template used to generate a project: pinned
+// repository, name, and version.
 type TemplateSelection struct {
 	Repo    string `yaml:"repo"`
 	Name    string `yaml:"name"`
 	Version string `yaml:"version"`
 }
 
-// ProjectRef — одна запись реестра проектов в projects.yaml.
+// ProjectRef is one project registry entry in projects.yaml.
 type ProjectRef struct {
-	// ID — стабильный якорь записи, читается из .tplaiter/project.yaml
-	// проекта. Не путать с Path: путь может меняться (переезд каталога,
-	// клонирование коллегой), ID — не должен.
+	// ID is the stable entry anchor, read from the project's .tplaiter/project.yaml.
+	// Unlike Path, it must not change when the directory moves or is cloned.
 	ID          string            `yaml:"id"`
 	Path        string            `yaml:"path"`
 	Template    TemplateSelection `yaml:"template"`
@@ -35,25 +34,25 @@ type ProjectRef struct {
 	BaselineSHA string            `yaml:"baselineSHA"`
 }
 
-// Projects — содержимое ~/.tplaiter/projects.yaml.
+// Projects is the contents of ~/.tplaiter/projects.yaml.
 type Projects struct {
 	Version int          `yaml:"version"`
 	Items   []ProjectRef `yaml:"items"`
 }
 
-// DefaultProjects возвращает реестр для случая, когда projects.yaml ещё не
-// существует: пустой список проектов.
+// DefaultProjects returns the registry when projects.yaml does not exist yet:
+// an empty project list.
 func DefaultProjects() Projects {
 	return Projects{Version: ProjectsVersion}
 }
 
-// projectsPath возвращает путь к projects.yaml в домашнем каталоге home.
+// projectsPath returns the path to projects.yaml in home.
 func projectsPath(home string) string {
 	return filepath.Join(home, projectsFileName)
 }
 
-// LoadProjects читает projects.yaml из домашнего каталога home. Отсутствие
-// файла — не ошибка: возвращается [DefaultProjects].
+// LoadProjects reads projects.yaml from home. A missing file is not an error and
+// returns [DefaultProjects].
 func LoadProjects(home string) (Projects, error) {
 	data, existed, err := readFile(projectsPath(home))
 	if err != nil {
@@ -65,7 +64,7 @@ func LoadProjects(home string) (Projects, error) {
 	return decodeProjects(data)
 }
 
-// SaveProjects атомарно записывает p в projects.yaml домашнего каталога home.
+// SaveProjects atomically writes p to projects.yaml in home.
 func SaveProjects(home string, p Projects) error {
 	data, err := yaml.Marshal(p)
 	if err != nil {
@@ -92,7 +91,7 @@ func decodeProjects(data []byte) (Projects, error) {
 	return p, nil
 }
 
-// FindByID возвращает запись с заданным id и true, если она есть в реестре.
+// FindByID returns the entry with id and true when it exists in the registry.
 func (p *Projects) FindByID(id string) (ProjectRef, bool) {
 	for i := range p.Items {
 		if p.Items[i].ID == id {
@@ -102,12 +101,11 @@ func (p *Projects) FindByID(id string) (ProjectRef, bool) {
 	return ProjectRef{}, false
 }
 
-// Upsert добавляет ref в реестр (если записи с таким ID ещё нет) либо
-// обновляет уже существующую запись — по правилу : сверяется id,
-// путь/lastSeenAt/baselineSHA обновляются по факту (переезд каталога и
-// расхождение с другой машиной отслеживаются автоматически). Template и
-// CreatedAt существующей записи не трогаются: они фиксируют исходный выбор
-// шаблона и момент создания, а не текущее наблюдение.
+// Upsert adds ref to the registry when its ID is absent, or updates the existing
+// entry. The ID is compared; path/lastSeenAt/baselineSHA follow observations,
+// automatically tracking directory moves and another machine's divergence.
+// Template and CreatedAt are preserved because they record the original
+// template choice and creation time, not the current observation.
 func (p *Projects) Upsert(ref ProjectRef) {
 	for i := range p.Items {
 		if p.Items[i].ID != ref.ID {
@@ -121,8 +119,7 @@ func (p *Projects) Upsert(ref ProjectRef) {
 	p.Items = append(p.Items, ref)
 }
 
-// Remove удаляет запись с заданным id. Возвращает true, если запись была
-// найдена и удалена.
+// Remove deletes the entry with id and returns true when it was found and removed.
 func (p *Projects) Remove(id string) bool {
 	for i := range p.Items {
 		if p.Items[i].ID != id {
@@ -134,11 +131,10 @@ func (p *Projects) Remove(id string) bool {
 	return false
 }
 
-// Prune удаляет из реестра записи, для которых exists(item.Path) вернула
-// false (путь проекта больше не существует — `tplater projects prune`,
-// ), и возвращает удалённые записи. exists передаётся аргументом,
-// а не вызывается как os.Stat напрямую, чтобы операция была тестируема без
-// реальной файловой системы.
+// Prune removes entries for which exists(item.Path) returns false (the project
+// path no longer exists, as in `tplater projects prune`) and returns the removed
+// entries. exists is injected instead of calling os.Stat so the operation can
+// be tested without a real filesystem.
 func (p *Projects) Prune(exists func(path string) bool) []ProjectRef {
 	kept := make([]ProjectRef, 0, len(p.Items))
 	var removed []ProjectRef

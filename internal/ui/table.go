@@ -6,31 +6,29 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Table — табличный вывод моноширинным текстом: колонки выравниваются по
-// самому длинному значению. Ширина колонок считается через [lipgloss.Width]
-// (а не len([]rune(...))), поэтому ячейки, уже содержащие ANSI-раскраску
-// (см. пакеты cmd/*, stats, update — колонки статусов), выравниваются
-// корректно в ЛЮБОЙ колонке, не только в последней.
+// Table — monospace table output: columns align to their longest value. Column
+// width uses [lipgloss.Width] (rather than len([]rune(...))), so cells already
+// containing ANSI styling (see cmd/*, stats, update status columns) align
+// correctly in ANY column, not only the last.
 type Table struct {
 	Headers []string
 	Rows    [][]string
 }
 
-// NewTable создаёт таблицу с заданными заголовками столбцов.
+// NewTable creates a table with the given column headers.
 func NewTable(headers ...string) *Table {
 	return &Table{Headers: headers}
 }
 
-// AddRow добавляет строку данных. Число колонок может не совпадать с
-// заголовками — недостающие ячейки рендерятся пустыми, лишние отбрасываются.
+// AddRow adds a data row. The column count may differ from the headers: missing
+// cells render empty and extras are discarded.
 func (t *Table) AddRow(cols ...string) {
 	t.Rows = append(t.Rows, cols)
 }
 
-// Render возвращает готовую к печати таблицу, без завершающего "\n" сверх
-// последней строки. Не стилизует заголовок и не добавляет разделитель — для
-// этого см. [Table.RenderStyled]. Используется как plain-фоллбек при
-// отключённом цвете (NO_COLOR/не-TTY, см. [ColorEnabled]).
+// Render returns a printable table without a trailing "\n" after the last row.
+// It does not style the header or add a separator; see [Table.RenderStyled] for
+// that. Used as the plain fallback when color is disabled (NO_COLOR/non-TTY, see [ColorEnabled]).
 func (t *Table) Render() string {
 	widths := t.columnWidths()
 
@@ -42,10 +40,10 @@ func (t *Table) Render() string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
-// RenderStyled возвращает таблицу с заголовком, выделенным жирным, и
-// приглушённой разделительной линией под ним (единый вид таблиц CLI, реализация
-// реализацию). При pal.Enabled() == false результат идентичен [Table.Render] —
-// безопасный фоллбек для NO_COLOR/не-TTY/CI, где вывод разбирается скриптами.
+// RenderStyled returns a table with a bold header and muted separator beneath
+// it (the common CLI table style). When pal.Enabled() == false, the result is
+// identical to [Table.Render], a safe fallback for NO_COLOR/non-TTY/CI where
+// scripts parse output.
 func (t *Table) RenderStyled(pal Palette) string {
 	if !pal.Enabled() {
 		return t.Render()
@@ -67,8 +65,8 @@ func (t *Table) RenderStyled(pal Palette) string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
-// separatorLine строит разделитель "────  ────  ..." той же ширины колонок,
-// что и строки таблицы (два пробела между колонками — см. writeRow).
+// separatorLine builds a "────  ────  ..." separator with the same column widths
+// as table rows (two spaces between columns; see writeRow).
 func separatorLine(widths []int) string {
 	parts := make([]string, len(widths))
 	for i, w := range widths {
@@ -104,8 +102,7 @@ func writeRow(b *strings.Builder, cols []string, widths []int) {
 		}
 		b.WriteString(cell)
 		if i == last {
-			// Последнюю колонку не дополняем пробелами — избегаем висящего
-			// trailing whitespace в каждой строке.
+			// Do not pad the last column, avoiding trailing whitespace on every row.
 			continue
 		}
 		if pad := w - lipgloss.Width(cell); pad > 0 {

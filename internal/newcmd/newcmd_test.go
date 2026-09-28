@@ -22,7 +22,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// --- инфраструктура: реальный git-репозиторий file:// (как в internal/repo) ---
+// --- infrastructure: a real file:// git repository (as in internal/repo) ---
 
 var gitExec = execx.Exec{}
 
@@ -49,8 +49,8 @@ func runGit(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// initOriginFromDir создаёт «удалённый» git-репозиторий, скопировав дерево
-// srcDir в его корень, и тегирует v1.0.0.
+// initOriginFromDir creates a "remote" git repository by copying the srcDir
+// tree into its root and tagging v1.0.0.
 func initOriginFromDir(t *testing.T, srcDir string) string {
 	t.Helper()
 	origin := filepath.Join(t.TempDir(), "origin")
@@ -66,7 +66,7 @@ func initOriginFromDir(t *testing.T, srcDir string) string {
 	return origin
 }
 
-// initOriginFromFiles создаёт origin из карты относительный-путь→содержимое.
+// initOriginFromFiles creates an origin from a map of relative path to content.
 func initOriginFromFiles(t *testing.T, files map[string]string) string {
 	t.Helper()
 	origin := filepath.Join(t.TempDir(), "origin")
@@ -124,7 +124,7 @@ func fixturesRoot(t *testing.T) string {
 	return filepath.Join(filepath.Dir(thisFile), "..", "..", "testdata", "fixtures")
 }
 
-// newManager строит repo.Manager с реальным git и изолированным home.
+// newManager builds a repo.Manager with real git and an isolated home.
 func newManager(t *testing.T, home string) *repo.Manager {
 	t.Helper()
 	st, err := auth.Open(context.Background())
@@ -136,8 +136,8 @@ func newManager(t *testing.T, home string) *repo.Manager {
 	return repo.New(home, gitExec, st, u)
 }
 
-// setupSingleBasic поднимает home + репозиторий example с шаблоном single-basic и
-// возвращает менеджер и home.
+// setupSingleBasic sets up a home and example repository with the single-basic
+// template, then returns the manager and home.
 func setupSingleBasic(t *testing.T) (*repo.Manager, string) {
 	t.Helper()
 	home := filepath.Join(t.TempDir(), "home")
@@ -166,7 +166,7 @@ func newTestDeps(mgr *repo.Manager, home string, out, errOut *bytes.Buffer) Deps
 	}
 }
 
-// --- e2e: неинтерактивный путь ---
+// --- e2e: non-interactive path ---
 
 func TestRun_E2E_NonInteractive(t *testing.T) {
 	if err := Run(context.Background(), Options{ProjectName: "invalid***", Dir: filepath.Join(t.TempDir(), "target")}, Deps{}); !errors.Is(err, ErrLifecycleUnavailable) {
@@ -174,7 +174,7 @@ func TestRun_E2E_NonInteractive(t *testing.T) {
 	}
 }
 
-// --- интерактивный путь через ScriptedPrompter ---
+// --- interactive path through ScriptedPrompter ---
 
 func TestRun_Interactive_Scripted(t *testing.T) {
 	if err := Run(context.Background(), Options{ProjectName: "interactive", Dir: filepath.Join(t.TempDir(), "target"), Interactive: true}, Deps{}); !errors.Is(err, ErrLifecycleUnavailable) {
@@ -182,7 +182,7 @@ func TestRun_Interactive_Scripted(t *testing.T) {
 	}
 }
 
-// --- повторный new → ошибка, существующий каталог не тронут ---
+// --- repeated new: error, existing directory untouched ---
 
 func TestRun_RepeatIntoNonEmpty_Errors(t *testing.T) {
 	requireGit(t)
@@ -205,11 +205,11 @@ func TestRun_RepeatIntoNonEmpty_Errors(t *testing.T) {
 	if err == nil {
 		t.Fatalf("ожидалась ошибка при непустом каталоге")
 	}
-	// Существующий файл не тронут (каталог не удалён).
+	// The existing file is untouched (the directory is not removed).
 	mustExist(t, sentinel)
 }
 
-// --- провал обязательного hook → каталог удалён ---
+// --- required hook failure: directory removed ---
 
 func TestRun_RequiredHookFails_RemovesTarget(t *testing.T) {
 	requireGit(t)
@@ -240,14 +240,14 @@ func TestRun_RequiredHookFails_RemovesTarget(t *testing.T) {
 	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
 		t.Errorf("каталог не удалён после провала hook: %v", statErr)
 	}
-	// Проект не зарегистрирован.
+	// The project is not registered.
 	projects, _ := state.LoadProjects(home)
 	if len(projects.Items) != 0 {
 		t.Errorf("проект зарегистрирован несмотря на провал: %+v", projects.Items)
 	}
 }
 
-// --- --no-hooks: hook не выполняется ---
+// --- --no-hooks: hook is not executed ---
 
 func TestRun_NoHooks(t *testing.T) {
 	if err := Run(context.Background(), Options{ProjectName: "nohooks", Dir: filepath.Join(t.TempDir(), "target"), NoHooks: true}, Deps{}); !errors.Is(err, ErrLifecycleUnavailable) {
@@ -255,7 +255,7 @@ func TestRun_NoHooks(t *testing.T) {
 	}
 }
 
-// --- версия-гейт requires.tplaiter ---
+// --- requires.tplaiter version gate ---
 
 func TestRun_VersionGate(t *testing.T) {
 	if err := Run(context.Background(), Options{ProjectName: "version", Dir: filepath.Join(t.TempDir(), "target")}, Deps{}); !errors.Is(err, ErrLifecycleUnavailable) {
@@ -263,7 +263,7 @@ func TestRun_VersionGate(t *testing.T) {
 	}
 }
 
-// --- неинтерактивный режим с обязательной строковой настройкой без preset ---
+// --- non-interactive mode with a required string setting and no preset ---
 
 func TestRun_MissingRequiredString_NonInteractive(t *testing.T) {
 	if err := Run(context.Background(), Options{ProjectName: "required", Dir: filepath.Join(t.TempDir(), "target")}, Deps{}); !errors.Is(err, ErrLifecycleUnavailable) {
@@ -295,12 +295,12 @@ func TestCopyResources_Declared(t *testing.T) {
 	if err := copyResources(src, target, tpl); err != nil {
 		t.Fatalf("copyResources: %v", err)
 	}
-	// environment/generators — с сохранением структуры под RelPath.
+	// environment/generators, preserving the structure under RelPath.
 	mustExist(t, filepath.Join(target, ".tplaiter", "environment", "environment", "setup.yml"))
 	mustExist(t, filepath.Join(target, ".tplaiter", "environment", "environment", "vars", "db.yml"))
 	mustExist(t, filepath.Join(target, ".tplaiter", "generators", "generators", "use-case.go.tmpl"))
 	mustExist(t, filepath.Join(target, ".tplaiter", "generators", "generators", "uc.anchor.tmpl"))
-	// ai-config — содержимое каталога напрямую в RelPath.
+	// ai-config, with the directory contents directly under RelPath.
 	mustExist(t, filepath.Join(target, ".tplaiter", "ai-config", "config.json"))
 	mustExist(t, filepath.Join(target, ".tplaiter", "ai-config", "modules", "00-base.md"))
 }
@@ -320,7 +320,7 @@ func TestCopyResources_None(t *testing.T) {
 	}
 }
 
-// --- slug / версия / uuid юниты ---
+// --- slug / version / UUID units ---
 
 func TestSlugify(t *testing.T) {
 	cases := map[string]string{
@@ -353,7 +353,7 @@ func TestCheckTplaterVersion(t *testing.T) {
 	if err := checkTplaterVersion(">=99.0.0", "v1.0.0"); err == nil {
 		t.Errorf("несовместимая версия должна была провалиться")
 	}
-	// dev-сборка проходит любой гейт.
+	// A dev build passes any gate.
 	if err := checkTplaterVersion(">=99.0.0", "dev"); err != nil {
 		t.Errorf("dev должен проходить гейт: %v", err)
 	}
@@ -406,8 +406,8 @@ func assertValidBaseline(t *testing.T, path string) {
 	}
 }
 
-// minimalManifest собирает минимальный манифест шаблона svc с заданным
-// требованием tplater и (опционально) блоком hooks.postCreate.
+// minimalManifest builds a minimal svc template manifest with the given
+// tplater requirement and an optional hooks.postCreate block.
 func minimalManifest(tplaterReq, hooksBlock string) string {
 	m := `apiVersion: tplater.dev/v1alpha1
 kind: Template

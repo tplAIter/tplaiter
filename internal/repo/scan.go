@@ -12,26 +12,26 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// templateManifestName / repoManifestName — имена манифестов в корне клона.
+// templateManifestName / repoManifestName are manifest names at the clone root.
 const (
 	templateManifestName = "template.manifest.yaml"
 	repoManifestName     = "repo.manifest.yaml"
 )
 
-// scanRepo определяет тип репозитория в клоне dir и строит индекс его шаблонов.
+// scanRepo determines the repository type in clone dir and builds its template index.
 //
-// Порядок определения ( §3):
-//  1. template.manifest.yaml в корне → single (один шаблон, path ".");
-//  2. repo.manifest.yaml в корне → multi (пути из templates[]; при отсутствии
-//     templates[] — авто-скан);
-//  3. ни одного → авто-скан */template.manifest.yaml и */*/template.manifest.yaml.
+// Detection order (§3):
+//  1. template.manifest.yaml at the root → single (one template, path ".");
+//  2. repo.manifest.yaml at the root → multi (paths from templates[]; if
+//     templates[] is absent, auto-scan);
+//  3. neither → auto-scan */template.manifest.yaml and */*/template.manifest.yaml.
 //
-// strict управляет реакцией на битый/непроходящий валидацию манифест:
-//   - strict=true (repo add): любая такая ошибка — фатальна, add обязан
-//     сообщить путь и причину и НЕ регистрировать репозиторий;
-//   - strict=false (repo update): битый шаблон — предупреждение с пропуском
-//     именно этого шаблона; уже добавленный репозиторий не должен «сломаться»
-//     из-за правки в одном шаблоне на удалённой стороне.
+// strict controls handling of a broken or invalid manifest:
+//   - strict=true (repo add): every such error is fatal; add must report the
+//     path and reason and must not register the repository;
+//   - strict=false (repo update): a broken template is a warning and only that
+//     template is skipped; an existing repository must not break because one
+//     remote template was edited.
 func (m *Manager) scanRepo(ctx context.Context, dir, branch string, strict bool) ([]state.TemplateEntry, error) {
 	ref := branch
 	if ref == "" {
@@ -42,7 +42,7 @@ func (m *Manager) scanRepo(ctx context.Context, dir, branch string, strict bool)
 	repoPath := filepath.Join(dir, repoManifestName)
 
 	var (
-		relPaths []string // относительные каталоги шаблонов
+		relPaths []string // Relative template directories.
 		multi    bool
 	)
 
@@ -73,7 +73,7 @@ func (m *Manager) scanRepo(ctx context.Context, dir, branch string, strict bool)
 			relPaths = autoScan(dir)
 		}
 	default:
-		multi = true // авто-скан подкаталогов трактуем как multi (namespaced-теги)
+		multi = true // Auto-scanned subdirectories are treated as multi (namespaced tags).
 		relPaths = autoScan(dir)
 		if len(relPaths) == 0 {
 			return nil, fmt.Errorf("repo: не найдено ни %s в корне, ни */%s (глубина 2)", templateManifestName, templateManifestName)
@@ -95,12 +95,12 @@ func (m *Manager) scanRepo(ctx context.Context, dir, branch string, strict bool)
 		}
 		entries = append(entries, entry)
 	}
-	// Детерминированный порядок в индексе.
+	// Deterministic index order.
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 	return entries, nil
 }
 
-// buildEntry загружает и валидирует манифест шаблона и строит запись индекса.
+// buildEntry loads and validates a template manifest and builds an index entry.
 func buildEntry(manifestPath, rel, ref string, allTags []string, multi bool) (state.TemplateEntry, error) {
 	tmpl, err := manifest.LoadTemplate(manifestPath)
 	if err != nil {
@@ -123,8 +123,8 @@ func buildEntry(manifestPath, rel, ref string, allTags []string, multi bool) (st
 	return entry, nil
 }
 
-// listTags возвращает все теги клона (`git tag -l`); ошибка/пустой вывод — нет
-// тегов (репозиторий без релизов — норма).
+// listTags returns all clone tags (`git tag -l`); an error or empty output means
+// there are no tags, which is normal for a repository without releases.
 func (m *Manager) listTags(ctx context.Context, dir string) []string {
 	res, err := m.git(ctx, dir, []string{"tag", "-l"}, nil)
 	if err != nil {
@@ -139,7 +139,7 @@ func (m *Manager) listTags(ctx context.Context, dir string) []string {
 	return tags
 }
 
-// flattenLabels копирует карту лейблов манифеста в форму индекса (LabelsFlat).
+// flattenLabels copies manifest labels into the index form (LabelsFlat).
 func flattenLabels(labels map[string][]string) map[string][]string {
 	if len(labels) == 0 {
 		return nil
@@ -153,8 +153,8 @@ func flattenLabels(labels map[string][]string) map[string][]string {
 	return out
 }
 
-// normalizeTemplatePath приводит относительный путь шаблона к каноничному виду
-// для индекса: корень репозитория — ".", иначе слэш-разделённый путь.
+// normalizeTemplatePath converts a relative template path to its canonical index
+// form: repository root is ".", otherwise the path uses slash separators.
 func normalizeTemplatePath(rel string) string {
 	if rel == "." || rel == "" {
 		return "."
@@ -162,7 +162,7 @@ func normalizeTemplatePath(rel string) string {
 	return filepath.ToSlash(rel)
 }
 
-// autoScan ищет template.manifest.yaml на глубине 1 и 2 (*/…, */*/…).
+// autoScan searches for template.manifest.yaml at depths 1 and 2 (*/…, */*/…).
 func autoScan(dir string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -173,7 +173,7 @@ func autoScan(dir string) []string {
 		}
 	}
 
-	// Глубина 1: */template.manifest.yaml
+	// Depth 1: */template.manifest.yaml.
 	lvl1, _ := os.ReadDir(dir)
 	for _, e1 := range lvl1 {
 		if !e1.IsDir() || strings.HasPrefix(e1.Name(), ".") {
@@ -183,7 +183,7 @@ func autoScan(dir string) []string {
 			add(e1.Name())
 			continue
 		}
-		// Глубина 2: */*/template.manifest.yaml
+		// Depth 2: */*/template.manifest.yaml.
 		lvl2, _ := os.ReadDir(filepath.Join(dir, e1.Name()))
 		for _, e2 := range lvl2 {
 			if !e2.IsDir() || strings.HasPrefix(e2.Name(), ".") {

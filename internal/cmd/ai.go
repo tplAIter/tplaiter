@@ -14,17 +14,17 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// aiTargetsFlag — флаг `--targets` команды `tplater ai gen` (пусто → все
-// таргеты config.json источника, см. [aiconfig.RenderOptions.Targets]).
+// aiTargetsFlag — `--targets` flag for `tplater ai gen` (empty → all
+// targets in the source config.json; see [aiconfig.RenderOptions.Targets]).
 var aiTargetsFlag []string
 
 func init() {
 	rootCmd.AddCommand(newAICmd())
 }
 
-// newAICmd создаёт команду `tplater ai`: генерация/список/
-// валидация AI-конфигурации проекта (CLAUDE.md/.cursor/**/AGENTS.md/GEMINI.md)
-// из каталога-копии .tplaiter/ai-config (контракт с /).
+// newAICmd creates the `tplater ai` command: generate/list/validate the
+// project's AI configuration (CLAUDE.md/.cursor/**/AGENTS.md/GEMINI.md)
+// from the copied .tplaiter/ai-config directory (contract with /).
 func newAICmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "ai",
@@ -37,9 +37,10 @@ func newAICmd() *cobra.Command {
 	return c
 }
 
-// loadAIContext находит корень проекта, разрешает манифест шаблона и
-// открывает источник .tplaiter/ai-config. Понятная ошибка, если каталог
-// отсутствует (шаблон не подключает aiConfig либо  ещё не скопировал его).
+// loadAIContext finds the project root, resolves the template manifest, and
+// opens the .tplaiter/ai-config source. It returns a clear error if the
+// directory is missing (the template does not include aiConfig or has not
+// copied it yet).
 func loadAIContext() (tpl *manifest.Template, values settings.Values, root string, src *aiconfig.Source, err error) {
 	tpl, proj, root, err := loadRunContext()
 	if err != nil {
@@ -60,7 +61,7 @@ func loadAIContext() (tpl *manifest.Template, values settings.Values, root strin
 	return tpl, settingsValues(proj.Settings), root, src, nil
 }
 
-// newAIGenCmd создаёт `tplater ai gen`.
+// newAIGenCmd creates `tplater ai gen`.
 func newAIGenCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "gen",
@@ -88,7 +89,7 @@ func newAIGenCmd() *cobra.Command {
 	return c
 }
 
-// printAIResult печатает записанные и пропущенные (защищённые 99-*) файлы.
+// printAIResult prints written and skipped (protected 99-*) files.
 func printAIResult(cmd *cobra.Command, res *aiconfig.Result) error {
 	out := cmd.OutOrStdout()
 	for _, f := range res.Written {
@@ -100,7 +101,7 @@ func printAIResult(cmd *cobra.Command, res *aiconfig.Result) error {
 	return nil
 }
 
-// newAIListCmd создаёт `tplater ai list`.
+// newAIListCmd creates `tplater ai list`.
 func newAIListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -116,7 +117,7 @@ func newAIListCmd() *cobra.Command {
 	}
 }
 
-// printAIList печатает таблицу ID/TITLE/ACTIVATION/WHEN.
+// printAIList prints the ID/TITLE/ACTIVATION/WHEN table.
 func printAIList(cmd *cobra.Command, src *aiconfig.Source, values settings.Values) error {
 	out := cmd.OutOrStdout()
 	if len(src.Modules) == 0 {
@@ -142,7 +143,7 @@ func printAIList(cmd *cobra.Command, src *aiconfig.Source, values settings.Value
 		when := m.When
 		switch {
 		case when == "":
-			// нет when — модуль активен всегда, колонка пустая.
+			// No when means the module is always active; leave the column empty.
 		case activeIDs[m.ID]:
 			when = ui.StatusIcon(pal, ui.StatusOK) + " " + when
 		default:
@@ -154,11 +155,12 @@ func printAIList(cmd *cobra.Command, src *aiconfig.Source, values settings.Value
 	return nil
 }
 
-// newAIValidateCmd создаёт `tplater ai validate`. Манифест шаблона резолвится
-// той же цепочкой источников, что и `tplater run`/`gen` ([loadRunContext] →
-// [project.LoadManifestForProject]): сейчас репо-кеш всегда недоступен, поэтому
-// фактически используется снимок .tplaiter/manifest.snapshot.yaml — отсутствие
-// снимка даёт понятную ошибку ([project.ErrNoManifest]) без отдельного кода.
+// newAIValidateCmd creates `tplater ai validate`. The template manifest is
+// resolved through the same source chain as `tplater run`/`gen` ([loadRunContext]
+// → [project.LoadManifestForProject]): the repository cache is currently always
+// unavailable, so .tplaiter/manifest.snapshot.yaml is used in practice — a
+// missing snapshot produces a clear error ([project.ErrNoManifest]) without
+// separate handling.
 func newAIValidateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "validate",

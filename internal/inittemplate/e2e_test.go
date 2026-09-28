@@ -22,16 +22,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestE2E_InitTemplateToNewProject прогоняет полный путь требования №2:
-// init-template → git-репозиторий → tplater repo add file:// → tplater new →
-// проект создан (README отрендерен, feature_x-путь работает).
+// TestE2E_InitTemplateToNewProject runs the full requirement-2 path:
+// init-template → git repository → tplater repo add file:// → tplater new →
+// project created (README rendered, feature_x path works).
 func TestE2E_InitTemplateToNewProject(t *testing.T) {
 	if _, err := (execx.Exec{}).LookPath("git"); err != nil {
 		t.Skip("git не найден в PATH — e2e пропущен")
 	}
 	ctx := context.Background()
 
-	// 1. init-template с git init + первым коммитом.
+	// 1. init-template with git init and the first commit.
 	base := t.TempDir()
 	repoDir := filepath.Join(base, "demo-svc")
 	runner := gitEnvRunner{}
@@ -62,7 +62,7 @@ func TestE2E_InitTemplateToNewProject(t *testing.T) {
 		t.Fatalf("repo add: %v", err)
 	}
 
-	// 3. Локальная fixture-сборка проекта из добавленного репо (без live new).
+	// 3. Local fixture project build from the added repository (without live new).
 	projDir := filepath.Join(base, "proj")
 	var out bytes.Buffer
 	resolved, err := mgr.ResolveRef("example/demo-svc")
@@ -125,7 +125,7 @@ func TestE2E_InitTemplateToNewProject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 4. Проверки сгенерированного проекта.
+	// 4. Checks for the generated project.
 	readme, err := os.ReadFile(filepath.Join(projDir, "README.md"))
 	if err != nil {
 		t.Fatalf("README.md не создан: %v", err)
@@ -143,22 +143,22 @@ func TestE2E_InitTemplateToNewProject(t *testing.T) {
 		t.Errorf("new вывел устаревшую CLI-подсказку:\nREADME:\n%s\nNOTES/output:\n%s", readme, out.String())
 	}
 
-	// feature_x=true → условный каталог __if_feature_x__/ дал extra.txt.
+	// feature_x=true → conditional directory __if_feature_x__/ produced extra.txt.
 	if _, err := os.Stat(filepath.Join(projDir, "extra.txt")); err != nil {
 		t.Errorf("feature_x-путь не сработал (extra.txt отсутствует): %v", err)
 	}
-	// variant=advanced → files-правило включило advanced/notes.md.
+	// variant=advanced → the files rule included advanced/notes.md.
 	if _, err := os.Stat(filepath.Join(projDir, "advanced", "notes.md")); err != nil {
 		t.Errorf("variant=advanced-путь не сработал (advanced/notes.md отсутствует): %v", err)
 	}
-	// Проектный маркер записан.
+	// Project marker was written.
 	if _, err := os.Stat(filepath.Join(projDir, ".tplaiter", "project.yaml")); err != nil {
 		t.Errorf("проектный маркер .tplaiter/project.yaml отсутствует: %v", err)
 	}
 }
 
-// gitEnvRunner — Exec с детерминированным git-окружением (коммиты без
-// глобального конфига пользователя).
+// gitEnvRunner — Exec with deterministic git environment (commits without the
+// user's global config).
 type gitEnvRunner struct{ execx.Exec }
 
 func (r gitEnvRunner) Run(ctx context.Context, name string, args []string, opts execx.Options) (execx.Result, error) {

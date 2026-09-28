@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// TestNewErrors прогоняет ошибочные пути `tplater new` (сценарий 3, требование
-// реализацию): несуществующий шаблон, повторный new в занятый каталог, версия-гейт
-// requires.tplaiter.
+// TestNewErrors runs error paths for `tplater new` (scenario 3, implementation
+// requirement): unknown template, repeated new into an occupied directory,
+// and the requires.tplaiter version gate.
 func TestNewErrors(t *testing.T) {
 	requireGit(t)
 	t.Parallel()

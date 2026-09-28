@@ -70,11 +70,11 @@ func TestProjects_UpsertUpdatesExistingByID(t *testing.T) {
 
 	p.Upsert(ProjectRef{
 		ID:          "a",
-		Path:        "/new/path", // проект переехал
+		Path:        "/new/path", // project moved
 		LastSeenAt:  later,
 		BaselineSHA: "deadbeef",
-		// Template/CreatedAt намеренно не передаём новыми значениями —
-		// Upsert должен сохранить исходные (см. doc-комментарий Upsert).
+		// Template/CreatedAt are intentionally omitted from the new values;
+		// Upsert must preserve the originals (see Upsert's doc comment).
 	})
 
 	if len(p.Items) != 1 {

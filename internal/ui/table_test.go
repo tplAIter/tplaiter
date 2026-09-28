@@ -31,8 +31,8 @@ func TestTable_Render_EmptyTable(t *testing.T) {
 
 func TestTable_Render_RaggedRows(t *testing.T) {
 	tbl := NewTable("A", "B", "C")
-	tbl.AddRow("1")                // недостающие колонки
-	tbl.AddRow("1", "2", "3", "4") // лишняя колонка отбрасывается
+	tbl.AddRow("1")                // missing columns
+	tbl.AddRow("1", "2", "3", "4") // extra column is dropped
 
 	got := tbl.Render()
 	if strings.Contains(got, "4") {
@@ -40,9 +40,9 @@ func TestTable_Render_RaggedRows(t *testing.T) {
 	}
 }
 
-// TestTable_RenderStyled_PlainFallback проверяет, что при отключённом цвете
-// (NO_COLOR/не-TTY) RenderStyled полностью совпадает с Render — golden
-// plain-вывод без ANSI, требование реализации реализацию.
+// TestTable_RenderStyled_PlainFallback checks that with color disabled
+// (NO_COLOR/non-TTY), RenderStyled exactly matches Render: golden plain output
+// without ANSI, as required by the implementation.
 func TestTable_RenderStyled_PlainFallback(t *testing.T) {
 	tbl := NewTable("NAME", "REPO", "LABELS")
 	tbl.AddRow("go-service", "example", "lang=go")
@@ -56,10 +56,9 @@ func TestTable_RenderStyled_PlainFallback(t *testing.T) {
 	}
 }
 
-// TestTable_RenderStyled_ColorEnabled проверяет заголовок жирным и наличие
-// приглушённой разделительной линии под ним, при этом содержимое (заголовки
-// и данные) остаётся неизменным по подстроке — тесты команд, парсящие вывод
-// по вхождению, не должны сломаться от стилизации.
+// TestTable_RenderStyled_ColorEnabled checks a bold header and a muted separator
+// beneath it while keeping headers and data unchanged as substrings, so command
+// tests that parse output by containment do not break due to styling.
 func TestTable_RenderStyled_ColorEnabled(t *testing.T) {
 	tbl := NewTable("NAME", "REPO")
 	tbl.AddRow("go-service", "example")
@@ -84,24 +83,23 @@ func TestTable_RenderStyled_ColorEnabled(t *testing.T) {
 	}
 }
 
-// TestTable_RenderStyled_AlignsWithColoredCells проверяет, что ANSI-раскраска
-// ячейки (не только последней колонки — см. doc [Table]) не ломает
-// выравнивание последующих колонок: ширина считается через lipgloss.Width,
-// который игнорирует escape-последовательности.
+// TestTable_RenderStyled_AlignsWithColoredCells checks that ANSI coloring of a
+// cell (not only the last column; see [Table]) does not break alignment of later
+// columns: width is computed by lipgloss.Width, which ignores escape sequences.
 func TestTable_RenderStyled_AlignsWithColoredCells(t *testing.T) {
 	pal := NewPalette(true)
 	tbl := NewTable("STATUS", "NAME")
 	tbl.AddRow(pal.Success("ok"), "alpha")
 	tbl.AddRow(pal.Error("fail"), "b")
 
-	got := tbl.Render() // Render (не Styled) — сама таблица тоже ANSI-aware
+	got := tbl.Render() // Render (not Styled); the table itself is ANSI-aware
 	lines := strings.Split(got, "\n")
 	if len(lines) != 3 {
 		t.Fatalf("Render() with colored cells has %d lines, want 3", len(lines))
 	}
-	// "NAME" должно начинаться в одной и той же видимой колонке независимо от
-	// длины ANSI-кода в первой ячейке — проверяем видимую ширину префикса до
-	// начала второй колонки через lipgloss.Width на подстроке до "alpha"/"b".
+	// "NAME" must start in the same visible column regardless of the ANSI code
+	// length in the first cell; check the visible prefix width before the second
+	// column with lipgloss.Width on the substring before "alpha"/"b".
 	if !strings.Contains(lines[1], "alpha") || !strings.Contains(lines[2], "b") {
 		t.Fatalf("Render() with colored cells lost data rows: %q", got)
 	}

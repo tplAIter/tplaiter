@@ -9,7 +9,7 @@ func TestScanConflictsFindsMarkers(t *testing.T) {
 	dir := t.TempDir()
 	writeWork(t, dir, "clean.go", "package x\n")
 	writeWork(t, dir, "conflicted.go", "package x\n"+markerOurs+"\nlocal\n"+markerSeparator+"\ntpl\n"+markerTheirs+"\n")
-	// Каталоги-исключения не должны попадать в результат.
+	// Excluded directories must not appear in the result.
 	writeWork(t, dir, ".tplaiter/baseline.json", markerOurs+"\n")
 	writeWork(t, dir, "docs/example.md", markerOurs+" пример в доке\n")
 
@@ -38,7 +38,7 @@ func TestScanConflictsClean(t *testing.T) {
 
 func TestScanConflictsSkipsBinary(t *testing.T) {
 	dir := t.TempDir()
-	// Бинарный файл с NUL в первом блоке + строка-похожая-на-маркер после.
+	// Binary file with NUL in the first block and a marker-like line afterward.
 	full := filepath.Join(dir, "bin.dat")
 	if err := writeFile(full, append([]byte{0, 1, 2}, []byte("\n"+markerOurs+"\n")...)); err != nil {
 		t.Fatal(err)

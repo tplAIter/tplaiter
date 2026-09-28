@@ -8,35 +8,35 @@ import (
 	"github.com/tplAIter/tplaiter/internal/engine"
 )
 
-// Field — одно поле сущности, разобранное из строки параметра типа `fields`
-// (`"customer:string,amount:float64,tags:[]string"`). Доступно сниппетам как
-// элемент `.Fields`: имя во всех регистрах (`.Name.Pascal` и т.п.), Go-тип для
-// структур/сигнатур, SQL-тип для миграций и нулевое значение для конструкторов.
+// Field — one entity field parsed from a `fields` parameter string
+// (`"customer:string,amount:float64,tags:[]string"`). Available to snippets as
+// a `.Fields` element: name in all cases (`.Name.Pascal`, etc.), Go type for
+// structs/signatures, SQL type for migrations, and zero value for constructors.
 type Field struct {
-	// NameRaw — имя поля как записано в спецификации (до нормализации).
+	// NameRaw — field name as written in the specification (before normalization).
 	NameRaw string
-	// Name — производные варианты имени (Pascal/Camel/Snake/Kebab), как у [Name].
+	// Name — derived name variants (Pascal/Camel/Snake/Kebab), as in [Name].
 	Name Name
-	// GoType — Go-тип поля (`string`, `int64`, `time.Time`, `uuid.UUID`, `[]string`).
+	// GoType — field Go type (`string`, `int64`, `time.Time`, `uuid.UUID`, `[]string`).
 	GoType string
-	// IsSlice — true для слайс-типов (`[]T`).
+	// IsSlice — true for slice types (`[]T`).
 	IsSlice bool
-	// Zero — литерал нулевого значения Go-типа (`""`, `0`, `false`, `nil`, `time.Time{}`).
+	// Zero — zero-value literal for the Go type (`""`, `0`, `false`, `nil`, `time.Time{}`).
 	Zero string
-	// SQLType — тип колонки для goose-миграций (`text`, `bigint`, `jsonb`, ...).
+	// SQLType — column type for goose migrations (`text`, `bigint`, `jsonb`, ...).
 	SQLType string
 }
 
-// fieldTypeInfo — запись таблицы поддерживаемых типов полей.
+// fieldTypeInfo — entry in the supported field-type table.
 type fieldTypeInfo struct {
 	goType  string
 	sqlType string
 	zero    string
 }
 
-// fieldTypes — allowlist скалярных типов полей. Таблица расширяема:
-// добавление типа — одна строка. Слайсы `[]T` строятся из базового скаляра
-// (см. [parseFieldType]) и всегда маппятся в jsonb.
+// fieldTypes — allowlist of scalar field types. The table is extensible by one
+// line per type. Slices `[]T` are built from a scalar base type (see
+// [parseFieldType]) and always map to jsonb.
 var fieldTypes = map[string]fieldTypeInfo{
 	"string":    {goType: "string", sqlType: "text", zero: `""`},
 	"int":       {goType: "int", sqlType: "bigint", zero: "0"},
@@ -47,10 +47,10 @@ var fieldTypes = map[string]fieldTypeInfo{
 	"uuid":      {goType: "uuid.UUID", sqlType: "uuid", zero: "uuid.UUID{}"},
 }
 
-// ParseFields разбирает спецификацию полей `"name:type,name:type,..."` в
-// []Field. Пустая строка — пустой (не ошибка) результат. Ошибки (со списком
-// допустимых типов): пустой элемент, отсутствие ":", невалидное имя,
-// неизвестный тип, дубликат имени.
+// ParseFields parses a field specification `"name:type,name:type,..."` into
+// []Field. An empty string returns an empty result (not an error). Errors (with
+// the allowed-type list) cover an empty element, missing ":", invalid name,
+// unknown type, and duplicate name.
 func ParseFields(spec string) ([]Field, error) {
 	spec = strings.TrimSpace(spec)
 	if spec == "" {
@@ -104,8 +104,8 @@ func ParseFields(spec string) ([]Field, error) {
 	return out, nil
 }
 
-// parseFieldType резолвит тип поля: скаляр из [fieldTypes] либо слайс `[]T`
-// (базовый T — скаляр из allowlist; SQL-тип слайса — jsonb, нулевое — nil).
+// parseFieldType resolves a field type: a scalar from [fieldTypes] or a `[]T`
+// slice (base T is an allowlisted scalar; slice SQL type is jsonb, zero is nil).
 func parseFieldType(typ string) (goType, sqlType, zero string, isSlice bool, err error) {
 	if base, ok := strings.CutPrefix(typ, "[]"); ok {
 		info, known := fieldTypes[base]
@@ -121,8 +121,8 @@ func parseFieldType(typ string) (goType, sqlType, zero string, isSlice bool, err
 	return info.goType, info.sqlType, info.zero, false, nil
 }
 
-// allowedTypesList возвращает отсортированный список допустимых базовых типов
-// (плюс форма []T) для сообщений об ошибках.
+// allowedTypesList returns a sorted list of allowed base types (plus the []T
+// form) for error messages.
 func allowedTypesList() string {
 	names := make([]string, 0, len(fieldTypes)+1)
 	for t := range fieldTypes {

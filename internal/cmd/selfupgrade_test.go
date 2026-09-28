@@ -17,8 +17,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// withRunner подменяет пакетную переменную runner на recorder на время теста
-// и восстанавливает исходное значение по завершении.
+// withRunner replaces package runner with recorder for the test and restores it
+// afterward.
 func withRunner(t *testing.T, r execx.Runner) {
 	t.Helper()
 	old := runner
@@ -26,7 +26,7 @@ func withRunner(t *testing.T, r execx.Runner) {
 	t.Cleanup(func() { runner = old })
 }
 
-// withUpgradeFlag подменяет package-level upgradeFlag на время теста.
+// withUpgradeFlag replaces package-level upgradeFlag for the test.
 func withUpgradeFlag(t *testing.T, v bool) {
 	t.Helper()
 	old := upgradeFlag
@@ -34,10 +34,10 @@ func withUpgradeFlag(t *testing.T, v bool) {
 	t.Cleanup(func() { upgradeFlag = old })
 }
 
-// withInstallChannel подменяет detectInstallChannel на фиксированный канал.
-// Настоящий selfupdate.DetectChannel() смотрит на os.Executable()/BuildInfo
-// текущего процесса — у тестового бинарника `go test` это стабильно
-// selfupdate.ChannelUnknown, что не даёт протестировать ветку go-install.
+// withInstallChannel replaces detectInstallChannel with a fixed channel. The
+// real selfupdate.DetectChannel() examines os.Executable()/BuildInfo of the
+// current process; for a `go test` binary this is consistently
+// selfupdate.ChannelUnknown, preventing coverage of the go-install branch.
 func withInstallChannel(t *testing.T, ch selfupdate.Channel) {
 	t.Helper()
 	old := detectInstallChannel
@@ -58,9 +58,9 @@ func TestSuggestUpdatePreRun_SkipsForSkipList(t *testing.T) {
 			rec := execx.NewRecordingRunner()
 			withRunner(t, rec)
 
-			// top — прямой потомок root, как в реальном дереве rootCmd (см.
-			// topLevelCommand в firstrun.go: он идентифицирует "topName" именно
-			// как ближайшего потомка root, а не более глубокую подкоманду).
+			// top is a direct child of root, as in the real rootCmd tree (see
+			// topLevelCommand in firstrun.go: it identifies topName as the nearest
+			// root child rather than a deeper subcommand).
 			root := &cobra.Command{Use: "tplaiter"}
 			top := &cobra.Command{Use: topName}
 			root.AddCommand(top)
@@ -116,9 +116,9 @@ func TestSuggestUpdatePreRun_NilContextDoesNotPanic(t *testing.T) {
 	scriptLsRemote(rec, "")
 	withRunner(t, rec)
 
-	// Ни SetContext, ни Execute() не вызывались — cmd.Context() вернёт nil.
-	// suggestUpdatePreRun обязана подставить context.Background() сама, а не
-	// упасть на context.WithTimeout(nil, ...).
+	// Neither SetContext nor Execute() was called, so cmd.Context() returns nil.
+	// suggestUpdatePreRun must supply context.Background() rather than call
+	// context.WithTimeout(nil, ...).
 	leaf := &cobra.Command{Use: "list"}
 
 	suggestUpdatePreRun(leaf, nil)
@@ -144,7 +144,7 @@ func TestRunSelfUpgrade_AlreadyLatest(t *testing.T) {
 	if !strings.Contains(out.String(), "уже установлена последняя версия") {
 		t.Errorf("runSelfUpgrade() output = %q, want up-to-date message", out.String())
 	}
-	// Ни один "go install" не должен был выполниться.
+	// No "go install" should have run.
 	for _, c := range rec.Calls {
 		if c.Name == "go" {
 			t.Errorf("runSelfUpgrade() ran %q %v when already up to date", c.Name, c.Args)
@@ -247,10 +247,10 @@ func TestRootRunE_NoUpgradeFlagPrintsHelp(t *testing.T) {
 	rec := execx.NewRecordingRunner()
 	withRunner(t, rec)
 
-	// Short непустой — иначе cobra defaultHelpFunc печатает вообще ничего
-	// для команды без Long/Short, без RunE и без подкоманд (что этот
-	// синтетический cmd, в отличие от настоящего rootCmd, и есть); нам важно
-	// только убедиться, что вызывается именно cmd.Help(), а не runSelfUpgrade.
+	// Short must be non-empty; otherwise cobra defaultHelpFunc prints nothing for
+	// a command without Long/Short, RunE, or subcommands (as this synthetic cmd
+	// is, unlike real rootCmd). We only need to verify cmd.Help(), not
+	// runSelfUpgrade, is called.
 	cmd := &cobra.Command{Use: "tplaiter", Short: "sentinel help text"}
 	var out bytes.Buffer
 	cmd.SetOut(&out)
@@ -275,9 +275,9 @@ func TestRootPreRun_BareInvocationSkipsFirstRunAndSuggest(t *testing.T) {
 	rec := execx.NewRecordingRunner()
 	withRunner(t, rec)
 
-	// !cmd.HasParent() — единственный способ имитировать "bare root" без
-	// плетения через rootCmd.Execute() (который держит общее для тестов
-	// пакетное состояние флагов/AddCommand).
+	// !cmd.HasParent() is the only way to simulate "bare root" without going
+	// through rootCmd.Execute(), which shares package flag/AddCommand state across
+	// tests.
 	bareRoot := &cobra.Command{Use: "tplaiter"}
 	bareRoot.SetContext(context.Background())
 	var stderr bytes.Buffer
@@ -341,8 +341,8 @@ func TestSuggestUpdatePreRun_RunnerContextHasDeadline(t *testing.T) {
 	}
 }
 
-// ctxCapturingRunner — тестовый Runner, запоминающий context последнего Run,
-// чтобы проверить проставленный suggestUpdatePreRun таймаут (2с).
+// ctxCapturingRunner — test Runner that records the context from its last Run,
+// verifying the 2s timeout set by suggestUpdatePreRun.
 type ctxCapturingRunner struct {
 	execx.Runner
 	gotCtx context.Context

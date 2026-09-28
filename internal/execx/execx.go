@@ -1,9 +1,9 @@
-// Package execx — мокабельный слой запуска внешних процессов.
+// Package execx — mockable layer for launching external processes.
 //
-// tplater постоянно оркестрирует сторонние инструменты (git, glab, gh, brew,
-// ansible, произвольные shell-команды манифеста). Весь этот код должен
-// работать через интерфейс [Runner], а не напрямую через os/exec, чтобы
-// юниты могли подставлять [RecordingRunner] и не трогать реальное окружение.
+// tplater constantly orchestrates external tools (git, glab, gh, brew, ansible,
+// arbitrary manifest shell commands). All this code must use [Runner], rather
+// than os/exec directly, so tests can substitute [RecordingRunner] without
+// touching the real environment.
 package execx
 
 import (
@@ -12,46 +12,43 @@ import (
 	"os"
 )
 
-// Result — результат выполнения одной команды.
+// Result — result of executing one command.
 type Result struct {
 	Stdout   string
 	Stderr   string
 	ExitCode int
 }
 
-// Options — необязательные параметры запуска команды.
+// Options — optional command-run parameters.
 type Options struct {
-	// Dir — рабочий каталог команды. Пустая строка — текущий каталог процесса.
+	// Dir — command working directory. Empty means the process's current directory.
 	Dir string
-	// Env — дополнительные переменные окружения вида "KEY=VALUE", добавляются
-	// к os.Environ() (не заменяют его). Пустой слайс — окружение не меняется.
+	// Env — additional "KEY=VALUE" environment variables appended to os.Environ()
+	// (not replacing it). An empty slice leaves the environment unchanged.
 	Env []string
-	// Stdin — источник данных для stdin команды. nil — stdin не подключается.
+	// Stdin — data source for command stdin. nil means stdin is not connected.
 	Stdin io.Reader
-	// Stdout/Stderr — опциональные писатели для стриминга вывода команды по
-	// мере его появления (например, в UI-лог). Результат всё равно
-	// накапливается целиком в Result.Stdout/Stderr независимо от того,
-	// заданы эти писатели или нет.
+	// Stdout/Stderr — optional writers for streaming command output as it appears
+	// (for example, into a UI log). The result is still accumulated completely in
+	// Result.Stdout/Stderr regardless of whether these writers are set.
 	Stdout io.Writer
 	Stderr io.Writer
-	// Signals — опциональный канал ОС-сигналов (обычно созданный вызывающим
-	// через os/signal.Notify), которые Run пересылает запущенному процессу до
-	// его завершения. Нужен интерактивным долгоживущим командам (например
-	// `tplater run dev`), чтобы Ctrl+C/SIGTERM, пойманные самим tplater, не
-	// обрывали его молча (что оставило бы потомка сиротой), а долетали до
-	// дочернего процесса как обычно и дали ему шанс на graceful shutdown.
-	// nil (по умолчанию) — сигналы не пересылаются, поведение не меняется.
+	// Signals — optional OS-signal channel (usually created by the caller through
+	// os/signal.Notify) that Run forwards to the launched process until it exits.
+	// It is needed by interactive long-running commands (for example, `tplater run
+	// dev`) so Ctrl+C/SIGTERM caught by tplater do not silently terminate it
+	// (leaving the child orphaned), but reach the child normally and give it a
+	// chance for graceful shutdown. nil (the default) forwards no signals.
 	Signals <-chan os.Signal
 }
 
-// Runner исполняет внешние команды. Реализации: [Exec] (реальный os/exec) и
-// [RecordingRunner] (тестовый дублёр со скриптом ответов и записью вызовов).
+// Runner executes external commands. Implementations are [Exec] (real os/exec)
+// and [RecordingRunner] (test double with scripted responses and call recording).
 type Runner interface {
-	// Run запускает name с аргументами args и ждёт завершения. Ошибка
-	// возвращается для сбоев запуска (бинарник не найден) и для ненулевого
-	// кода возврата (см. [ExitError]) — вызывающий код почти всегда обязан
-	// проверить err, а не только res.ExitCode.
+	// Run starts name with args and waits for completion. An error is returned for
+	// launch failures (binary not found) and non-zero exit codes (see [ExitError]);
+	// callers almost always must check err, not only res.ExitCode.
 	Run(ctx context.Context, name string, args []string, opts Options) (Result, error)
-	// LookPath ищет полный путь к бинарнику name в PATH (аналог exec.LookPath).
+	// LookPath finds the full path to name in PATH (analogous to exec.LookPath).
 	LookPath(name string) (string, error)
 }

@@ -1,20 +1,18 @@
-// Package settingscmd оркеструет команду `tplater settings`:
-// просмотр текущих настроек проекта (list), их изменение через --set (set) и
-// интерактивный переопрос отдельной группы (edit).
+// Package settingscmd orchestrates `tplater settings`: viewing current project
+// settings (list), changing them through --set (set), and interactively re-asking
+// one group (edit).
 //
-// Ключевая идея set/edit — та же 3-way-механика, что и у `tplater update`
-// (реализация ), но на ОДНОЙ версии шаблона: base — чистый рендер СТАРЫХ значений
-// проекта, target — рендер НОВЫХ. Смена значения select удаляет старую вертикаль
-// файлов (hash==baseline → удаление, изменённые локально — предупреждение) и
-// добавляет новую. Ядро вычисления переиспользуется из internal/update
-// ([update.ComputeThreeWay], [update.LoadBaselineHashes]) — здесь только сборка
-// base/target-рендеров, доклад и фиксация нового состояния проекта.
+// set/edit use the same 3-way mechanics as `tplater update`, but on ONE template
+// version: base is a clean render of OLD project values, target a render of NEW
+// values. Changing a select removes the old file vertical (hash==baseline →
+// deletion; locally changed files warn) and adds the new one. Computation is
+// reused from internal/update ([update.ComputeThreeWay], [update.LoadBaselineHashes]);
+// this package builds base/target renders, reports, and persists new project state.
 //
-// В отличие от update смена настроек НЕ трогает версию шаблона, НЕ пишет снимок
-// манифеста и НЕ гоняет хуки (ни postUpdate, ни postCreate) — это изменение
-// параметров того же рендера, а не обновление шаблона; пользователю выдаётся
-// только доклад об изменениях (и предупреждение перегенерировать ai-config, если
-// его состав мог смениться).
+// Unlike update, changing settings does not touch the template version, write a
+// manifest snapshot, or run hooks (postUpdate or postCreate): it changes the same
+// render's parameters rather than updating the template. The user receives only
+// a change report (and a warning to regenerate ai-config if its composition may change).
 package settingscmd
 
 import (
@@ -36,46 +34,44 @@ import (
 	"github.com/tplAIter/tplaiter/internal/update"
 )
 
-// Options — параметры одного запуска команды settings.
+// Options — parameters for one settings command invocation.
 type Options struct {
-	// StartDir — рабочий каталог для поиска проекта (обычно os.Getwd).
+	// StartDir — working directory for finding the project (usually os.Getwd).
 	StartDir string
-	// Pairs — значения `group=value` для set (повторяемый флаг --set-стиля).
+	// Pairs — `group=value` values for set (repeatable --set-style flag).
 	Pairs []string
-	// Group — целевая группа для edit (пусто — вывести список групп-подсказку).
+	// Group — target group for edit (empty prints a group hint list).
 	Group string
-	// DryRun — вычислить план и отчёт, ничего не менять (--dry-run).
+	// DryRun — compute plan/report without changing anything (--dry-run).
 	DryRun bool
-	// Yes — не запрашивать подтверждение перед применением (--yes).
+	// Yes — do not ask for confirmation before applying (--yes).
 	Yes bool
-	// Verbose — печатать унифицированные diff'ы «локальных отклонений».
+	// Verbose — print unified diffs of local deviations.
 	Verbose bool
 }
 
-// Deps — внешние зависимости команды settings, инъектируемые слоем cobra и
-// тестами.
+// Deps — external settings-command dependencies injected by cobra and tests.
 type Deps struct {
-	// Manager — резолюция/checkout версии шаблона (repo-кеш).
+	// Manager — template-version resolution/checkout (repository cache).
 	Manager *repo.Manager
-	// Home — домашний каталог tplater (реестр проектов, лок).
+	// Home — tplater home directory (project registry, lock).
 	Home string
-	// Out, Err — потоки основного вывода и предупреждений.
+	// Out, Err — main output and warning streams.
 	Out io.Writer
 	Err io.Writer
-	// Palette — палитра сообщений.
+	// Palette — message palette.
 	Palette ui.Palette
-	// Now — источник времени регистрации (переопределяется в тестах).
+	// Now — registry timestamp source (overridden in tests).
 	Now func() time.Time
-	// Prompter — интерактивный опрос для edit и подтверждения set. В
-	// неинтерактивном режиме для set не вызывается.
+	// Prompter — interactive questionnaire for edit and set confirmation. It is
+	// not called for set in non-interactive mode.
 	Prompter survey.Prompter
-	// Interactive — доступен ли TTY (управляет опросом edit и подтверждением set).
+	// Interactive — whether TTY is available (controls edit asking and set confirmation).
 	Interactive bool
 }
 
-// List печатает текущие значения настроек проекта: таблица
-// GROUP/VALUE/ACTIVE, где неактивные вложенные группы (родительская опция не
-// выбрана) приглушены.
+// List prints current project settings as GROUP/VALUE/ACTIVE; inactive nested
+// groups (parent option not selected) are muted.
 func List(d Deps, opts Options) error {
 	root, proj, err := project.FindRoot(opts.StartDir)
 	if err != nil {
@@ -94,9 +90,9 @@ func List(d Deps, opts Options) error {
 	return nil
 }
 
-// Set применяет новые значения настроек к проекту той же 3-way-механикой, что и
-// update: парсит `group=value`, доразрешает requires, рендерит
-// старое и новое состояние на текущей версии шаблона и сливает деревом.
+// Set applies new project settings with update's 3-way mechanics: parses
+// `group=value`, resolves requires, renders old/new state on the current template
+// version, and merges the tree.
 func Set(ctx context.Context, d Deps, opts Options) error {
 	if len(opts.Pairs) == 0 {
 		return errors.New("settings set: укажите хотя бы одно значение group=value")
@@ -107,12 +103,11 @@ func Set(ctx context.Context, d Deps, opts Options) error {
 	}
 	defer cleanup()
 
-	// explicit — только осмысленно заданные (отличные от дефолта) текущие
-	// значения плюс новые пары. Значения, совпадающие с дефолтом группы,
-	// НЕ считаются явными: иначе requires новой опции (напр. oauth ⇒
-	// database=postgres) конфликтовал бы с дефолтным database=none вместо
-	// довключения ( — требования довключают дефолтные значения,
-	// но не перезаписывают явный пользовательский выбор).
+	// explicit — current values meaningfully set (different from defaults) plus
+	// new pairs. Default-equal values are NOT explicit: otherwise a new option's
+	// requires (e.g. oauth ⇒ database=postgres) would conflict with default
+	// database=none instead of being implied (requirements imply defaults but do
+	// not overwrite an explicit user choice).
 	defaults := settings.DefaultValues(ch.tpl)
 	explicit := nonDefaultExplicit(ch.oldValues, defaults, nil)
 	for _, pair := range opts.Pairs {
@@ -132,10 +127,9 @@ func Set(ctx context.Context, d Deps, opts Options) error {
 	return applyChange(ctx, d, ch, opts, d.Interactive && !opts.Yes)
 }
 
-// Edit переопрашивает одну группу настроек: без аргумента печатает
-// список групп-подсказку; с группой — ведёт [survey.AskFlow] по дереву только
-// этой группы (preset — остальные текущие значения) и применяет результат тем же
-// set-путём.
+// Edit re-asks one settings group: without an argument it prints a group hint
+// list; with a group it runs [survey.AskFlow] over that group's tree (preset is
+// the other current values) and applies the result through the same set path.
 func Edit(ctx context.Context, d Deps, opts Options) error {
 	ch, cleanup, err := openChange(ctx, d, opts.StartDir)
 	if err != nil {
@@ -157,8 +151,8 @@ func Edit(ctx context.Context, d Deps, opts Options) error {
 		return fmt.Errorf("settings edit: неизвестная группа %q", opts.Group)
 	}
 
-	// preset — все текущие значения, КРОМЕ переопрашиваемой группы и её вложенных
-	// уточнений: их AskFlow задаст заново (динамически, по новому выбору родителя).
+	// preset — all current values EXCEPT the re-asked group and nested refinements;
+	// AskFlow asks those again dynamically based on the new parent choice.
 	drop := groupWithDescendants(ch.tpl, opts.Group)
 	preset := settings.Values{}
 	for k, v := range ch.oldValues {
@@ -177,12 +171,12 @@ func Edit(ctx context.Context, d Deps, opts Options) error {
 	}
 	ch.resolved = resolved
 
-	// AskFlow уже показал сводку и запросил подтверждение — повторно не спрашиваем.
+	// AskFlow already showed the summary and requested confirmation; do not ask again.
 	return applyChange(ctx, d, ch, opts, false)
 }
 
-// change — общий контекст изменения настроек (set/edit): найденный проект,
-// манифест и checkout его версии, старые значения и (после разрешения) новые.
+// change — shared set/edit context: discovered project, manifest and checkout of
+// its version, old values, and new values after resolution.
 type change struct {
 	root      string
 	proj      *manifest.Project
@@ -192,9 +186,9 @@ type change struct {
 	resolved  settings.Resolved
 }
 
-// openChange находит проект от startDir, резолвит и выкачивает ЕГО ТЕКУЩУЮ версию
-// шаблона (settings работают на одной версии) и загружает манифест. Возвращает
-// контекст и cleanup checkout'а (держится открытым до копирования ресурсов).
+// openChange finds the project from startDir, resolves/checks out its CURRENT
+// template version (settings operate on one version), and loads the manifest.
+// Returns context and checkout cleanup, held until resources are copied.
 func openChange(ctx context.Context, d Deps, startDir string) (*change, func(), error) {
 	root, proj, err := project.FindRoot(startDir)
 	if err != nil {
@@ -225,11 +219,11 @@ func openChange(ctx context.Context, d Deps, startDir string) (*change, func(), 
 	}, func() { _ = cleanup() }, nil
 }
 
-// applyChange — общий хвост set/edit: рендерит base (старые значения) и target
-// (новые), вычисляет 3-way-план и отчёт (переиспользуя [update.ComputeThreeWay]),
-// печатает доклад и — если не --dry-run и подтверждено — материализует план,
-// пишет новые значения в project.yaml, пересчитывает baseline, перекопирует
-// ресурсы и освежает реестр. Конфликты → код выхода 2 ([update.ExitCodeError]).
+// applyChange is the shared set/edit tail: renders base (old values) and target
+// (new), computes a 3-way plan/report (reusing [update.ComputeThreeWay]), prints
+// it, and when not --dry-run and confirmed materializes the plan, writes new
+// project.yaml values, recalculates the baseline, recopies resources, and refreshes
+// the registry. Conflicts → exit code 2 ([update.ExitCodeError]).
 func applyChange(_ context.Context, d Deps, ch *change, opts Options, confirm bool) error {
 	base := renderref.Input{
 		Values:  ch.oldValues,
@@ -304,11 +298,10 @@ func applyChange(_ context.Context, d Deps, ch *change, opts Options, confirm bo
 	return exitForConflicts(conflicts)
 }
 
-// commit материализует план изменения настроек и фиксирует новое состояние
-// проекта: пишет файлы, обновляет project.yaml.settings (полные новые значения),
-// сохраняет чистый target-baseline, перекопирует ресурсы .tplaiter/ и освежает
-// baselineSHA в реестре (версия шаблона неизменна — снимок манифеста и хуки не
-// трогаются).
+// commit materializes the settings-change plan and records new project state:
+// writes files, updates project.yaml.settings (complete new values), stores a
+// clean target baseline, recopies .tplaiter/ resources, and refreshes registry
+// baselineSHA. The template version is unchanged; manifest snapshot and hooks are untouched.
 func commit(d Deps, ch *change, plan *update.Plan, tgtRendered *renderref.Result) error {
 	if _, err := plan.Apply(ch.root); err != nil {
 		return err

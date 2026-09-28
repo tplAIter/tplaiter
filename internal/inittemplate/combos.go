@@ -8,38 +8,36 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// Combo — одна «угловая» комбинация настроек для lint-template.
-// Explicit — набор ЯВНО задаваемых значений (как из --set); транзитивное
-// довключение requires и активацию вложенных групп выполняет [settings.Resolve].
+// Combo — one corner-case settings combination for lint-template.
+// Explicit is the set of EXPLICIT values (as from --set); [settings.Resolve]
+// performs transitive requires and nested-group activation.
 type Combo struct {
-	// Name — человекочитаемое имя комбинации: `defaults`, `<group>=<opt>`,
+	// Name — human-readable combination name: `defaults`, `<group>=<opt>`,
 	// `all-on`, `max`.
 	Name string
-	// Explicit — явные значения групп (id → значение канонического типа).
+	// Explicit — explicit group values (ID → canonical-type value).
 	Explicit settings.Values
 }
 
-// groupOpts — select/multiselect-группа с её не-planned опциями.
+// groupOpts — select/multiselect group with its non-planned options.
 type groupOpts struct {
 	group string
 	opts  []string
 }
 
-// Combos строит набор «угловых» комбинаций настроек манифеста,
-// generic по любому дереву групп:
+// Combos builds corner-case manifest-setting combinations, generic over any group tree:
 //
-//   - defaults — пустой набор (все дефолты);
-//   - для каждой select-группы × каждая её не-planned опция — `<group>=<opt>`;
-//   - для каждой multiselect-группы × каждая её не-planned опция — `<group>=<opt>`
-//     (одиночный выбор — угловой случай проверки `has`);
-//   - all-on — все toggle разом true;
-//   - max — все toggle true + все multiselect выбраны целиком + каждая select
-//     переключена на последнюю не-planned опцию (максимальная активация
-//     вложенных уточнений).
+//   - defaults — empty set (all defaults);
+//   - each select group × each non-planned option — `<group>=<opt>`;
+//   - each multiselect group × each non-planned option — `<group>=<opt>`
+//     (single selection is the corner case for checking `has`);
+//   - all-on — every toggle true;
+//   - max — every toggle true + every multiselect fully selected + each select
+//     switched to its last non-planned option (maximum nested activation).
 //
-// Обход дерева включает вложенные группы (Option.Settings). Комбинации
-// дедуплицируются по имени; сами значения дальше разрешает [settings.Resolve]
-// (он же дотягивает requires и обнуляет неактивные вложенные группы).
+// Tree traversal includes nested groups (Option.Settings). Combinations are
+// deduplicated by name; [settings.Resolve] resolves values later (also pulling
+// requires and clearing inactive nested groups).
 func Combos(tpl *manifest.Template) []Combo {
 	var selects, multis []groupOpts
 	var toggles []string
@@ -112,8 +110,8 @@ func Combos(tpl *manifest.Template) []Combo {
 	return dedupeByName(combos)
 }
 
-// nonPlannedOptions возвращает id опций группы, кроме служебных planned
-// (невыбираемых — , честность каталога).
+// nonPlannedOptions returns group option IDs except service planned options
+// (non-selectable, for catalog integrity).
 func nonPlannedOptions(g *manifest.SettingGroup) []string {
 	out := make([]string, 0, len(g.Options))
 	for i := range g.Options {
@@ -125,7 +123,7 @@ func nonPlannedOptions(g *manifest.SettingGroup) []string {
 	return out
 }
 
-// dedupeByName убирает повторы по имени, сохраняя первый порядок появления.
+// dedupeByName removes duplicate names while preserving first-seen order.
 func dedupeByName(combos []Combo) []Combo {
 	seen := make(map[string]bool, len(combos))
 	out := combos[:0]
@@ -139,9 +137,8 @@ func dedupeByName(combos []Combo) []Combo {
 	return out
 }
 
-// FilterCombos оставляет комбинации с именем name (точное совпадение). Пустое
-// name — без фильтра. Возвращает отфильтрованный список и множество известных
-// имён (для сообщения об ошибке вызывающему).
+// FilterCombos keeps combinations with an exact name match. Empty name means no
+// filter. Returns the filtered list and the set of known names for caller errors.
 func FilterCombos(combos []Combo, name string) (filtered []Combo, known []string) {
 	known = make([]string, 0, len(combos))
 	for _, c := range combos {
@@ -154,14 +151,14 @@ func FilterCombos(combos []Combo, name string) (filtered []Combo, known []string
 	return filtered, known
 }
 
-// satisfyConstraints до-выполняет constraints комбо (fixpoint): если `if`
-// выполняется на полных значениях, а `require` — нет, атомы require добавляются
-// в explicit. Иначе generic-комбо вида all-on (все toggle=true) падали бы на
-// манифестах с инвариантами «toggle требует select-значение» (находка :
-// idempotency ⇒ database=postgres в go-template).
+// satisfyConstraints completes combo constraints to a fixpoint: when `if` holds
+// for full values but `require` does not, require atoms are added to explicit.
+// Otherwise generic all-on combos (all toggles=true) would fail manifests with
+// invariants such as "toggle requires a select value" (finding: idempotency ⇒
+// database=postgres in go-template).
 func satisfyConstraints(tpl *manifest.Template, explicit settings.Values) settings.Values {
 	out := explicit.Clone()
-	// Верхняя граница итераций — по числу constraints (каждая может сработать раз).
+	// Iteration upper bound is the number of constraints (each can fire once).
 	for range len(tpl.Constraints) + 1 {
 		full := settings.DefaultValues(tpl)
 		for k, v := range out {
@@ -171,7 +168,7 @@ func satisfyConstraints(tpl *manifest.Template, explicit settings.Values) settin
 		for _, c := range tpl.Constraints {
 			condIf, err := manifest.ParseCondition(c.If)
 			if err != nil {
-				continue // битые условия ловит Validate
+				continue // Validate catches malformed conditions
 			}
 			ok, err := settings.Eval(condIf, full)
 			if err != nil || !ok {
@@ -186,7 +183,7 @@ func satisfyConstraints(tpl *manifest.Template, explicit settings.Values) settin
 			}
 			for _, atom := range condReq.Atoms {
 				if atom.Op != manifest.OpEq {
-					continue // require с != не «довключается» — оставляем Resolve
+					continue // require with != is not auto-enabled — leave it to Resolve
 				}
 				out[atom.Group] = coerceAtomValue(tpl, atom.Group, atom.Value)
 				changed = true
@@ -199,7 +196,7 @@ func satisfyConstraints(tpl *manifest.Template, explicit settings.Values) settin
 	return out
 }
 
-// coerceAtomValue приводит строковое значение атома к типу группы.
+// coerceAtomValue converts an atom's string value to the group's type.
 func coerceAtomValue(tpl *manifest.Template, group, value string) any {
 	for _, g := range flattenGroups(tpl.Settings) {
 		if g.Group != group {
@@ -220,7 +217,7 @@ func coerceAtomValue(tpl *manifest.Template, group, value string) any {
 	return value
 }
 
-// flattenGroups — плоский список всех групп дерева (включая вложенные).
+// flattenGroups — flat list of all groups in the tree (including nested groups).
 func flattenGroups(groups []manifest.SettingGroup) []manifest.SettingGroup {
 	out := make([]manifest.SettingGroup, 0, len(groups))
 	for _, g := range groups {

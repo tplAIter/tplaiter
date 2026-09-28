@@ -13,16 +13,16 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// contributeRunner — Runner для glab/gh команд `tplater upgrade`. Пакетная
-// переменная для подмены на execx.RecordingRunner в тестах (стиль repoRunner).
+// contributeRunner — runner for glab/gh commands used by `tplater upgrade`. A
+// package variable replaced with execx.RecordingRunner in tests (like repoRunner).
 var contributeRunner execx.Runner = execx.Exec{}
 
 func init() {
 	rootCmd.AddCommand(newUpgradeCmd())
 }
 
-// newUpgradeCmd создаёт команду `tplater upgrade`: обратный поток —
-// доработки в сгенерированном проекте предлагаются самому шаблону через MR/PR.
+// newUpgradeCmd creates `tplater upgrade`: the reverse flow, where improvements
+// in the generated project are proposed to the template through an MR/PR.
 func newUpgradeCmd() *cobra.Command {
 	var (
 		files []string
@@ -69,7 +69,7 @@ func newUpgradeCmd() *cobra.Command {
 			if interactive {
 				picker = contribute.HuhPicker{In: cmd.InOrStdin(), Out: cmd.OutOrStdout()}
 			} else {
-				picker = contribute.ScriptedPicker{} // неинтерактивно — все кандидаты.
+				picker = contribute.ScriptedPicker{} // non-interactive — all candidates.
 			}
 
 			_, err = contribute.Upgrade(cmd.Context(), contribute.Deps{

@@ -12,8 +12,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// newAuthTestManager строит менеджер с реальным стором (временный home),
-// заданным RecordingRunner и UI, управляемым тестом (In/Interactive).
+// newAuthTestManager builds a manager with a real store (temporary home), a
+// supplied RecordingRunner, and test-controlled UI (In/Interactive).
 func newAuthTestManager(t *testing.T, runner execx.Runner, in string, interactive bool) (*Manager, *auth.Store, *bytes.Buffer) {
 	t.Helper()
 	home := t.TempDir()
@@ -94,7 +94,7 @@ func TestResolveGitAuth_NonInteractiveSkips(t *testing.T) {
 }
 
 func TestResolveGitAuth_InteractiveEnterToken(t *testing.T) {
-	// Выбор "t", затем токен строкой.
+	// Select "t", then enter the token as a line.
 	m, st, _ := newAuthTestManager(t, execx.NewRecordingRunner(), "t\nglpat-typed\n", true)
 	env, err := m.resolveGitAuth(context.Background(), gitlabURL, state.RepoKindGitLab, false)
 	if err != nil {
@@ -130,7 +130,7 @@ func TestResolveGitAuth_InteractiveGlabImportOK(t *testing.T) {
 }
 
 func TestResolveGitAuth_InteractiveGlabMissing(t *testing.T) {
-	// glab не в PATH (LookPath не задан) → ошибка с рецептом.
+	// glab is not in PATH (LookPath is unset), so the error includes instructions.
 	m, _, _ := newAuthTestManager(t, execx.NewRecordingRunner(), "g\n", true)
 	_, err := m.resolveGitAuth(context.Background(), gitlabURL, state.RepoKindGitLab, false)
 	if err == nil {
@@ -144,7 +144,7 @@ func TestResolveGitAuth_InteractiveGlabMissing(t *testing.T) {
 func TestResolveGitAuth_InteractiveGlabNotAuthorized(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	runner.SetLookPath("glab", "/usr/bin/glab")
-	// glab установлен, но не авторизован → ненулевой код возврата.
+	// glab is installed but unauthenticated, so it returns a nonzero status.
 	runner.On("glab", []string{"auth", "token", "--hostname", "gitlab.com"},
 		execx.Response{Err: errors.New("not logged in")})
 

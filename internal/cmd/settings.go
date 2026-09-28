@@ -19,9 +19,9 @@ func init() {
 	rootCmd.AddCommand(newSettingsCmd())
 }
 
-// newSettingsCmd создаёт команду `tplater settings`: просмотр и
-// изменение настроек проекта той же 3-way-механикой, что и `tplater update`, но
-// на текущей версии шаблона.
+// newSettingsCmd creates `tplater settings`: viewing and changing project
+// settings with the same 3-way mechanism as `tplater update`, but on the
+// current template version.
 func newSettingsCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "settings",
@@ -39,7 +39,7 @@ func newSettingsCmd() *cobra.Command {
 	return c
 }
 
-// newSettingsListCmd создаёт `tplater settings list`.
+// newSettingsListCmd creates `tplater settings list`.
 func newSettingsListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -60,7 +60,7 @@ func newSettingsListCmd() *cobra.Command {
 	}
 }
 
-// newSettingsSetCmd создаёт `tplater settings set group=value [...]`.
+// newSettingsSetCmd creates `tplater settings set group=value [...]`.
 func newSettingsSetCmd() *cobra.Command {
 	var (
 		dryRun bool
@@ -96,7 +96,7 @@ func newSettingsSetCmd() *cobra.Command {
 	return c
 }
 
-// newSettingsEditCmd создаёт `tplater settings edit [group]`.
+// newSettingsEditCmd creates `tplater settings edit [group]`.
 func newSettingsEditCmd() *cobra.Command {
 	var (
 		dryRun bool
@@ -134,8 +134,8 @@ func newSettingsEditCmd() *cobra.Command {
 	return c
 }
 
-// settingsDeps собирает зависимости команды settings (manager, home, потоки,
-// опросник) и возвращает cleanup для закрытия стора токенов.
+// settingsDeps assembles settings command dependencies (manager, home, streams,
+// questionnaire) and returns cleanup that closes the token store.
 func settingsDeps(cmd *cobra.Command) (settingscmd.Deps, func(), error) {
 	home, _, err := state.EnsureHome()
 	if err != nil {
@@ -158,8 +158,8 @@ func settingsDeps(cmd *cobra.Command) (settingscmd.Deps, func(), error) {
 	return d, func() { _ = st.Close() }, nil
 }
 
-// mapExit транслирует [update.ExitCodeError] (через settingscmd) в [ExitError]
-// для процессного кода выхода (2 — оставшиеся конфликт-маркеры).
+// mapExit translates [update.ExitCodeError] (through settingscmd) into
+// [ExitError] for the process exit code (2 means remaining conflict markers).
 func mapExit(err error) error {
 	var ece *update.ExitCodeError
 	if errors.As(err, &ece) {

@@ -98,8 +98,8 @@ func TestMaybeSuggest_DisabledByConfig(t *testing.T) {
 	}
 
 	r := execx.NewRecordingRunner()
-	// Ни одного скрипта на ls-remote не заводим — вызов должен быть даже не
-	// предпринят при updates.check=false.
+	// Do not register any ls-remote script: the call must not even be attempted
+	// when updates.check=false.
 	var out bytes.Buffer
 	MaybeSuggest(context.Background(), r, home, "v1.0.0", time.Now(), &out)
 
@@ -123,8 +123,8 @@ func TestMaybeSuggest_NetworkErrorSwallowedSilently(t *testing.T) {
 		t.Errorf("MaybeSuggest() printed %q on network error, want silence", out.String())
 	}
 
-	// Таймстемп всё равно должен продвинуться — сорвавшаяся проверка не
-	// повторяется на каждом следующем запуске (см. suggest.go).
+	// The timestamp must still advance: a failed check is not repeated on every
+	// subsequent launch (see suggest.go).
 	rs, err := state.LoadRunState(home)
 	if err != nil {
 		t.Fatalf("LoadRunState() error = %v", err)

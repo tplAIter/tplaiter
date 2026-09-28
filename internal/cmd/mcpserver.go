@@ -15,12 +15,12 @@ func init() {
 	rootCmd.AddCommand(newMCPServerCmd())
 }
 
-// newMCPServerCmd создаёт команду `tplaiter mcp-server`: выставляет
-// команды tplaiter как MCP-tools для AI-агентов через stdio JSON-RPC.
+// newMCPServerCmd creates `tplaiter mcp-server`: exposes tplaiter commands as
+// MCP tools for AI agents over stdio JSON-RPC.
 //
-// Архитектура — subprocess-паттерн: каждый tool исполняет тот же бинарник
-// tplaiter отдельным процессом (без in-process вызова cobra — глобальное
-// состояние флагов протекало бы между вызовами). См. internal/mcpsrv.
+// Architecture uses a subprocess pattern: each tool runs the same tplaiter
+// binary in a separate process (rather than calling cobra in-process, which
+// would leak global flag state between calls). See internal/mcpsrv.
 func newMCPServerCmd() *cobra.Command {
 	var printConfig string
 	var direct bool
@@ -35,11 +35,11 @@ func newMCPServerCmd() *cobra.Command {
 			"Логи сервера идут в stderr (stdout занят протоколом). " +
 			"`--print-config claude|cursor|vscode` печатает готовый сниппет конфигурации клиента.",
 		Args: cobra.NoArgs,
-		// PersistentPreRunE переопределяет rootPreRun (first-run приветствие,
-		// suggest-проверка, синхронизация реестра): все они пишут в stdout и/или
-		// ходят в сеть — недопустимо, когда stdout занят MCP-протоколом. Дочерние
-		// подпроцессы tplaiter, которые исполняют tools, проходят rootPreRun
-		// штатно (это отдельные процессы со своим stdout, захватываемым сервером).
+		// PersistentPreRunE overrides rootPreRun (first-run greeting, suggest check,
+		// and registry sync): all write to stdout and/or use the network, which is
+		// forbidden while stdout carries the MCP protocol. Child tplaiter processes
+		// executing tools run rootPreRun normally, as separate processes whose
+		// stdout is captured by the server.
 		PersistentPreRunE: func(*cobra.Command, []string) error { return nil },
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			exe, err := os.Executable()

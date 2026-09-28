@@ -59,7 +59,7 @@ func TestResolveVersion_FallbackDev(t *testing.T) {
 	defer func() { version = old }()
 
 	version = ""
-	// В `go test` BuildInfo.Main.Version обычно пуст/"(devel)", поэтому ожидаем dev.
+	// In `go test`, BuildInfo.Main.Version is usually empty/"(devel)", so expect dev.
 	got := resolveVersion()
 	if got == "" {
 		t.Error("resolveVersion() must never return empty string")

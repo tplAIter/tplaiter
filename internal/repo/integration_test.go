@@ -14,11 +14,11 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// gitExec — реальный git-раннер для построения тестовых репозиториев (через
-// internal/execx, а не прямой os/exec — depguard).
+// gitExec is the real git runner for building test repositories (through
+// internal/execx rather than direct os/exec, as required by depguard).
 var gitExec = execx.Exec{}
 
-// requireGit пропускает тест, если git недоступен (например, в урезанном CI).
+// requireGit skips the test when git is unavailable, for example in minimal CI.
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := gitExec.LookPath("git"); err != nil {
@@ -26,8 +26,8 @@ func requireGit(t *testing.T) {
 	}
 }
 
-// gitEnv — детерминированное окружение git для коммитов без глобального конфига
-// (дополняет os.Environ() внутри execx).
+// gitEnv is deterministic git environment for commits without global config
+// (execx adds it to os.Environ()).
 func gitEnv() []string {
 	return []string{
 		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@e",
@@ -54,8 +54,8 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// initOrigin создаёт «удалённый» репозиторий в новом каталоге с веткой main и
-// включённым partial-clone (uploadpack.allowFilter) для --filter=blob:none.
+// initOrigin creates a "remote" repository in a new directory with a main
+// branch and partial clone enabled (uploadpack.allowFilter) for --filter=blob:none.
 func initOrigin(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "origin")
@@ -86,7 +86,7 @@ metadata:
     infra: [kafka]
 `
 
-// newIntegrationManager строит менеджер с реальным git и изолированным home/стором.
+// newIntegrationManager builds a manager with real git and an isolated home/store.
 func newIntegrationManager(t *testing.T) *Manager {
 	t.Helper()
 	home := filepath.Join(t.TempDir(), "home")
@@ -123,7 +123,7 @@ func TestIntegration_SingleRepoLifecycle(t *testing.T) {
 		t.Fatalf("Add: %v", err)
 	}
 
-	// List: один репозиторий, один шаблон, тип git (file://).
+	// List: one repository, one template, kind git (file://).
 	infos, err := m.List()
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -135,7 +135,7 @@ func TestIntegration_SingleRepoLifecycle(t *testing.T) {
 		t.Errorf("тип = %q, want git", infos[0].Ref.Type)
 	}
 
-	// Индекс: два стабильных тега, старший — v1.1.0.
+	// Index: two stable tags, highest is v1.1.0.
 	res, err := m.ResolveRef("go-service")
 	if err != nil {
 		t.Fatalf("ResolveRef: %v", err)
@@ -144,10 +144,10 @@ func TestIntegration_SingleRepoLifecycle(t *testing.T) {
 		t.Errorf("resolve default = %+v, want v1.1.0", res)
 	}
 
-	// Checkout на старый тег даёт содержимое той версии.
+	// Checkout at the old tag returns that version's content.
 	assertCheckout(ctx, t, m, "example", "v1.0.0", ".", "hello.txt", "v1.0.0\n")
 
-	// Update: добавляем тег на удалённой стороне, fetch должен его увидеть.
+	// Update: add a tag on the remote side; fetch must see it.
 	runGit(t, origin, "tag", "v1.2.0")
 	if err := m.Update(ctx, "example"); err != nil {
 		t.Fatalf("Update: %v", err)
@@ -160,7 +160,7 @@ func TestIntegration_SingleRepoLifecycle(t *testing.T) {
 		t.Errorf("после update старший тег = %q, want v1.2.0", res.Version)
 	}
 
-	// Remove: конфиг, индекс и клон исчезают.
+	// Remove: config, index, and clone disappear.
 	if err := m.Remove("example"); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -214,7 +214,7 @@ metadata:
 		t.Fatalf("List = %+v, want 2 шаблона", infos)
 	}
 
-	// alpha имеет namespaced-тег alpha/v0.1.0.
+	// alpha has the namespaced tag alpha/v0.1.0.
 	res, err := m.ResolveRef("example/alpha")
 	if err != nil {
 		t.Fatalf("ResolveRef alpha: %v", err)
@@ -222,7 +222,7 @@ metadata:
 	if res.GitRef != "alpha/v0.1.0" || res.Version != "v0.1.0" {
 		t.Errorf("alpha resolve = %+v", res)
 	}
-	// beta без тегов → latest на ветке.
+	// beta has no tags, so latest uses the branch.
 	resB, err := m.ResolveRef("example/beta")
 	if err != nil {
 		t.Fatalf("ResolveRef beta: %v", err)
@@ -231,7 +231,7 @@ metadata:
 		t.Errorf("beta resolve = %+v, want latest", resB)
 	}
 
-	// Checkout alpha на теге даёт нужный подкаталог.
+	// Checking out alpha at its tag returns the expected subdirectory.
 	assertCheckout(ctx, t, m, "example", "alpha/v0.1.0", "alpha", "marker.txt", "alpha-v0.1.0\n")
 }
 
@@ -240,14 +240,14 @@ func TestIntegration_AutoScanNoRepoManifest(t *testing.T) {
 	ctx := context.Background()
 
 	origin := initOrigin(t)
-	// Нет repo.manifest.yaml в корне — авто-скан */template.manifest.yaml.
+	// No repo.manifest.yaml at the root: auto-scan */template.manifest.yaml.
 	writeFile(t, filepath.Join(origin, "svc-a", templateManifestName), `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
   name: svc-a
   version: "1.0.0"
 `)
-	// Глубина 2: group/svc-b/template.manifest.yaml
+	// Depth 2: group/svc-b/template.manifest.yaml.
 	writeFile(t, filepath.Join(origin, "group", "svc-b", templateManifestName), `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -274,7 +274,7 @@ func TestIntegration_BrokenManifestFailsAdd(t *testing.T) {
 	ctx := context.Background()
 
 	origin := initOrigin(t)
-	// Манифест без обязательных полей metadata.name/version → Validate падает.
+	// A manifest without required metadata.name/version fields makes Validate fail.
 	writeFile(t, filepath.Join(origin, templateManifestName), `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -290,7 +290,7 @@ metadata:
 	if !strings.Contains(err.Error(), templateManifestName) {
 		t.Errorf("ошибка без пути к манифесту: %v", err)
 	}
-	// Репозиторий НЕ зарегистрирован, клон удалён.
+	// The repository is NOT registered and the clone is removed.
 	infos, _ := m.List()
 	if len(infos) != 0 {
 		t.Errorf("битый репозиторий зарегистрирован: %+v", infos)
@@ -300,8 +300,8 @@ metadata:
 	}
 }
 
-// assertCheckout проверяет, что Checkout(alias, ref, templatePath) отдаёт fs.FS,
-// в котором файл wantFile содержит wantContent.
+// assertCheckout verifies that Checkout(alias, ref, templatePath) returns an
+// fs.FS whose wantFile contains wantContent.
 func assertCheckout(ctx context.Context, t *testing.T, m *Manager, alias, ref, templatePath, wantFile, wantContent string) {
 	t.Helper()
 	fsys, cleanup, err := m.Checkout(ctx, alias, ref, templatePath)

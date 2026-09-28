@@ -11,9 +11,9 @@ import (
 	"syscall"
 )
 
-// ExitError оборачивает ненулевой код возврата команды. errors.As позволяет
-// вызывающему коду отличить «команда отработала и вернула не-0» от «команду
-// не удалось запустить вовсе» (последнее возвращается как есть, без обёртки).
+// ExitError wraps a non-zero command exit code. errors.As lets callers
+// distinguish "the command ran and returned non-zero" from "the command could
+// not be started at all" (the latter is returned as-is, without wrapping).
 type ExitError struct {
 	Name     string
 	Args     []string
@@ -34,11 +34,10 @@ func firstLine(s string) string {
 	return s
 }
 
-// Exec — реализация [Runner] поверх os/exec. Значение с нулевым состоянием
-// готово к использованию.
+// Exec — [Runner] implementation backed by os/exec. Its zero value is ready to use.
 type Exec struct{}
 
-// Run исполняет команду через os/exec.CommandContext.
+// Run executes a command through os/exec.CommandContext.
 func (Exec) Run(ctx context.Context, name string, args []string, opts Options) (Result, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = opts.Dir
@@ -76,41 +75,38 @@ func (Exec) Run(ctx context.Context, name string, args []string, opts Options) (
 		res.ExitCode = exitErr.ExitCode()
 		return res, &ExitError{Name: name, Args: args, ExitCode: res.ExitCode, Stderr: res.Stderr}
 	default:
-		// Бинарник не найден, не удалось создать процесс и т.п. — не код
-		// возврата, а сбой запуска. exitCode -1 сигнализирует «не выполнялось».
+		// Binary not found, process could not be created, etc. — a launch failure,
+		// not an exit code. exitCode -1 signals "did not run".
 		res.ExitCode = -1
 		return res, fmt.Errorf("execx: run %q: %w", name, runErr)
 	}
 }
 
-// LookPath ищет путь к бинарнику через exec.LookPath.
+// LookPath finds a binary path through exec.LookPath.
 func (Exec) LookPath(name string) (string, error) {
 	return exec.LookPath(name)
 }
 
-// runWithSignalForwarding запускает cmd в отдельной группе процессов и, пока
-// он не завершится, пересылает всей группе в фоне каждый сигнал, полученный
-// из signals (см. [Options.Signals]). cmd.Run() не подходит здесь: нужен
-// доступ к cmd.Process между Start и Wait, чтобы слать сигналы — поэтому
-// Start/Wait разнесены явно.
+// runWithSignalForwarding starts cmd in a separate process group and, until it
+// exits, forwards every signal received from signals to the whole group in the
+// background (see [Options.Signals]). cmd.Run() is unsuitable here: signals
+// require access to cmd.Process between Start and Wait, so Start/Wait are explicit.
 //
-// Группа процессов (Setpgid), а не просто cmd.Process.Signal, — потому что
-// исполняемая команда почти всегда `$SHELL -c "<run>"`: прямой потомок —
-// сама оболочка, а не реальная программа. У некоторых оболочек (замечено на
-// системном /bin/sh) обработка перехваченного через trap сигнала откладывается
-// до завершения текущей foreground-команды — то есть сигнал, посланный только
-// оболочке, до фактической команды может не долетать своевременно. Setpgid
-// переносит оболочку и всех её потомков в новую группу с pgid == pid самой
-// оболочки; посылка сигнала всей группе (kill(-pgid, sig)) достаёт реальный
-// процесс напрямую, независимо от того, как его родитель-shell обрабатывает
-// собственные сигналы.
+// A process group (Setpgid), rather than cmd.Process.Signal alone, is used
+// because the command is almost always `$SHELL -c "<run>"`: the direct child is
+// the shell, not the actual program. Some shells (observed with system /bin/sh)
+// defer a trapped signal until the current foreground command ends; a signal
+// sent only to the shell may therefore not reach the actual command promptly.
+// Setpgid moves the shell and all descendants into a new group with pgid equal
+// to the shell PID; signaling the whole group (kill(-pgid, sig)) reaches the
+// actual process directly, regardless of how its parent shell handles signals.
 func runWithSignalForwarding(cmd *exec.Cmd, signals <-chan os.Signal) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	pgid := cmd.Process.Pid // Setpgid без явного Pgid делает pgid == pid лидера.
+	pgid := cmd.Process.Pid // Setpgid without an explicit Pgid makes pgid == leader PID.
 
 	done := make(chan struct{})
 	defer close(done)
@@ -131,10 +127,10 @@ func runWithSignalForwarding(cmd *exec.Cmd, signals <-chan os.Signal) error {
 	return cmd.Wait()
 }
 
-// forwardSignal посылает sig всей группе процессов pgid (см.
-// [runWithSignalForwarding]). Ошибка (например, группа уже завершилась к
-// моменту доставки сигнала) осознанно игнорируется — итоговый статус команды
-// в любом случае определит cmd.Wait.
+// forwardSignal sends sig to the whole process group pgid (see
+// [runWithSignalForwarding]). Errors (for example, the group already exiting
+// when the signal is delivered) are intentionally ignored; cmd.Wait determines
+// the command's final status in any case.
 func forwardSignal(pgid int, sig os.Signal) {
 	if s, ok := sig.(syscall.Signal); ok {
 		_ = syscall.Kill(-pgid, s)

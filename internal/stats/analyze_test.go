@@ -12,7 +12,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// writeTree материализует map относительный-путь→содержимое в каталоге dir.
+// writeTree materializes a relative-path-to-content map in dir.
 func writeTree(t *testing.T, dir string, files map[string]string) {
 	t.Helper()
 	for rel, content := range files {
@@ -34,7 +34,7 @@ func refFiles(m map[string]string) map[string][]byte {
 	return out
 }
 
-// findFile возвращает FileStat по пути (или проваливает тест).
+// findFile returns FileStat by path (or fails the test).
 func findFile(t *testing.T, rep *stats.Report, path string) stats.FileStat {
 	t.Helper()
 	for _, f := range rep.Files {
@@ -55,7 +55,7 @@ func analyze(t *testing.T, in stats.AnalyzeInput) *stats.Report {
 	return rep
 }
 
-// Нулевой дрейф: work == эталон → score 0, все identical.
+// Zero drift: work == reference -> score 0, all identical.
 func TestAnalyze_ZeroDrift(t *testing.T) {
 	work := t.TempDir()
 	tree := map[string]string{"a.txt": "x\n", "dir/b.txt": "y\n"}
@@ -76,11 +76,11 @@ func TestAnalyze_ZeroDrift(t *testing.T) {
 	}
 }
 
-// Изменён один файл: статус/±/% корректны, score > 0.
+// One file changed: status/+/-% are correct, score > 0.
 func TestAnalyze_ModifiedFile(t *testing.T) {
 	work := t.TempDir()
 	ref := map[string]string{"m.txt": "a\nb\nc\nd"}
-	writeTree(t, work, map[string]string{"m.txt": "a\nb\nc\nX"}) // 1 строка из 4 изменена
+	writeTree(t, work, map[string]string{"m.txt": "a\nb\nc\nX"}) // 1 of 4 lines changed
 
 	rep := analyze(t, stats.AnalyzeInput{RefFiles: refFiles(ref), WorkDir: work, HistAvailable: false})
 
@@ -97,17 +97,17 @@ func TestAnalyze_ModifiedFile(t *testing.T) {
 	if f.Percent != 50 {
 		t.Errorf("percent = %v, ожидался 50", f.Percent)
 	}
-	// auto: 50 * 0.5 = 25 → округл. 25.
+	// auto: 50 * 0.5 = 25 -> rounded 25.
 	if rep.Score != 25 {
 		t.Errorf("score = %d, ожидался 25", rep.Score)
 	}
 }
 
-// Удалён эталонный файл: manual-only, вклад 100.
+// Reference file deleted: manual-only, contribution 100.
 func TestAnalyze_DeletedFile(t *testing.T) {
 	work := t.TempDir()
 	ref := map[string]string{"keep.txt": "x\n", "gone.txt": "bye\n"}
-	writeTree(t, work, map[string]string{"keep.txt": "x\n"}) // gone.txt отсутствует
+	writeTree(t, work, map[string]string{"keep.txt": "x\n"}) // gone.txt is absent
 
 	rep := analyze(t, stats.AnalyzeInput{RefFiles: refFiles(ref), WorkDir: work})
 
@@ -121,7 +121,7 @@ func TestAnalyze_DeletedFile(t *testing.T) {
 	}
 }
 
-// Extra-файл: попадает в extras, не влияет на score.
+// Extra file: appears in extras and does not affect score.
 func TestAnalyze_ExtraFile(t *testing.T) {
 	work := t.TempDir()
 	ref := map[string]string{"a.txt": "x\n"}
@@ -142,7 +142,7 @@ func TestAnalyze_ExtraFile(t *testing.T) {
 	}
 }
 
-// Служебные каталоги .tplaiter/ и .git/ исключены из extras.
+// Service directories .tplaiter/ and .git/ are excluded from extras.
 func TestAnalyze_ExcludesServiceDirs(t *testing.T) {
 	work := t.TempDir()
 	ref := map[string]string{"a.txt": "x\n"}
@@ -158,11 +158,11 @@ func TestAnalyze_ExcludesServiceDirs(t *testing.T) {
 	}
 }
 
-// Сломанный якорь CODEGEN: файл manual-only, попадает в brokenAnchors.
+// Broken CODEGEN anchor: file is manual-only and appears in brokenAnchors.
 func TestAnalyze_BrokenAnchor(t *testing.T) {
 	work := t.TempDir()
 	ref := map[string]string{"wiring.txt": "pre\n// CODEGEN:WIRING\npost\n"}
-	writeTree(t, work, map[string]string{"wiring.txt": "pre\npost\n"}) // якорь удалён
+	writeTree(t, work, map[string]string{"wiring.txt": "pre\npost\n"}) // anchor removed
 
 	gens := []manifest.Generator{{
 		Kind:    "handler",
@@ -185,7 +185,7 @@ func TestAnalyze_BrokenAnchor(t *testing.T) {
 	}
 }
 
-// Целый якорь (присутствует в work) не считается сломанным.
+// An intact anchor (present in work) is not broken.
 func TestAnalyze_IntactAnchor(t *testing.T) {
 	work := t.TempDir()
 	ref := map[string]string{"wiring.txt": "pre\n// CODEGEN:WIRING\npost\n"}
@@ -205,7 +205,7 @@ func TestAnalyze_IntactAnchor(t *testing.T) {
 	}
 }
 
-// conflict-prone vs auto: churn-файл → conflict-prone, вне churn → auto.
+// conflict-prone vs auto: churn file -> conflict-prone, outside churn -> auto.
 func TestAnalyze_ConflictProneVsAuto(t *testing.T) {
 	work := t.TempDir()
 	ref := map[string]string{"churned.txt": "a\nb", "stable.txt": "a\nb"}
@@ -226,7 +226,7 @@ func TestAnalyze_ConflictProneVsAuto(t *testing.T) {
 	}
 }
 
-// copyWithoutRender-артефакт: правка → manual-only.
+// copyWithoutRender artifact: an edit -> manual-only.
 func TestAnalyze_CopyWithoutRenderManualOnly(t *testing.T) {
 	work := t.TempDir()
 	ref := map[string]string{"dashboards/app.json": "{\"a\":1}"}
@@ -243,7 +243,7 @@ func TestAnalyze_CopyWithoutRenderManualOnly(t *testing.T) {
 	}
 }
 
-// Бинарный изменённый файл: modified-binary без построчной метрики.
+// Modified binary file: modified-binary without a line metric.
 func TestAnalyze_ModifiedBinary(t *testing.T) {
 	work := t.TempDir()
 	ref := map[string][]byte{"bin.dat": {0x00, 0x01, 0x02}}
@@ -260,22 +260,22 @@ func TestAnalyze_ModifiedBinary(t *testing.T) {
 	if f.AddedLines != 0 || f.RemovedLines != 0 || f.Percent != 0 {
 		t.Errorf("бинарный файл не должен иметь построчной метрики: %+v", f)
 	}
-	// modified-binary auto: база 100 * 0.5 = 50.
+	// modified-binary auto: base 100 * 0.5 = 50.
 	if rep.Score != 50 {
 		t.Errorf("score = %d, ожидался 50", rep.Score)
 	}
 }
 
-// Монотонность: больше правок → выше score.
+// Monotonicity: more edits -> higher score.
 func TestAnalyze_ScoreMonotonic(t *testing.T) {
 	ref := map[string]string{"m.txt": "a\nb\nc\nd"}
 
 	work1 := t.TempDir()
-	writeTree(t, work1, map[string]string{"m.txt": "a\nb\nc\nX"}) // 1 строка
+	writeTree(t, work1, map[string]string{"m.txt": "a\nb\nc\nX"}) // 1 line
 	rep1 := analyze(t, stats.AnalyzeInput{RefFiles: refFiles(ref), WorkDir: work1})
 
 	work2 := t.TempDir()
-	writeTree(t, work2, map[string]string{"m.txt": "a\nb\nY\nX"}) // 2 строки
+	writeTree(t, work2, map[string]string{"m.txt": "a\nb\nY\nX"}) // 2 lines
 	rep2 := analyze(t, stats.AnalyzeInput{RefFiles: refFiles(ref), WorkDir: work2})
 
 	if rep2.Score <= rep1.Score {
@@ -283,7 +283,7 @@ func TestAnalyze_ScoreMonotonic(t *testing.T) {
 	}
 }
 
-// --json golden: стабильная схема.
+// --json golden: stable schema.
 func TestAnalyze_JSONGolden(t *testing.T) {
 	work := t.TempDir()
 	ref := map[string]string{
@@ -343,7 +343,7 @@ func TestAnalyze_JSONGolden(t *testing.T) {
 	}
 }
 
-// Текстовый Render на дрейфующем отчёте: таблица топ-N со всеми секциями.
+// Text Render on a drifting report: top-N table with all sections.
 func TestReport_RenderText(t *testing.T) {
 	work := t.TempDir()
 	ref := map[string]string{

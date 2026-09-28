@@ -10,7 +10,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// openTestStore открывает стор в изолированном временном домашнем каталоге.
+// openTestStore opens the store in an isolated temporary home directory.
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
 	home := filepath.Join(t.TempDir(), "tplater-home")
@@ -52,7 +52,7 @@ func TestStore_PutGetUpdateDelete(t *testing.T) {
 		t.Error("Get() CreatedAt is zero, want set")
 	}
 
-	// Upsert: тот же host/repo/tool -> обновление, id не меняется.
+	// Upsert: same host/repo/tool -> update, ID does not change.
 	id2, err := st.Put(Credential{
 		Host:  "git.example.test",
 		Repo:  "templates/cli",
@@ -85,8 +85,8 @@ func TestStore_HostLevelUpsert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
-	// Повторный host-level Put (repo NULL) должен обновить ту же запись, а не
-	// создать дубль (проверяем ручной upsert поверх NULL в UNIQUE).
+	// A repeated host-level Put (repo NULL) must update the same entry rather
+	// than create a duplicate (checking the manual upsert over NULL in UNIQUE).
 	id2, err := st.Put(Credential{Host: "git.example.test", Tool: "gitlab", Token: "host-token-2"})
 	if err != nil {
 		t.Fatalf("Put() error = %v", err)
@@ -118,7 +118,7 @@ func TestStore_GetPriorityRepoOverHost(t *testing.T) {
 		t.Errorf("Get(repo) = %q ok=%v, want REPO", got.Token, ok)
 	}
 
-	// Нет точного repo-match -> откат к host-level.
+	// No exact repo match -> fall back to host level.
 	got, ok, _ = st.Get("git.example.test", "other/app", "gitlab")
 	if !ok || got.Token != "HOST" {
 		t.Errorf("Get(unknown repo) = %q ok=%v, want HOST fallback", got.Token, ok)
@@ -146,7 +146,7 @@ func TestStore_MaskedListHidesToken(t *testing.T) {
 	if masked[0].Token != "ab...yz" {
 		t.Errorf("MaskedList() token = %q, want %q", masked[0].Token, "ab...yz")
 	}
-	// Полный токен не должен просачиваться.
+	// The full token must not leak.
 	full, _ := st.List()
 	if full[0].Token != "abcdef1234567890xyz" {
 		t.Errorf("List() token = %q, want full value", full[0].Token)

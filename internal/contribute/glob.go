@@ -5,21 +5,21 @@ import (
 	"strings"
 )
 
-// Сопоставление slash-путей с glob-паттернами. Продублировано из
-// internal/engine/glob.go (globToRegexp/segmentToRegexp/writeDoubleStarSegment)
-// АДДИТИВНО — ровно как это уже сделано в internal/stats/glob.go: там эти
-// функции не экспортированы, а расширять engine ради одного матчера не хочется.
-// Язык глобов тот же: `*` в пределах сегмента, `**` как отдельный
-// сегмент (ноль или более каталогов), `?` — один символ кроме `/`. Матчер нужен
-// upgrade'у для двух работ: отбор extra-файлов по --files и определение
-// принадлежности файла условной вертикали (files-правила манифеста).
+// Matching slash-separated paths against glob patterns. Duplicated from
+// internal/engine/glob.go (globToRegexp/segmentToRegexp/writeDoubleStarSegment).
+// Additive, exactly as in internal/stats/glob.go: those functions are not
+// exported there, and expanding engine for one matcher is undesirable.
+// The glob language is the same: `*` within a segment, `**` as a separate
+// segment (zero or more directories), `?` as one character except `/`. The
+// matcher serves upgrade for selecting --files extras and determining whether
+// a file belongs to a conditional vertical (manifest files rules).
 
-// globMatcher — набор глобов, скомпилированных в регулярные выражения.
+// globMatcher — set of globs compiled into regular expressions.
 type globMatcher struct {
 	res []*regexp.Regexp
 }
 
-// newGlobMatcher компилирует список глобов в матчер.
+// newGlobMatcher compiles a list of globs into a matcher.
 func newGlobMatcher(globs []string) *globMatcher {
 	m := &globMatcher{res: make([]*regexp.Regexp, 0, len(globs))}
 	for _, g := range globs {
@@ -28,7 +28,7 @@ func newGlobMatcher(globs []string) *globMatcher {
 	return m
 }
 
-// match сообщает, соответствует ли slash-путь хотя бы одному глобу.
+// match reports whether a slash-separated path matches at least one glob.
 func (m *globMatcher) match(path string) bool {
 	for _, re := range m.res {
 		if re.MatchString(path) {
@@ -38,8 +38,8 @@ func (m *globMatcher) match(path string) bool {
 	return false
 }
 
-// globToRegexp транслирует glob (с `**` как отдельным сегментом — ноль или
-// более каталогов) в якорное регулярное выражение. Копия engine.globToRegexp.
+// globToRegexp translates a glob (with `**` as a separate segment representing
+// zero or more directories) into an anchored regular expression. Copy of engine.globToRegexp.
 func globToRegexp(glob string) *regexp.Regexp {
 	segs := strings.Split(glob, "/")
 	var b strings.Builder
@@ -61,7 +61,7 @@ func globToRegexp(glob string) *regexp.Regexp {
 	return regexp.MustCompile(b.String())
 }
 
-// writeDoubleStarSegment дописывает regexp для сегмента `**`. Копия
+// writeDoubleStarSegment appends the regexp for a `**` segment. Copy of
 // engine.writeDoubleStarSegment.
 func writeDoubleStarSegment(b *strings.Builder, i, total int, needSlash bool) {
 	if i == 0 {
@@ -78,7 +78,7 @@ func writeDoubleStarSegment(b *strings.Builder, i, total int, needSlash bool) {
 	b.WriteString("(?:.*/)?")
 }
 
-// segmentToRegexp транслирует один сегмент пути в regexp. Копия
+// segmentToRegexp translates one path segment into a regexp. Copy of
 // engine.segmentToRegexp.
 func segmentToRegexp(seg string) string {
 	var b strings.Builder

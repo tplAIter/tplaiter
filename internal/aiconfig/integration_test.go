@@ -9,10 +9,10 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// TestGenFlowFromResolvedSettings воспроизводит путь `tplater ai gen`: разрешает
-// настройки проекта (settings.Resolve), валидирует источник ai-config против
-// манифеста шаблона и рендерит все таргеты в корень проекта, гейтя модули по
-// ActiveValues. Библиотечный e2e — не зависит от пакета cmd.
+// TestGenFlowFromResolvedSettings reproduces the `tplater ai gen` path: it
+// resolves project settings (settings.Resolve), validates ai-config against
+// the template manifest, and renders all targets into the project root, gating
+// modules by ActiveValues. This library e2e does not depend on the cmd package.
 func TestGenFlowFromResolvedSettings(t *testing.T) {
 	tpl := fixtureTemplate()
 
@@ -50,7 +50,7 @@ func TestGenFlowFromResolvedSettings(t *testing.T) {
 			t.Errorf("expected %s: %v", rel, err)
 		}
 	}
-	// Гейтинг: postgres/kafka on -> модули присутствуют.
+	// Gating: postgres/kafka on -> modules are present.
 	if _, err := os.Stat(filepath.Join(target, ".cursor", "rules", "02-models.mdc")); err != nil {
 		t.Errorf("02-models.mdc must exist (database=postgres): %v", err)
 	}
@@ -59,8 +59,8 @@ func TestGenFlowFromResolvedSettings(t *testing.T) {
 	}
 }
 
-// TestGenFlowKafkaOff проверяет гейтинг в отрицательную сторону: без kafka в
-// brokers модуль 06-kafka не должен рендериться.
+// TestGenFlowKafkaOff checks gating in the negative direction: without kafka in
+// brokers, module 06-kafka must not be rendered.
 func TestGenFlowKafkaOff(t *testing.T) {
 	tpl := fixtureTemplate()
 	resolved, err := settings.Resolve(tpl, settings.Values{"database": "none"})

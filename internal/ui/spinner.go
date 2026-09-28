@@ -13,19 +13,17 @@ import (
 	"golang.org/x/term"
 )
 
-// spinnerFrames — набор кадров анимации (bubbles/spinner.MiniDot: тот же
-// curated frame-set, что charm использует в bubbletea-приложениях, без
-// заведения полноценной bubbletea.Program для одного индикатора прогресса).
+// spinnerFrames — animation frames (bubbles/spinner.MiniDot's curated frame set,
+// without creating a full bubbletea.Program for one progress indicator).
 var spinnerFrames = spinner.MiniDot
 
-// Spinner — минимальный индикатор прогресса длинных операций (repo add
-// clone, repo update fetch, update/new рендер). Анимация — ТОЛЬКО при TTY
-// (см. [Spinner.tty]); иначе Start печатает сообщение один раз как обычную
-// строку без возврата каретки — то же самое, что вызывающий код делал до
-// появления Spinner (см. usage в internal/repo/manager.go).
+// Spinner — minimal progress indicator for long operations (repo add clone, repo
+// update fetch, update/new render). Animation is ONLY on TTY (see [Spinner.tty]);
+// otherwise Start prints one ordinary line without carriage return, as callers
+// did before Spinner (see internal/repo/manager.go usage).
 //
-// Пишет в переданный w, который должен быть stderr (реализация реализацию, п.5:
-// "спиннер пишет в stderr", чтобы не мешать разбору stdout скриптами/тестами).
+// Writes to w, which should be stderr (the contract says the spinner writes to
+// stderr so scripts/tests can parse stdout undisturbed).
 type Spinner struct {
 	w   io.Writer
 	pal Palette
@@ -39,14 +37,14 @@ type Spinner struct {
 	label   string
 }
 
-// NewSpinner создаёт спиннер, пишущий в w (обычно cmd.ErrOrStderr()).
+// NewSpinner creates a spinner writing to w (usually cmd.ErrOrStderr()).
 func NewSpinner(w io.Writer, pal Palette) *Spinner {
 	return &Spinner{w: w, pal: pal, tty: isTerminalWriter(w)}
 }
 
-// Start начинает анимацию с сообщением, отрендеренным по format/a (fmt.Sprintf).
-// Без TTY — просто печатает сообщение один раз (см. doc Spinner). Повторный
-// Start без предшествующего Stop останавливает предыдущую анимацию.
+// Start begins animation with a message rendered by format/a (fmt.Sprintf).
+// Without TTY it prints once (see Spinner docs). A repeated Start stops the
+// previous animation first.
 func (s *Spinner) Start(format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
 
@@ -85,9 +83,8 @@ func (s *Spinner) loop(ticker *time.Ticker, done, stopped chan struct{}) {
 	}
 }
 
-// Stop останавливает анимацию (если она была) и очищает её строку, чтобы
-// следующий Fprintln начинался с чистого начала строки. Без TTY — no-op:
-// Start уже напечатал сообщение один раз, стирать нечего.
+// Stop stops animation (if any) and clears its line so the next Fprintln starts
+// cleanly. Without TTY it is a no-op: Start printed once and there is nothing to erase.
 func (s *Spinner) Stop() {
 	if !s.tty || s.done == nil {
 		return
@@ -112,10 +109,9 @@ func (s *Spinner) stopAnimation() {
 	s.stopped = nil
 }
 
-// isTerminalWriter сообщает, подключён ли w к терминалу. Не-*os.File (в
-// частности, любой io.Writer из тестов — bytes.Buffer, cmd.ErrOrStderr()
-// подмена и т.п.) всегда считается не-TTY — этим и обеспечивается юнит-
-// тестируемость Spinner без реальной подмены изолятора TTY.
+// isTerminalWriter reports whether w is connected to a terminal. Non-*os.File
+// writers (including test io.Writers such as bytes.Buffer and cmd.ErrOrStderr
+// substitutes) are always non-TTY, enabling Spinner unit tests without a real TTY.
 func isTerminalWriter(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	if !ok {

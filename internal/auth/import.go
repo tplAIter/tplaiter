@@ -8,17 +8,17 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
-// ImportFromTool получает токен из CLI-инструмента `bin` (`glab`/`gh`) командой
-// `<bin> auth token [--hostname <host>]` через runner и сохраняет его в стор под
-// инструментом `tool` для хоста `host`. Возвращает id сохранённой записи.
+// ImportFromTool obtains a token from the `bin` CLI tool (`glab`/`gh`) using
+// `<bin> auth token [--hostname <host>]` through runner and stores it under
+// tool `tool` for host `host`. Returns the ID of the saved record.
 //
-// Вынесено в переиспользуемую функцию: её вызывают и команда
-// `tplater auth import-glab|import-gh`, и интерактивный auth-флоу `repo add`.
-// Все внешние вызовы идут через [execx.Runner], поэтому логика мокается в юнитах
-// без реальных glab/gh.
+// This is a reusable function called by both the `tplater auth
+// import-glab|import-gh` command and the interactive `repo add` auth flow.
+// All external calls go through [execx.Runner], so the logic can be mocked in
+// unit tests without real glab/gh binaries.
 //
-// Отсутствие бинарника в PATH — осмысленная ошибка с рецептом (не паника):
-// вызывающий код может показать её пользователю и предложить установку.
+// A missing binary in PATH is a meaningful actionable error (not a panic): the
+// caller can show it to the user and suggest installation.
 func ImportFromTool(ctx context.Context, s *Store, runner execx.Runner, bin, tool, host string) (int64, error) {
 	if _, err := runner.LookPath(bin); err != nil {
 		return 0, fmt.Errorf("auth: %s не найден в PATH — установите его и повторите (%s auth login)", bin, bin)

@@ -71,7 +71,7 @@ func TestLoadIndex_CorruptedYAMLReturnsErrIndexCorrupted(t *testing.T) {
 
 func TestLoadIndex_WrongShapeReturnsErrIndexCorrupted(t *testing.T) {
 	home := t.TempDir()
-	// YAML валиден, но repos — не map[string][]TemplateEntry.
+	// YAML is valid, but repos is not map[string][]TemplateEntry.
 	writeRaw(t, home, indexFileName, "version: 1\nrepos: \"not-a-map\"\n")
 
 	_, err := LoadIndex(home)

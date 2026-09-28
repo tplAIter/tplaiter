@@ -1,16 +1,17 @@
-// Package renderref рендерит шаблон, уже выкаченный в файловую систему
-// (checkout репозитория по зафиксированному ref), в память: разбирает манифест,
-// резолвит настройки и прогоняет движок во временный каталог, читая результат в
-// карту относительный-путь→содержимое. Это переиспользуемое «отрендери шаблон
-// по ref+values» ядро, на котором строятся `tplater update` (3-way merge двух
-// версий, реализация ) и `tplater stats` (сравнение чистого рендера с рабочим
-// деревом, реализация ) — обе реализации получают файлы и baseline одинакового
-// состава, без дублирования оркестрации рендера.
+// Package renderref renders a template already checked out into a filesystem
+// (a repository checkout at a pinned ref) into memory: it parses the manifest,
+// resolves settings, and runs the engine in a temporary directory, reading the
+// result into a relative-path-to-content map. This reusable "render a template
+// from ref+values" core powers `tplater update` (a 3-way merge of two
+// versions) and `tplater stats` (comparing a clean render with the working
+// tree); both receive files and a baseline of the same shape without duplicated
+// render orchestration.
 //
-// Пакет намеренно принимает уже готовую [fs.FS] (а не сам делает checkout):
-// checkout — тонкая операция [repo.Manager.Checkout], которая живёт у
-// вызывающего рядом с выбором ref-а; сюда попадает лишь тяжёлая часть — загрузка
-// манифеста, резолюция настроек, сбор partials и рендер в память.
+// The package deliberately accepts a ready [fs.FS] rather than performing a
+// checkout itself. Checkout is the thin [repo.Manager.Checkout] operation owned
+// by the caller next to ref selection; this package handles the heavier work:
+// loading the manifest, resolving settings, collecting partials, and rendering
+// into memory.
 package renderref
 
 import (
@@ -27,12 +28,12 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// templateManifestFileName — имя манифеста шаблона в корне checkout'а (та же
-// приватная константа, что в internal/repo/scan.go и internal/newcmd).
+// templateManifestFileName is the template manifest name at the checkout root
+// (the same private constant as in internal/repo/scan.go and internal/newcmd).
 const templateManifestFileName = "template.manifest.yaml"
 
-// partialsDirName — каталог ассоциированных {{ define }}-шаблонов внутри
-// checkout'а шаблона (см. фикстуру single-basic/partials).
+// partialsDirName is the directory of associated {{ define }} templates inside
+// the template checkout (see the single-basic/partials fixture).
 const partialsDirName = "partials"
 
 // closeScratch is private solely to prove that a cleanup failure remains
@@ -40,40 +41,40 @@ const partialsDirName = "partials"
 // the real descriptor-relative cleanup.
 var closeScratch = func(dir *scratchDirectory) error { return dir.Close() }
 
-// Input — вход [Render]: значения настроек и координаты проекта, которыми
-// параметризуется рендер. Совпадают со снимком в .tplaiter/project.yaml —
-// это гарантирует, что повторный рендер той же версии с тем же снимком даёт
-// побайтово тот же результат (нужно для no-op update и baseline-инварианта).
+// Input is the [Render] input: settings values and project coordinates used to
+// parameterize rendering. They match the snapshot in .tplaiter/project.yaml,
+// guaranteeing that rendering the same version with the same snapshot produces
+// byte-for-byte identical output (needed for no-op update and the baseline invariant).
 type Input struct {
-	// Values — полный снимок настроек проекта (как в project.yaml.settings).
+	// Values is the complete project settings snapshot (as in project.yaml.settings).
 	Values settings.Values
-	// Project — идентификация проекта (.Project в контексте рендера).
+	// Project is the project identity (.Project in the render context).
 	Project manifest.ProjectInfo
-	// Runtime — runtime-параметры проекта (.Runtime.Port).
+	// Runtime contains project runtime parameters (.Runtime.Port).
 	Runtime manifest.ProjectRuntime
-	// Repo — алиас репозитория-источника (.Template.Repo в контексте).
+	// Repo is the source repository alias (.Template.Repo in the context).
 	Repo string
 }
 
-// Result — итог рендера в память.
+// Result is the in-memory render result.
 type Result struct {
-	// Files — карта относительный-slash-путь→содержимое сгенерированных файлов
-	// (без .tplaiter/baseline.json — движок его в Result.Files не включает).
+	// Files maps relative slash paths to generated file contents (excluding
+	// .tplaiter/baseline.json, which the engine does not include in Result.Files).
 	Files map[string][]byte
-	// Baseline — чистый baseline рендера (sha256 каждого файла + версия +
-	// contextHash). Именно он становится .tplaiter/baseline.json после update.
+	// Baseline is the clean render baseline (sha256 of each file plus version and
+	// contextHash). It becomes .tplaiter/baseline.json after update.
 	Baseline *engine.Baseline
-	// Template — разобранный и провалидированный манифест шаблона этой версии.
+	// Template is the parsed and validated manifest for this template version.
 	Template *manifest.Template
-	// Resolved — разрешённые настройки (для хуков/ansible, которым нужен полный
-	// набор значений).
+	// Resolved contains resolved settings (for hooks/ansible that need all values).
 	Resolved settings.Resolved
 }
 
-// Render разбирает манифест из корня src (checkout шаблона, укоренённый в
-// каталоге шаблона), резолвит in.Values и рендерит дерево во временный каталог,
-// возвращая содержимое в памяти и чистый baseline. Временный каталог удаляется
-// перед возвратом — вызывающему нужны только байты из [Result.Files].
+// Render parses the manifest at src's root (the template checkout rooted at the
+// template directory), resolves in.Values, and renders the tree into a
+// temporary directory, returning in-memory contents and a clean baseline. The
+// temporary directory is removed before returning; callers only need the bytes
+// in [Result.Files].
 func Render(src fs.FS, in Input) (*Result, error) {
 	tmp, err := os.MkdirTemp("", "tplater-render-*")
 	if err != nil {
@@ -185,7 +186,7 @@ func render(ctx context.Context, src fs.FS, in Input, scratch string, readOutput
 	return &Result{Files: files, Baseline: res.Baseline, Template: tpl, Resolved: resolved}, nil
 }
 
-// LoadTemplate читает, разбирает и валидирует манифест шаблона из корня src.
+// LoadTemplate reads, parses, and validates the template manifest from src's root.
 func LoadTemplate(src fs.FS) (*manifest.Template, error) {
 	data, err := fs.ReadFile(src, templateManifestFileName)
 	if err != nil {
@@ -201,13 +202,13 @@ func LoadTemplate(src fs.FS) (*manifest.Template, error) {
 	return tpl, nil
 }
 
-// Values приводит карту настроек проектного маркера (как её разобрал yaml.v3 в
-// map[string]any) к [settings.Values]: единственная нормализация — multiselect
-// приходит как []any, а резолвер/движок ждут []string. Скалярные значения
-// (string/bool/int) yaml.v3 уже кладёт в родные Go-типы. Строгая типизация со
-// сверкой опций — это [settings.ParseSet]/[settings.LoadAnswersFile]; здесь
-// лишь устранение артефакта разбора YAML (та же логика, что в
-// internal/cmd/run.go для `tplater run`).
+// Values converts the project marker's settings map (parsed by yaml.v3 as
+// map[string]any) to [settings.Values]. The only normalization is that
+// multiselect values arrive as []any while the resolver and engine expect
+// []string. Scalar values (string/bool/int) are already native Go types. Strict
+// typing and option checks belong to [settings.ParseSet]/[settings.LoadAnswersFile];
+// this only removes a YAML parsing artifact (the same logic as in
+// internal/cmd/run.go for `tplater run`).
 func Values(raw map[string]any) settings.Values {
 	out := make(settings.Values, len(raw))
 	for k, v := range raw {
@@ -226,13 +227,13 @@ func Values(raw map[string]any) settings.Values {
 	return out
 }
 
-// templatePartials собирает partials-источник из checkout'а, если каталог
-// partials/ существует (иначе — nil, движок обходится без него). Совпадает с
-// логикой internal/newcmd.templatePartials.
+// templatePartials builds a partials source from the checkout when partials/
+// exists (otherwise nil, and the engine runs without it). It matches the logic
+// in internal/newcmd.templatePartials.
 func templatePartials(src fs.FS) ([]fs.FS, error) {
 	info, err := fs.Stat(src, partialsDirName)
 	if err != nil || !info.IsDir() {
-		return nil, nil //nolint:nilerr // отсутствие partials/ — норма, не ошибка.
+		return nil, nil //nolint:nilerr // Missing partials/ is normal, not an error.
 	}
 	sub, err := fs.Sub(src, partialsDirName)
 	if err != nil {

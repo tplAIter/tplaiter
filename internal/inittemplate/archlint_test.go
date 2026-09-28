@@ -13,8 +13,8 @@ import (
 
 const lintRulesFixture = "../../testdata/fixtures/lint-rules"
 
-// parseSrc разбирает исходник Go-файла (со строкой package) и возвращает
-// (fset, файл) для прогона правил напрямую, без полного рендера.
+// parseSrc parses a Go source file (with a package line) and returns (fset, file)
+// for running rules directly without a full render.
 func parseSrc(t *testing.T, src string) (*token.FileSet, *ast.File) {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -25,9 +25,8 @@ func parseSrc(t *testing.T, src string) (*token.FileSet, *ast.File) {
 	return fset, f
 }
 
-// TestArchLint_CtxFirst — таблица вариаций правила ctx-first (проверку): ресивер,
-// вариадик, ctx вторым → нарушение, без параметров → пропуск, New* →
-// исключение, неэкспортируемое → пропуск.
+// TestArchLint_CtxFirst — ctx-first rule variations: receiver, variadic, ctx
+// second → violation; no parameters → skip; New* → exclusion; unexported → skip.
 func TestArchLint_CtxFirst(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -97,8 +96,8 @@ func TestArchLint_CtxFirst(t *testing.T) {
 	}
 }
 
-// TestArchLint_NoInit — func init() ловится с координатой строки; файл без
-// init зелёный.
+// TestArchLint_NoInit — func init() is caught with a line coordinate; a file
+// without init passes.
 func TestArchLint_NoInit(t *testing.T) {
 	t.Run("init в domain — нарушение", func(t *testing.T) {
 		fset, f := parseSrc(t, "package domain\nfunc init() {\n\t_ = 1\n}\n")
@@ -118,8 +117,8 @@ func TestArchLint_NoInit(t *testing.T) {
 	})
 }
 
-// TestArchLint_NoPanic — panic в обычной функции (usecase) — нарушение;
-// panic в main/init — разрешено (единственное исключение правила).
+// TestArchLint_NoPanic — panic in an ordinary function (usecase) is a violation;
+// panic in main/init is allowed (the rule's sole exception).
 func TestArchLint_NoPanic(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -158,8 +157,8 @@ func TestArchLint_NoPanic(t *testing.T) {
 	}
 }
 
-// TestArchLint_GeneratedMarker — маркер в первых 5 строках проходит,
-// отсутствие/маркер на 6-й строке — нарушение.
+// TestArchLint_GeneratedMarker — a marker in the first 5 lines passes; missing
+// or a marker on line 6 is a violation.
 func TestArchLint_GeneratedMarker(t *testing.T) {
 	tests := []struct {
 		name string
@@ -181,8 +180,8 @@ func TestArchLint_GeneratedMarker(t *testing.T) {
 	}
 }
 
-// TestArchLint_OptInNoEffect — манифест без секции lint: checkArchLint не
-// трогает диск и не возвращает ошибку, даже если outDir не существует.
+// TestArchLint_OptInNoEffect — manifest without lint: checkArchLint neither
+// touches disk nor returns an error, even when outDir does not exist.
 func TestArchLint_OptInNoEffect(t *testing.T) {
 	tpl := &manifest.Template{}
 	if err := checkArchLint(tpl, "/nonexistent/path/does-not-matter", []string{"internal/usecase/x.go"}); err != nil {
@@ -190,8 +189,8 @@ func TestArchLint_OptInNoEffect(t *testing.T) {
 	}
 }
 
-// TestArchLint_MatchLintFiles — сопоставление include/exclude глобов (тот же
-// язык, что и files[].paths).
+// TestArchLint_MatchLintFiles — include/exclude glob matching (same language as
+// files[].paths).
 func TestArchLint_MatchLintFiles(t *testing.T) {
 	files := []string{
 		"internal/usecase/order.go",
@@ -211,12 +210,11 @@ func TestArchLint_MatchLintFiles(t *testing.T) {
 	}
 }
 
-// TestLint_LintRulesFixture_RedThenGreen — e2e реализации проверку: фикстура
-// testdata/fixtures/lint-rules с toggle `violations`. [Combos] для
-// toggle-группы генерирует и default (violations=false — фикс), и
-// all-on/max (violations=true — включённые нарушения) — полный прогон lint-
-// template обязан покраснеть с перечнем всех 4 правил, а прогон с фильтром на
-// комбо `defaults` ("после исправления") — зелёный.
+// TestLint_LintRulesFixture_RedThenGreen — e2e check: the
+// testdata/fixtures/lint-rules fixture has a `violations` toggle. [Combos]
+// generates default (violations=false, fixed) and all-on/max (violations=true,
+// enabled violations); the full lint-template run must report all 4 rules,
+// while filtering to `defaults` ("after fixing") passes.
 func TestLint_LintRulesFixture_RedThenGreen(t *testing.T) {
 	full, err := Lint(LintOptions{Path: lintRulesFixture, Out: io.Discard})
 	if err != nil {
@@ -256,9 +254,9 @@ func TestLint_LintRulesFixture_RedThenGreen(t *testing.T) {
 	}
 }
 
-// TestLint_LintRulesFixture_OptInGlobalTemplatesUnaffected повторно проверяет,
-// что опциональность секции lint не портит уже существующую зелёную фикстуру
-// single-basic (без секции lint) — быстрый regression-чек рядом с новым кодом.
+// TestLint_LintRulesFixture_OptInGlobalTemplatesUnaffected rechecks that the
+// optional lint section does not break the existing passing single-basic fixture
+// (without lint), a quick regression check beside the new code.
 func TestLint_LintRulesFixture_OptInGlobalTemplatesUnaffected(t *testing.T) {
 	res, err := Lint(LintOptions{Path: singleBasicFixture, Out: io.Discard})
 	if err != nil {

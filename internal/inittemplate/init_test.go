@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// TestInit_GeneratedRepoPassesLint — ключевой тест : сгенерированный
-// init-template репозиторий обязан проходить собственный lint-template.
+// TestInit_GeneratedRepoPassesLint — key test: a generated init-template
+// repository must pass its own lint-template.
 func TestInit_GeneratedRepoPassesLint(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "demo-svc")
 	if _, err := Init(context.Background(), InitOptions{
@@ -19,7 +19,7 @@ func TestInit_GeneratedRepoPassesLint(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	// Скелет содержит условный каталог и dotfile — проверим, что embed их выдал.
+	// The skeleton contains a conditional directory and dotfile; verify embed emitted them.
 	for _, rel := range []string{
 		"template.manifest.yaml",
 		"README.md",
@@ -85,7 +85,7 @@ func TestInit_Multi_PassesLint(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Init --multi: %v", err)
 	}
-	// В multi-режиме repo.manifest.yaml в корне, шаблон — в подкаталоге.
+	// In multi mode repo.manifest.yaml is at root and the template is in a subdirectory.
 	if _, err := os.Stat(filepath.Join(repo, "repo.manifest.yaml")); err != nil {
 		t.Fatalf("ожидался repo.manifest.yaml: %v", err)
 	}

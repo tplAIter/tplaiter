@@ -9,20 +9,20 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// firstRunSkip — верхнеуровневые команды, которые не должны шуметь
-// приветствием first-run: пользователь спрашивает справку/версию
-// — молчим про ~/.tplaiter, даже если это первый запуск на машине.
+// firstRunSkip — top-level commands that must not print the first-run greeting:
+// the user is asking for help/version, so stay silent about ~/.tplaiter even on
+// the first invocation on the machine.
 var firstRunSkip = map[string]bool{
 	"help":       true,
 	"version":    true,
 	"completion": true,
 }
 
-// firstRunPreRun — PersistentPreRunE корневой команды. Если домашний каталог
-// tplaiter ещё не существовал и вызываемая команда не входит в firstRunSkip,
-// создаёт его скелет ([state.EnsureHome]) и печатает короткое приветствие в
-// stderr. Ошибка EnsureHome прерывает выполнение — без
-// ~/.tplaiter работоспособны только help/version, остальным командам он нужен.
+// firstRunPreRun — PersistentPreRunE for the root command. If the tplaiter home
+// directory did not exist and the invoked command is not in firstRunSkip, it
+// creates its skeleton ([state.EnsureHome]) and prints a short greeting to
+// stderr. An EnsureHome error stops execution: without ~/.tplaiter only
+// help/version work; other commands need it.
 func firstRunPreRun(cmd *cobra.Command, _ []string) error {
 	if firstRunSkip[topLevelCommand(cmd).Name()] {
 		return nil
@@ -38,11 +38,11 @@ func firstRunPreRun(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// topLevelCommand возвращает верхнеуровневую подкоманду (прямого потомка
-// rootCmd) на пути к cmd — например, "completion" для `tplaiter completion
-// bash`, "version" для `tplaiter version`. Используется вместо cmd.Name(),
-// потому что first-run должен молчать для ЛЮБОЙ команды внутри "completion",
-// а не только для самой команды completion.
+// topLevelCommand returns the top-level subcommand (a direct child of rootCmd)
+// on the path to cmd — for example, "completion" for `tplaiter completion
+// bash`, or "version" for `tplaiter version`. It is used instead of cmd.Name()
+// because first-run must stay silent for ANY command inside "completion", not
+// only for the completion command itself.
 func topLevelCommand(cmd *cobra.Command) *cobra.Command {
 	c := cmd
 	for c.HasParent() && c.Parent().HasParent() {
@@ -51,8 +51,8 @@ func topLevelCommand(cmd *cobra.Command) *cobra.Command {
 	return c
 }
 
-// printWelcome печатает приветствие первого запуска: как добавить репозиторий
-// шаблонов и где искать документацию ( ровно три строки).
+// printWelcome prints the first-run greeting: how to add a template repository
+// and where to find documentation (exactly three lines).
 func printWelcome(cmd *cobra.Command) {
 	p := ui.Default()
 	out := cmd.ErrOrStderr()

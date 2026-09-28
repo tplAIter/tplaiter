@@ -12,23 +12,23 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// FlowOptions управляет оркестрацией опроса [AskFlow].
+// FlowOptions controls [AskFlow] orchestration.
 type FlowOptions struct {
-	// Defaults — не спрашивать ничего, взять дефолты (+ preset).
+	// Defaults — ask nothing; use defaults (+ preset).
 	Defaults bool
-	// Interactive — доступен ли TTY. При false опрос запрещён: незаданные группы
-	// берут дефолт, а активная строковая настройка с пустым дефолтом без preset —
-	// ошибка [MissingRequiredError].
+	// Interactive — whether TTY is available. When false, asking is disabled:
+	// unset groups use defaults, while an active string setting with empty default
+	// and no preset returns [MissingRequiredError].
 	Interactive bool
-	// PresetSources размечает происхождение preset-групп (set|answer) для сводки.
-	// Отсутствующие ключи считаются SourceSet.
+	// PresetSources labels preset-group origins (set|answer) for the summary.
+	// Missing keys are treated as SourceSet.
 	PresetSources map[string]Source
 }
 
-// MissingRequiredError — в неинтерактивном режиме не заданы обязательные
-// строковые настройки (пустой дефолт, нет preset).
+// MissingRequiredError — required string settings are unset in non-interactive
+// mode (empty default, no preset).
 type MissingRequiredError struct {
-	// Groups — id незаданных обязательных групп (отсортированы).
+	// Groups — IDs of unset required groups (sorted).
 	Groups []string
 }
 
@@ -36,12 +36,11 @@ func (e *MissingRequiredError) Error() string {
 	return "не заданы обязательные строковые настройки (задайте через --set): " + strings.Join(e.Groups, ", ")
 }
 
-// AskFlow оркестрирует получение настроек: применяет preset
-// (--set/--answers, приоритетнее всего), при opts.Defaults пропускает опрос,
-// в неинтерактивном режиме проверяет обязательные строки, иначе ведёт
-// интерактивный цикл «опрос → резолв → доклад/сводка → подтверждение» с
-// переопросом при отказе или ошибке резолвера. Прерывание опросника
-// ([huh.ErrUserAborted]) пробрасывается наружу без создания чего-либо.
+// AskFlow orchestrates settings acquisition: applies preset (--set/--answers,
+// highest priority), skips asking with opts.Defaults, validates required strings
+// in non-interactive mode, or runs the interactive loop "ask → resolve → report/
+// summary → confirm", repeating after rejection or resolver error. User abort
+// ([huh.ErrUserAborted]) is propagated without creating anything.
 func AskFlow(
 	tpl *manifest.Template,
 	preset settings.Values,
@@ -73,9 +72,9 @@ func AskFlow(
 		if err != nil {
 			return settings.Resolved{}, err
 		}
-		// preset (--set/--answers) приоритетнее ввода: кладём его последним слоем.
-		// В норме пересечений нет (preset-группы вырезаны из опроса), слой —
-		// защита инварианта «preset > prompt».
+		// preset (--set/--answers) outranks input: overlay it last. Normally there
+		// are no overlaps (preset groups are removed from prompts); this protects
+		// the invariant "preset > prompt".
 		explicit := mergeValues(asked, preset)
 
 		resolved, rerr := settings.Resolve(tpl, explicit)
@@ -101,8 +100,8 @@ func AskFlow(
 	}
 }
 
-// requiredMissing возвращает id активных строковых групп с пустым значением
-// (= пустой дефолт по договорённости ), не заданных в preset.
+// requiredMissing returns IDs of active string groups with empty values (empty
+// default by convention) that are absent from preset.
 func requiredMissing(tpl *manifest.Template, defaults, preset settings.Values) []string {
 	cur := mergeValues(defaults, preset)
 	valueOf := func(id string) any { return cur[id] }
@@ -123,7 +122,7 @@ func requiredMissing(tpl *manifest.Template, defaults, preset settings.Values) [
 	return missing
 }
 
-// printReport печатает доклад резолвера: довключённые значения и предупреждения.
+// printReport prints resolver output: implied values and warnings.
 func printReport(out io.Writer, pal ui.Palette, rep settings.Report) {
 	if len(rep.Implied) > 0 {
 		fmt.Fprintln(out, pal.Warn("Довключено автоматически (требуется выбранными опциями):"))
@@ -136,9 +135,8 @@ func printReport(out io.Writer, pal ui.Palette, rep settings.Report) {
 	}
 }
 
-// buildSummary строит таблицу «группа/значение/источник» по активным группам
-//. Источник определяется по приоритету implied > prompt > preset
-// (set/answer) > default. Довключённые значения помечаются источником implied.
+// buildSummary builds a group/value/source table for active groups. Source priority
+// is implied > prompt > preset (set/answer) > default. Implied values are marked implied.
 func buildSummary(
 	tpl *manifest.Template,
 	resolved settings.Resolved,
@@ -162,7 +160,7 @@ func buildSummary(
 	return pal.Header("Сводка настроек:") + "\n" + tbl.RenderStyled(pal)
 }
 
-// sourceOf определяет источник значения группы по приоритету.
+// sourceOf determines a group's source by priority.
 func sourceOf(id string, impliedBy map[string]bool, asked, preset settings.Values, presetSrc map[string]Source) Source {
 	switch {
 	case impliedBy[id]:
@@ -179,8 +177,7 @@ func sourceOf(id string, impliedBy map[string]bool, asked, preset settings.Value
 	}
 }
 
-// colorSource раскрашивает метку источника (implied — предупреждающим, default —
-// приглушённым) для сводки.
+// colorSource colors the source label (implied warning, default muted) for summaries.
 func colorSource(pal ui.Palette, src Source) string {
 	switch src {
 	case SourceImplied:
@@ -194,13 +191,13 @@ func colorSource(pal ui.Palette, src Source) string {
 	}
 }
 
-// has сообщает, задан ли ключ в наборе значений.
+// has reports whether a key is set in the values.
 func has(v settings.Values, id string) bool {
 	_, ok := v[id]
 	return ok
 }
 
-// formatValue форматирует значение группы для сводки.
+// formatValue formats a group value for the summary.
 func formatValue(v any) string {
 	switch x := v.(type) {
 	case []string:

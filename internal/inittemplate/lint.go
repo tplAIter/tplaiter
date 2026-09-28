@@ -24,8 +24,8 @@ const (
 	partialsDirName          = "partials"
 )
 
-// lintProject — синтетические координаты проекта для пробного рендера комбо.
-// Slug валиден (^[a-z][a-z0-9_]*$), чтобы кейс-хелперы и __slug__ отработали.
+// lintProject — synthetic project coordinates for trial combo rendering.
+// Slug is valid (^[a-z][a-z0-9_]*$) so case helpers and __slug__ work.
 var lintProject = manifest.ProjectInfo{
 	Name:   "Lint Probe",
 	Slug:   "lint_probe",
@@ -34,20 +34,20 @@ var lintProject = manifest.ProjectInfo{
 	Domain: "lint",
 }
 
-// LintOptions — параметры одного запуска [Lint].
+// LintOptions — parameters for one [Lint] invocation.
 type LintOptions struct {
-	// Path — корень репозитория шаблона (single) или репозитория с
-	// repo.manifest.yaml/подкаталогами шаблонов (multi). Пусто → ".".
+	// Path — template-repository root (single), or repository with
+	// repo.manifest.yaml/template subdirectories (multi). Empty → ".".
 	Path string
-	// ComboName — фильтр по имени комбинации (точное совпадение); пусто — все.
+	// ComboName — exact combination-name filter; empty means all.
 	ComboName string
-	// Out — поток вывода таблицы результатов.
+	// Out — result-table output stream.
 	Out io.Writer
-	// Palette — палитра сообщений (nil-safe: используется zero-значение).
+	// Palette — message palette (nil-safe; zero value is used).
 	Palette ui.Palette
 }
 
-// LintRow — одна ячейка таблицы результатов (шаблон × комбо × статус).
+// LintRow — one result-table cell (template × combo × status).
 type LintRow struct {
 	Template string
 	Combo    string
@@ -55,23 +55,22 @@ type LintRow struct {
 	Detail   string
 }
 
-// LintResult — итог lint-template.
+// LintResult — lint-template result.
 type LintResult struct {
 	Rows   []LintRow
 	Failed bool
 }
 
-// discovered — один найденный шаблон: имя и его корневой каталог на диске.
+// discovered — one discovered template: name and its on-disk root directory.
 type discovered struct {
 	name string
 	root string
 }
 
-// Lint — generic-селфтест репозитория шаблона ( аналог gotmpl
-// selftest): находит манифест(ы), валидирует каждый шаблон и прогоняет пробный
-// рендер по всем «угловым» комбинациям настроек с проверками NOTES/generators/
-// ai-config/environment. Возвращает [LintResult] с таблицей; Failed=true при
-// любом провале (вызывающий транслирует в exit 1).
+// Lint — generic template-repository self-test (analogous to gotmpl selftest):
+// finds manifests, validates each template, and trial-renders all corner-case
+// settings combinations while checking NOTES/generators/ai-config/environment.
+// Returns [LintResult] with a table; Failed=true on any failure (caller maps it to exit 1).
 func Lint(opts LintOptions) (*LintResult, error) {
 	root := opts.Path
 	if root == "" {
@@ -96,7 +95,7 @@ func Lint(opts LintOptions) (*LintResult, error) {
 	return res, nil
 }
 
-// lintOne проверяет один шаблон и добавляет строки результата.
+// lintOne checks one template and appends result rows.
 func (res *LintResult) lintOne(d discovered, comboFilter string) {
 	manifestPath := filepath.Join(d.root, templateManifestFileName)
 	tpl, err := manifest.LoadTemplate(manifestPath)
@@ -110,12 +109,12 @@ func (res *LintResult) lintOne(d discovered, comboFilter string) {
 	}
 	res.ok(d.name, "validate", "манифест валиден")
 
-	// ai-config загружается и валидируется один раз (комбо-независимо);
-	// per-combo выполняется только Filter.
+	// ai-config is loaded and validated once (independent of combo); per-combo
+	// processing only runs Filter.
 	aiSrc, aiErr := loadAIConfig(d.root, tpl)
 	if aiErr != nil {
 		res.fail(d.name, "ai-config", aiErr)
-		aiSrc = nil // дальнейший Filter пропускаем — источник невалиден
+		aiSrc = nil // skip later Filter — source is invalid
 	}
 
 	combos := Combos(tpl)
@@ -134,9 +133,9 @@ func (res *LintResult) lintOne(d discovered, comboFilter string) {
 	}
 }
 
-// checkCombo прогоняет один шаблон через одну комбо: Resolve → Render → NOTES →
-// generators-парс → ai-config Filter → environment yaml-парс → arch-lint
-// (проверку, опционально — см. checkArchLint).
+// checkCombo runs one template through one combo: Resolve → Render → NOTES →
+// generator parsing → ai-config Filter → environment YAML parsing → arch-lint
+// (optional; see checkArchLint).
 func checkCombo(root string, tpl *manifest.Template, aiSrc *aiconfig.Source, c Combo) error {
 	resolved, err := settings.Resolve(tpl, c.Explicit)
 	if err != nil {
@@ -145,7 +144,7 @@ func checkCombo(root string, tpl *manifest.Template, aiSrc *aiconfig.Source, c C
 
 	renderRes, outDir, cleanup, err := renderCombo(root, tpl, resolved)
 	if err != nil {
-		return err // engine сам ловит маркеры-остатки/битые условия
+		return err // engine catches leftover markers/broken conditions
 	}
 	defer cleanup()
 
@@ -166,10 +165,9 @@ func checkCombo(root string, tpl *manifest.Template, aiSrc *aiconfig.Source, c C
 	return checkArchLint(tpl, outDir, renderRes.Files)
 }
 
-// renderCombo делает пробный атомарный рендер шаблона во временный каталог.
-// Каталог рендера НЕ удаляется до возврата вызывающему (нужен checkArchLint
-// для чтения содержимого .go-файлов) — очистка на ответственности вызывающего
-// через возвращённый cleanup.
+// renderCombo performs a trial atomic render into a temporary directory. The
+// render directory is NOT removed before returning (checkArchLint needs to read
+// .go files); the caller owns cleanup through the returned cleanup function.
 func renderCombo(root string, tpl *manifest.Template, resolved settings.Resolved) (renderRes *engine.Result, outDir string, cleanup func(), err error) {
 	tmp, err := os.MkdirTemp("", "tplater-lint-")
 	if err != nil {
@@ -195,7 +193,7 @@ func renderCombo(root string, tpl *manifest.Template, resolved settings.Resolved
 	return renderRes, outDir, cleanup, nil
 }
 
-// loadPartials возвращает источник партиалов (каталог partials/), если он есть.
+// loadPartials returns the partials source (partials/ directory), when present.
 func loadPartials(root string) []fs.FS {
 	dir := filepath.Join(root, partialsDirName)
 	if info, err := os.Stat(dir); err == nil && info.IsDir() {
@@ -204,8 +202,8 @@ func loadPartials(root string) []fs.FS {
 	return nil
 }
 
-// checkNotes проверяет, что metadata.notes читается, парсится и рендерится тем
-// же контекстом, что и дерево (симметрично newcmd.printNotes).
+// checkNotes verifies that metadata.notes is read, parsed, and rendered with the
+// same context as the tree (symmetric with newcmd.printNotes).
 func checkNotes(root string, tpl *manifest.Template, renderRes *engine.Result) error {
 	if tpl.Metadata.Notes == "" {
 		return nil
@@ -224,8 +222,8 @@ func checkNotes(root string, tpl *manifest.Template, renderRes *engine.Result) e
 	return nil
 }
 
-// checkGenerators парсит каждый сниппет и вставку якоря как text/template с
-// полным FuncMap движка (: «сниппеты парсятся text/template»).
+// checkGenerators parses each snippet and anchor insertion as text/template with
+// the engine's full FuncMap (the "snippets parse as text/template" contract).
 func checkGenerators(root string, tpl *manifest.Template, resolved settings.Resolved) error {
 	fm := engine.FuncMap(settings.View(resolved.ActiveValues))
 	for i := range tpl.Generators {
@@ -235,7 +233,7 @@ func checkGenerators(root string, tpl *manifest.Template, resolved settings.Reso
 				return fmt.Errorf("generator %q snippet: %w", g.Kind, err)
 			}
 		}
-		for _, t := range g.Targets { // мультифайловая форма (проверку)
+		for _, t := range g.Targets { // multifile form
 			if err := parseSnippetFile(root, t.Snippet, fm); err != nil {
 				return fmt.Errorf("generator %q targets snippet %q: %w", g.Kind, t.Snippet, err)
 			}
@@ -252,8 +250,8 @@ func checkGenerators(root string, tpl *manifest.Template, resolved settings.Reso
 	return nil
 }
 
-// parseSnippetFile читает и парсит (без исполнения) файл-сниппет rel
-// относительно корня шаблона.
+// parseSnippetFile reads and parses (without executing) snippet rel relative to
+// the template root.
 func parseSnippetFile(root, rel string, fm template.FuncMap) error {
 	path := filepath.Join(root, filepath.FromSlash(rel))
 	data, err := os.ReadFile(path)
@@ -266,7 +264,7 @@ func parseSnippetFile(root, rel string, fm template.FuncMap) error {
 	return nil
 }
 
-// checkEnvironment проверяет, что каждый плейбук существует и парсится как YAML.
+// checkEnvironment verifies that every playbook exists and parses as YAML.
 func checkEnvironment(root string, tpl *manifest.Template) error {
 	for _, pb := range tpl.Environment.Playbooks {
 		if pb.File == "" {
@@ -285,8 +283,8 @@ func checkEnvironment(root string, tpl *manifest.Template) error {
 	return nil
 }
 
-// loadAIConfig загружает и валидирует источник ai-config, если манифест его
-// объявляет. Возвращает (nil, nil), если aiConfig.path пуст.
+// loadAIConfig loads and validates the ai-config source when declared by the
+// manifest. Returns (nil, nil) when aiConfig.path is empty.
 func loadAIConfig(root string, tpl *manifest.Template) (*aiconfig.Source, error) {
 	if tpl.AIConfig.Path == "" {
 		return nil, nil
@@ -302,9 +300,9 @@ func loadAIConfig(root string, tpl *manifest.Template) (*aiconfig.Source, error)
 	return src, nil
 }
 
-// discoverTemplates находит шаблоны репозитория: multi (repo.manifest.yaml с
-// перечнем путей), single (template.manifest.yaml в корне) или скан подкаталогов
-// первого уровня на наличие template.manifest.yaml.
+// discoverTemplates finds repository templates: multi (repo.manifest.yaml with
+// paths), single (template.manifest.yaml at root), or first-level subdirectories
+// containing template.manifest.yaml.
 func discoverTemplates(root string) ([]discovered, error) {
 	if _, err := os.Stat(filepath.Join(root, repoManifestFileName)); err == nil {
 		return discoverMulti(root)
@@ -315,7 +313,7 @@ func discoverTemplates(root string) ([]discovered, error) {
 	return scanSubdirs(root)
 }
 
-// discoverMulti читает repo.manifest.yaml и разворачивает его templates[].path.
+// discoverMulti reads repo.manifest.yaml and expands its templates[].path.
 func discoverMulti(root string) ([]discovered, error) {
 	repo, err := manifest.LoadRepository(filepath.Join(root, repoManifestFileName))
 	if err != nil {
@@ -329,7 +327,7 @@ func discoverMulti(root string) ([]discovered, error) {
 	return out, nil
 }
 
-// scanSubdirs ищет template.manifest.yaml в подкаталогах первого уровня.
+// scanSubdirs searches first-level subdirectories for template.manifest.yaml.
 func scanSubdirs(root string) ([]discovered, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -366,7 +364,7 @@ func (res *LintResult) fail(tmpl, combo string, err error) {
 	res.Rows = append(res.Rows, LintRow{Template: tmpl, Combo: combo, OK: false, Detail: err.Error()})
 }
 
-// renderTable печатает таблицу результатов.
+// renderTable prints the results table.
 func renderTable(out io.Writer, pal ui.Palette, res *LintResult) {
 	if out == nil {
 		return

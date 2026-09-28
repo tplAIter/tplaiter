@@ -3,32 +3,32 @@ package lintrules
 import "context"
 
 {{ if .Settings.violations }}
-// Process — нарушение ctx-first: первый параметр не context.Context (ctx —
-// второй).
+// Process — ctx-first violation: the first parameter is not context.Context
+// (ctx is second).
 func Process(id string, ctx context.Context) error {
 	_ = id
 	_ = ctx
 	return nil
 }
 
-// init — нарушение no-init: запрещён в этом пути (domain/usecase-аналог).
+// init — no-init violation: forbidden in this path (domain/usecase analogue).
 func init() {
 	_ = 1
 }
 
-// RunBatch — нарушение no-panic: panic() вне main/init.
+// RunBatch — no-panic violation: panic() outside main/init.
 func RunBatch() {
 	panic("boom")
 }
 {{ else }}
-// Process — экспортируемая функция без нарушений: ctx первым параметром.
+// Process — exported function without violations: ctx is the first parameter.
 func Process(ctx context.Context, id string) error {
 	_ = ctx
 	_ = id
 	return nil
 }
 
-// RunBatch — экспортируемая функция без panic.
+// RunBatch — exported function without panic.
 func RunBatch() {
 	_ = 1
 }

@@ -13,9 +13,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// runAuth выполняет свежесобранное дерево команд auth с заданными аргументами и
-// stdin, возвращая stdout+stderr. Дерево строится заново на каждый вызов, чтобы
-// не зависеть от глобального rootCmd и его state между тестами.
+// runAuth executes a freshly built auth command tree with the given arguments
+// and stdin, returning stdout+stderr. The tree is rebuilt for each call so tests
+// do not depend on global rootCmd state.
 func runAuth(t *testing.T, stdin string, args ...string) (string, error) {
 	t.Helper()
 	c := newAuthCmd()
@@ -68,7 +68,7 @@ func TestAuthAdd_TokenStdin_ThenList(t *testing.T) {
 func TestAuthRemove(t *testing.T) {
 	setTestHome(t)
 
-	// Добавляем напрямую через стор, чтобы узнать id.
+	// Add directly through the store to obtain the id.
 	st, err := auth.Open(context.Background())
 	if err != nil {
 		t.Fatal(err)

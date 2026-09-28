@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Компиляционная проверка: Exec и RecordingRunner реализуют Runner.
+// Compile-time check: Exec and RecordingRunner implement Runner.
 var (
 	_ Runner = Exec{}
 	_ Runner = (*RecordingRunner)(nil)
@@ -105,17 +105,16 @@ func TestExec_Run_StreamsToWriters(t *testing.T) {
 	if strings.TrimSpace(stderr.String()) != "err" {
 		t.Errorf("streamed stderr = %q, want %q", stderr.String(), "err")
 	}
-	// Result должен независимо накапливать полный вывод, а не только то,
-	// что попало в переданные писатели.
+	// Result must accumulate complete output independently, not only what reached
+	// the supplied writers.
 	if strings.TrimSpace(res.Stdout) != "out" {
 		t.Errorf("Result.Stdout = %q, want %q", res.Stdout, "out")
 	}
 }
 
-// markerWaiter — io.Writer, который накапливает всё записанное и закрывает
-// канал ready, как только в потоке встретился маркер. Нужен тесту пересылки
-// сигналов: ждать готовности дочернего процесса по факту вывода, а не по
-// таймеру (см. [TestExec_Run_SignalForwarding]).
+// markerWaiter — io.Writer that accumulates everything written and closes ready
+// as soon as the stream contains a marker. The signal-forwarding test uses it
+// to wait for child readiness based on output rather than a timer (see [TestExec_Run_SignalForwarding]).
 type markerWaiter struct {
 	marker []byte
 
@@ -140,23 +139,21 @@ func (w *markerWaiter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// TestExec_Run_SignalForwarding проверяет, что сигнал, отправленный в
-// Options.Signals, долетает до дочернего процесса (см. [runWithSignalForwarding]).
-// Дочерний sh-скрипт ловит SIGINT через trap и завершается с кодом 7 —
-// наблюдаемый выход из ExitError{ExitCode: 7} и есть доказательство доставки.
+// TestExec_Run_SignalForwarding checks that a signal sent through Options.Signals
+// reaches the child process (see [runWithSignalForwarding]). The child sh script
+// traps SIGINT and exits with code 7; observing ExitError{ExitCode: 7} proves delivery.
 //
-// Синхронизация по готовности, а не по таймеру: скрипт печатает маркер
-// "trap-ready" в stdout сразу ПОСЛЕ установки trap, тест ждёт маркер через
-// [markerWaiter] и только затем шлёт сигнал. Так под нагрузкой параллельной
-// сьюты сигнал гарантированно не обгонит установку trap (раньше здесь был
-// sleep 200ms — и тест флакал: ExitCode -1 вместо 7). Скрипт «спит» циклом
-// коротких sleep, а не одним длинным: некоторые оболочки (системный /bin/sh —
-// bash 3.2, см. комментарий к [runWithSignalForwarding]) откладывают обработку
-// перехваченного сигнала до завершения текущей foreground-команды, и сигнал,
-// пришедший в окно, когда очередной sleep ещё не стартовал, «завис» бы до его
-// конца — с коротким sleep задержка ограничена ~100ms. Таймауты (5s) щедрые,
-// чтобы тест не был хрупким под нагрузкой CI, но не завис бы навечно при
-// регрессии пересылки.
+// Synchronization is based on readiness, not a timer: the script prints the
+// "trap-ready" marker to stdout immediately AFTER installing trap; the test
+// waits for it through [markerWaiter] and only then sends the signal. Under a
+// loaded parallel suite, the signal therefore cannot precede trap installation
+// (previously sleep 200ms caused flakes: ExitCode -1 instead of 7). The script
+// sleeps in a loop of short intervals rather than one long sleep: some shells
+// (system /bin/sh — bash 3.2; see [runWithSignalForwarding]) defer trapped-signal
+// handling until the current foreground command ends, so a signal arriving
+// between sleeps could otherwise hang until the next sleep ended. Short sleeps
+// cap the delay at ~100ms. The 5s timeouts are generous for CI load without
+// allowing a forwarding regression to hang forever.
 func TestExec_Run_SignalForwarding(t *testing.T) {
 	sig := make(chan os.Signal, 1)
 	waiter := newMarkerWaiter("trap-ready\n")
@@ -175,7 +172,7 @@ func TestExec_Run_SignalForwarding(t *testing.T) {
 
 	select {
 	case <-waiter.ready:
-		// trap установлен — можно слать сигнал.
+		// trap is installed — the signal can be sent.
 	case out := <-done:
 		t.Fatalf("процесс завершился до маркера готовности: res=%+v err=%v", out.res, out.err)
 	case <-time.After(5 * time.Second):
@@ -206,7 +203,7 @@ func TestExec_LookPath(t *testing.T) {
 		t.Error("LookPath() expected error for missing binary")
 	}
 
-	// "sh" должен быть доступен в PATH на любой платформе, где гоняются тесты.
+	// "sh" must be available in PATH on every platform running the tests.
 	path, err := e.LookPath("sh")
 	if err != nil {
 		t.Fatalf("LookPath(sh) error = %v", err)
@@ -227,8 +224,8 @@ func TestExitError_Error(t *testing.T) {
 	}
 }
 
-// Проверка совместимости с exec.Error, чтобы вызывающий код мог опираться на
-// стандартные типы стандартной библиотеки, если нужно.
+// Check compatibility with exec.Error so callers can rely on standard-library
+// types when needed.
 func TestLookPath_ErrorType(t *testing.T) {
 	_, err := exec.LookPath("tplater-definitely-not-a-real-binary")
 	if err == nil {

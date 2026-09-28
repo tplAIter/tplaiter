@@ -24,7 +24,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// --- git-инфраструктура (реальный git, file://-репо; как в internal/update) ---
+// --- git infrastructure (real git, file:// repository; as in internal/update) ---
 
 var gitExec = execx.Exec{}
 
@@ -62,7 +62,7 @@ func newManager(t *testing.T, home string) *repo.Manager {
 	return repo.New(home, gitExec, st, u)
 }
 
-// svcManifest — манифест шаблона svc с copyWithoutRender и генератором с якорем.
+// svcManifest is the svc template manifest with copyWithoutRender and an anchored generator.
 func svcManifest(version string) string {
 	return `apiVersion: tplater.dev/v1alpha1
 kind: Template
@@ -86,8 +86,8 @@ generators:
 `
 }
 
-// versionFiles формирует дерево тега: churned.txt меняется по версиям, stable.txt
-// постоянен; wiring.txt несёт якорь CODEGEN; dashboards — copyWithoutRender.
+// versionFiles builds a tag tree: churned.txt changes by version, stable.txt is
+// constant, wiring.txt carries a CODEGEN anchor, and dashboards is copyWithoutRender.
 func versionFiles(version, churned string) map[string]string {
 	return map[string]string{
 		"template.manifest.yaml":    svcManifest(version),
@@ -100,8 +100,8 @@ func versionFiles(version, churned string) map[string]string {
 	}
 }
 
-// initOrigin создаёт origin с последовательностью тегов; каждая запись map
-// version→churned-содержимое даёт один коммит+тег.
+// initOrigin creates an origin with sequential tags; each version-to-churned-content
+// map entry produces one commit and tag.
 func initOrigin(t *testing.T, tags []struct{ version, churned string }) string {
 	t.Helper()
 	origin := filepath.Join(t.TempDir(), "origin")
@@ -119,8 +119,8 @@ func initOrigin(t *testing.T, tags []struct{ version, churned string }) string {
 	return origin
 }
 
-// setupProject поднимает home + репо example/svc с заданными тегами и создаёт fixture-проект
-// на старшем теге (topVersion).
+// setupProject creates home and example/svc with the given tags and a fixture
+// project at the highest tag (topVersion).
 func setupProject(t *testing.T, tags []struct{ version, churned string }, topVersion string) (mgr *repo.Manager, home, projDir string) {
 	t.Helper()
 	requireGit(t)
@@ -200,7 +200,7 @@ func testDeps(mgr *repo.Manager, home string, out, errOut *bytes.Buffer) stats.D
 	}
 }
 
-// threeTagSet — три тега; churned.txt меняется от v1 к v2, стабилен v2→v3.
+// threeTagSet has three tags; churned.txt changes v1 to v2 and is stable v2->v3.
 func threeTagSet() []struct{ version, churned string } {
 	return []struct{ version, churned string }{
 		{"0.1.0", "old churn\n"},
@@ -209,7 +209,7 @@ func threeTagSet() []struct{ version, churned string } {
 	}
 }
 
-// Нулевой дрейф сразу после new → score 0, «проект соответствует шаблону».
+// Zero drift immediately after new -> score 0, "project matches the template".
 func TestStats_E2E_ZeroDrift(t *testing.T) {
 	mgr, home, projDir := setupProject(t, threeTagSet(), "0.3.0")
 
@@ -233,12 +233,12 @@ func TestStats_E2E_ZeroDrift(t *testing.T) {
 	}
 }
 
-// conflict-prone: файл, менявшийся между тегами, правится в work → conflict-prone;
-// стабильный файл → auto.
+// conflict-prone: a file changed between tags is edited in work -> conflict-prone;
+// a stable file -> auto.
 func TestStats_E2E_ConflictProneVsAuto(t *testing.T) {
 	mgr, home, projDir := setupProject(t, threeTagSet(), "0.3.0")
 
-	// Правим оба файла в рабочем дереве.
+	// Edit both files in the work tree.
 	writeTree(t, projDir, map[string]string{
 		"churned.txt": "USER churn\n",
 		"stable.txt":  "USER stable\n",
@@ -269,11 +269,11 @@ func TestStats_E2E_ConflictProneVsAuto(t *testing.T) {
 	}
 }
 
-// Сломанный якорь через полный конвейер: удаляем CODEGEN-строку → manual-only.
+// Broken anchor through the full pipeline: remove the CODEGEN line -> manual-only.
 func TestStats_E2E_BrokenAnchor(t *testing.T) {
 	mgr, home, projDir := setupProject(t, threeTagSet(), "0.3.0")
 
-	writeTree(t, projDir, map[string]string{"wiring.txt": "package app\n"}) // якорь удалён
+	writeTree(t, projDir, map[string]string{"wiring.txt": "package app\n"}) // anchor removed
 
 	rep, err := stats.Collect(context.Background(), testDeps(mgr, home, &bytes.Buffer{}, &bytes.Buffer{}), projDir)
 	if err != nil {
@@ -289,7 +289,7 @@ func TestStats_E2E_BrokenAnchor(t *testing.T) {
 	}
 }
 
-// copyWithoutRender-артефакт: правка дашборда → manual-only через конвейер.
+// copyWithoutRender artifact: dashboard edit -> manual-only through the pipeline.
 func TestStats_E2E_CopyWithoutRender(t *testing.T) {
 	mgr, home, projDir := setupProject(t, threeTagSet(), "0.3.0")
 
@@ -306,7 +306,7 @@ func TestStats_E2E_CopyWithoutRender(t *testing.T) {
 	}
 }
 
-// <2 тегов → предупреждение о недоступности исторической эвристики; правки auto.
+// <2 tags -> warning that the historical heuristic is unavailable; edits are auto.
 func TestStats_E2E_HistoryUnavailable(t *testing.T) {
 	oneTag := []struct{ version, churned string }{{"0.1.0", "only\n"}}
 	mgr, home, projDir := setupProject(t, oneTag, "0.1.0")
@@ -327,7 +327,7 @@ func TestStats_E2E_HistoryUnavailable(t *testing.T) {
 		}
 	}
 
-	// Run печатает предупреждение в Err.
+	// Run prints a warning to Err.
 	if err := stats.Run(context.Background(), testDeps(mgr, home, &out, &errOut), stats.Options{StartDir: projDir}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}

@@ -12,25 +12,25 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// Resolved — результат резолюции ссылки на шаблон.
+// Resolved is the result of resolving a template reference.
 type Resolved struct {
 	RepoAlias string
 	Entry     state.TemplateEntry
-	// GitRef — git-ссылка, пригодная для checkout (тег `vX.Y.Z`/`name/vX.Y.Z`
-	// либо ветка/HEAD для @latest).
+	// GitRef is the git reference suitable for checkout (a `vX.Y.Z`/`name/vX.Y.Z`
+	// tag or a branch/HEAD for @latest).
 	GitRef string
-	// Version — человекочитаемая выбранная версия (`v1.2.0` или `latest`).
+	// Version is the selected human-readable version (`v1.2.0` or `latest`).
 	Version string
 }
 
-// ResolveRef разбирает ссылку `<repo>/<name>[@<version>]` или короткую
-// `<name>[@<version>]` и выбирает конкретную версию:
-//   - `repo/` можно опустить, если имя уникально среди всех репозиториев; иначе
-//     — ошибка со списком кандидатов;
-//   - `@<vX.Y.Z>` — конкретный стабильный тег (должен существовать);
-//   - `@latest` — HEAD отслеживаемой ветки;
-//   - без `@` — старший стабильный тег; при отсутствии тегов — HEAD ветки с
-//     предупреждением.
+// ResolveRef parses `<repo>/<name>[@<version>]` or the short
+// `<name>[@<version>]` and selects a specific version:
+//   - `repo/` may be omitted when the name is unique among all repositories; otherwise
+//     — an error with the list of candidates;
+//   - `@<vX.Y.Z>` — a specific stable tag (it must exist);
+//   - `@latest` — HEAD of the tracked branch;
+//   - without `@` — the highest stable tag; if there are no tags, the branch
+//     HEAD with a warning.
 func (m *Manager) ResolveRef(ref string) (Resolved, error) {
 	idx, err := m.loadIndex()
 	if err != nil {
@@ -58,7 +58,7 @@ func (m *Manager) ResolveRef(ref string) (Resolved, error) {
 	return Resolved{RepoAlias: alias, Entry: entry, GitRef: gitRef, Version: chosen}, nil
 }
 
-// findTemplate находит (alias, entry) по опциональному repoPart и имени.
+// findTemplate finds (alias, entry) from an optional repoPart and name.
 func (m *Manager) findTemplate(idx state.Index, repoPart, name string) (string, state.TemplateEntry, error) {
 	if repoPart != "" {
 		entries, ok := idx.Repos[repoPart]
@@ -73,7 +73,7 @@ func (m *Manager) findTemplate(idx state.Index, repoPart, name string) (string, 
 		return "", state.TemplateEntry{}, fmt.Errorf("repo: шаблон %q не найден в репозитории %q", name, repoPart)
 	}
 
-	// Короткая форма: ищем по всем репозиториям, требуем уникальности.
+	// Short form: search all repositories and require uniqueness.
 	type hit struct {
 		alias string
 		entry state.TemplateEntry
@@ -102,7 +102,7 @@ func (m *Manager) findTemplate(idx state.Index, repoPart, name string) (string, 
 	}
 }
 
-// selectVersion выбирает git-ref и человекочитаемую версию для entry.
+// selectVersion chooses the git ref and human-readable version for entry.
 func selectVersion(entry state.TemplateEntry, version string) (gitRef, chosen string, err error) {
 	switch version {
 	case "":
@@ -126,17 +126,17 @@ func selectVersion(entry state.TemplateEntry, version string) (gitRef, chosen st
 	}
 }
 
-// Checkout материализует дерево шаблона на нужной ссылке в отдельный git
-// worktree и возвращает fs.FS, укоренённую в каталоге шаблона, функцию очистки
-// и ошибку.
+// Checkout materializes the template tree at the requested ref in a separate
+// git worktree and returns an fs.FS rooted at the template directory, a cleanup
+// function, and an error.
 //
-// Выбор worktree (а не `git archive`): worktree add --detach атомарно создаёт
-// рабочую копию нужного ref, корректно применяя .gitattributes и — что важно
-// для клонов с --filter=blob:none — лениво до-загружая ровно те blob'ы, которые
-// нужны для этого ref (archive потребовал бы тех же объектов, но давал бы tar,
-// который пришлось бы распаковывать во временный каталог отдельным шагом).
-// Очистка через `git worktree remove --force` возвращает git в согласованное
-// состояние (плюс RemoveAll на случай, если каталог уже отвязан).
+// A worktree is used instead of `git archive`: worktree add --detach atomically
+// creates a working copy of the requested ref, applies .gitattributes, and—for
+// --filter=blob:none clones—lazily fetches exactly the blobs needed for that ref.
+// (An archive would need the same objects but would produce a tar file requiring
+// a separate extraction step.) Cleanup with `git worktree remove --force`
+// returns git to a consistent state, with RemoveAll as a safeguard if the
+// directory has already been detached.
 func (m *Manager) Checkout(ctx context.Context, alias, gitRef, templatePath string) (fs.FS, func() error, error) {
 	clone := m.cloneDir(alias)
 	if _, err := os.Stat(clone); err != nil {
@@ -148,8 +148,8 @@ func (m *Manager) Checkout(ctx context.Context, alias, gitRef, templatePath stri
 		return nil, nil, fmt.Errorf("repo: временный каталог для checkout: %w", err)
 	}
 
-	// Ветки после `repo update` живут в origin/<ref> (fetch в не-bare клоне не
-	// двигает локальную ветку) — для актуального @latest используем origin-реф.
+	// After `repo update`, branches live at origin/<ref> (fetch in a non-bare
+	// clone does not move the local branch), so current @latest uses the origin ref.
 	checkoutRef := gitRef
 	if _, err := m.git(ctx, clone, []string{"rev-parse", "--verify", "--quiet", "origin/" + gitRef}, nil); err == nil {
 		checkoutRef = "origin/" + gitRef
@@ -161,8 +161,8 @@ func (m *Manager) Checkout(ctx context.Context, alias, gitRef, templatePath stri
 	}
 
 	cleanup := func() error {
-		// worktree remove отвязывает рабочий каталог и удаляет его; RemoveAll —
-		// подстраховка (например, если git оставил каталог из-за грязного дерева).
+		// worktree remove detaches and deletes the working directory; RemoveAll is
+		// a safeguard if git left it behind, for example because of a dirty tree.
 		_, rmErr := m.git(ctx, clone, []string{"worktree", "remove", "--force", wt}, nil)
 		if err := os.RemoveAll(wt); err != nil && rmErr == nil {
 			return err
@@ -177,7 +177,7 @@ func (m *Manager) Checkout(ctx context.Context, alias, gitRef, templatePath stri
 	return os.DirFS(root), cleanup, nil
 }
 
-// splitVersion делит ссылку на координату и версию по последнему '@'.
+// splitVersion splits a reference into coordinates and version at the last '@'.
 func splitVersion(ref string) (coord, version string) {
 	if i := strings.LastIndex(ref, "@"); i >= 0 {
 		return ref[:i], ref[i+1:]
@@ -185,7 +185,7 @@ func splitVersion(ref string) (coord, version string) {
 	return ref, ""
 }
 
-// splitRepoName делит координату `repo/name` на части; без '/' — только имя.
+// splitRepoName splits `repo/name`; without '/', it contains only the name.
 func splitRepoName(coord string) (repo, name string) {
 	if i := strings.Index(coord, "/"); i >= 0 {
 		return coord[:i], coord[i+1:]

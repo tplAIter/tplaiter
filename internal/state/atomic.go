@@ -6,20 +6,20 @@ import (
 	"path/filepath"
 )
 
-// writeFileAtomic записывает data в path атомарно: во временный файл в том
-// же каталоге (гарантирует rename на одной файловой системе), затем rename
-// поверх итогового пути. Другие процессы/горутины видят либо старую, либо
-// новую версию файла целиком — никогда частично записанную.
+// writeFileAtomic writes data to path atomically: first to a temporary file in
+// the same directory (so rename stays on one filesystem), then over the final
+// path. Other processes and goroutines see either the complete old or new file,
+// never a partial write.
 //
-// Атомарность самой записи не заменяет [WithLock]: два конкурентных
-// писателя всё равно должны сериализовать read-modify-write целиком, иначе
-// один из них перезапишет изменения другого «последним пишущим». writeFileAtomic
-// защищает только от чтения половины файла посередине записи.
+// Atomic writing does not replace [WithLock]: concurrent writers must still
+// serialize the complete read-modify-write sequence, or the last writer will
+// overwrite the other's changes. writeFileAtomic only prevents reading half a
+// file during a write.
 //
-// Права результирующего файла всегда [filePerm] (0600) — все файлы состояния
-// tplater одинаково приватны (см. пакетный комментарий state.go), поэтому
-// параметр прав не вынесен наружу: один явный источник правды вместо N
-// вызовов, каждый раз передающих то же самое значение.
+// The resulting file always has [filePerm] (0600): all tplater state files are
+// equally private (see the package comment in state.go). Permissions are kept
+// internal so there is one explicit source of truth instead of N calls passing
+// the same value.
 func writeFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, homeDirPerm); err != nil {
@@ -31,7 +31,7 @@ func writeFileAtomic(path string, data []byte) error {
 		return fmt.Errorf("state: создание временного файла для %s: %w", path, err)
 	}
 	tmpPath := tmp.Name()
-	// Успешный Rename делает Remove no-op-ом (ENOENT молча игнорируется).
+	// A successful Rename makes Remove a no-op (ENOENT is silently ignored).
 	defer func() { _ = os.Remove(tmpPath) }()
 
 	if _, err := tmp.Write(data); err != nil {
@@ -52,8 +52,8 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
-// readFile читает path и сообщает, существовал ли он. Отсутствие файла —
-// не ошибка (existed=false, err=nil): вызывающий код возвращает дефолт.
+// readFile reads path and reports whether it existed. A missing file is not an
+// error (existed=false, err=nil); callers return the default.
 func readFile(path string) (data []byte, existed bool, err error) {
 	data, err = os.ReadFile(path)
 	switch {

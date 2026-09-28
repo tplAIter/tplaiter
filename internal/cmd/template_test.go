@@ -14,9 +14,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// Хелперы построения локального git-репозитория для тестов — минимальный
-// дубликат internal/repo/integration_test.go (его хелперы непубличны своему
-// пакету, а cmd-тестам нужен ровно тот же приём: file://-репо без сети).
+// Helpers for building a local git repository in tests — a minimal duplicate of
+// internal/repo/integration_test.go (its helpers are package-private, while cmd
+// tests need the same offline file:// repository approach).
 
 var templateGitExec = execx.Exec{}
 
@@ -72,10 +72,10 @@ func commitAllForTemplateTests(t *testing.T, dir string) {
 
 func templateFileURL(dir string) string { return "file://" + dir }
 
-// newTemplateTestManager создаёт repo.Manager с реальным git и изолированным
-// home/стором (TPLAITER_HOME переопределён на t.TempDir()) — тем же
-// экземпляром, каким `tplater repo add` пользуется в проде, но напрямую (без
-// прогона через cobra), чтобы фикстуры собирались быстрее.
+// newTemplateTestManager creates repo.Manager with real git and an isolated
+// home/store (TPLAITER_HOME is set to t.TempDir()), the same instance used by
+// `tplater repo add` in production but directly (without cobra) for faster
+// fixture setup.
 func newTemplateTestManager(t *testing.T) *repo.Manager {
 	t.Helper()
 	home := filepath.Join(t.TempDir(), "home")
@@ -93,9 +93,8 @@ func newTemplateTestManager(t *testing.T) *repo.Manager {
 	return repo.New(home, execx.Exec{}, st, u)
 }
 
-// runTemplateCmd исполняет свежесобранное дерево команд `template` (по
-// образцу runRunCmd/runAuth в соседних тестах этого пакета) и возвращает
-// stdout+stderr вместе.
+// runTemplateCmd executes a freshly built `template` command tree (like
+// runRunCmd/runAuth in neighboring tests) and returns combined stdout+stderr.
 func runTemplateCmd(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	c := newTemplateCmd()
@@ -154,8 +153,8 @@ const alphaReadme = "# Alpha Service\n\nSome **docs** content for alpha.\n"
 
 const alphaMainGo = "package main\n"
 
-// newAlphaOrigin строит origin-репозиторий с одним (single) шаблоном alpha:
-// манифест + README.md (docs) + files/main.go, коммит и тег v1.0.0.
+// newAlphaOrigin builds an origin repository with one (single) alpha template:
+// manifest, README.md (docs), files/main.go, a commit, and tag v1.0.0.
 func newAlphaOrigin(t *testing.T) string {
 	t.Helper()
 	origin := initTemplateOrigin(t)
@@ -197,8 +196,8 @@ metadata:
     infra: [kafka, postgres]
 `
 
-// newBetaGammaOrigin строит multi-репо origin с шаблонами beta (python) и
-// gamma (go/kafka+postgres) — для тестов фильтров `template list`.
+// newBetaGammaOrigin builds a multi-template origin with beta (python) and
+// gamma (go/kafka+postgres), used by `template list` filter tests.
 func newBetaGammaOrigin(t *testing.T) string {
 	t.Helper()
 	origin := initTemplateOrigin(t)
@@ -268,7 +267,7 @@ func TestTemplateList_NameFilter(t *testing.T) {
 		t.Fatalf("Add b: %v", err)
 	}
 
-	// Регистр не должен иметь значения.
+	// Case must not matter.
 	out, err := runTemplateCmd(t, "list", "--name", "GAM")
 	if err != nil {
 		t.Fatalf("template list --name GAM: %v\n%s", err, out)
@@ -293,8 +292,8 @@ func TestTemplateList_LabelFiltersAND(t *testing.T) {
 		t.Fatalf("Add b: %v", err)
 	}
 
-	// lang=go И infra=kafka — подходят alpha (lang=go,infra=kafka) и gamma
-	// (lang=go,infra=kafka,postgres); beta (python) — нет.
+	// lang=go AND infra=kafka match alpha (lang=go,infra=kafka) and gamma
+	// (lang=go,infra=kafka,postgres); beta (python) does not.
 	out, err := runTemplateCmd(t, "list", "-l", "lang=go", "-l", "infra=kafka")
 	if err != nil {
 		t.Fatalf("template list -l lang=go -l infra=kafka: %v\n%s", err, out)
@@ -306,7 +305,7 @@ func TestTemplateList_LabelFiltersAND(t *testing.T) {
 		t.Errorf("beta (python) не должна пройти фильтр lang=go:\n%s", out)
 	}
 
-	// lang=go И infra=postgres — только gamma (у alpha нет postgres).
+	// lang=go AND infra=postgres — only gamma (alpha has no postgres).
 	out, err = runTemplateCmd(t, "list", "-l", "lang=go", "-l", "infra=postgres")
 	if err != nil {
 		t.Fatalf("template list -l lang=go -l infra=postgres: %v\n%s", err, out)
@@ -338,7 +337,7 @@ func TestTemplateList_EmptyByFilter(t *testing.T) {
 }
 
 func TestTemplateList_EmptyNoRepos(t *testing.T) {
-	newTemplateTestManager(t) // только готовит изолированный home, репозитории не добавляет.
+	newTemplateTestManager(t) // only prepares an isolated home; it adds no repositories.
 
 	out, err := runTemplateCmd(t, "list")
 	if err != nil {
@@ -364,8 +363,8 @@ func TestTemplateShow_HeaderSettingsDocs(t *testing.T) {
 		t.Fatalf("template show a/alpha: %v\n%s", err, out)
 	}
 
-	// Шапка: displayName(name), репозиторий, версия+доступные версии,
-	// описание, maintainers, labels.
+	// Header: displayName(name), repository, version plus available versions,
+	// description, maintainers, labels.
 	for _, want := range []string{
 		"Alpha Service (alpha)",
 		"репозиторий: a",
@@ -380,8 +379,8 @@ func TestTemplateShow_HeaderSettingsDocs(t *testing.T) {
 		}
 	}
 
-	// Дерево настроек: группа верхнего уровня, вложенная группа с бОльшим
-	// отступом, planned-опция помечена.
+	// Settings tree: top-level group, nested group with greater indentation, and
+	// the planned option marked.
 	if !strings.Contains(out, "- framework — Framework [select, default=gin]") {
 		t.Errorf("нет строки группы framework:\n%s", out)
 	}
@@ -391,7 +390,7 @@ func TestTemplateShow_HeaderSettingsDocs(t *testing.T) {
 	if !strings.Contains(out, "- fiberMode — Fiber mode [select, default=standalone]") {
 		t.Errorf("нет вложенной группы fiberMode:\n%s", out)
 	}
-	// Вложенная группа должна иметь больший отступ, чем framework.
+	// The nested group must be indented more than framework.
 	frIdx := strings.Index(out, "- framework")
 	fmIdx := strings.Index(out, "- fiberMode")
 	if frIdx < 0 || fmIdx < 0 || fmIdx < frIdx {
@@ -403,12 +402,12 @@ func TestTemplateShow_HeaderSettingsDocs(t *testing.T) {
 		t.Errorf("вложенная группа fiberMode (отступ %d) не глубже framework (отступ %d)", fmIndent, frIndent)
 	}
 
-	// Команды.
+	// Commands.
 	if !strings.Contains(out, "build") || !strings.Contains(out, "Собрать бинарь") {
 		t.Errorf("нет команды build в выводе:\n%s", out)
 	}
 
-	// Docs: NO_COLOR=1 -> текст README как есть, без glamour-разметки.
+	// Docs: NO_COLOR=1 means raw README text without glamour formatting.
 	if !strings.Contains(out, "# Alpha Service") || !strings.Contains(out, "Some **docs** content for alpha.") {
 		t.Errorf("docs не выведены как plain-текст:\n%s", out)
 	}
@@ -482,7 +481,7 @@ func TestTemplatePull_CopiesTreeAndRejectsNonEmptyDest(t *testing.T) {
 		t.Errorf(".git worktree-артефакт не должен попадать в выгрузку (err=%v)", err)
 	}
 
-	// Повторная выгрузка в тот же (теперь непустой) dest — ошибка.
+	// Exporting again to the same (now non-empty) dest is an error.
 	_, err = runTemplateCmd(t, "pull", "a/alpha", "--dest", dest)
 	if err == nil {
 		t.Fatal("повторный pull в непустой dest должен вернуть ошибку")

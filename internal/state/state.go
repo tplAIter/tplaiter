@@ -1,12 +1,10 @@
-// Package state отвечает за домашний каталог tplater (~/.tplaiter по
-// умолчанию, TPLAITER_HOME для переопределения — тесты/CI) и файлы состояния
-// в нём: config.yaml, index.yaml, projects.yaml, state.yaml. См.
-// документацию, документацию,
-// документацию
+// Package state manages the tplater home directory (~/.tplaiter by default,
+// TPLAITER_HOME for tests/CI) and its state files: config.yaml, index.yaml,
+// projects.yaml, and state.yaml. See the package documentation for details.
 //
-// Все файлы — YAML с полем version для гейта совместимости и заделом под
-// миграции формата (см. migrate.go). Запись всегда атомарна (tmp+rename,
-// см. atomic.go); межпроцессная сериализация — через [WithLock].
+// All files are YAML with a version field for compatibility gating and future
+// migrations (see migrate.go). Writes are always atomic (tmp+rename, see
+// atomic.go); interprocess serialization uses [WithLock].
 package state
 
 import (
@@ -17,24 +15,23 @@ import (
 	"github.com/tplAIter/tplaiter/internal/naming"
 )
 
-// HomeEnv — переменная окружения, переопределяющая домашний каталог tplater.
-// Используется тестами и CI, чтобы не трогать реальный ~/.tplaiter.
+// HomeEnv overrides the tplater home directory. Tests and CI use it to avoid
+// touching the real ~/.tplaiter.
 const HomeEnv = naming.HomeEnv
 
-// reposDirName — подкаталог кеша клонов репозиториев шаблонов.
+// reposDirName is the clone cache subdirectory for template repositories.
 const reposDirName = "repos"
 
-// homeDirPerm/filePerm — права на каталог состояния и файлы в нём. Данные не
-// секретны (токены хранятся отдельно в tplater.db, см. ), но
-// ограничиваем доступ по умолчанию до владельца — меньше поверхность для
-// случайного расширения прав в будущем.
+// homeDirPerm/filePerm are permissions for the state directory and its files.
+// The data is not secret (tokens are stored separately in tplater.db), but
+// access is restricted to the owner by default to reduce future permission drift.
 const (
 	homeDirPerm = 0o700
 	filePerm    = 0o600
 )
 
-// Home возвращает путь к домашнему каталогу tplater: значение TPLAITER_HOME,
-// если оно задано (даже пустой каталог — явный выбор вызывающего), иначе
+// Home returns the tplater home path: TPLAITER_HOME when set (even an empty
+// directory is an explicit caller choice), otherwise
 // ~/.tplaiter.
 func Home() (string, error) {
 	dir, err := os.UserHomeDir()
@@ -48,11 +45,10 @@ func Home() (string, error) {
 	return home, nil
 }
 
-// EnsureHome гарантирует существование домашнего каталога tplater и его
-// скелета (подкаталог repos/). Файлы (config.yaml и т.д.) НЕ создаются здесь
-// — каждый Load-хелпер сам возвращает дефолт при отсутствии файла и
-// создаёт его по факту первой записи. created сообщает, существовал ли
-// каталог до вызова — используется для first-run приветствия.
+// EnsureHome ensures the tplater home directory and its skeleton (repos/) exist.
+// It does not create files (config.yaml, etc.): each Load helper returns a
+// default when its file is absent and creates it on the first write. created
+// reports whether the directory existed before the call for first-run messaging.
 func EnsureHome() (home string, created bool, err error) {
 	home, err = Home()
 	if err != nil {

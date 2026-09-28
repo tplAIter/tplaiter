@@ -9,9 +9,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// manifestFixture — тот же фикстурный манифест, что использует
-// internal/manifest/parse_test.go (../../testdata/manifest/full.yaml),
-// переиспользуем его вместо своей копии.
+// manifestFixture is the same fixture manifest used by
+// internal/manifest/parse_test.go (../../testdata/manifest/full.yaml); reuse
+// it instead of maintaining a copy.
 const manifestFixture = "../../testdata/manifest/full.yaml"
 
 func writeSnapshot(t *testing.T, root string) {

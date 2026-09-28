@@ -7,24 +7,24 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ConfigVersion — текущая поддерживаемая версия формата config.yaml.
+// ConfigVersion is the currently supported config.yaml format version.
 const ConfigVersion = 1
 
-// configFileName — имя файла в домашнем каталоге tplater.
+// configFileName is the file name in the tplater home directory.
 const configFileName = "config.yaml"
 
-// RepoKind — тип хостинга репозитория шаблонов, определяет, какой
-// auth-адаптер использовать.
+// RepoKind is the template repository hosting type and determines which auth
+// adapter to use.
 type RepoKind string
 
-// Поддерживаемые виды репозиториев.
+// Supported repository kinds.
 const (
 	RepoKindGitLab RepoKind = "gitlab"
 	RepoKindGitHub RepoKind = "github"
 	RepoKindGit    RepoKind = "git"
 )
 
-// RepoRef — одна запись реестра репозиториев шаблонов в config.yaml.
+// RepoRef is one template repository registry entry in config.yaml.
 type RepoRef struct {
 	Alias  string   `yaml:"alias"`
 	URL    string   `yaml:"url"`
@@ -32,19 +32,19 @@ type RepoRef struct {
 	Type   RepoKind `yaml:"type"`
 }
 
-// Defaults — общие дефолты новых проектов. Пока пусто — задел под будущие
-// реализации (реализацию и далее); поле присутствует в схеме config.yaml с самого
-// начала, чтобы не менять версию формата при первом наполнении.
+// Defaults contains common defaults for new projects. It is currently empty,
+// but reserved for future implementations; the field has been in config.yaml
+// from the start so the format version need not change when it is populated.
 type Defaults struct{}
 
-// UpdatesSettings — настройки фоновой проверки обновлений tplater.
+// UpdatesSettings contains settings for background tplater update checks.
 type UpdatesSettings struct {
-	// Check включает ненавязчивую проверку новой версии раз в 24ч. По
-	// умолчанию true; отключается явным `updates.check: false`.
+	// Check enables a quiet check for a new version every 24h. It defaults to
+	// true and is disabled explicitly with `updates.check: false`.
 	Check bool `yaml:"check"`
 }
 
-// Config — содержимое ~/.tplaiter/config.yaml.
+// Config is the contents of ~/.tplaiter/config.yaml.
 type Config struct {
 	Version  int             `yaml:"version"`
 	Repos    []RepoRef       `yaml:"repos"`
@@ -52,8 +52,8 @@ type Config struct {
 	Updates  UpdatesSettings `yaml:"updates"`
 }
 
-// DefaultConfig возвращает конфигурацию для случая, когда config.yaml ещё
-// не существует: пустой список репозиториев, проверка обновлений включена.
+// DefaultConfig returns the configuration when config.yaml does not yet exist:
+// an empty repository list with update checks enabled.
 func DefaultConfig() Config {
 	return Config{
 		Version: ConfigVersion,
@@ -61,15 +61,14 @@ func DefaultConfig() Config {
 	}
 }
 
-// configPath возвращает путь к config.yaml в домашнем каталоге home.
+// configPath returns the path to config.yaml in home.
 func configPath(home string) string {
 	return filepath.Join(home, configFileName)
 }
 
-// LoadConfig читает config.yaml из домашнего каталога home. Отсутствие
-// файла — не ошибка: возвращается [DefaultConfig]. Версия файла новее
-// [ConfigVersion] — ошибка «обновите tplater»; старше — применяются
-// зарегистрированные миграции (см. migrate.go).
+// LoadConfig reads config.yaml from home. A missing file is not an error and
+// returns [DefaultConfig]. A version newer than [ConfigVersion] is an
+// "update tplater" error; older versions use registered migrations (see migrate.go).
 func LoadConfig(home string) (Config, error) {
 	data, existed, err := readFile(configPath(home))
 	if err != nil {
@@ -81,7 +80,7 @@ func LoadConfig(home string) (Config, error) {
 	return decodeConfig(data)
 }
 
-// SaveConfig атомарно записывает cfg в config.yaml домашнего каталога home.
+// SaveConfig atomically writes cfg to config.yaml in home.
 func SaveConfig(home string, cfg Config) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {

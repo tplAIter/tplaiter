@@ -12,17 +12,16 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// runFixtureManifest — минимальный снимок манифеста для тестов run:
-// `echoargs` печатает переданные args в marker.txt (проверка проброса
-// аргументов после `--`), `failcmd` завершается кодом 3 (проверка
-// проброса exit-кода), `avail`/`unavail` — команды с when, одно условие
-// совпадает с settings фикстурного проекта (database=postgres), другое нет.
+// runFixtureManifest — minimal manifest snapshot for run tests: `echoargs`
+// prints passed args to marker.txt (testing arguments after `--`), `failcmd`
+// exits with code 3 (testing exit-code forwarding), and `avail`/`unavail` are
+// commands with when conditions, one matching fixture settings
+// (database=postgres) and one not.
 //
-// echoargs НЕ содержит своего "$@" — execRunCommand сам дописывает
-// ` "$@"` в конец run (см. run.go); "> marker.txt" — это редирекция
-// самого printf, а не отдельная команда, поэтому дописанные позиционные
-// параметры становятся дополнительными операндами printf независимо от
-// того, где в строке команды стоит редирекция.
+// echoargs does NOT contain its own "$@" — execRunCommand appends ` "$@"` to
+// the run command (see run.go). `> marker.txt` redirects printf itself rather
+// than being a separate command, so appended positional parameters become
+// additional printf operands regardless of where the redirect appears.
 const runFixtureManifest = `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -52,10 +51,9 @@ settings:
   database: postgres
 `
 
-// newRunFixture создаёт каталог проекта (.tplaiter/project.yaml +
-// .tplaiter/manifest.snapshot.yaml) и делает его текущим рабочим каталогом
-// процесса на время теста (restore через t.Cleanup). Возвращает путь к
-// корню проекта.
+// newRunFixture creates a project directory (.tplaiter/project.yaml plus
+// .tplaiter/manifest.snapshot.yaml) and makes it the process working directory
+// for the test (restored through t.Cleanup). It returns the project root.
 func newRunFixture(t *testing.T) string {
 	t.Helper()
 
@@ -84,9 +82,9 @@ func newRunFixture(t *testing.T) string {
 		_ = os.Chdir(prevWD)
 	})
 
-	// Санитарная проверка фикстуры: манифест должен парситься тем же путём,
-	// каким его читает project.LoadManifestForProject, чтобы опечатка в YAML
-	// фикстуры не всплыла как непонятная ошибка глубоко внутри теста.
+	// Fixture sanity check: the manifest must parse through the same path used by
+	// project.LoadManifestForProject, so a YAML typo fails here rather than as an
+	// obscure error deep inside the test.
 	if _, err := manifest.LoadSnapshot(filepath.Join(tplDir, "manifest.snapshot.yaml")); err != nil {
 		t.Fatalf("фикстура манифеста невалидна: %v", err)
 	}
@@ -94,7 +92,7 @@ func newRunFixture(t *testing.T) string {
 	return root
 }
 
-// runRunCmd исполняет свежесобранную команду `run` с заданными args, возвращая
+// runRunCmd executes a freshly built `run` command with the given args, returning
 // stdout+stderr.
 func runRunCmd(t *testing.T, args ...string) (string, error) {
 	t.Helper()

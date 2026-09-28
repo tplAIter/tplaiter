@@ -14,9 +14,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// archViolation — одно нарушение arch-lint правила (проверку, docs/research/
-// clean-codegen.md §1 заимствование 4 / §4 ): правило × файл рендера
-// (slash-путь, относительно корня рендера комбо) × строка.
+// archViolation — one arch-lint violation: rule × rendered file (slash path
+// relative to the combo render root) × line.
 type archViolation struct {
 	RuleID string
 	File   string
@@ -28,11 +27,10 @@ func (v archViolation) String() string {
 	return fmt.Sprintf("%s:%d: [%s] %s", v.File, v.Line, v.RuleID, v.Msg)
 }
 
-// checkArchLint прогоняет манифестные lint.rules (opt-in секция манифеста,
-// см. manifest.LintConfig) по рендеру одной комбо: outDir — каталог результата
-// [engine.Render], files — список относительных slash-путей рендера
-// ([engine.Result.Files]). Пустая секция lint (правил нет) ничего не делает —
-// нулевое влияние на шаблоны/фикстуры без секции lint.
+// checkArchLint applies manifest lint.rules (opt-in; see manifest.LintConfig) to
+// one combo render: outDir is the [engine.Render] result directory and files are
+// relative slash paths ([engine.Result.Files]). An empty lint section does
+// nothing, preserving templates/fixtures without lint.
 func checkArchLint(tpl *manifest.Template, outDir string, files []string) error {
 	rules := tpl.Lint.Rules
 	if len(rules) == 0 {
@@ -69,10 +67,9 @@ func checkArchLint(tpl *manifest.Template, outDir string, files []string) error 
 	return fmt.Errorf("arch-lint: %d нарушени(е/й):\n    - %s", len(violations), strings.Join(parts, "\n    - "))
 }
 
-// runLintRule применяет одно правило к уже отфильтрованному (paths/exclude)
-// списку относительных путей matched. Неизвестные ID сюда не доходят —
-// manifest.Template.Validate (checkLint) отклоняет их раньше; defensive-ветка
-// молчит, чтобы будущие ID не паниковали lint-template.
+// runLintRule applies one rule to the already filtered (paths/exclude) list of
+// relative paths matched. Unknown IDs do not reach it: manifest.Template.Validate
+// (checkLint) rejects them earlier; the defensive branch stays quiet for future IDs.
 func runLintRule(ruleID, outDir string, matched []string) ([]archViolation, error) {
 	switch ruleID {
 	case manifest.LintRuleGeneratedMarker:
@@ -84,10 +81,9 @@ func runLintRule(ruleID, outDir string, matched []string) ([]archViolation, erro
 	}
 }
 
-// checkASTRule парсит через go/parser каждый .go-файл из matched (нестрогие
-// совпадения — не .go — пропускаются молча: правило может матчить и не-Go
-// пути, если шаблон так составил paths) и прогоняет по AST соответствующую
-// проверку.
+// checkASTRule parses each .go file in matched with go/parser (non-Go matches
+// are silently skipped; paths may intentionally match non-Go files) and runs
+// the corresponding AST check.
 func checkASTRule(ruleID, outDir string, matched []string) ([]archViolation, error) {
 	var out []archViolation
 	for _, rel := range matched {
@@ -112,14 +108,13 @@ func checkASTRule(ruleID, outDir string, matched []string) ([]archViolation, err
 	return out, nil
 }
 
-// generatedMarkerCheckLines — сколько физических строк с начала файла
-// проверяются на присутствие маркера сгенерированного кода.
+// generatedMarkerCheckLines — number of physical lines from the file start
+// checked for a generated-code marker.
 const generatedMarkerCheckLines = 5
 
-// checkGeneratedMarkerRule — правило generated-marker (проверку): файлы, попавшие
-// под paths/exclude правила, обязаны нести маркер "Code generated" или
-// "DO NOT EDIT" в первых [generatedMarkerCheckLines] строках. Применимо не
-// только к .go-файлам (сгенерированные клиенты бывают и не-Go).
+// checkGeneratedMarkerRule checks generated-marker: files matching paths/exclude
+// must carry "Code generated" or "DO NOT EDIT" within the first
+// [generatedMarkerCheckLines] lines. It applies beyond .go files.
 func checkGeneratedMarkerRule(outDir string, matched []string) ([]archViolation, error) {
 	var out []archViolation
 	for _, rel := range matched {
@@ -149,22 +144,18 @@ func hasGeneratedMarker(data []byte) bool {
 	return strings.Contains(head, "Code generated") || strings.Contains(head, "DO NOT EDIT")
 }
 
-// newConstructorPrefix — префикс имён функций/методов-конструкторов,
-// исключённых из правила ctx-first (см. checkCtxFirst).
+// newConstructorPrefix — prefix of constructor function/method names excluded
+// from ctx-first (see checkCtxFirst).
 const newConstructorPrefix = "New"
 
-// checkCtxFirst — правило ctx-first (проверку). Точная семантика (согласована в
-// описание поведения, спорные места задокументированы там же):
+// checkCtxFirst checks the ctx-first rule. Exact semantics:
 //
-//   - проверяются ТОЛЬКО экспортируемые функции/методы (ast.IsExported по
-//     имени функции; ресивер может быть любой видимости);
-//   - функции/методы БЕЗ параметров пропускаются — нечего проверять;
-//   - функции/методы с именем, начинающимся на "New" (конструкторы),
-//     исключены целиком независимо от сигнатуры;
-//   - иначе первый параметр обязан быть типа context.Context (обычный или
-//     вариадик `...context.Context`); любой другой тип первого параметра
-//     (включая обычный вариадик над другим типом, напр. `...Option`) —
-//     нарушение.
+//   - ONLY exported functions/methods are checked (ast.IsExported by function name;
+//     receiver visibility is irrelevant);
+//   - functions/methods without parameters are skipped;
+//   - names beginning with "New" (constructors) are always excluded;
+//   - otherwise the first parameter must be context.Context (ordinary or
+//     variadic `...context.Context`); any other type is a violation.
 func checkCtxFirst(fset *token.FileSet, f *ast.File, rel string) []archViolation {
 	out := make([]archViolation, 0, len(f.Decls))
 	for _, decl := range f.Decls {
@@ -195,8 +186,8 @@ func checkCtxFirst(fset *token.FileSet, f *ast.File, rel string) []archViolation
 	return out
 }
 
-// describeFunc возвращает человекочитаемое описание объявления для сообщения
-// о нарушении: "функция Foo" либо "метод (*T).Foo"/"метод T.Foo".
+// describeFunc returns a human-readable declaration description for violations:
+// "function Foo" or "method (*T).Foo"/"method T.Foo".
 func describeFunc(fd *ast.FuncDecl) string {
 	if fd.Recv != nil && len(fd.Recv.List) > 0 {
 		return fmt.Sprintf("метод %s.%s", recvTypeName(fd.Recv.List[0].Type), fd.Name.Name)
@@ -215,10 +206,9 @@ func recvTypeName(expr ast.Expr) string {
 	}
 }
 
-// isContextContextType сообщает, является ли тип параметра context.Context —
-// проверяется имя пакета-селектора строго "context" (алиасы импорта в
-// generated-коде не встречаются, поэтому без резолва импортов); вариадик
-// разворачивается до типа элемента.
+// isContextContextType reports whether a parameter type is context.Context.
+// It requires selector package name "context" (generated code has no import
+// aliases, so imports are not resolved); variadic types are reduced to elements.
 func isContextContextType(expr ast.Expr) bool {
 	if e, ok := expr.(*ast.Ellipsis); ok {
 		expr = e.Elt
@@ -234,8 +224,7 @@ func isContextContextType(expr ast.Expr) bool {
 	return pkg.Name == "context" && sel.Sel.Name == "Context"
 }
 
-// checkNoInit — правило no-init (проверку): запрет func init() (без ресивера) в
-// путях правила.
+// checkNoInit enforces no-init: disallow func init() (without a receiver) in rule paths.
 func checkNoInit(fset *token.FileSet, f *ast.File, rel string) []archViolation {
 	out := make([]archViolation, 0, len(f.Decls))
 	for _, decl := range f.Decls {
@@ -256,11 +245,10 @@ func checkNoInit(fset *token.FileSet, f *ast.File, rel string) []archViolation {
 	return out
 }
 
-// checkNoPanic — правило no-panic (проверку): запрет вызова panic() внутри тела
-// любой функции/метода, КРОМЕ func main и func init (обе без ресивера).
-// Замыкания (ast.FuncLit), объявленные внутри разрешённой main/init, входят в
-// её поддерево и не проверяются отдельно — panic внутри такого замыкания
-// считается "внутри main/init" (задокументированное спорное решение).
+// checkNoPanic enforces no-panic: disallow panic() in any function/method body
+// except func main and func init (both without receivers). Function literals
+// inside allowed main/init belong to its subtree and are not checked separately;
+// panic there counts as inside main/init (documented tradeoff).
 func checkNoPanic(fset *token.FileSet, f *ast.File, rel string) []archViolation {
 	var out []archViolation
 	for _, decl := range f.Decls {
@@ -292,8 +280,7 @@ func checkNoPanic(fset *token.FileSet, f *ast.File, rel string) []archViolation 
 	return out
 }
 
-// matchLintFiles возвращает подмножество files, матчащих хотя бы один глоб
-// includes и не матчащих ни один глоб excludes.
+// matchLintFiles returns files matching at least one includes glob and no excludes glob.
 func matchLintFiles(files, includes, excludes []string) []string {
 	inc := newLintGlobSet(includes)
 	exc := newLintGlobSet(excludes)
@@ -310,12 +297,10 @@ func matchLintFiles(files, includes, excludes []string) []string {
 	return out
 }
 
-// lintGlobSet — набор glob-паттернов, скомпилированных в регулярные
-// выражения. Продублировано из internal/engine/glob.go (тот же язык глобов,
-// : `*` в пределах сегмента, `**` как отдельный сегмент — ноль или
-// более каталогов, `?` — один символ кроме `/`) АДДИТИВНО — там функции не
-// экспортированы, а сам internal/engine расширять ради одного матчера не
-// нужно (тот же паттерн дублирования уже применён в internal/stats/glob.go).
+// lintGlobSet — glob patterns compiled into regular expressions. Duplicated
+// additively from internal/engine/glob.go (same language: `*` within a segment,
+// `**` as a segment for zero or more directories, `?` except `/`) because those
+// functions are unexported and expanding engine for one matcher is unnecessary.
 type lintGlobSet struct {
 	res []*regexp.Regexp
 }
@@ -337,7 +322,7 @@ func (g *lintGlobSet) matchAny(path string) bool {
 	return false
 }
 
-// lintGlobToRegexp — копия engine.globToRegexp/writeDoubleStarSegment/
+// lintGlobToRegexp — copy of engine.globToRegexp/writeDoubleStarSegment/
 // segmentToRegexp.
 func lintGlobToRegexp(glob string) *regexp.Regexp {
 	segs := strings.Split(glob, "/")

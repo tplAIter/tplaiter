@@ -11,12 +11,12 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// topN — сколько файлов показывать в таблице «топ по дрейфу».
+// topN is how many files to show in the top-drift table.
 const topN = 10
 
-// WriteJSON сериализует отчёт в стабильную схему {score, files, extras,
-// brokenAnchors} с отступом 2 пробела и финальным \n. extras/brokenAnchors —
-// всегда непустые срезы (в JSON `[]`, не `null`) для стабильности golden.
+// WriteJSON serializes the report in the stable {score, files, extras,
+// brokenAnchors} schema with two-space indentation and a final \n. extras and
+// brokenAnchors are always non-nil slices (JSON `[]`, not `null`) for stable goldens.
 func (r *Report) WriteJSON(w io.Writer) error {
 	out := *r
 	if out.Files == nil {
@@ -39,9 +39,9 @@ func (r *Report) WriteJSON(w io.Writer) error {
 	return nil
 }
 
-// Render печатает человекочитаемый отчёт: сводка по категориям и score,
-// топ-10 по дрейфу, число extra-файлов, сломанные якоря. Нулевой дрейф —
-// краткое «проект соответствует шаблону».
+// Render prints a human-readable report: category and score summary, top 10 by
+// drift, extra-file count, and broken anchors. Zero drift is summarized as
+// "project matches the template".
 func (r *Report) Render(w io.Writer, p ui.Palette) {
 	counts := r.countByStatus()
 
@@ -67,7 +67,7 @@ func (r *Report) Render(w io.Writer, p ui.Palette) {
 	r.renderTop(w, p)
 }
 
-// renderTop печатает таблицу топ-N файлов по дрейфу.
+// renderTop prints the top-N files by drift.
 func (r *Report) renderTop(w io.Writer, p ui.Palette) {
 	ranked := r.rankedByDrift()
 	if len(ranked) == 0 {
@@ -84,8 +84,8 @@ func (r *Report) renderTop(w io.Writer, p ui.Palette) {
 	fmt.Fprintln(w, table.RenderStyled(p))
 }
 
-// rankedByDrift сортирует файлы по убыванию вклада в score, затем по пути;
-// identical-файлы (нулевой вклад) отбрасываются.
+// rankedByDrift sorts files by descending score contribution, then by path;
+// identical files (zero contribution) are discarded.
 func (r *Report) rankedByDrift() []FileStat {
 	drifted := make([]FileStat, 0, len(r.Files))
 	for _, f := range r.Files {
@@ -112,7 +112,7 @@ func (r *Report) countByStatus() map[string]int {
 	return m
 }
 
-// isClean сообщает о нулевом дрейфе: score 0, ни extra, ни сломанных якорей.
+// isClean reports zero drift: score 0, no extras, and no broken anchors.
 func (r *Report) isClean() bool {
 	return r.Score == 0 && len(r.Extras) == 0 && len(r.BrokenAnchors) == 0
 }
@@ -134,7 +134,7 @@ func pctCell(f FileStat) string {
 	return strconv.FormatFloat(f.Percent, 'f', -1, 64)
 }
 
-// scoreColor выбирает цвет score: 0 — успех, <34 — muted, <67 — warn, иначе error.
+// scoreColor chooses score color: 0 success, <34 muted, <67 warn, otherwise error.
 func scoreColor(p ui.Palette, score int) func(string) string {
 	switch {
 	case score == 0:

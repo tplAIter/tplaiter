@@ -40,7 +40,7 @@ func TestRunGitCredential_GetRepoPriorityViaPath(t *testing.T) {
 	seed(t, st, Credential{Host: "git.example.test", Tool: "gitlab", Token: "HOST"})
 	seed(t, st, Credential{Host: "git.example.test", Repo: "team/app", Tool: "gitlab", Token: "REPO"})
 
-	// path с суффиксом .git — должен нормализоваться и дать repo-level токен.
+	// path with a .git suffix — it should normalize and return the repo-level token.
 	in := strings.NewReader("protocol=https\nhost=git.example.test\npath=team/app.git\n\n")
 	var out, logw bytes.Buffer
 	if err := RunGitCredential(st, "get", in, &out, &logw, time.Now()); err != nil {
@@ -153,7 +153,7 @@ func TestHelperEnv(t *testing.T) {
 		t.Errorf("env = %v, want useHttpPath for https", env)
 	}
 
-	// ssh: без useHttpPath.
+	// ssh: without useHttpPath.
 	sshEnv := strings.Join(HelperEnv("git@git.example.test:team/app.git"), "\n")
 	if strings.Contains(sshEnv, "useHttpPath") {
 		t.Errorf("ssh env = %v, should not set useHttpPath", sshEnv)

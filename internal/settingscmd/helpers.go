@@ -22,16 +22,16 @@ import (
 	"github.com/tplAIter/tplaiter/internal/update"
 )
 
-// groupChange — изменение одной группы для сводки set/edit.
+// groupChange — one group change for the set/edit summary.
 type groupChange struct {
 	Group string
 	Old   string
 	New   string
 }
 
-// exitForConflicts возвращает [update.ExitCodeError] с кодом 2, если план
-// оставил конфликт-маркеры (симметрично `tplater update`). Слой cmd
-// транслирует его в exit-код процесса.
+// exitForConflicts returns [update.ExitCodeError] with code 2 when the plan
+// leaves conflict markers (symmetric with `tplater update`). The cmd layer maps
+// it to the process exit code.
 func exitForConflicts(conflicts []string) error {
 	if len(conflicts) == 0 {
 		return nil
@@ -42,8 +42,8 @@ func exitForConflicts(conflicts []string) error {
 	}
 }
 
-// printResolveReport печатает доклад резолвера: довключённые значения (requires)
-// и предупреждения (напр. сброс неактивной вложенной группы).
+// printResolveReport prints resolver output: implied values (requires) and
+// warnings (for example, clearing an inactive nested group).
 func printResolveReport(d Deps, rep settings.Report) {
 	if len(rep.Implied) > 0 {
 		fmt.Fprintln(d.Out, d.Palette.Warn("довключено автоматически (требуется выбранными опциями):"))
@@ -56,9 +56,9 @@ func printResolveReport(d Deps, rep settings.Report) {
 	}
 }
 
-// printSettingsTable печатает таблицу GROUP/VALUE/ACTIVE по всему дереву групп.
-// Неактивные вложенные группы (родительская опция не выбрана) приглушаются
-// целиком; вложенность отражается отступом имени группы.
+// printSettingsTable prints GROUP/VALUE/ACTIVE for the entire group tree.
+// Inactive nested groups (parent option not selected) are muted; nesting is
+// represented by indentation of the group name.
 func printSettingsTable(out io.Writer, pal ui.Palette, tpl *manifest.Template, values settings.Values) {
 	tbl := ui.NewTable("GROUP", "VALUE", "ACTIVE")
 	walkGroups(tpl.Settings, values, true, 0, func(g *manifest.SettingGroup, active bool, depth int) {
@@ -72,13 +72,13 @@ func printSettingsTable(out io.Writer, pal ui.Palette, tpl *manifest.Template, v
 			tbl.AddRow(name, val, activeCell)
 			return
 		}
-		// Неактивная вложенная группа — приглушаем всю строку.
+		// Inactive nested group — mute the entire row.
 		tbl.AddRow(pal.Muted(name), pal.Muted(val), pal.Muted(activeCell))
 	})
 	fmt.Fprintln(out, tbl.RenderStyled(pal))
 }
 
-// printChangedGroups печатает сводку изменённых групп (старое→новое).
+// printChangedGroups prints changed groups (old→new).
 func printChangedGroups(out io.Writer, pal ui.Palette, changed []groupChange) {
 	if len(changed) == 0 {
 		return
@@ -89,8 +89,8 @@ func printChangedGroups(out io.Writer, pal ui.Palette, changed []groupChange) {
 	}
 }
 
-// changedGroups сравнивает старые и новые значения по всем группам дерева и
-// возвращает изменившиеся (в порядке объявления).
+// changedGroups compares old and new values across the group tree and returns
+// changed groups in declaration order.
 func changedGroups(tpl *manifest.Template, oldV, newV settings.Values) []groupChange {
 	var out []groupChange
 	walkGroups(tpl.Settings, newV, true, 0, func(g *manifest.SettingGroup, _ bool, _ int) {
@@ -103,10 +103,9 @@ func changedGroups(tpl *manifest.Template, oldV, newV settings.Values) []groupCh
 	return out
 }
 
-// walkGroups обходит дерево групп в порядке объявления, вызывая fn для каждой
-// группы с флагом активности и глубиной вложенности. Корневые группы активны
-// всегда; вложенная активна, когда активен родитель И в нём выбрана
-// активирующая опция (по values).
+// walkGroups traverses groups in declaration order, calling fn with activity and
+// nesting depth. Root groups are always active; a nested group is active when its
+// parent is active and its activating option is selected in values.
 func walkGroups(
 	groups []manifest.SettingGroup, values settings.Values, active bool, depth int,
 	fn func(g *manifest.SettingGroup, active bool, depth int),
@@ -122,8 +121,8 @@ func walkGroups(
 	}
 }
 
-// optionSelected сообщает, выбрана ли опция optID в группе типа select/
-// multiselect при значении val.
+// optionSelected reports whether optID is selected in a select/multiselect group
+// with value val.
 func optionSelected(typ string, val any, optID string) bool {
 	switch typ {
 	case manifest.TypeSelect:
@@ -140,7 +139,7 @@ func optionSelected(typ string, val any, optID string) bool {
 	return false
 }
 
-// groupExists сообщает, есть ли в дереве группа с данным id.
+// groupExists reports whether the tree contains a group with the given ID.
 func groupExists(tpl *manifest.Template, id string) bool {
 	found := false
 	walkGroups(tpl.Settings, nil, true, 0, func(g *manifest.SettingGroup, _ bool, _ int) {
@@ -151,9 +150,9 @@ func groupExists(tpl *manifest.Template, id string) bool {
 	return found
 }
 
-// groupWithDescendants возвращает множество id целевой группы и всех групп,
-// вложенных под её опции (её субдерево). Нужно, чтобы edit <group> переопросил
-// саму группу и её уточнения, а не тянул их из preset.
+// groupWithDescendants returns the target group ID and all groups nested under
+// its options (its subtree). edit <group> uses it to re-ask the group and its
+// refinements rather than pulling them from the preset.
 func groupWithDescendants(tpl *manifest.Template, id string) map[string]bool {
 	out := map[string]bool{}
 	var find func(groups []manifest.SettingGroup)
@@ -174,7 +173,7 @@ func groupWithDescendants(tpl *manifest.Template, id string) map[string]bool {
 	return out
 }
 
-// markSubtree помечает в set id всех групп, вложенных под опции g.
+// markSubtree marks IDs of all groups nested under g's options in set.
 func markSubtree(g *manifest.SettingGroup, out map[string]bool) {
 	for j := range g.Options {
 		for k := range g.Options[j].Settings {
@@ -185,22 +184,22 @@ func markSubtree(g *manifest.SettingGroup, out map[string]bool) {
 	}
 }
 
-// saveMarker сериализует проектный маркер и перезаписывает .tplaiter/project.yaml
-// (значения settings уже обновлены вызывающим). Версия/id/runtime сохраняются.
+// saveMarker serializes the project marker and rewrites .tplaiter/project.yaml
+// (settings values were already updated by the caller). Version/id/runtime remain.
 func saveMarker(root string, proj *manifest.Project) error {
 	data, err := yaml.Marshal(proj)
 	if err != nil {
 		return fmt.Errorf("settings: сериализация project.yaml: %w", err)
 	}
 	path := filepath.Join(root, project.MarkerRelPath)
-	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: маркер не секрет.
+	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: the marker is not secret.
 		return fmt.Errorf("settings: запись project.yaml: %w", err)
 	}
 	return nil
 }
 
-// refreshRegistry освежает baselineSHA/path/lastSeenAt записи проекта в реестре
-//: baseline пересчитан сменой настроек, версия шаблона не менялась.
+// refreshRegistry refreshes baselineSHA/path/lastSeenAt in the project registry:
+// the baseline changed with settings, while the template version did not.
 func refreshRegistry(d Deps, root string, proj *manifest.Project) error {
 	baselineSHA, err := hashFile(filepath.Join(root, engine.BaselineRelPath))
 	if err != nil {
@@ -233,7 +232,7 @@ func refreshRegistry(d Deps, root string, proj *manifest.Project) error {
 	})
 }
 
-// hashFile возвращает hex(sha256) содержимого файла.
+// hashFile returns hex(sha256) of file contents.
 func hashFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -243,11 +242,11 @@ func hashFile(path string) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// nonDefaultExplicit возвращает подмножество values, отличающихся от defaults и
-// не входящих в drop (последнее — субдерево переопрашиваемой группы для edit).
-// Это восстановление «явно заданных» групп из плоского снимка project.yaml, где
-// различие explicit/дефолт не сохраняется: значение, равное дефолту, считаем
-// неявным, чтобы requires могли его довключить.
+// nonDefaultExplicit returns values differing from defaults and outside drop
+// (the latter is the re-asked group's subtree for edit). It reconstructs
+// "explicit" groups from the flat project.yaml snapshot, where explicit/default
+// provenance is lost: default-equal values are treated as implicit so requires
+// can imply them.
 func nonDefaultExplicit(values, defaults settings.Values, drop map[string]bool) settings.Values {
 	out := settings.Values{}
 	for group, val := range values {
@@ -262,7 +261,7 @@ func nonDefaultExplicit(values, defaults settings.Values, drop map[string]bool) 
 	return out
 }
 
-// valuesEqual сравнивает значения настроек с поддержкой []string.
+// valuesEqual compares setting values, including []string.
 func valuesEqual(a, b any) bool {
 	as, aok := a.([]string)
 	bs, bok := b.([]string)
@@ -280,7 +279,7 @@ func valuesEqual(a, b any) bool {
 	return a == b
 }
 
-// formatValue форматирует значение группы для таблиц/сводок.
+// formatValue formats a group value for tables/summaries.
 func formatValue(v any) string {
 	switch x := v.(type) {
 	case []string:

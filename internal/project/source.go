@@ -13,45 +13,43 @@ import (
 	"github.com/tplAIter/tplaiter/internal/repo"
 )
 
-// ErrSourceUnavailable — сигнал от [ManifestSource.Load], что у этого
-// источника попросту нет манифеста для проекта (например, снимок ещё не
-// сохранён либо кеш репозитория не выкачан) — это не ошибка, а команда
-// вызывающему попробовать следующий источник в цепочке. Отличать от прочих
-// ошибок (испорченный YAML, ошибка файловой системы) важно: последние нужно
-// вернуть пользователю как есть, не маскируя их переходом к фоллбеку.
+// ErrSourceUnavailable signals from [ManifestSource.Load] that this source
+// has no manifest for the project (for example, the snapshot is not saved or
+// the repository cache is not fetched). It is not an error, but tells the
+// caller to try the next source. Other errors, such as bad YAML or filesystem
+// failures, must be returned unchanged rather than hidden by fallback.
 var ErrSourceUnavailable = errors.New("источник манифеста недоступен")
 
-// ErrNoManifest возвращается [LoadManifestForProject], когда ни один
-// источник в цепочке не смог отдать манифест.
+// ErrNoManifest is returned by [LoadManifestForProject] when no source in the
+// chain can provide a manifest.
 var ErrNoManifest = errors.New("нет ни кеша шаблона, ни снимка манифеста — запусти tplater update")
 
-// ManifestSource — один способ разрешить манифест шаблона для проекта на
-// зафиксированной версии. Реализации: [repoSource] (приоритетный источник —
-// checkout репозитория шаблона из кеша ~/.tplaiter/repos/<repo>/... на
-// зафиксированный ref) и [SnapshotSource] (офлайн-фоллбек, снимок из
+// ManifestSource resolves a template manifest for a project at a pinned
+// version. Implementations are [repoSource] (the preferred source, checking
+// out the template repository from ~/.tplaiter/repos/<repo>/... at a pinned
+// ref) and [SnapshotSource] (the offline fallback from
 // .tplaiter/manifest.snapshot.yaml).
 type ManifestSource interface {
-	// Name — метка источника для отчёта вызывающему ("snapshot"|"repo").
+	// Name is the source label reported to the caller ("snapshot"|"repo").
 	Name() string
-	// Load разрешает манифест для proj. Возвращает [ErrSourceUnavailable],
-	// если у источника попросту нечего предложить (не ошибка — сигнал
-	// "пропусти меня, попробуй следующий источник").
+	// Load resolves the manifest for proj. It returns [ErrSourceUnavailable]
+	// when this source has nothing to offer (not an error, but a signal to try
+	// the next source).
 	Load(proj *manifest.Project) (*manifest.Template, error)
 }
 
-// SnapshotSource читает манифест из .tplaiter/manifest.snapshot.yaml в корне
-// проекта Root — снимок, который `tplater new`/`update`
-// сохраняют на месте, чтобы `run`/`gen` работали офлайн и при недоступном
-// репозитории шаблона.
+// SnapshotSource reads .tplaiter/manifest.snapshot.yaml from the project root.
+// Root is the snapshot saved by `tplater new`/`update` so that `run`/`gen` work
+// offline when the template repository is unavailable.
 type SnapshotSource struct {
 	Root string
 }
 
-// Name реализует [ManifestSource].
+// Name implements [ManifestSource].
 func (SnapshotSource) Name() string { return "snapshot" }
 
-// Load реализует [ManifestSource]. proj не используется: снимок уже
-// привязан к конкретному проекту самим своим расположением внутри Root.
+// Load implements [ManifestSource]. proj is unused because the snapshot is
+// already tied to the project by its location inside Root.
 func (s SnapshotSource) Load(_ *manifest.Project) (*manifest.Template, error) {
 	path := filepath.Join(s.Root, manifest.SnapshotRelPath)
 	if _, err := os.Stat(path); err != nil {
@@ -68,73 +66,73 @@ func (s SnapshotSource) Load(_ *manifest.Project) (*manifest.Template, error) {
 	return tpl, nil
 }
 
-// templateManifestFileName — имя манифеста шаблона в корне checkout'а (та же
-// приватная константа, что в internal/repo/scan.go и internal/renderref).
+// templateManifestFileName is the template manifest name at the checkout root
+// (the same private constant as in internal/repo/scan.go and internal/renderref).
 const templateManifestFileName = "template.manifest.yaml"
 
-// repoSource — приоритетный источник манифеста: чтение из кеша репозитория
-// шаблона (~/.tplaiter/repos/<repo>/...) на версии, зафиксированной в
-// proj.Template.Version. Через [repo.Manager] резолвит ссылку
-// `<repo>/<name>@<version>` в git-ref, делает checkout нужного
-// ref в отдельный worktree локального клона (сеть/токены не нужны — операция
-// чисто локальная) и разбирает template.manifest.yaml. Так `run`/`env`/`gen`
-// начинают работать без снимка, пока жив кеш репозитория.
+// repoSource is the preferred manifest source: it reads from the template
+// repository cache (~/.tplaiter/repos/<repo>/...) at the version pinned in
+// proj.Template.Version. Through [repo.Manager] it resolves
+// `<repo>/<name>@<version>` to a git ref, checks out that ref in a separate
+// worktree of the local clone (no network or tokens are needed), and parses
+// template.manifest.yaml. Thus `run`/`env`/`gen` work without a snapshot while
+// the repository cache is available.
 //
-// Любая неготовность кеша (репозиторий не добавлен, версии нет в индексе, клон
-// отсутствует, манифест не разобрался) трактуется как [ErrSourceUnavailable] —
-// это priority-but-optional источник, надёжный фоллбек — [SnapshotSource].
+// Any cache unavailability (repository not added, version absent from the
+// index, clone missing, or manifest unparsable) is treated as
+// [ErrSourceUnavailable]. This source is optional by priority; the reliable
+// fallback is [SnapshotSource].
 type repoSource struct {
 	home string
 	repo string
 }
 
-// Name реализует [ManifestSource].
+// Name implements [ManifestSource].
 func (repoSource) Name() string { return "repo" }
 
-// Load реализует [ManifestSource]: резолвит и выкачивает манифест шаблона из
-// кеша репозитория на зафиксированной версии. Возвращает [ErrSourceUnavailable]
-// при любой неготовности кеша (см. [repoSource]).
+// Load implements [ManifestSource]: it resolves and checks out the template
+// manifest from the repository cache at the pinned version. It returns
+// [ErrSourceUnavailable] for any cache unavailability (see [repoSource]).
 func (s repoSource) Load(proj *manifest.Project) (*manifest.Template, error) {
 	if s.repo == "" || proj.Template.Name == "" || proj.Template.Version == "" {
 		return nil, ErrSourceUnavailable
 	}
-	// Локальный менеджер: реальный git-runner, без стора токенов и UI — checkout
-	// worktree'а существующего клона не требует ни сети, ни аутентификации.
+	// Local manager: a real git runner without token storage or UI; checking out
+	// a worktree from an existing clone needs neither network nor authentication.
 	mgr := repo.New(s.home, execx.Exec{}, nil, repo.UI{})
 
 	ref := s.repo + "/" + proj.Template.Name + "@" + proj.Template.Version
 	resolved, err := mgr.ResolveRef(ref)
 	if err != nil {
-		// Неготовность кеша (репо не добавлен, версии нет в индексе) — сигнал
-		// фоллбека на снимок, не ошибка процесса.
+		// Cache unavailability (repository not added or version absent from the
+		// index) signals fallback to the snapshot, not a process error.
 		return nil, ErrSourceUnavailable
 	}
 
 	ctx := context.Background()
 	src, cleanup, err := mgr.Checkout(ctx, resolved.RepoAlias, resolved.GitRef, resolved.Entry.Path)
 	if err != nil {
-		return nil, ErrSourceUnavailable // клон/ref недоступны — фоллбек на снимок.
+		return nil, ErrSourceUnavailable // Clone/ref unavailable: fall back to snapshot.
 	}
 	defer func() { _ = cleanup() }()
 
 	data, err := fs.ReadFile(src, templateManifestFileName)
 	if err != nil {
-		return nil, ErrSourceUnavailable // манифест не прочитан — фоллбек.
+		return nil, ErrSourceUnavailable // Manifest unreadable: fall back.
 	}
 	tpl, err := manifest.ParseTemplate(data)
 	if err != nil {
-		return nil, ErrSourceUnavailable // манифест не разобран — фоллбек.
+		return nil, ErrSourceUnavailable // Manifest unparsable: fall back.
 	}
 	return tpl, nil
 }
 
-// LoadManifestForProject разрешает манифест шаблона для проекта proj,
-// корень которого — root, перебирая источники в порядке приоритета:
-// репо-кеш ([repoSource]) → снимок ([SnapshotSource]).
-// Возвращает манифест, метку сработавшего источника
-// ("snapshot"|"repo") и ошибку. Если ни один источник не смог отдать
-// манифест — [ErrNoManifest]; любая иная ошибка источника (испорченный
-// снимок и т.п.) возвращается как есть, без попытки следующего источника.
+// LoadManifestForProject resolves the template manifest for proj, whose root
+// is root, by trying sources in priority order: repository cache ([repoSource])
+// then snapshot ([SnapshotSource]). It returns the manifest, the selected
+// source label ("snapshot"|"repo"), and an error. If no source can provide a
+// manifest, it returns [ErrNoManifest]; any other source error (such as a
+// corrupt snapshot) is returned unchanged without trying the next source.
 func LoadManifestForProject(root string, proj *manifest.Project, home string) (*manifest.Template, string, error) {
 	sources := []ManifestSource{
 		repoSource{home: home, repo: proj.Template.Repo},

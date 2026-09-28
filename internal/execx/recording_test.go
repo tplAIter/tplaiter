@@ -27,8 +27,8 @@ func TestRecordingRunner_OnExactMatch(t *testing.T) {
 }
 
 func TestRecordingRunner_OnCommandFallback(t *testing.T) {
-	// Заскриптован ответ на любые аргументы "git", вызов идёт с другими args
-	// ("git log"), точного совпадения нет — должен сработать OnCommand.
+	// Script a response for any "git" arguments; the call uses different args
+	// ("git log"), so there is no exact match and OnCommand must be used.
 	r := NewRecordingRunner().OnCommand("git", Response{Result: Result{Stdout: "generic"}})
 
 	res, err := r.Run(context.Background(), "git", []string{"log"}, Options{})

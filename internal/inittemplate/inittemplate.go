@@ -1,15 +1,15 @@
-// Package inittemplate реализует мета-уровень tplaiter ( требование
-// владельца №2): генерацию ПУСТОГО репозитория шаблонов «со всем
-// инструментарием» (`tplaiter init-template`) и generic-селфтест такого
-// репозитория (`tplaiter lint-template`, см. [Lint]).
+// Package inittemplate implements tplaiter's meta-level (owner requirement 2):
+// generating an EMPTY template repository "with all tooling"
+// (`tplaiter init-template`) and a generic self-test for it
+// (`tplaiter lint-template`, see [Lint]).
 //
-// Скелет репозитория встроен в бинарник через go:embed (каталог skeleton/**,
-// маленький — это допустимо, живёт в самом репо tplaiter). Скелет-файлы
-// рендерятся text/template с НЕСТАНДАРТНЫМИ разделителями `<<`/`>>` и минимальным
-// контекстом ([skelContext]): это оставляет обычные `{{ … }}` (шаблонные
-// конструкции второго уровня — они предназначены сгенерированному репозиторию,
-// а не init-времени) нетронутыми. Так один и тот же файл несёт и init-time
-// подстановку (`<< .Name >>`), и layer-2 шаблон (`{{ .Project.Slug }}`).
+// The repository skeleton is embedded through go:embed (skeleton/**; it is
+// small enough to live in the tplaiter repository). Skeleton files render with
+// text/template's NONSTANDARD `<<`/`>>` delimiters and a minimal [skelContext],
+// leaving ordinary `{{ … }}` untouched as second-level templates intended for
+// the generated repository rather than init time. One file therefore carries
+// both init-time substitution (`<< .Name >>`) and a layer-2 template
+// (`{{ .Project.Slug }}`).
 package inittemplate
 
 import (
@@ -33,42 +33,42 @@ var skeletonFS embed.FS
 
 const (
 	skeletonRoot   = "skeleton"
-	skeletonCommon = skeletonRoot + "/common"   // файлы корня репозитория
-	skeletonTpl    = skeletonRoot + "/template" // содержимое одного шаблона
+	skeletonCommon = skeletonRoot + "/common"   // repository-root files
+	skeletonTpl    = skeletonRoot + "/template" // one template's contents
 	skeletonRepo   = skeletonRoot + "/repo"     // repo.manifest.yaml (multi)
 )
 
-// nameRe — допустимое имя шаблона: совпадает с slug-требованием
-// manifest.metadata.name (строчные буквы/цифры через дефис), т.к. `<< .Name >>`
-// подставляется прямо в metadata.name скелета.
+// nameRe — allowed template name, matching the manifest.metadata.name slug
+// requirement (lowercase letters/digits separated by hyphens), because
+// `<< .Name >>` is substituted directly into the skeleton metadata.name.
 var nameRe = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
-// skelContext — контекст init-времени для рендера скелета.
+// skelContext — init-time context for rendering the skeleton.
 type skelContext struct {
 	Name string
 }
 
-// InitOptions — параметры одного запуска [Init].
+// InitOptions — parameters for one [Init] invocation.
 type InitOptions struct {
-	// Name — имя шаблона (slug), подставляется в metadata.name и, для --multi,
-	// в путь подкаталога шаблона.
+	// Name — template name (slug), substituted into metadata.name and, for --multi,
+	// the template subdirectory path.
 	Name string
-	// Dir — целевой каталог репозитория; пусто → ./<Name>.
+	// Dir — target repository directory; empty → ./<Name>.
 	Dir string
-	// Multi — сгенерировать репозиторий как multi (repo.manifest.yaml + шаблон
-	// в подкаталоге <Name>/).
+	// Multi — generate a multi repository (repo.manifest.yaml plus a template in
+	// the <Name>/ subdirectory).
 	Multi bool
-	// NoGit — не выполнять git init + первый коммит.
+	// NoGit — do not run git init and the first commit.
 	NoGit bool
-	// Runner — раннер внешних процессов (git). nil → [execx.Exec].
+	// Runner — external-process runner (git). nil → [execx.Exec].
 	Runner execx.Runner
-	// Out — поток вывода подсказок «что дальше».
+	// Out — output stream for "what next" hints.
 	Out io.Writer
 }
 
-// Init генерирует репозиторий шаблона. Возвращает путь созданного
-// каталога репозитория. Целевой каталог должен не существовать либо быть пустым
-// (повторный init в непустой каталог — ошибка).
+// Init generates a template repository and returns its created directory path.
+// The target directory must be absent or empty (reinitializing a non-empty
+// directory is an error).
 func Init(ctx context.Context, opts InitOptions) (string, error) {
 	if !nameRe.MatchString(opts.Name) {
 		return "", fmt.Errorf("inittemplate: имя %q не в формате slug (строчные буквы/цифры через дефис)", opts.Name)
@@ -84,7 +84,7 @@ func Init(ctx context.Context, opts InitOptions) (string, error) {
 
 	ctxData := skelContext{Name: opts.Name}
 
-	// Файлы корня репозитория (README мейнтейнера, GitHub Actions workflow).
+	// Repository-root files (maintainer README, GitHub Actions workflow).
 	if err := renderSubtree(skeletonCommon, repoDir, ctxData); err != nil {
 		return "", err
 	}
@@ -108,8 +108,8 @@ func Init(ctx context.Context, opts InitOptions) (string, error) {
 	return repoDir, nil
 }
 
-// renderSubtree рендерит встроенное поддерево embedRoot в каталог dst,
-// сохраняя относительную структуру и подставляя `<< … >>` контекстом data.
+// renderSubtree renders embedded subtree embedRoot into dst, preserving relative
+// structure and substituting `<< … >>` with data.
 func renderSubtree(embedRoot, dst string, data skelContext) error {
 	return fs.WalkDir(skeletonFS, embedRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -131,15 +131,15 @@ func renderSubtree(embedRoot, dst string, data skelContext) error {
 		if mkErr := os.MkdirAll(filepath.Dir(outPath), 0o755); mkErr != nil {
 			return fmt.Errorf("inittemplate: mkdir %s: %w", filepath.Dir(outPath), mkErr)
 		}
-		if wErr := os.WriteFile(outPath, out, 0o644); wErr != nil { //nolint:gosec // G306: генерируемые исходники шаблона — обычные файлы 0644.
+		if wErr := os.WriteFile(outPath, out, 0o644); wErr != nil { //nolint:gosec // G306: generated template sources are ordinary 0644 files.
 			return fmt.Errorf("inittemplate: запись %s: %w", outPath, wErr)
 		}
 		return nil
 	})
 }
 
-// renderSkeletonBytes рендерит один скелет-файл через text/template с
-// разделителями `<<`/`>>`. Файлы без `<<` проходят фактически без изменений.
+// renderSkeletonBytes renders one skeleton file through text/template with
+// `<<`/`>>` delimiters. Files without `<<` pass through essentially unchanged.
 func renderSkeletonBytes(name string, raw []byte, data skelContext) ([]byte, error) {
 	t, err := template.New(name).Delims("<<", ">>").Parse(string(raw))
 	if err != nil {
@@ -152,7 +152,7 @@ func renderSkeletonBytes(name string, raw []byte, data skelContext) ([]byte, err
 	return buf.Bytes(), nil
 }
 
-// ensureVacant проверяет, что path не существует либо является пустым каталогом.
+// ensureVacant checks that path is absent or an empty directory.
 func ensureVacant(path string) error {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
@@ -174,9 +174,9 @@ func ensureVacant(path string) error {
 	return nil
 }
 
-// initGit выполняет git init + первый коммит. Отсутствие git или сбой коммита
-// (например, не настроен user.name) понижаются до предупреждения: репозиторий
-// уже создан и пригоден, git можно инициализировать вручную.
+// initGit runs git init and the first commit. Missing git or a commit failure
+// (for example, missing user.name) becomes a warning: the repository is already
+// created and usable, and git can be initialized manually.
 func initGit(ctx context.Context, opts InitOptions, repoDir string) {
 	runner := opts.Runner
 	if runner == nil {
@@ -199,7 +199,7 @@ func initGit(ctx context.Context, opts InitOptions, repoDir string) {
 	}
 }
 
-// printNextSteps печатает подсказку «что дальше».
+// printNextSteps prints a "what next" hint.
 func printNextSteps(opts InitOptions, repoDir string) {
 	if opts.Out == nil {
 		return

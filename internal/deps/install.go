@@ -11,45 +11,43 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// ActionKind — вид действия, которое [InstallPlan] предлагает для установки
-// инструмента на данной платформе.
+// ActionKind — kind of action that [InstallPlan] proposes to install a tool on a platform.
 type ActionKind string
 
-// Виды действий установки (SPEC-03 §4).
+// Installation action kinds (SPEC-03 §4).
 const (
-	// ActionBrew — установка одной командой `brew install <formula>`
-	// (доступна на darwin и linux, если в PATH есть brew).
+	// ActionBrew — install with one `brew install <formula>` command
+	// (available on darwin and linux when brew is in PATH).
 	ActionBrew ActionKind = "brew"
-	// ActionAptPrint — apt-рецепт только печатается (sudo не вызываем сами).
+	// ActionAptPrint — print the apt recipe only (we do not invoke sudo ourselves).
 	ActionAptPrint ActionKind = "apt-print"
-	// ActionURL — нет автоматического рецепта, печатаем ссылку на ручную
-	// установку.
+	// ActionURL — no automatic recipe; print a link for manual installation.
 	ActionURL ActionKind = "url"
-	// ActionNone — для платформы/инструмента вовсе нет рецепта установки.
+	// ActionNone — no installation recipe exists for the platform/tool.
 	ActionNone ActionKind = "none"
 )
 
-// Action — план установки инструмента, вычисленный [InstallPlan]. Command —
-// готовая к печати/исполнению команда (для ActionBrew — то, что реально
-// исполняется; для ActionAptPrint/ActionURL — то, что только печатается).
+// Action — tool installation plan computed by [InstallPlan]. Command is ready
+// to print/execute (for ActionBrew, it is actually executed; for
+// ActionAptPrint/ActionURL, it is only printed).
 type Action struct {
 	Kind    ActionKind
 	Command string
 }
 
-// Platform — платформенный контекст, влияющий на выбор рецепта установки.
+// Platform — platform context affecting installation-recipe selection.
 type Platform struct {
-	// GOOS — целевая ОС (обычно runtime.GOOS, параметризовано для тестов).
+	// GOOS — target OS (usually runtime.GOOS, parameterized for tests).
 	GOOS string
-	// HasBrew сообщает, найден ли brew в PATH текущего окружения.
+	// HasBrew reports whether brew was found in the current environment's PATH.
 	HasBrew bool
 }
 
-// InstallPlan выбирает рецепт установки tool для platform (SPEC-03 §4):
-//  1. brew, если он есть в PATH (darwin или linux) и манифест даёт формулу;
-//  2. apt — только когда brew недоступен на linux (иначе brew в приоритете);
-//  3. url — если задана ссылка на ручную установку;
-//  4. none — для этой платформы у инструмента вовсе нет рецепта.
+// InstallPlan selects an installation recipe for tool on platform (SPEC-03 §4):
+//  1. brew if it is in PATH (darwin or linux) and the manifest provides a formula;
+//  2. apt only when brew is unavailable on linux (brew otherwise has priority);
+//  3. url if a manual-installation link is set;
+//  4. none when the tool has no recipe for this platform.
 func InstallPlan(tool manifest.Tool, platform Platform) Action {
 	switch {
 	case platform.HasBrew && (platform.GOOS == "darwin" || platform.GOOS == "linux") && tool.Install.Brew != "":
@@ -63,61 +61,59 @@ func InstallPlan(tool manifest.Tool, platform Platform) Action {
 	}
 }
 
-// UI — минимальный вывод, нужный установке инструментов: сообщения со
-// смысловой раскраской и писатель для стриминга вывода дочерних процессов
-// (например, `brew install`) по мере его появления.
+// UI — minimal output needed for tool installation: semantically colored
+// messages and a writer for streaming child-process output (for example,
+// `brew install`) as it appears.
 type UI struct {
 	Out     io.Writer
 	Palette ui.Palette
 }
 
-// NewUI создаёт UI поверх writer out с палитрой pal.
+// NewUI creates a UI over writer out with palette pal.
 func NewUI(out io.Writer, pal ui.Palette) UI {
 	return UI{Out: out, Palette: pal}
 }
 
-// Info печатает нейтральное сообщение.
+// Info prints a neutral message.
 func (u UI) Info(msg string) {
 	fmt.Fprintln(u.Out, u.Palette.Muted(msg))
 }
 
-// Warn печатает предупреждение.
+// Warn prints a warning.
 func (u UI) Warn(msg string) {
 	fmt.Fprintln(u.Out, u.Palette.Warn(msg))
 }
 
-// Success печатает сообщение об успехе.
+// Success prints a success message.
 func (u UI) Success(msg string) {
 	fmt.Fprintln(u.Out, u.Palette.Success(msg))
 }
 
-// DetectPlatform определяет [Platform] текущего процесса: GOOS runtime и
-// наличие brew в PATH через runner.LookPath — благодаря этому unit-тесты
-// управляют HasBrew через [execx.RecordingRunner.SetLookPath] без обращения
-// к реальной машине.
+// DetectPlatform determines the current process's [Platform]: runtime GOOS and
+// brew presence in PATH through runner.LookPath. This lets unit tests control
+// HasBrew with [execx.RecordingRunner.SetLookPath] without accessing the real machine.
 func DetectPlatform(runner execx.Runner) Platform {
 	return Platform{GOOS: runtime.GOOS}
 }
 
-// Install выполняет план установки tool, вычисленный по текущей платформе
-// (см. [DetectPlatform], [InstallPlan]):
-//   - ActionBrew — печатает предложение, спрашивает confirm() и, если true,
-//     исполняет `brew install <formula>`, стримя вывод в out.Out;
-//   - ActionAptPrint/ActionURL — только печатает рецепт, ничего не исполняет
-//     (sudo руками пользователя);
-//   - ActionNone — предупреждает об отсутствии рецепта.
+// Install executes the tool installation plan computed for the current platform
+// (see [DetectPlatform], [InstallPlan]):
+//   - ActionBrew prints an offer, asks confirm(), and if true executes
+//     `brew install <formula>`, streaming output to out.Out;
+//   - ActionAptPrint/ActionURL only print the recipe and execute nothing
+//     (the user runs sudo manually);
+//   - ActionNone warns that no recipe exists.
 //
-// confirm может быть nil — эквивалентно функции, всегда возвращающей false
-// (установка не подтверждена, план всё равно возвращается вызывающему).
+// confirm may be nil, equivalent to a function that always returns false
+// (installation is not confirmed, but the plan is still returned to the caller).
 func Install(ctx context.Context, runner execx.Runner, out UI, tool manifest.Tool, confirm func() bool) (Action, error) {
 	return installFor(ctx, runner, out, tool, DetectPlatform(runner), confirm)
 }
 
-// installFor — реализация [Install], параметризованная по platform, чтобы
-// юниты могли фиксировать GOOS/HasBrew независимо от машины, на которой
-// выполняются тесты (см. check_test.go/install_test.go: реальный
-// runtime.GOOS хоста CI не должен решать, какая ветка InstallPlan
-// проверяется).
+// installFor — [Install] implementation parameterized by platform so tests can
+// fix GOOS/HasBrew independently of the machine running them (see
+// check_test.go/install_test.go: the CI host's runtime.GOOS must not determine
+// which InstallPlan branch is tested).
 func installFor(ctx context.Context, runner execx.Runner, out UI, tool manifest.Tool, platform Platform, confirm func() bool) (Action, error) {
 	action := InstallPlan(tool, platform)
 	// Generic manifest recipes never authorize installation, including direct
@@ -127,9 +123,9 @@ func installFor(ctx context.Context, runner execx.Runner, out UI, tool manifest.
 	/*
 		switch action.Kind {
 		case ActionBrew:
-			out.Info(tool.Name + ": установка доступна через brew — " + action.Command)
+			out.Info(tool.Name + ": installation is available through brew — " + action.Command)
 			if confirm == nil || !confirm() {
-				out.Info(tool.Name + ": установка отменена")
+				out.Info(tool.Name + ": installation cancelled")
 				return action, nil
 			}
 			_, err := runner.Run(ctx, "brew", []string{"install", tool.Install.Brew}, execx.Options{
@@ -139,18 +135,18 @@ func installFor(ctx context.Context, runner execx.Runner, out UI, tool manifest.
 			if err != nil {
 				return action, fmt.Errorf("deps: brew install %s: %w", tool.Install.Brew, err)
 			}
-			out.Success(tool.Name + ": установлен через brew")
+			out.Success(tool.Name + ": installed through brew")
 			return action, nil
 		case ActionAptPrint:
-			out.Warn(tool.Name + ": автоматическая установка недоступна, выполните вручную:")
+			out.Warn(tool.Name + ": automatic installation is unavailable; run manually:")
 			out.Info("  " + action.Command)
 			return action, nil
 		case ActionURL:
-			out.Warn(tool.Name + ": нет пакетного рецепта для этой платформы, установите вручную:")
+			out.Warn(tool.Name + ": no package recipe exists for this platform; install manually:")
 			out.Info("  " + action.Command)
 			return action, nil
 		default:
-			out.Warn(tool.Name + ": нет рецепта установки для этой платформы")
+			out.Warn(tool.Name + ": no installation recipe exists for this platform")
 			return action, nil
 		}
 	*/

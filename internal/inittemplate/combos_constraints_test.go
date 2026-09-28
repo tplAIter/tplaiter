@@ -6,8 +6,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// TestCombosSatisfyConstraints — all-on с toggle, требующим select-значение
-// через constraints, довключает это значение (находка  на go-template).
+// TestCombosSatisfyConstraints — all-on with a toggle requiring a select value
+// through constraints enables that value (a go-template finding).
 func TestCombosSatisfyConstraints(t *testing.T) {
 	t.Parallel()
 	tpl := &manifest.Template{

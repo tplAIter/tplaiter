@@ -1,12 +1,12 @@
-// Package auth хранит токены доступа к репозиториям шаблонов и предоставляет
-// git credential helper, через который git-операции (clone/fetch/push)
-// получают эти токены per-command, не трогая глобальный git-конфиг
-// (см. документацию — решение ревью владельца: токены храним).
+// Package auth stores access tokens for template repositories and provides a
+// git credential helper through which git operations (clone/fetch/push) obtain
+// tokens per command without touching the global git config (see the docs; the
+// owner review decision is to store tokens).
 //
-// Хранилище — SQLite-файл ~/.tplaiter/tplater.db (драйвер modernc.org/sqlite,
-// pure-Go без cgo), права 0600. Токен лежит plaintext локально; интеграция с
-// системным keychain — задел ROADMAP. Токен НИКОГДА не должен попадать в логи
-// и текст ошибок: для отображения используйте [Store.MaskedList] и [MaskToken].
+// The store is the SQLite file ~/.tplaiter/tplater.db (modernc.org/sqlite,
+// pure Go without cgo), with mode 0600. Tokens are stored locally in plaintext;
+// system keychain integration is on the ROADMAP. Tokens must NEVER appear in
+// logs or error text: use [Store.MaskedList] and [MaskToken] for display.
 package auth
 
 import (
@@ -18,36 +18,36 @@ import (
 	"path/filepath"
 	"time"
 
-	// modernc.org/sqlite регистрирует драйвер database/sql под именем "sqlite"
-	// (pure-Go, без cgo) — это единственная причина импорта.
+	// modernc.org/sqlite registers the database/sql driver as "sqlite" (pure Go,
+	// without cgo); this is the sole reason for the import.
 	_ "modernc.org/sqlite"
 
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// dbFileName — имя файла хранилища в домашнем каталоге tplater.
+// dbFileName — store file name in the tplater home directory.
 const dbFileName = "tplater.db"
 
-// dbFilePerm — права на файл БД: доступ только владельцу (в файле лежат токены).
+// dbFilePerm — database file mode: owner access only (the file contains tokens).
 const dbFilePerm = 0o600
 
-// schemaVersion — текущая версия схемы БД. Инкрементируется при добавлении
-// миграций в [migrate].
+// schemaVersion — current database schema version. Incremented when migrations
+// are added to [migrate].
 const schemaVersion = 1
 
-// timeLayout — единый формат сериализации времени в БД. UTC + RFC3339 с 'Z'
-// даёт лексикографически сравнимые строки (нужно для запросов по expires_at).
+// timeLayout — common time serialization format in the database. UTC + RFC3339
+// with 'Z' produces lexicographically comparable strings (needed for expires_at queries).
 const timeLayout = time.RFC3339
 
-// credColumns — порядок колонок для SELECT/сканирования (см. [scanCredential]).
+// credColumns — column order for SELECT/scanning (see [scanCredential]).
 //
-//nolint:gosec // G101: это список имён колонок SQL, а не секрет.
+//nolint:gosec // G101: this is a list of SQL column names, not a secret.
 const credColumns = "id, host, repo, tool, token, username, scopes, note, created_at, last_used_at, expires_at"
 
-// Credential — запись хранилища токенов.
+// Credential — token store entry.
 //
-// Repo == "" означает токен уровня хоста (в БД хранится как NULL). Нулевое
-// значение LastUsedAt/ExpiresAt означает NULL (время не задано).
+// Repo == "" means a host-level token (stored as NULL in the database). A zero
+// LastUsedAt/ExpiresAt value means NULL (time not set).
 type Credential struct {
 	ID         int64
 	Host       string
@@ -62,21 +62,21 @@ type Credential struct {
 	ExpiresAt  time.Time
 }
 
-// Store — хранилище токенов поверх database/sql + modernc.org/sqlite.
+// Store — token store backed by database/sql + modernc.org/sqlite.
 //
-// ctx хранится из [Open] намеренно: методы стора (Put/Get/List/...) не
-// принимают context в сигнатуре (см. документацию — API стора), а все
-// database/sql-вызовы обязаны быть context-aware (линтер noctx). Контекст
-// задаётся один раз на время жизни стора при открытии.
+// ctx is intentionally retained from [Open]: store methods (Put/Get/List/...) do
+// not accept context in their signatures (see the store API docs), while all
+// database/sql calls must be context-aware (noctx linter). The context is set
+// once for the store lifetime at opening.
 type Store struct {
 	db   *sql.DB
 	ctx  context.Context
 	path string
 }
 
-// Open открывает (создавая при необходимости) хранилище токенов в домашнем
-// каталоге tplater, применяет миграции схемы и чинит права файла до 0600.
-// ctx используется для ping и миграций.
+// Open opens (creating as needed) the token store in the tplater home directory,
+// applies schema migrations, and fixes the file mode to 0600. ctx is used for
+// ping and migrations.
 func Open(ctx context.Context) (*Store, error) {
 	home, _, err := state.EnsureHome()
 	if err != nil {
@@ -88,8 +88,8 @@ func Open(ctx context.Context) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("auth: открытие БД: %w", err)
 	}
-	// Один коннект: modernc.org/sqlite + один процесс — избегаем "database is
-	// locked" при конкурентных запросах внутри процесса.
+	// One connection: modernc.org/sqlite plus one process avoids "database is
+	// locked" during concurrent requests within the process.
 	db.SetMaxOpenConns(1)
 
 	if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout=5000"); err != nil {
@@ -104,8 +104,8 @@ func Open(ctx context.Context) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	// Файл создаётся драйвером при первом Exec (миграции) — чиним/подтверждаем
-	// права строго после этого.
+	// The driver creates the file on the first Exec (migrations); fix/confirm the
+	// mode strictly after that.
 	if err := os.Chmod(path, dbFilePerm); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("auth: права файла БД: %w", err)
@@ -114,7 +114,7 @@ func Open(ctx context.Context) (*Store, error) {
 	return &Store{db: db, ctx: ctx, path: path}, nil
 }
 
-// Close закрывает соединение с БД.
+// Close closes the database connection.
 func (s *Store) Close() error {
 	if s == nil || s.db == nil {
 		return nil
@@ -122,11 +122,11 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// Path возвращает путь к файлу БД (для диагностики/тестов).
+// Path returns the database file path (for diagnostics/tests).
 func (s *Store) Path() string { return s.path }
 
-// migrate создаёт таблицу schema_version при первом запуске и применяет шаги
-// миграции до [schemaVersion]. Идемпотентно.
+// migrate creates the schema_version table on first run and applies migration
+// steps through [schemaVersion]. It is idempotent.
 func migrate(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx,
 		`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
@@ -161,7 +161,7 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-//nolint:gosec // G101: это DDL-схема таблицы, а не хардкод учётных данных.
+//nolint:gosec // G101: this is a table DDL schema, not hardcoded credentials.
 const createCredentialsTable = `
 CREATE TABLE credentials (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,10 +178,10 @@ CREATE TABLE credentials (
   UNIQUE(host, repo, tool)
 )`
 
-// Put вставляет или обновляет (upsert по host/repo/tool) запись и возвращает её
-// id. Upsert выполнен вручную (SELECT + UPDATE/INSERT в транзакции), а не через
-// ON CONFLICT: в SQLite NULL-значения в UNIQUE-индексе считаются различными, из-
-// за чего ON CONFLICT не срабатывал бы для токенов уровня хоста (repo = NULL).
+// Put inserts or updates (upsert by host/repo/tool) an entry and returns its ID.
+// The upsert is manual (SELECT + UPDATE/INSERT in a transaction), rather than
+// ON CONFLICT: SQLite treats NULL values in a UNIQUE index as distinct, so
+// ON CONFLICT would not work for host-level tokens (repo = NULL).
 func (s *Store) Put(c Credential) (int64, error) {
 	if c.Tool == "" {
 		c.Tool = "git"
@@ -246,8 +246,8 @@ func (s *Store) Put(c Credential) (int64, error) {
 	return id, nil
 }
 
-// Get возвращает токен для host/repo/tool с приоритетом точного repo-match над
-// токеном уровня хоста (repo = NULL). found=false, если ничего не найдено.
+// Get returns the token for host/repo/tool, preferring an exact repo match over
+// the host-level token (repo = NULL). found=false when nothing is found.
 func (s *Store) Get(host, repo, tool string) (Credential, bool, error) {
 	if repo != "" {
 		c, ok, err := s.queryOne(
@@ -268,8 +268,8 @@ func (s *Store) Get(host, repo, tool string) (Credential, bool, error) {
 	)
 }
 
-// findForHost ищет токен для git credential helper: приоритет repo-match над
-// уровнем хоста, БЕЗ фильтра по tool (git-протоколу инструмент неизвестен).
+// findForHost looks up a token for the git credential helper: repo match takes
+// priority over host level, with NO tool filter (the git protocol does not identify the tool).
 func (s *Store) findForHost(host, repo string) (Credential, bool, error) {
 	if repo != "" {
 		c, ok, err := s.queryOne(
@@ -301,14 +301,14 @@ func (s *Store) queryOne(query string, args ...any) (Credential, bool, error) {
 	return c, true, nil
 }
 
-// List возвращает все записи с ПОЛНЫМ токеном. Предназначен для внутреннего
-// использования; для показа пользователю всегда используйте [Store.MaskedList].
+// List returns all entries with the FULL token. It is for internal use; always
+// use [Store.MaskedList] to show entries to a user.
 func (s *Store) List() ([]Credential, error) {
 	return s.list()
 }
 
-// MaskedList возвращает все записи с маскированным токеном ([MaskToken]),
-// безопасно для вывода на экран/в лог.
+// MaskedList returns all entries with masked tokens ([MaskToken]), safe for
+// display on screen or in logs.
 func (s *Store) MaskedList() ([]Credential, error) {
 	creds, err := s.list()
 	if err != nil {
@@ -344,7 +344,7 @@ func (s *Store) list() ([]Credential, error) {
 	return out, nil
 }
 
-// Delete удаляет запись по id.
+// Delete removes an entry by ID.
 func (s *Store) Delete(id int64) error {
 	if _, err := s.db.ExecContext(s.ctx, `DELETE FROM credentials WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("auth: удаление токена: %w", err)
@@ -352,8 +352,8 @@ func (s *Store) Delete(id int64) error {
 	return nil
 }
 
-// TouchLastUsed проставляет last_used_at = when для записи id. Время передаётся
-// аргументом (а не time.Now внутри) для тестируемости.
+// TouchLastUsed sets last_used_at = when for entry ID. The time is passed as an
+// argument (rather than calling time.Now internally) for testability.
 func (s *Store) TouchLastUsed(id int64, when time.Time) error {
 	if _, err := s.db.ExecContext(
 		s.ctx,
@@ -365,9 +365,8 @@ func (s *Store) TouchLastUsed(id int64, when time.Time) error {
 	return nil
 }
 
-// ExpiredSoon возвращает записи, срок действия которых (expires_at) истекает не
-// позднее чем через within от текущего момента. Задел под будущие
-// предупреждения о ротации токенов.
+// ExpiredSoon returns entries whose validity (expires_at) expires no later than
+// within from now. This supports future token rotation warnings.
 func (s *Store) ExpiredSoon(within time.Duration) ([]Credential, error) {
 	cutoff := time.Now().Add(within).UTC().Format(timeLayout)
 	rows, err := s.db.QueryContext(
@@ -395,7 +394,7 @@ func (s *Store) ExpiredSoon(within time.Duration) ([]Credential, error) {
 	return out, nil
 }
 
-// rowScanner абстрагирует *sql.Row и *sql.Rows для общего сканирования.
+// rowScanner abstracts *sql.Row and *sql.Rows for shared scanning.
 type rowScanner interface {
 	Scan(dest ...any) error
 }
@@ -427,9 +426,9 @@ func scanCredential(sc rowScanner) (Credential, error) {
 	return c, nil
 }
 
-// MaskToken маскирует токен для показа: первые и последние два символа, три
-// точки между ними (например, "ab...yz"). Короткие токены (<8) скрываются
-// целиком, чтобы не раскрывать их значимую часть.
+// MaskToken masks a token for display: the first and last two characters with
+// three dots between them (for example, "ab...yz"). Short tokens (<8) are
+// hidden entirely so no meaningful part is disclosed.
 func MaskToken(token string) string {
 	r := []rune(token)
 	if len(r) == 0 {

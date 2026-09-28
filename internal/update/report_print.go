@@ -14,7 +14,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// printSingle печатает результат обновления одного проекта (обычный режим).
+// printSingle prints one project's update result (normal mode).
 func printSingle(d Deps, opts Options, res *Result) {
 	if opts.Check {
 		if len(res.Conflicts) > 0 {
@@ -46,8 +46,8 @@ func printSingle(d Deps, opts Options, res *Result) {
 	}
 }
 
-// exitFor вычисляет код выхода для режима одного проекта: 1 (--check нашёл
-// маркеры), 2 (update оставил конфликты), иначе nil.
+// exitFor computes the single-project exit code: 1 for --check markers, 2 for
+// conflicts left by update, otherwise nil.
 func exitFor(res *Result, opts Options) error {
 	if opts.Check {
 		if len(res.Conflicts) > 0 {
@@ -61,9 +61,9 @@ func exitFor(res *Result, opts Options) error {
 	return nil
 }
 
-// runAll обновляет все проекты реестра со статусом ok последовательно; ошибка
-// одного проекта не прерывает остальные. Печатает сводную таблицу
-// и возвращает ненулевой код выхода, если хоть один проект дал конфликты.
+// runAll updates all registry projects with status ok sequentially; one project
+// error does not stop the others. It prints a summary and returns a nonzero exit
+// code if any project has conflicts.
 func runAll(ctx context.Context, d Deps, opts Options) error {
 	projects, err := state.LoadProjects(d.Home)
 	if err != nil {
@@ -113,7 +113,7 @@ func runAll(ctx context.Context, d Deps, opts Options) error {
 	return nil
 }
 
-// summaryCells возвращает ячейки STATUS и CONFLICTS сводной строки --all.
+// summaryCells returns STATUS and CONFLICTS cells for the --all summary row.
 func summaryCells(d Deps, opts Options, res *Result) (status, conflicts string) {
 	switch {
 	case opts.Check:
@@ -132,8 +132,8 @@ func summaryCells(d Deps, opts Options, res *Result) (status, conflicts string) 
 	}
 }
 
-// versionCell форматирует колонку VERSION сводки: «old → new» при обновлении,
-// иначе просто текущую версию.
+// versionCell formats the VERSION summary column as "old -> new" on update,
+// otherwise the current version.
 func versionCell(res *Result) string {
 	if res.NoOp || res.NewVersion == res.OldVersion {
 		return res.OldVersion
@@ -141,7 +141,7 @@ func versionCell(res *Result) string {
 	return res.OldVersion + " → " + res.NewVersion
 }
 
-// dirExists сообщает, существует ли путь и является ли каталогом.
+// dirExists reports whether a path exists and is a directory.
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()

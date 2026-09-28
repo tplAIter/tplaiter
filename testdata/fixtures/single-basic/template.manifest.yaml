@@ -1,8 +1,8 @@
-# single-basic — фикстура для тестов internal/engine и связанных компонентов
-# работ ///. НЕ Go-проект — текстовые файлы, единственная цель дерева
-# files/ — упражнять механики движка: is/has, __if_<group>__,
-# __if_<group>=<value>__, files-правила (paths/remove), copyWithoutRender +
-# postReplace, партиалы, плейсхолдер __slug__.
+# single-basic — fixture for internal/engine and related component tests
+# ///. NOT a Go project — text files; the sole purpose of the files/ tree is to
+# exercise engine mechanics: is/has, __if_<group>__,
+# __if_<group>=<value>__, file rules (paths/remove), copyWithoutRender +
+# postReplace, partials, and the __slug__ placeholder.
 apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -54,14 +54,14 @@ settings:
 files:
   - when: "database=postgres"
     paths: ["extra/postgres-only.txt"]
-  # Композитное удаление (аналог COMPOSITE_REMOVALS python-хука) — это
-  # КОНЪЮНКЦИЯ атомов через && в одном `when`, НЕ `anyOf`: settings.Eval
-  # трактует && как AND внутри Condition, а settings.EvalAny (то, во что
-  # компилируется `anyOf`) — это OR по списку строк (см. описание поведения ).
+  # Composite removal (the COMPOSITE_REMOVALS Python-hook analogue) is a
+  # CONJUNCTION of atoms joined by && in one `when`, NOT `anyOf`: settings.Eval
+  # treats && as AND inside Condition, while settings.EvalAny (what `anyOf`
+  # compiles to) is OR over a list of strings (see the behavior description).
   - when: "brokers!=kafka && brokers!=rabbitmq"
     remove: ["integrations/**"]
-  # anyOf — OR: удаляем legacy-заметку, как только выбрана ЛЮБАЯ современная
-  # опция (postgres ИЛИ kafka), а не обе одновременно.
+  # anyOf — OR: remove the legacy note as soon as ANY modern option is selected
+  # (postgres OR kafka), rather than requiring both at once.
   - anyOf: ["database=postgres", "brokers=kafka"]
     remove: ["legacy/**"]
 

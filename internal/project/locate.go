@@ -1,11 +1,11 @@
-// Package project реализует обнаружение проекта tplater из произвольного
-// рабочего каталога и разрешение манифеста шаблона, к которому этот проект
-// привязан (: базовая инфраструктура для `tplater run`).
+// Package project discovers a tplater project from an arbitrary working
+// directory and resolves the template manifest to which it is linked
+// (the base infrastructure for `tplater run`).
 //
-// Пакет НЕ читает и не пишет реестр ~/.tplaiter/projects.yaml —
-// это ответственность отдельной реализации; здесь только поиск локального
-// маркера .tplaiter/project.yaml вверх по дереву каталогов и разрешение
-// манифеста шаблона по зафиксированной в этом маркере версии.
+// The package does not read or write the ~/.tplaiter/projects.yaml registry;
+// that belongs to a separate implementation. It only searches upward for the
+// local .tplaiter/project.yaml marker and resolves the template manifest at
+// the version recorded in that marker.
 package project
 
 import (
@@ -18,34 +18,31 @@ import (
 	"github.com/tplAIter/tplaiter/internal/naming"
 )
 
-// MarkerRelPath — путь проектного маркера относительно корня проекта
-//.
+// MarkerRelPath is the project marker path relative to the project root.
 const MarkerRelPath = ".tplaiter/project.yaml"
 
 // LegacyMarkerRelPath remains read-only compatibility. Writers always use
 // MarkerRelPath, and two markers at one root are ambiguous rather than merged.
 const LegacyMarkerRelPath = ".tplater/project.yaml"
 
-// ErrNotInProject возвращается [FindRoot], когда ни в стартовом каталоге, ни
-// в одном из родительских (до $HOME или корня файловой системы) не нашлось
-// .tplaiter/project.yaml. errors.Is различает эту ситуацию от прочих ошибок
-// файловой системы/разбора, которые FindRoot возвращает как есть.
+// ErrNotInProject is returned by [FindRoot] when .tplaiter/project.yaml is
+// absent from the starting directory and all parents up to $HOME or the file
+// system root. errors.Is distinguishes this case from other filesystem or
+// parsing errors, which FindRoot returns unchanged.
 var ErrNotInProject = errors.New("каталог не является проектом tplater")
 
-// FindRoot ищет корень проекта tplater, поднимаясь от startDir вверх по
-// дереву каталогов до первого найденного .tplaiter/project.yaml. Поиск
-// останавливается (не поднимаясь выше) на домашнем каталоге пользователя
-// ($HOME, если он определён) или на корне файловой системы — оба
-// проверяются последними перед остановкой, так что маркер прямо в $HOME или
-// в "/" тоже был бы найден.
+// FindRoot searches for the tplater project root by walking upward from
+// startDir until it finds .tplaiter/project.yaml. It stops at the user's home
+// directory ($HOME, when defined) or the filesystem root; each boundary is
+// checked before stopping, so a marker directly in $HOME or "/" is found.
 //
-// root — абсолютный путь каталога, содержащего .tplaiter/project.yaml (не
-// сам файл и не .tplaiter). proj — разобранный маркер этого каталога.
+// root is the absolute path of the directory containing .tplaiter/project.yaml
+// (neither the file itself nor .tplaiter). proj is that directory's parsed marker.
 //
-// Ошибки: [ErrNotInProject] (обёрнутая, с человекочитаемым сообщением), если
-// поиск дошёл до границы и ничего не нашёл; ошибка разбора startDir/маркера
-// — если маркер найден, но не читается или невалиден (это не "нет проекта",
-// а "проект сломан" — вызывающий должен различать их через errors.Is).
+// Errors: [ErrNotInProject] (wrapped with a human-readable message) if the
+// search reaches a boundary without finding anything; a startDir or marker
+// parsing error if a marker is found but unreadable or invalid. This means the
+// project is broken rather than absent, and callers should distinguish it with errors.Is.
 func FindRoot(startDir string) (root string, proj *manifest.Project, err error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
@@ -107,7 +104,7 @@ func FindRoot(startDir string) (root string, proj *manifest.Project, err error) 
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			break // корень файловой системы — выше не поднимаемся.
+			break // Filesystem root: do not walk higher.
 		}
 		dir = parent
 	}

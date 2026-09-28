@@ -10,7 +10,7 @@ import (
 
 func TestBuildSummary_SourcesAndImpliedMark(t *testing.T) {
 	tpl := testTemplate()
-	// Резолв с довключением: auth=sso_provider тянет database=postgres.
+	// Resolution with implication: auth=sso_provider pulls database=postgres.
 	resolved, err := settings.Resolve(tpl, settings.Values{
 		"auth":     []string{"sso_provider"},
 		"svc_name": "mysvc",
@@ -23,23 +23,23 @@ func TestBuildSummary_SourcesAndImpliedMark(t *testing.T) {
 	}
 
 	preset := settings.Values{"svc_name": "mysvc"}
-	asked := settings.Values{"replicas": 5} // как будто спрошено
+	asked := settings.Values{"replicas": 5} // as if asked
 	summary := buildSummary(tpl, resolved, preset, asked,
 		map[string]Source{"svc_name": SourceAnswer}, plainPalette())
 
-	// database довключён → источник implied.
+	// database was implied → source implied.
 	if !lineHas(summary, "database", "implied") {
 		t.Fatalf("database должен иметь источник implied:\n%s", summary)
 	}
-	// svc_name из --answers.
+	// svc_name from --answers.
 	if !lineHas(summary, "svc_name", "answer") {
 		t.Fatalf("svc_name должен иметь источник answer:\n%s", summary)
 	}
-	// replicas «спрошен».
+	// replicas was "asked".
 	if !lineHas(summary, "replicas", "prompt") {
 		t.Fatalf("replicas должен иметь источник prompt:\n%s", summary)
 	}
-	// brokers не трогали → default.
+	// brokers untouched → default.
 	if !lineHas(summary, "brokers", "default") {
 		t.Fatalf("brokers должен иметь источник default:\n%s", summary)
 	}
@@ -81,7 +81,7 @@ func TestFormatValue(t *testing.T) {
 	}
 }
 
-// lineHas сообщает, что в сводке есть строка, содержащая и id, и метку источника.
+// lineHas reports that the summary contains a line with both the ID and source label.
 func lineHas(summary, id, source string) bool {
 	for _, line := range strings.Split(summary, "\n") {
 		if strings.Contains(line, id) && strings.Contains(line, source) {

@@ -1,13 +1,13 @@
-# Пример файла-шаблона проекта (рендерится text/template + маркеры tplater).
+# Example project template file (rendered by text/template + tplater markers).
 project={{ .Project.Slug }}
 module={{ .Project.Module }}
 variant={{ .Settings.variant }}
 port={{ .Runtime.Port }}
 
-# Внутрифайловый одностроковый маркер: строка остаётся только при feature_x=true.
+# In-file one-line marker: the line remains only when feature_x=true.
 feature_x=on // tplater:if feature_x=true
 
-# Блочный маркер begin/end: блок целиком остаётся только при variant=advanced.
+# Block begin/end marker: the entire block remains only when variant=advanced.
 // tplater:begin variant=advanced
 advanced_mode=enabled
 verbose={{ .Settings.verbose }}

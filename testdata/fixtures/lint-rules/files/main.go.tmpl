@@ -2,8 +2,8 @@ package main
 
 import "fmt"
 
-// main — no-panic разрешает panic() именно здесь: это единственное
-// исключение правила.
+// main — no-panic permits panic() specifically here: this is the rule's only
+// exception.
 func main() {
 	if len(fmt.Sprintf("%d", 1)) > 100 {
 		panic("unreachable, but allowed in main")

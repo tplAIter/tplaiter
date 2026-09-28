@@ -11,7 +11,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// knownTargets — целевые инструменты, которые умеет рендерить генератор.
+// knownTargets — target tools that the generator can render.
 var knownTargets = map[string]bool{
 	TargetCursor:   true,
 	TargetClaude:   true,
@@ -19,24 +19,23 @@ var knownTargets = map[string]bool{
 	TargetGemini:   true,
 }
 
-// knownActivations — допустимые способы активации модуля.
+// knownActivations — allowed module activation methods.
 var knownActivations = map[string]bool{
 	ActivationAlways:   true,
 	ActivationGlobs:    true,
 	ActivationSemantic: true,
 }
 
-// Validate проверяет консистентность источника ai-config против манифеста
-// ШАБЛОНА tpl:
-//   - config.targets непустой и содержит только известные инструменты;
-//   - id модулей уникальны и непусты;
-//   - activation допустимый; globs-модуль имеет globs; semantic — description;
-//   - rule_file/doc_file объявлены и физически существуют;
-//   - module.when (если задан) синтаксически корректен (§3.2) и ссылается
-//     только на группы, объявленные в дереве settings манифеста tpl — замена
-//     go-template'овской проверки `feature` против реестра фич.
+// Validate checks the ai-config source against the tpl TEMPLATE manifest:
+//   - config.targets is non-empty and contains only known tools;
+//   - module IDs are unique and non-empty;
+//   - activation is valid; a globs module has globs; semantic has description;
+//   - rule_file/doc_file are declared and exist on disk;
+//   - module.when (if set) is syntactically valid (§3.2) and references only
+//     groups declared in the tpl manifest's settings tree, replacing
+//     go-template's `feature` check against the feature registry.
 //
-// Возвращает агрегированную ошибку со всеми проблемами (стабильный порядок).
+// Returns an aggregate error containing all problems (in stable order).
 func (s *Source) Validate(tpl *manifest.Template) error {
 	var problems []string
 
@@ -65,7 +64,7 @@ func (s *Source) Validate(tpl *manifest.Template) error {
 	return nil
 }
 
-// validateModule собирает проблемы одного модуля.
+// validateModule collects problems for one module.
 func validateModule(root string, knownGroups settings.Values, seen map[string]bool, m LoadedModule) []string {
 	var problems []string
 	prefix := "модуль " + m.ID
@@ -101,8 +100,8 @@ func validateModule(root string, knownGroups settings.Values, seen map[string]bo
 	return problems
 }
 
-// validateWhen проверяет синтаксис when модуля и ссылочную целостность его
-// атомов относительно groups — множества id групп, известных манифесту.
+// validateWhen checks a module's when syntax and the referential integrity of
+// its atoms against groups, the set of group IDs known to the manifest.
 func validateWhen(prefix string, groups settings.Values, when string) []string {
 	cond, err := manifest.ParseCondition(when)
 	if err != nil {
@@ -117,7 +116,7 @@ func validateWhen(prefix string, groups settings.Values, when string) []string {
 	return problems
 }
 
-// validateModuleFile проверяет, что путь задан и файл существует.
+// validateModuleFile checks that a path is set and the file exists.
 func validateModuleFile(root, prefix, field, rel string) []string {
 	if rel == "" {
 		return []string{fmt.Sprintf("%s: %s пуст", prefix, field)}

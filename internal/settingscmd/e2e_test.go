@@ -29,7 +29,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// --- git-инфраструктура (реальный git, file://-репо, как в internal/update) ---
+// --- git infrastructure (real git, file:// repository, as in internal/update) ---
 
 var gitExec = execx.Exec{}
 
@@ -69,8 +69,8 @@ func writeFiles(t *testing.T, root string, files map[string]string) {
 	}
 }
 
-// manifestYAML — инлайн-шаблон svc с requires-цепочкой (auth=oauth ⇒
-// database=postgres) и двумя postgres-вертикалями (schema.sql/seed.sql).
+// manifestYAML is an inline svc template with a requires chain (auth=oauth =>
+// database=postgres) and two postgres verticals (schema.sql/seed.sql).
 const manifestYAML = `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -126,7 +126,7 @@ func templateFiles() map[string]string {
 	}
 }
 
-// initOrigin создаёт git-origin с одним коммитом и тегом v0.1.0.
+// initOrigin creates a git origin with one commit and the v0.1.0 tag.
 func initOrigin(t *testing.T) string {
 	t.Helper()
 	origin := filepath.Join(t.TempDir(), "origin")
@@ -153,8 +153,8 @@ func newManager(t *testing.T, home string) *repo.Manager {
 	return repo.New(home, gitExec, st, u)
 }
 
-// setup поднимает home + репо example с шаблоном svc и создаёт fixture-проект на v0.1.0 с
-// заданными --set (sets). edit применяет пользовательские правки после создания.
+// setup creates home and the example repository with the svc template, then creates
+// a v0.1.0 fixture project with the given --set values. edit applies user changes after creation.
 func setup(t *testing.T, sets []string, edit func(projDir string)) (mgr *repo.Manager, home, projDir string) {
 	t.Helper()
 	requireGit(t)
@@ -307,11 +307,11 @@ func assertLifecycleUnavailable(t *testing.T, err error, before, after map[strin
 	}
 }
 
-// --- set: появление вертикали ---
+// --- set: vertical appears ---
 
 func TestSettings_Set_DatabaseAppears(t *testing.T) {
 	mgr, home, projDir := setup(t, nil, nil)
-	// Стартовое состояние: database=none, вертикали нет.
+	// Initial state: database=none and no vertical.
 	if !absent(t, projDir, "schema.sql") {
 		t.Fatalf("до set schema.sql не должен существовать")
 	}
@@ -323,11 +323,11 @@ func TestSettings_Set_DatabaseAppears(t *testing.T) {
 	assertLifecycleUnavailable(t, err, before, fixtureState(t, home, projDir))
 }
 
-// --- set: обратно на none — удаление чистой вертикали, сохранение изменённой ---
+// --- set: back to none — remove clean vertical, preserve modified one ---
 
 func TestSettings_Set_DatabaseNone_RemovesCleanKeepsModified(t *testing.T) {
 	mgr, home, projDir := setup(t, []string{"database=postgres"}, func(p string) {
-		// Пользователь правил seed.sql — при удалении вертикали он должен уцелеть.
+		// The user edited seed.sql, so it must survive vertical removal.
 		writeFiles(t, p, map[string]string{"seed.sql": "insert into t; -- MINE\n"})
 	})
 	if absent(t, projDir, "schema.sql") {
@@ -340,7 +340,7 @@ func TestSettings_Set_DatabaseNone_RemovesCleanKeepsModified(t *testing.T) {
 	assertLifecycleUnavailable(t, err, before, fixtureState(t, home, projDir))
 }
 
-// --- set: requires-цепочка (auth=oauth ⇒ database=postgres) ---
+// --- set: requires chain (auth=oauth => database=postgres) ---
 
 func TestSettings_Set_RequiresChain(t *testing.T) {
 	mgr, home, projDir := setup(t, nil, nil)
@@ -351,7 +351,7 @@ func TestSettings_Set_RequiresChain(t *testing.T) {
 	assertLifecycleUnavailable(t, err, before, fixtureState(t, home, projDir))
 }
 
-// --- set --dry-run: ничего не пишется, но сводка печатается ---
+// --- set --dry-run: nothing is written, but a summary is printed ---
 
 func TestSettings_Set_DryRun(t *testing.T) {
 	mgr, home, projDir := setup(t, nil, nil)
@@ -377,7 +377,7 @@ func TestSettings_Set_DryRun(t *testing.T) {
 	}
 }
 
-// --- edit одной группы через ScriptedPrompter ---
+// --- edit one group through ScriptedPrompter ---
 
 func TestSettings_Edit_OneGroup(t *testing.T) {
 	mgr, home, projDir := setup(t, nil, nil)
@@ -393,7 +393,7 @@ func TestSettings_Edit_OneGroup(t *testing.T) {
 	assertLifecycleUnavailable(t, err, before, fixtureState(t, home, projDir))
 }
 
-// edit без аргумента — список групп-подсказка, без изменений.
+// edit without an argument lists groups as a hint and makes no changes.
 func TestSettings_Edit_NoArg_ListsGroups(t *testing.T) {
 	mgr, home, projDir := setup(t, nil, nil)
 
@@ -409,11 +409,11 @@ func TestSettings_Edit_NoArg_ListsGroups(t *testing.T) {
 	}
 }
 
-// --- конфликт: пользователь правил файл, set меняет ту же зону → маркеры, exit 2 ---
+// --- conflict: user edited a file, set changes the same area => markers, exit 2 ---
 
 func TestSettings_Set_Conflict(t *testing.T) {
 	mgr, home, projDir := setup(t, nil, func(p string) {
-		// config.txt (шаблонный, зависит от database) правлен пользователем.
+		// config.txt (a template file depending on database) was edited by the user.
 		writeFiles(t, p, map[string]string{"config.txt": "db-mode: MINE\n"})
 	})
 	before := fixtureState(t, home, projDir)
@@ -425,7 +425,7 @@ func TestSettings_Set_Conflict(t *testing.T) {
 	assertLifecycleUnavailable(t, err, before, fixtureState(t, home, projDir))
 }
 
-// --- список настроек: активность вложенных ---
+// --- settings list: nested activity ---
 
 func TestSettings_List_ActiveColumn(t *testing.T) {
 	mgr, home, projDir := setup(t, []string{"database=postgres"}, nil)
@@ -437,7 +437,7 @@ func TestSettings_List_ActiveColumn(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 	s := out.String()
-	// migrations активна (database=postgres выбран), присутствует в таблице.
+	// migrations is active (database=postgres selected) and appears in the table.
 	for _, want := range []string{"database", "migrations", "brokers", "ACTIVE"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("в таблице нет %q:\n%s", want, s)

@@ -23,7 +23,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// --- git-инфраструктура (реальный git, file://-репо; как в internal/stats) ---
+// --- git infrastructure (real git, file:// repository; as in internal/stats) ---
 
 var gitExec = execx.Exec{}
 
@@ -60,8 +60,8 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// svcManifest — шаблон svc: kafka-toggle (default true), files-правило условной
-// вертикали (kafka.go рендерится при kafka=true).
+// svcManifest — svc template: kafka-toggle (default true), with a files rule for
+// a conditional vertical (kafka.go renders when kafka=true).
 const svcManifest = `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -80,8 +80,8 @@ files:
       - "kafka.go"
 `
 
-// templateFiles — дерево шаблона: main.go.tmpl (slug+module), kafka.go.tmpl
-// (условная вертикаль), go.mod.tmpl (для проверки исключения go.mod).
+// templateFiles — template tree: main.go.tmpl (slug+module), kafka.go.tmpl
+// (conditional vertical), and go.mod.tmpl (to verify go.mod exclusion).
 func templateFiles() map[string]string {
 	return map[string]string{
 		"template.manifest.yaml": svcManifest,
@@ -99,8 +99,8 @@ func initOrigin(t *testing.T) string {
 	}
 	runGitT(t, origin, "init", "-b", "main")
 	runGitT(t, origin, "config", "uploadpack.allowFilter", "true")
-	// Разрешаем push в неотслеживаемые ветки в non-bare origin (мы пушим только
-	// feature-ветку, но выставим явно для устойчивости на разных версиях git).
+	// Allow pushing untracked branches to a non-bare origin (we push only the
+	// feature branch, but set this explicitly for stability across git versions).
 	runGitT(t, origin, "config", "receive.denyCurrentBranch", "refuse")
 	for rel, content := range templateFiles() {
 		writeFile(t, filepath.Join(origin, rel), content)
@@ -122,9 +122,9 @@ func newManager(t *testing.T, home string) *repo.Manager {
 	return repo.New(home, gitExec, st, u)
 }
 
-// setupProject поднимает home + репо example/svc и создаёт проект demo_svc на v1.0.0.
-// Возвращает менеджер, home и каталог проекта; клон получает git-идентичность
-// (в проде — из git config пользователя; contribute её не подменяет).
+// setupProject creates home + the example/svc repository and a demo_svc project
+// at v1.0.0. Returns the manager, home, and project directory; the clone gets a
+// git identity (in production this comes from the user's git config; contribute does not override it).
 func setupProject(t *testing.T) (mgr *repo.Manager, home, projDir string) {
 	t.Helper()
 	requireGit(t)
@@ -138,7 +138,7 @@ func setupProject(t *testing.T) (mgr *repo.Manager, home, projDir string) {
 	if err := mgr.Add(context.Background(), repo.AddOptions{Alias: "example", URL: "file://" + origin}); err != nil {
 		t.Fatalf("repo add: %v", err)
 	}
-	// Идентичность коммитера в кеш-клоне (иначе git commit падает без user.*).
+	// Committer identity in the cached clone (otherwise git commit fails without user.*).
 	clone := mgr.CloneDir("example")
 	runGitT(t, clone, "config", "user.name", "t")
 	runGitT(t, clone, "config", "user.email", "t@e")
@@ -197,9 +197,9 @@ func setupProject(t *testing.T) (mgr *repo.Manager, home, projDir string) {
 	return mgr, home, projDir
 }
 
-// setRepoType переписывает тип репозитория в реестре (file:// определяется как
-// git; для проверки MR-флоу подменяем на gitlab — это тестовая настройка, а не
-// поведение contribute).
+// setRepoType rewrites the repository type in the registry (file:// is detected
+// as git; for MR-flow testing we replace it with gitlab — this is test setup, not
+// contribute behavior).
 func setRepoType(t *testing.T, home string, kind state.RepoKind) {
 	t.Helper()
 	cfg, err := state.LoadConfig(home)
@@ -231,7 +231,7 @@ func testDeps(mgr *repo.Manager, home string, runner execx.Runner, out *bytes.Bu
 	}
 }
 
-// gitShow возвращает содержимое пути в ветке origin.
+// gitShow returns the contents of a path on the origin branch.
 func gitShow(t *testing.T, origin, ref, path string) (string, bool) {
 	t.Helper()
 	res, err := gitExec.Run(context.Background(), "git",
@@ -257,7 +257,7 @@ func TestUpgrade_E2E_MR(t *testing.T) {
 	mgr, home, projDir := setupProject(t)
 	setRepoType(t, home, state.RepoKindGitLab)
 
-	// Правка файла: добавляем строку со slug'ом проекта.
+	// File edit: add a line with the project slug.
 	appendToFile(t, filepath.Join(projDir, "main.go"), "\nfunc extra() { _ = \"demo_svc\" }\n")
 
 	rec := execx.NewRecordingRunner()
@@ -279,12 +279,12 @@ func TestUpgrade_E2E_MR(t *testing.T) {
 		t.Errorf("Branch = %q, ожидался %q", res.Branch, wantBranch)
 	}
 
-	// .tmpl-путь исходника корректен.
+	// The .tmpl source path is correct.
 	if !contains(res.Files, "files/main.go.tmpl") {
 		t.Errorf("Files = %v, ожидался files/main.go.tmpl", res.Files)
 	}
 
-	// Ветка запушена в origin, файл параметризован обратно.
+	// The branch was pushed to origin and the file was parameterized again.
 	origin := originDir(t, home)
 	content, ok := gitShow(t, origin, wantBranch, "files/main.go.tmpl")
 	if !ok {
@@ -300,19 +300,19 @@ func TestUpgrade_E2E_MR(t *testing.T) {
 		t.Errorf("в шаблоне остались буквальные значения проекта:\n%s", content)
 	}
 
-	// MR-команда вызвана с ожидаемыми аргументами.
+	// The MR command was called with the expected arguments.
 	glab := findCall(t, rec, "glab")
 	assertArgs(t, glab.Args, "mr", "create", "--source-branch", wantBranch, "--title", "вклад")
 	if !hasArg(glab.Args, "--description") {
 		t.Errorf("нет --description в вызове glab: %v", glab.Args)
 	}
-	// Описание содержит метаблок.
+	// The description contains the metadata block.
 	desc := argValue(glab.Args, "--description")
 	if !strings.Contains(desc, "## tplater upgrade") || !strings.Contains(desc, "example/svc@v1.0.0") {
 		t.Errorf("описание без метаблока:\n%s", desc)
 	}
 
-	// Кеш-клон вернулся на исходный ref, ветка удалена локально.
+	// The cached clone returned to the original ref and the branch was deleted locally.
 	assertCloneRestored(t, mgr.CloneDir("example"), wantBranch)
 }
 
@@ -349,7 +349,7 @@ func TestUpgrade_E2E_Patch(t *testing.T) {
 		t.Errorf("в %s нет .patch файлов", res.PatchDir)
 	}
 
-	// MR-CLI не вызывалась.
+	// The MR CLI was not called.
 	for _, c := range rec.Calls {
 		if c.Name == "glab" || c.Name == "gh" {
 			t.Errorf("в --patch режиме не должно быть вызова MR-CLI, был: %s %v", c.Name, c.Args)
@@ -358,7 +358,7 @@ func TestUpgrade_E2E_Patch(t *testing.T) {
 	assertCloneRestored(t, mgr.CloneDir("example"), res.Branch)
 }
 
-// --- условная вертикаль → TPLATER-REVIEW-маркер ---
+// --- conditional vertical → TPLATER-REVIEW marker ---
 
 func TestUpgrade_ConditionalVerticalMarker(t *testing.T) {
 	mgr, home, projDir := setupProject(t)
@@ -386,14 +386,14 @@ func TestUpgrade_ConditionalVerticalMarker(t *testing.T) {
 	}
 }
 
-// --- go.mod исключён; --files добавляет extra-файл ---
+// --- go.mod excluded; --files adds an extra file ---
 
 func TestUpgrade_GoModExcluded_FilesAddsExtra(t *testing.T) {
 	mgr, home, projDir := setupProject(t)
 
-	// Модифицируем go.mod (должен быть исключён из кандидатов).
+	// Modify go.mod (it must be excluded from candidates).
 	appendToFile(t, filepath.Join(projDir, "go.mod"), "\nrequire example.com/x v1.0.0\n")
-	// Extra-файл, отсутствующий в эталоне.
+	// Extra file absent from the reference.
 	writeFile(t, filepath.Join(projDir, "docs", "notes.txt"), "operational notes\n")
 
 	rec := execx.NewRecordingRunner()
@@ -413,7 +413,7 @@ func TestUpgrade_GoModExcluded_FilesAddsExtra(t *testing.T) {
 	}
 }
 
-// --- дедуп подстановок: slug==name==snake не даёт двойной замены ---
+// --- substitution deduplication: slug==name==snake does not double-replace ---
 
 func TestBuildSubstitutions_Dedup(t *testing.T) {
 	p := manifest.ProjectInfo{
@@ -423,7 +423,7 @@ func TestBuildSubstitutions_Dedup(t *testing.T) {
 	}
 	subs := buildSubstitutions(p)
 
-	// По значению "demo_svc" должна остаться ровно одна подстановка — на Slug.
+	// For value "demo_svc", exactly one substitution should remain — for Slug.
 	var slugCount int
 	for _, s := range subs {
 		if s.value == "demo_svc" {
@@ -437,7 +437,7 @@ func TestBuildSubstitutions_Dedup(t *testing.T) {
 		t.Errorf("подстановок для demo_svc = %d, ожидалась 1 (дедуп slug==name==snake)", slugCount)
 	}
 
-	// Module применяется раньше Slug (иначе разорвал бы go-путь).
+	// Module is applied before Slug (otherwise it would split the Go path).
 	content := []byte("import \"example.test/demo_svc/pkg\"\nconst s = \"demo_svc\"\n")
 	got, changed := derender(content, subs)
 	if !changed {

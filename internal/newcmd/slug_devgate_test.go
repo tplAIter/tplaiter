@@ -2,8 +2,8 @@ package newcmd
 
 import "testing"
 
-// TestCheckTplaterVersionDevBuilds — dev-сборки (ldflags dev, VCS-псевдоверсия,
-// +dirty) проходят версия-гейт: находка живого смоука .
+// TestCheckTplaterVersionDevBuilds verifies that dev builds (ldflags dev, a
+// VCS pseudo-version, and +dirty) pass the version gate.
 func TestCheckTplaterVersionDevBuilds(t *testing.T) {
 	t.Parallel()
 	for _, ver := range []string{

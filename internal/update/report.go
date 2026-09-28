@@ -9,43 +9,40 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// FileDelta — файл с числом добавленных/удалённых строк относительно эталона.
+// FileDelta is a file with added/deleted line counts relative to the reference.
 type FileDelta struct {
 	Path    string
 	Added   int
 	Removed int
 }
 
-// Report — структурированный отчёт update по 5 категориям,
-// построенный из плана ДО его применения (чтобы читать текущее рабочее дерево).
+// Report is the structured five-category update report, built from the plan
+// before application so it reads the current work tree.
 type Report struct {
-	// Updated — файлы, перезаписанные target-версией (hash==baseline, правил
-	// только шаблон): «обновлено».
+	// Updated: files overwritten by target (hash==baseline; only the template changed).
 	Updated []string
-	// KeptYours — файлы, которые шаблон не менял, а пользователь правил:
-	// «сохранено ваше».
+	// KeptYours: files unchanged by the template but edited by the user.
 	KeptYours []string
-	// Merged — файлы, слитые 3-way без конфликта, с числом ±строк.
+	// Merged: files cleanly 3-way merged, with +/- line counts.
 	Merged []FileDelta
-	// Conflicts — файлы с маркерами конфликта: «КОНФЛИКТ».
+	// Conflicts: files with conflict markers.
 	Conflicts []string
-	// LocalDeviations — «локальные отклонения»: файлы, где рабочее дерево
-	// отличается от эталонного base-рендера И шаблон их тоже менял (категории c
-	// merge+conflict). Для них показывается унифицированный diff work↔baseline.
+	// LocalDeviations: work differs from the base render and the template also
+	// changed the file (merge and conflict categories). Shows work↔baseline diff.
 	LocalDeviations []FileDelta
-	// Deleted — файлы, удалённые вслед за шаблоном.
+	// Deleted: files removed with the template.
 	Deleted []string
-	// Created — новые файлы target-версии.
+	// Created: new target-version files.
 	Created []string
-	// Warnings — предупреждения плана (напр. удалён вверху, изменён локально).
+	// Warnings: plan warnings (for example, deleted upstream but edited locally).
 	Warnings []string
-	// diffs — унифицированные diff work↔baseline для LocalDeviations (для --verbose).
+	// diffs are work↔baseline unified diffs for LocalDeviations (for --verbose).
 	diffs map[string]string
 }
 
-// buildReport классифицирует действия плана по категориям отчёта. baseFiles —
-// чистый рендер старой версии (эталон для diff «сделано не по шаблону»); workDir
-// — корень проекта (рабочее дерево ещё не изменено планом).
+// buildReport classifies plan actions into report categories. baseFiles is the
+// old clean render (reference for non-template diff); workDir is the project
+// root before the plan changes the work tree.
 func buildReport(plan *Plan, baseFiles map[string][]byte, workDir string) *Report {
 	r := &Report{diffs: map[string]string{}}
 	r.Warnings = append(r.Warnings, plan.Warnings...)
@@ -67,7 +64,7 @@ func buildReport(plan *Plan, baseFiles map[string][]byte, workDir string) *Repor
 		case a.Op == OpWrite: // update / recreate
 			r.Updated = append(r.Updated, a.Path)
 		case a.Op == OpKeep && a.Reason == "unchanged":
-			// keep без пользовательской правки — не шумим (файл идентичен эталону).
+			// Keep without a user edit: stay quiet (file matches the reference).
 			work, _, _ := readWork(workDir, a.Path)
 			if base, ok := baseFiles[a.Path]; ok && !bytes.Equal(work, base) {
 				r.KeptYours = append(r.KeptYours, a.Path)
@@ -87,8 +84,8 @@ func buildReport(plan *Plan, baseFiles map[string][]byte, workDir string) *Repor
 	return r
 }
 
-// addDeviation регистрирует файл как локальное отклонение (work != base-рендер),
-// сохраняя unified diff work↔baseline для --verbose.
+// addDeviation records a local deviation (work != base render), retaining the
+// work↔baseline unified diff for --verbose.
 func (r *Report) addDeviation(path string, baseFiles map[string][]byte, workDir string) {
 	base, ok := baseFiles[path]
 	if !ok {
@@ -103,11 +100,11 @@ func (r *Report) addDeviation(path string, baseFiles map[string][]byte, workDir 
 	r.diffs[path] = unifiedDiff(base, work)
 }
 
-// HasConflicts сообщает, есть ли файлы с конфликт-маркерами.
+// HasConflicts reports whether any files contain conflict markers.
 func (r *Report) HasConflicts() bool { return len(r.Conflicts) > 0 }
 
-// Render печатает отчёт в out палитрой pal. verbose добавляет унифицированный
-// diff для каждого файла из «локальных отклонений».
+// Render prints the report to out using pal. verbose adds a unified diff for each
+// local deviation.
 func (r *Report) Render(out io.Writer, pal ui.Palette, verbose bool) {
 	section := func(title string, items []string) {
 		if len(items) == 0 {
@@ -119,9 +116,8 @@ func (r *Report) Render(out io.Writer, pal ui.Palette, verbose bool) {
 		}
 	}
 
-	// Категории с явной семантикой окрашены соответствующим цветом палитры
-	// (обновлено=success, конфликт=error, отклонения=warn — реализация реализацию);
-	// нейтральные категории — просто жирным заголовком ([ui.Palette.Header]).
+	// Categories with explicit semantics use matching palette colors (updated=success,
+	// conflict=error, deviations=warn); neutral categories use a bold header.
 	section(pal.Success("обновлено:"), r.Updated)
 	section(pal.Header("создано:"), r.Created)
 	section(pal.Header("удалено:"), r.Deleted)
@@ -156,12 +152,12 @@ func (r *Report) Render(out io.Writer, pal ui.Palette, verbose bool) {
 	}
 }
 
-// deltaStr форматирует «+A -R строк» палитрой.
+// deltaStr formats "+A -R lines" using the palette.
 func deltaStr(pal ui.Palette, d FileDelta) string {
 	return fmt.Sprintf("%s %s", pal.Success(fmt.Sprintf("+%d", d.Added)), pal.Warn(fmt.Sprintf("-%d", d.Removed)))
 }
 
-// lineDelta считает число добавленных/удалённых строк между oldB и newB через LCS.
+// lineDelta counts added/deleted lines between oldB and newB using LCS.
 func lineDelta(oldB, newB []byte) (added, removed int) {
 	a := splitLines(oldB)
 	b := splitLines(newB)
@@ -169,8 +165,8 @@ func lineDelta(oldB, newB []byte) (added, removed int) {
 	return len(b) - common, len(a) - common
 }
 
-// unifiedDiff строит компактный построчный diff oldB→newB на базе LCS: строки
-// только в oldB помечаются «-», только в newB — «+», общие — пробелом.
+// unifiedDiff builds a compact line diff oldB->newB using LCS: old-only lines
+// get "-", new-only lines "+", and common lines a space.
 func unifiedDiff(oldB, newB []byte) string {
 	a := splitLines(oldB)
 	b := splitLines(newB)
@@ -197,7 +193,7 @@ func unifiedDiff(oldB, newB []byte) string {
 	return string(sb)
 }
 
-// indent добавляет отступ к каждой строке блока diff.
+// indent adds indentation to each line of a diff block.
 func indent(s string) string {
 	if s == "" {
 		return ""

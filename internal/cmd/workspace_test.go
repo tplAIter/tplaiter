@@ -13,14 +13,13 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// Фикстуры для `tplater workspace add-service`: репозиторий example с ОДНИМ
-// шаблоном svc (labels.type=service) — resolveServiceTemplateName находит его
-// по репозиторию текущего workspace-проекта. Сам workspace-корень нарочно НЕ
-// зарегистрирован как шаблон в репозитории: LoadManifestForProject падает на
-// repoSource (ResolveRef "example/wsroot@1.0.0" не находит такого шаблона) и уходит
-// в SnapshotSource — это штатный, разрешённый путь (см. internal/project/source.go),
-// и он сильно упрощает фикстуру (не нужен полноценный workspace-шаблон/рендер
-// для самого корня, только go.work + маркер + снимок).
+// Fixtures for `tplater workspace add-service`: an example repository with one
+// svc template (labels.type=service), found by resolveServiceTemplateName in
+// the current workspace project's repository. The workspace root is deliberately
+// not registered as a repository template: LoadManifestForProject falls back
+// from repoSource (ResolveRef "example/wsroot@1.0.0" finds no template) to
+// SnapshotSource, a supported path (see internal/project/source.go), simplifying
+// the fixture to go.work, a marker, and a snapshot.
 
 const workspaceSvcRepoManifest = `apiVersion: tplater.dev/v1alpha1
 kind: Repository
@@ -50,9 +49,9 @@ settings:
 
 const workspaceSvcMainGo = "package main\n\nfunc main() {}\n"
 
-// workspaceSvcManifestNoWorkflow — тот же фикстурный сервис-шаблон, но БЕЗ
-// settings-группы workflow: воспроизводит находку про форсированный
-// --set workflow=true, падающий на шаблоне без такой группы.
+// workspaceSvcManifestNoWorkflow — the same service fixture without a workflow
+// settings group, reproducing forced --set workflow=true on a template without
+// that group.
 const workspaceSvcManifestNoWorkflow = `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -76,11 +75,11 @@ func newWorkspaceSvcOriginNoWorkflow(t *testing.T) string {
 	return origin
 }
 
-// workspaceSvcManifestWorkflowWrongType — фикстурный сервис-шаблон с группой
-// workflow, но НЕ toggle (select вместо ожидаемого toggle): воспроизводит
-// ветку serviceTemplateHasGroup, где группа объявлена, но форсируемое
-// значение "true" ей не подходит — это уже не «группы нет» (best-effort), а
-// реальный конфликт манифеста, который должен остаться жёсткой ошибкой.
+// workspaceSvcManifestWorkflowWrongType — service fixture with workflow group
+// that is NOT a toggle (select instead), reproducing serviceTemplateHasGroup
+// where the group exists but forced value "true" is incompatible: a real
+// manifest conflict that must remain a hard error, not best-effort missing-group
+// handling.
 const workspaceSvcManifestWorkflowWrongType = `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -112,9 +111,9 @@ func newWorkspaceSvcOriginWorkflowWrongType(t *testing.T) string {
 	return origin
 }
 
-// newWorkspaceSvcOrigin строит origin-репозиторий с одним шаблоном svc
-// (type=service) — сервис-action, который `workspace add-service` разворачивает
-// в services/<slug>.
+// newWorkspaceSvcOrigin builds an origin repository with one svc template
+// (type=service), the service action rendered by `workspace add-service` into
+// services/<slug>.
 func newWorkspaceSvcOrigin(t *testing.T) string {
 	t.Helper()
 	origin := initTemplateOrigin(t)
@@ -125,8 +124,8 @@ func newWorkspaceSvcOrigin(t *testing.T) string {
 	return origin
 }
 
-// workspaceRootSnapshot — снимок манифеста workspace-корня (labels.type=workspace),
-// на который LoadManifestForProject падает через SnapshotSource.
+// workspaceRootSnapshot — workspace-root manifest snapshot (labels.type=workspace)
+// used by LoadManifestForProject through SnapshotSource.
 const workspaceRootSnapshot = `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -137,9 +136,9 @@ metadata:
     type: [workspace]
 `
 
-// workspaceRootProject — маркер .tplaiter/project.yaml workspace-корня. repo=example
-// совпадает с алиасом репозитория сервис-шаблона — resolveServiceTemplateName
-// ищет type=service именно в proj.Template.Repo.
+// workspaceRootProject — workspace-root .tplaiter/project.yaml marker. repo=example
+// matches the service-template repository alias; resolveServiceTemplateName
+// searches for type=service in proj.Template.Repo.
 const workspaceRootProject = `apiVersion: tplater.dev/v1alpha1
 kind: Project
 id: ws-test-id
@@ -153,8 +152,8 @@ project:
   module: example.com/ws_root
 `
 
-// nonWorkspaceRootSnapshot/-Project — проект того же вида, но БЕЗ
-// labels.type=workspace: `workspace add-service` должен отказать.
+// nonWorkspaceRootSnapshot/-Project — same kind of project but WITHOUT
+// labels.type=workspace: `workspace add-service` must reject it.
 const nonWorkspaceRootSnapshot = `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
@@ -178,11 +177,10 @@ project:
   module: example.com/plain_root
 `
 
-// newWorkspaceHome готовит изолированный TPLAITER_HOME с репозиторием example
-// (шаблон сервиса svc); дальнейшие вызовы команды `workspace` через
-// runWorkspaceCmd открывают собственный repo.Manager поверх того же
-// TPLAITER_HOME (см. newManager в internal/cmd/repo.go), поэтому возвращать
-// менеджер отсюда вызывающим не нужно.
+// newWorkspaceHome prepares an isolated TPLAITER_HOME with example repository
+// (svc service template). Later `workspace` calls through runWorkspaceCmd open
+// their own repo.Manager over the same TPLAITER_HOME (see newManager in
+// internal/cmd/repo.go), so callers need no manager returned here.
 func newWorkspaceHome(t *testing.T) {
 	t.Helper()
 	requireGit(t)
@@ -193,8 +191,8 @@ func newWorkspaceHome(t *testing.T) {
 	}
 }
 
-// newWorkspaceHomeNoWorkflow — вариант newWorkspaceHome с сервис-шаблоном,
-// в манифесте которого нет settings-группы workflow (см.
+// newWorkspaceHomeNoWorkflow — newWorkspaceHome variant whose service template
+// manifest has no workflow settings group (see
 // TestWorkspaceAddService_ServiceTemplateMissingWorkflowGroup_BestEffort).
 func newWorkspaceHomeNoWorkflow(t *testing.T) {
 	t.Helper()
@@ -206,8 +204,8 @@ func newWorkspaceHomeNoWorkflow(t *testing.T) {
 	}
 }
 
-// newWorkspaceHomeWorkflowWrongType — вариант newWorkspaceHome с
-// сервис-шаблоном, где группа workflow есть, но не toggle (см.
+// newWorkspaceHomeWorkflowWrongType — newWorkspaceHome variant whose service
+// template has workflow group but it is not a toggle (see
 // TestWorkspaceAddService_ServiceTemplateWorkflowGroupWrongType).
 func newWorkspaceHomeWorkflowWrongType(t *testing.T) {
 	t.Helper()
@@ -219,8 +217,8 @@ func newWorkspaceHomeWorkflowWrongType(t *testing.T) {
 	}
 }
 
-// chdirTemp меняет текущий рабочий каталог процесса на dir на время теста,
-// восстанавливая прежний через t.Cleanup (по образцу newRunFixture в run_test.go).
+// chdirTemp changes the process working directory to dir for the test and
+// restores it through t.Cleanup (like newRunFixture in run_test.go).
 func chdirTemp(t *testing.T, dir string) {
 	t.Helper()
 	prevWD, err := os.Getwd()
@@ -233,8 +231,8 @@ func chdirTemp(t *testing.T, dir string) {
 	t.Cleanup(func() { _ = os.Chdir(prevWD) })
 }
 
-// runWorkspaceCmd исполняет свежесобранное дерево команд `workspace` (по
-// образцу runTemplateCmd/runRunCmd в соседних тестах этого пакета).
+// runWorkspaceCmd executes a freshly built `workspace` command tree (like
+// runTemplateCmd/runRunCmd in neighboring tests).
 func runWorkspaceCmd(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	c := newWorkspaceCmd()
@@ -288,10 +286,9 @@ func TestWorkspaceAddService_NotWorkspaceKind(t *testing.T) {
 	}
 }
 
-// TestWorkspaceAddService_ExistingServiceDir проверяет ветку, где
-// services/<slug> уже существует (например, остаток от прежней попытки) —
-// newcmd.ensureVacant должен отказать ДО каких-либо изменений (go.work не
-// трогается).
+// TestWorkspaceAddService_ExistingServiceDir covers an existing
+// services/<slug> directory (for example, left by an earlier attempt):
+// newcmd.ensureVacant must reject before any changes (go.work stays untouched).
 func TestWorkspaceAddService_ExistingServiceDir(t *testing.T) {
 	newWorkspaceHome(t)
 
@@ -316,10 +313,10 @@ func TestWorkspaceAddService_ExistingServiceDir(t *testing.T) {
 	}
 }
 
-// TestWorkspaceAddService_FromNestedServiceDir воспроизводит находку: запуск
-// из services/<slug> (у него свой .tplaiter/project.yaml, созданный самой
-// командой) не должен падать «не является workspace» — findWorkspaceRoot
-// обязан подняться к настоящему workspace-корню.
+// TestWorkspaceAddService_FromNestedServiceDir covers invocation from
+// services/<slug> (with its own .tplaiter/project.yaml created by the command):
+// it must not fail as "not a workspace"; findWorkspaceRoot must reach the real
+// workspace root.
 func TestWorkspaceAddService_FromNestedServiceDir(t *testing.T) {
 	newWorkspaceHome(t)
 
@@ -347,12 +344,12 @@ func TestWorkspaceAddService_FromNestedServiceDir(t *testing.T) {
 }
 
 // TestWorkspaceAddService_ServiceTemplateMissingWorkflowGroup_BestEffort
-// воспроизводит находку ревью: форсированный --set workflow=true раньше падал
-// на шаблоне сервиса без такой группы сырой ошибкой ParseSet («неизвестная
-// группа "workflow"»). Теперь это best-effort (serviceTemplateHasGroup в
-// workspace.go проверяет манифест ДО установки) — команда предупреждает и
-// продолжает без forced-значения, сервис отрисовывается и регистрируется в
-// go.work как обычно.
+// This reproduces a review finding: forced --set workflow=true used to fail on
+// a service template without the group with raw ParseSet error ("unknown
+// group workflow"). It is now best-effort (serviceTemplateHasGroup in
+// workspace.go checks the manifest BEFORE installation): the command warns and
+// continues without the forced value, rendering and registering the service in
+// go.work normally.
 func TestWorkspaceAddService_ServiceTemplateMissingWorkflowGroup_BestEffort(t *testing.T) {
 	newWorkspaceHomeNoWorkflow(t)
 
@@ -389,11 +386,10 @@ func assertWorkspaceAddServiceUnavailable(t *testing.T, root, name string) {
 	}
 }
 
-// TestWorkspaceAddService_ServiceTemplateWorkflowGroupWrongType — в отличие
-// от best-effort-теста выше, здесь группа workflow В МАНИФЕСТЕ ЕСТЬ, но не
-// toggle (select) — serviceTemplateHasGroup должен вернуть жёсткую ошибку
-// (несовместимый тип — это не «группы нет»), а не молча продолжить без
-// форса.
+// TestWorkspaceAddService_ServiceTemplateWorkflowGroupWrongType — unlike the
+// best-effort test above, workflow exists in the manifest but is not a toggle
+// (select). serviceTemplateHasGroup must return a hard error (incompatible type
+// is not a missing group), rather than silently continuing without the force.
 func TestWorkspaceAddService_ServiceTemplateWorkflowGroupWrongType(t *testing.T) {
 	newWorkspaceHomeWorkflowWrongType(t)
 
@@ -414,7 +410,7 @@ func TestWorkspaceAddService_ServiceTemplateWorkflowGroupWrongType(t *testing.T)
 		t.Errorf("ошибка не поясняет несовместимость типа группы с форсируемым значением: %v", err)
 	}
 
-	// go.work не должен был измениться — рендер не дошёл до конца.
+	// go.work must be unchanged because rendering did not complete.
 	work, rerr := os.ReadFile(filepath.Join(root, "go.work"))
 	if rerr != nil {
 		t.Fatalf("чтение go.work: %v", rerr)
@@ -424,8 +420,8 @@ func TestWorkspaceAddService_ServiceTemplateWorkflowGroupWrongType(t *testing.T)
 	}
 }
 
-// fakeTemplateIndex — минимальная реализация интерфейса, который принимает
-// resolveServiceTemplateName, без repo.Manager/git-фикстур.
+// fakeTemplateIndex — minimal implementation accepted by
+// resolveServiceTemplateName, without repo.Manager/git fixtures.
 type fakeTemplateIndex map[string][]state.TemplateEntry
 
 func (f fakeTemplateIndex) Templates() (map[string][]state.TemplateEntry, error) {
@@ -463,10 +459,9 @@ func TestResolveServiceTemplateName_MultipleMatches(t *testing.T) {
 	}
 }
 
-// TestAddWorkspaceUse_Idempotent — прямой unit-тест идемпотентности (без
-// проходов через полный CLI-флоу): второй вызов с уже зарегистрированным
-// путём не задваивает use-директиву, в т.ч. когда существующая строка в
-// go.work записана без ведущего "./" (валидный ручной синтаксис go.work).
+// TestAddWorkspaceUse_Idempotent — direct idempotence unit test (without the
+// full CLI flow): a second call with an existing path does not duplicate the
+// use directive, including when go.work uses valid manual syntax without "./".
 func TestAddWorkspaceUse_Idempotent(t *testing.T) {
 	root := t.TempDir()
 	workPath := filepath.Join(root, "go.work")
@@ -483,7 +478,7 @@ func TestAddWorkspaceUse_Idempotent(t *testing.T) {
 		t.Errorf("services/billing встречается %d раз(а), ожидался 1:\n%s", n, data)
 	}
 
-	// Повторный вызов с тем же путём — тоже не задваивает.
+	// Repeating the same path must not duplicate it.
 	if err := addWorkspaceUse(root, "./services/billing"); err != nil {
 		t.Fatalf("addWorkspaceUse (повторно): %v", err)
 	}
@@ -495,7 +490,7 @@ func TestAddWorkspaceUse_Idempotent(t *testing.T) {
 		t.Errorf("после повторного вызова services/billing встречается %d раз(а), ожидался 1:\n%s", n, data)
 	}
 
-	// Новый путь дописывается как обычно.
+	// A new path is appended normally.
 	if err := addWorkspaceUse(root, "./services/payments"); err != nil {
 		t.Fatalf("addWorkspaceUse (новый путь): %v", err)
 	}

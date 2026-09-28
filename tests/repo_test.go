@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// TestRepoLifecycle прогоняет управление репозиториями шаблонов (сценарий 2,
-// требование реализацию): add невалидного пути -> ошибка; повторный alias -> ошибка;
-// update; remove.
+// TestRepoLifecycle runs template repository management (scenario 2,
+// implementation requirement): add an invalid path -> error; duplicate alias
+// -> error; update; remove.
 func TestRepoLifecycle(t *testing.T) {
 	requireGit(t)
 	t.Parallel()
@@ -16,8 +16,8 @@ func TestRepoLifecycle(t *testing.T) {
 	home := newHome(t)
 	origin := buildSingleOrigin(t, filepath.Join(fixturesDir(t), "single-basic"), "v1.0.0")
 
-	// add невалидного пути (локальный file:// на несуществующий каталог) —
-	// git clone обязан провалиться, репозиторий не регистрируется.
+	// add an invalid path (local file:// pointing to a nonexistent directory) —
+	// git clone must fail and the repository must not be registered.
 	badPath := filepath.Join(t.TempDir(), "does-not-exist")
 	bad := run(t, home, "", "repo", "add", "bad", "file://"+badPath)
 	if bad.ExitCode == 0 {
@@ -28,21 +28,21 @@ func TestRepoLifecycle(t *testing.T) {
 		t.Errorf("repo add с несуществующим путём НЕ должен регистрировать алиас: %s", listAfterBad.Stdout)
 	}
 
-	// добавляем валидный репозиторий под алиасом "dup".
+	// Add a valid repository under alias "dup".
 	mustRun(t, home, "", "repo", "add", "dup", "file://"+origin)
 
-	// повторное использование того же алиаса с ЛЮБЫМ URL — ошибка.
+	// Reusing the same alias with ANY URL is an error.
 	dupAgain := run(t, home, "", "repo", "add", "dup", "file://"+origin)
 	if dupAgain.ExitCode == 0 {
 		t.Fatalf("repo add с занятым алиасом: ожидался ненулевой exit, получен 0")
 	}
 	mustContain(t, dupAgain.Stderr+dupAgain.Stdout, "dup", "repo add с занятым алиасом")
 
-	// update: git fetch + переиндексация — на file://-репозитории без новых
-	// коммитов должен просто пройти чисто.
+	// update: git fetch + reindexing — on a file:// repository with no new
+	// commits, it should simply complete cleanly.
 	mustRun(t, home, "", "repo", "update", "dup")
 
-	// remove: алиас исчезает из списка репозиториев.
+	// remove: the alias disappears from the repository list.
 	mustRun(t, home, "", "repo", "remove", "dup")
 	afterRemove := mustRun(t, home, "", "repo", "list")
 	if strings.Contains(afterRemove.Stdout, "dup") {

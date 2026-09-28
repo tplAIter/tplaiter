@@ -9,12 +9,11 @@ import (
 	"testing"
 )
 
-// TestWithLock_SerializesConcurrentReadModifyWrite запускает N горутин, каждая
-// из которых читает projects.yaml, добавляет свою запись и сохраняет —
-// классический read-modify-write, который теряет данные без сериализации.
-// Без WithLock это тест-кандидат на потерянные обновления (последний
-// пишущий выигрывает); с ним все N записей должны попасть в файл. Гоняется
-// с -race в DoD реализации.
+// TestWithLock_SerializesConcurrentReadModifyWrite starts N goroutines, each
+// reading projects.yaml, adding its record, and saving it—the classic
+// read-modify-write that loses data without serialization. Without WithLock it
+// is a lost-update test (the last writer wins); with it all N records must reach
+// the file. Run with -race in the implementation's DoD.
 func TestWithLock_SerializesConcurrentReadModifyWrite(t *testing.T) {
 	home := t.TempDir()
 	const n = 10
@@ -59,8 +58,8 @@ func TestWithLock_SerializesConcurrentReadModifyWrite(t *testing.T) {
 	}
 }
 
-// TestWithLock_RunsFnAndPropagatesError проверяет базовый контракт: fn
-// вызывается ровно один раз, а его ошибка возвращается вызывающему.
+// TestWithLock_RunsFnAndPropagatesError checks the basic contract: fn is called
+// exactly once and its error is returned to the caller.
 func TestWithLock_RunsFnAndPropagatesError(t *testing.T) {
 	home := t.TempDir()
 	calls := 0
@@ -77,10 +76,10 @@ func TestWithLock_RunsFnAndPropagatesError(t *testing.T) {
 	}
 }
 
-// TestWithLock_HomeMustExist документирует, что WithLock не создаёт
-// каталог home — вызывающий обязан вызвать EnsureHome заранее (пакетный
-// комментарий WithLock). Здесь home существует (t.TempDir), но НЕ содержит
-// заранее файлов — flock всё равно должен создать .lock и сработать.
+// TestWithLock_HomeMustExist documents that WithLock does not create home; the
+// caller must call EnsureHome first (see WithLock's package comment). Here home
+// exists (t.TempDir) but contains no files beforehand; flock must still create
+// .lock and work.
 func TestWithLock_HomeMustExist(t *testing.T) {
 	home := t.TempDir()
 

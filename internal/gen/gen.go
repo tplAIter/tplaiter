@@ -1,15 +1,14 @@
-// Package gen реализует скаффолдер `tplater gen <kind> <Name>` (SPEC-01 §6):
-// перенос якорной механики go-template'овского internal/gen (маркер
-// идемпотентности, вставка перед якорем, backup+откат при пост-ошибке,
-// пост-шаги форматирования Go и build-gate) на манифест-модель.
+// Package gen implements the `tplater gen <kind> <Name>` scaffolder (SPEC-01 §6):
+// a manifest-model port of go-template's internal/gen anchor mechanics
+// (idempotency marker, insertion before an anchor, backup/rollback after a
+// post-step error, Go formatting post-steps, and the build gate).
 //
-// Главное отличие от go-template: таблица видов скаффолда — НЕ go:embed
-// бинарника, а поле Generators манифеста шаблона (SPEC-01 §6). Сниппеты
-// (Generator.Snippet, Anchor.Insert) читаются с диска относительно
-// [Options.GeneratorsDir] — каталога-копии `<источник шаблона>/<aiConfig-подобный
-// путь>`, которую задача C2 кладёт в сгенерированный проект как
-// .tplaiter/generators (см. [GeneratorsRelPath] — контракт для C2/C4,
-// симметричный aiconfig.AIConfigRelPath).
+// Unlike go-template, the scaffolder-kind table is not a go:embed binary but
+// the template manifest's Generators field (SPEC-01 §6). Snippets
+// (Generator.Snippet, Anchor.Insert) are read from disk relative to
+// [Options.GeneratorsDir], a copied `<template source>/<aiConfig-like path>`
+// that C2 places in generated projects as .tplaiter/generators (see
+// [GeneratorsRelPath], the C2/C4 contract symmetric to aiconfig.AIConfigRelPath).
 package gen
 
 import (
@@ -30,22 +29,21 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// GeneratorsRelPath — путь каталога-копии сниппетов генераторов в
-// сгенерированном проекте относительно его корня (контракт с задачами
-// C2/C4: `tplater new` копирует сюда каталог, на который ссылаются
-// Generator.Snippet/Anchor.Insert манифеста шаблона).
+// GeneratorsRelPath — path to the copied generator-snippet directory in a
+// generated project, relative to its root (C2/C4 contract: `tplater new` copies
+// here the directory referenced by the template manifest's Generator.Snippet/Anchor.Insert).
 const GeneratorsRelPath = ".tplaiter/generators"
 
-// identRe — допустимый формат производного snake-имени (перенос go-template
-// без изменений: gen работает преимущественно с Go-исходниками).
+// identRe — allowed derived snake-name format (unchanged from go-template:
+// gen primarily works with Go sources).
 var identRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 var ErrExecutionUnavailable = errors.New("TRUST_GENERATION_EXECUTION_UNAVAILABLE")
 
-// Name — производные варианты сырого имени скаффолда, доступные шаблонам
-// target/snippet/insert как `.Name.Pascal` и т.п. (перенос go-template Data,
-// без встроенного Marker — маркер идемпотентности вычисляется в [Generate] и
-// прокидывается только шаблонам вставки якоря, см. [Context.Marker]).
+// Name — derived forms of the raw scaffolder name, available to target/snippet/
+// insert templates as `.Name.Pascal`, etc. (go-template Data port without an
+// embedded Marker; [Generate] computes the idempotency marker and passes it only
+// to anchor-insertion templates, see [Context.Marker]).
 type Name struct {
 	Raw    string
 	Pascal string
@@ -54,87 +52,84 @@ type Name struct {
 	Kebab  string
 }
 
-// Context — данные, доступные шаблонам target-пути, сниппета и вставки
-// якоря (SPEC-01 §6: "контекст: Name{Pascal,Snake,...} + Settings"). Project
-// добавлен сверх спеки — не мешает и облегчает сниппеты, которым нужен
-// module path/slug проекта.
+// Context — data available to target-path, snippet, and anchor-insertion
+// templates (SPEC-01 §6: "context: Name{Pascal,Snake,...} + Settings"). Project
+// is an additive convenience for snippets needing the project's module path/slug.
 type Context struct {
 	Name     Name
 	Settings settings.View
 	Project  manifest.ProjectInfo
-	// Marker — маркер идемпотентности вставки (`// gen:<kind>:<snake>`).
-	// Заполнен только при рендере Anchor.Insert; шаблон вставки ОБЯЗАН
-	// включить `{{ .Marker }}` в свой вывод — без этого повторный gen не
-	// будет обнаружен как дубликат (перенос go-template: маркер живёт в
-	// теле шаблона, а не навязывается движком поверх чужого вывода).
+	// Marker — insertion idempotency marker (`// gen:<kind>:<snake>`). Set only
+	// when rendering Anchor.Insert; the insertion template MUST include
+	// `{{ .Marker }}` in its output, otherwise a repeated gen is not detected as a
+	// duplicate (go-template port: the marker lives in the template body rather than
+	// being imposed by the engine over foreign output).
 	Marker string
-	// Fields — поля сущности, разобранные из параметра типа `fields` (CG-1).
-	// Пусто, если генератор не объявляет такого параметра.
+	// Fields — entity fields parsed from a `fields` parameter (CG-1). Empty when
+	// the generator does not declare such a parameter.
 	Fields []Field
-	// Params — значения всех параметров генератора по имени (CG-1). Тип
-	// значения зависит от Param.Type: string→string, bool→bool, int→int,
-	// fields→[]Field (тот же срез, что и .Fields).
+	// Params — all generator parameter values by name (CG-1). The value type
+	// follows Param.Type: string→string, bool→bool, int→int, fields→[]Field (the
+	// same slice as .Fields).
 	Params map[string]any
-	// MigrationSeq — следующий goose-номер миграции (NNNNN) по каталогу
-	// целевого файла; заполнен только при наличии таргета с numbered: goose.
+	// MigrationSeq — next goose migration number (NNNNN) for the target-file
+	// directory; set only when a target has numbered: goose.
 	MigrationSeq string
 }
 
-// Options — параметры одного вызова [Generate].
+// Options — parameters for one [Generate] call.
 type Options struct {
-	// ProjectRoot — корень проекта: сюда пишется Target, отсюда разрешаются
+	// ProjectRoot — project root: Target is written here and paths resolve from here.
 	// Anchor.File.
 	ProjectRoot string
-	// GeneratorsDir — каталог со сниппетами (обычно
+	// GeneratorsDir — snippet directory (usually
 	// filepath.Join(ProjectRoot, [GeneratorsRelPath])); Snippet/Anchor.Insert
-	// разрешаются относительно него.
+	// resolved relative to it.
 	GeneratorsDir string
-	// Values — разрешённые настройки проекта (when-гейт + `.Settings` в
-	// контексте рендера).
+	// Values — resolved project settings (when gate + `.Settings` in render context).
 	Values settings.Values
-	// Project — координаты проекта для `.Project` в контексте рендера.
+	// Project — project coordinates for `.Project` in render context.
 	Project manifest.ProjectInfo
-	// Fields — разобранные поля сущности (из параметра типа `fields`, CG-1);
-	// прокидываются в Context.Fields. Резолвится вызывающим (cmd/gen.go) через
+	// Fields — parsed entity fields (from a `fields` parameter, CG-1), passed into
+	// Context.Fields. Resolved by the caller (cmd/gen.go) through
 	// [ResolveParams].
 	Fields []Field
-	// Params — значения параметров генератора по имени (CG-1); прокидываются в
-	// Context.Params. Резолвится вызывающим через [ResolveParams].
+	// Params — generator parameter values by name (CG-1), passed into
+	// Context.Params. Resolved by the caller through [ResolveParams].
 	Params map[string]any
-	// NoBuild пропускает post-generation build-gate. По умолчанию выполняется
-	// commands.build.run манифеста; старые manifest без команды сохраняют
+	// NoBuild skips the post-generation build gate. By default the manifest's
+	// commands.build.run executes; older manifests without a command retain
 	// fallback `go build ./...`.
 	NoBuild bool
-	// Runner исполняет formatter/build-gate. nil → [execx.Exec]{} (реальные
-	// вызовы; depguard запрещает прямой os/exec вне internal/execx).
+	// Runner executes the formatter/build gate. nil → [execx.Exec]{} (real calls;
+	// depguard forbids direct os/exec outside internal/execx).
 	Runner execx.Runner
-	// Logf — опциональный логгер шагов (nil → без вывода).
+	// Logf — optional step logger (nil → no output).
 	Logf func(format string, args ...any)
 }
 
-// Result — итог успешной генерации.
+// Result — successful generation result.
 type Result struct {
-	// Kind — вид скаффолда.
+	// Kind — scaffolder kind.
 	Kind string
-	// CreatedFiles — относительные пути созданных файлов (Target).
+	// CreatedFiles — relative paths of created files (Target).
 	CreatedFiles []string
-	// EditedFiles — относительные пути изменённых якорных файлов.
+	// EditedFiles — relative paths of edited anchor files.
 	EditedFiles []string
 }
 
-// Status — строка результата [List].
+// Status — result row from [List].
 type Status struct {
 	Kind        string
 	Description string
 	Available   bool
-	// Reason — причина недоступности (непусто только при Available=false):
-	// невыполненное when-условие либо ошибка его вычисления (неизвестная
-	// группа).
+	// Reason — availability reason (non-empty only when Available=false): an
+	// unmet when condition or evaluation error (unknown group).
 	Reason string
 }
 
-// Lookup находит генератор kind в манифесте. Ошибка перечисляет доступные
-// виды (отсортированы).
+// Lookup finds generator kind in the manifest. An error lists available kinds
+// (sorted).
 func Lookup(tpl *manifest.Template, kind string) (*manifest.Generator, error) {
 	for i := range tpl.Generators {
 		if tpl.Generators[i].Kind == kind {
@@ -144,7 +139,7 @@ func Lookup(tpl *manifest.Template, kind string) (*manifest.Generator, error) {
 	return nil, fmt.Errorf("gen: неизвестный вид %q (доступны: %s)", kind, strings.Join(kindNames(tpl), ", "))
 }
 
-// kindNames возвращает отсортированный список видов генераторов манифеста.
+// kindNames returns the sorted manifest generator-kind list.
 func kindNames(tpl *manifest.Template) []string {
 	names := make([]string, 0, len(tpl.Generators))
 	for i := range tpl.Generators {
@@ -154,9 +149,8 @@ func kindNames(tpl *manifest.Template) []string {
 	return names
 }
 
-// List возвращает статус каждого генератора манифеста при заданных values
-// (для `tplater gen list`): доступен ли (see [evalGate]) и, если нет, что
-// нужно включить.
+// List returns each manifest generator's status for values (for `tplater gen
+// list`): whether it is available (see [evalGate]) and, if not, what to enable.
 func List(tpl *manifest.Template, values settings.Values) []Status {
 	out := make([]Status, 0, len(tpl.Generators))
 	for i := range tpl.Generators {
@@ -171,13 +165,12 @@ func List(tpl *manifest.Template, values settings.Values) []Status {
 	return out
 }
 
-// evalGate вычисляет when-гейт генератора: пустой список — всегда доступен;
-// иначе достаточно ИСТИННОСТИ ОДНОГО из условий списка (семантика OR — как
-// у files.anyOf, см. отчёт задачи: единственное текстовое поле "when",
-// которое манифест (задача A2) сделал списком строк, а не одной строкой с
-// "&&" внутри — это осмысленно только как список альтернативных гейтов;
-// чистая конъюнкция уже выразима одной строкой "a=1 && b=2", как везде
-// иначе в §3.2).
+// evalGate evaluates a generator when gate: an empty list is always available;
+// otherwise one TRUE condition in the list is sufficient (OR semantics, like
+// files.anyOf). The manifest deliberately made this sole text field "when" a
+// string list rather than one string containing "&&", because it represents
+// alternative gates; pure conjunction is already expressible as "a=1 && b=2"
+// elsewhere in §3.2.
 func evalGate(when []string, values settings.Values) (bool, error) {
 	if len(when) == 0 {
 		return true, nil
@@ -193,7 +186,7 @@ func evalGate(when []string, values settings.Values) (bool, error) {
 	return settings.EvalAny(conds, values)
 }
 
-// gateReason формирует человекочитаемую причину недоступности генератора.
+// gateReason builds a human-readable generator-unavailable reason.
 func gateReason(when []string, err error) string {
 	if err != nil {
 		return err.Error()
@@ -201,10 +194,10 @@ func gateReason(when []string, err error) string {
 	return strings.Join(when, " | ")
 }
 
-// suggestSet формирует пример `--set` для сообщения об ошибке недоступного
-// генератора: конъюнкции "&&" внутри одного условия становятся запятой
-// (--set принимает несколько group=value через повторный флаг), альтернативы
-// OR-списка перечисляются через "или".
+// suggestSet builds a `--set` example for an unavailable-generator error:
+// conjunctions "&&" within one condition become commas (--set accepts multiple
+// group=value values through repeated flags), while OR-list alternatives are
+// joined with "or".
 func suggestSet(when []string) string {
 	if len(when) == 0 {
 		return ""
@@ -219,14 +212,13 @@ func suggestSet(when []string) string {
 	return parts[0] + " (или: " + strings.Join(parts[1:], " | ") + ")"
 }
 
-// Generate выполняет один скаффолд kind с именем rawName (SPEC-01 §6).
+// Generate performs one kind scaffolding with rawName (SPEC-01 §6).
 //
-// Порядок: when-гейт → производные имена → рендер target-пути → проверка
-// отсутствия целевого файла → рендер сниппета → для каждого anchors[] —
-// проверка идемпотентности (маркер) + рендер вставки + подготовка
-// insertBeforeAnchor (без записи) → запись всех файлов → best-effort formatter
-// только для Go-проектов → (если !NoBuild) manifest build-gate с полным откатом (созданные файлы
-// удаляются, якорные файлы восстанавливаются из backup) при провале.
+// Order: when gate → derived names → target-path render → target-absence check
+// → snippet render → for each anchors[]: idempotency check (marker) + insertion
+// render + insertBeforeAnchor preparation (without writing) → write all files →
+// best-effort formatter for Go projects only → (if !NoBuild) manifest build gate
+// with full rollback on failure (created files removed, anchor files restored from backup).
 func Generate(ctx context.Context, tpl *manifest.Template, kind, rawName string, opts Options) (*Result, error) {
 	log := opts.Logf
 	if log == nil {
@@ -256,8 +248,8 @@ func Generate(ctx context.Context, tpl *manifest.Template, kind, rawName string,
 	gctx.Fields = opts.Fields
 	gctx.Params = opts.Params
 
-	// Разрешаем список таргетов: одиночная форма → один таргет; мультифайл →
-	// таргеты, прошедшие свой when-гейт по настройкам.
+	// Resolve targets: single form → one target; multifile → targets passing their
+	// settings when gate.
 	specs, err := resolveTargets(g, opts.Values)
 	if err != nil {
 		return nil, fmt.Errorf("gen %s: %w", kind, err)
@@ -266,14 +258,14 @@ func Generate(ctx context.Context, tpl *manifest.Template, kind, rawName string,
 		return nil, fmt.Errorf("gen %s: при текущих настройках ни один таргет не подлежит генерации", kind)
 	}
 
-	// Номер goose-миграции (если есть таргет numbered: goose) считается ДО
-	// рендера путей — он входит в шаблон целевого пути (`.MigrationSeq`).
+	// The goose migration number (when a target has numbered: goose) is computed
+	// BEFORE rendering paths because it enters the target-path template (`.MigrationSeq`).
 	if err := resolveMigrationSeq(&gctx, opts.ProjectRoot, specs); err != nil {
 		return nil, fmt.Errorf("gen %s: %w", kind, err)
 	}
 
-	// Рендерим все таргеты и проверяем отсутствие ВСЕХ целевых файлов ДО любой
-	// записи — частичный повтор gen (часть файлов уже есть) отклоняется целиком.
+	// Render all targets and verify that ALL target files are absent BEFORE any
+	// write; a partial repeated gen (some files already exist) is rejected wholly.
 	planned, err := planTargets(opts, kind, rawName, gctx, specs)
 	if err != nil {
 		return nil, err
@@ -306,7 +298,7 @@ func Generate(ctx context.Context, tpl *manifest.Template, kind, rawName string,
 			}
 			if wErr := os.WriteFile(p.abs, p.content, 0o600); wErr != nil {
 				rollback()
-				return nil, fmt.Errorf("gen %s: запись %s: %w", kind, p.rel, wErr)
+				return nil, fmt.Errorf("gen %s: writing %s: %w", kind, p.rel, wErr)
 			}
 			createdAbs = append(createdAbs, p.abs)
 			createdRels = append(createdRels, p.rel)
@@ -317,7 +309,7 @@ func Generate(ctx context.Context, tpl *manifest.Template, kind, rawName string,
 		for _, a := range anchors {
 			if wErr := os.WriteFile(a.abs, a.updated, 0o600); wErr != nil {
 				rollback()
-				return nil, fmt.Errorf("gen %s: запись %s: %w", kind, a.rel, wErr)
+				return nil, fmt.Errorf("gen %s: writing %s: %w", kind, a.rel, wErr)
 			}
 			editedRels = append(editedRels, a.rel)
 			log("edited  %s (anchor %s)", a.rel, a.anchor)
@@ -333,7 +325,7 @@ func Generate(ctx context.Context, tpl *manifest.Template, kind, rawName string,
 			log("step: %s", gateName)
 			if buildErr != nil {
 				rollback()
-				return nil, fmt.Errorf("gen %s: сгенерированный код не собирается — изменения откачены:\n%s", kind, out)
+				return nil, fmt.Errorf("gen %s: generated code does not build — changes rolled back:\n%s", kind, out)
 			}
 		}
 
@@ -341,16 +333,16 @@ func Generate(ctx context.Context, tpl *manifest.Template, kind, rawName string,
 	*/
 }
 
-// plannedFile — отрендеренный, но ещё не записанный целевой файл.
+// plannedFile — rendered target file not yet written.
 type plannedFile struct {
 	rel     string
 	abs     string
 	content []byte
 }
 
-// resolveTargets возвращает список подлежащих генерации таргетов. Для одиночной
-// формы (Snippet+Target) — один таргет. Для мультифайловой (Targets[]) —
-// таргеты, прошедшие свой when-гейт по настройкам (остальные пропускаются).
+// resolveTargets returns targets to generate. Single form (Snippet+Target) has
+// one target; multifile form (Targets[]) keeps targets passing their settings
+// when gate and skips the rest.
 func resolveTargets(g *manifest.Generator, values settings.Values) ([]manifest.Target, error) {
 	if len(g.Targets) == 0 {
 		return []manifest.Target{{Snippet: g.Snippet, Target: g.Target}}, nil
@@ -369,16 +361,16 @@ func resolveTargets(g *manifest.Generator, values settings.Values) ([]manifest.T
 	return out, nil
 }
 
-// planTargets рендерит целевые пути и сниппеты всех таргетов и проверяет, что
-// ни один целевой файл ещё не существует (идемпотентность до записи). Дубликат
-// целевого пути внутри одного вызова — тоже ошибка.
+// planTargets renders target paths and snippets for all targets and verifies no
+// target file exists yet (pre-write idempotency). A duplicate target path within
+// one call is also an error.
 func planTargets(opts Options, kind, rawName string, gctx Context, specs []manifest.Target) ([]plannedFile, error) {
 	return planTargetsWithReserved(opts, kind, rawName, gctx, specs, nil)
 }
 
-// planTargetsWithReserved — вариант [planTargets] для пакетной генерации.
-// reserved содержит пути, уже запланированные предыдущими операциями batch,
-// поэтому коллизия обнаруживается до первой записи на диск.
+// planTargetsWithReserved — [planTargets] variant for batch generation. reserved
+// contains paths already planned by earlier batch operations, so collisions are
+// detected before the first disk write.
 func planTargetsWithReserved(opts Options, kind, rawName string, gctx Context, specs []manifest.Target, reserved map[string]struct{}) ([]plannedFile, error) {
 	out := make([]plannedFile, 0, len(specs))
 	seen := make(map[string]bool, len(specs))
@@ -409,18 +401,17 @@ func planTargetsWithReserved(opts Options, kind, rawName string, gctx Context, s
 	return out, nil
 }
 
-// resolveMigrationSeq вычисляет gctx.MigrationSeq, если среди таргетов есть
-// numbered: goose. Каталог миграций определяется по целевому пути такого
-// таргета, отрендеренному с пустым .MigrationSeq (номер входит в имя файла, не
-// в каталог). Следующий номер = max(NNNNN среди существующих файлов) + 1,
-// начиная с 00001, если каталога/файлов нет.
+// resolveMigrationSeq computes gctx.MigrationSeq when a target has numbered:
+// goose. The migration directory comes from that target's path rendered with an
+// empty .MigrationSeq (the number is in the file name, not directory). Next is
+// max(NNNNN among existing files)+1, starting at 00001 when none exist.
 func resolveMigrationSeq(gctx *Context, root string, specs []manifest.Target) error {
 	return resolveMigrationSeqWithReserved(gctx, root, specs, nil)
 }
 
-// resolveMigrationSeqWithReserved выбирает следующий номер goose-миграции с
-// учётом ещё не записанных миграций пакетной генерации. Иначе две операции в
-// одном batch обе увидели бы один и тот же номер на диске.
+// resolveMigrationSeqWithReserved selects the next goose migration number,
+// including not-yet-written batch migrations. Otherwise two operations in one
+// batch would see the same number on disk.
 func resolveMigrationSeqWithReserved(gctx *Context, root string, specs []manifest.Target, reserved map[string]struct{}) error {
 	for i := range specs {
 		if specs[i].Numbered != manifest.NumberedGoose {
@@ -434,9 +425,9 @@ func resolveMigrationSeqWithReserved(gctx *Context, root string, specs []manifes
 		if err != nil {
 			return err
 		}
-		// Будущие миграции batch ещё не лежат в каталоге, поэтому nextMigrationSeq
-		// их не увидит. Номер должен быть уникален в каталоге, а не только
-		// полный target-путь: 00001_ride и 00001_driver — оба некорректны.
+		// Future batch migrations are not in the directory, so nextMigrationSeq
+		// cannot see them. The number must be unique in the directory, not only the
+		// full target path: 00001_ride and 00001_driver are both invalid.
 		if reserved != nil {
 			maxReserved := 0
 			for rel := range reserved {
@@ -480,11 +471,11 @@ func resolveMigrationSeqWithReserved(gctx *Context, root string, specs []manifes
 	return nil
 }
 
-// migSeqRe выделяет числовой префикс NNNNN_ имени goose-миграции.
+// migSeqRe extracts the numeric NNNNN_ prefix of a goose migration name.
 var migSeqRe = regexp.MustCompile(`^(\d+)_`)
 
-// nextMigrationSeq сканирует каталог dirRel (относительно root) на файлы вида
-// NNNNN_* и возвращает следующий 5-значный номер (max+1, минимум 00001).
+// nextMigrationSeq scans dirRel (relative to root) for NNNNN_* files and returns
+// the next five-digit number (max+1, minimum 00001).
 func nextMigrationSeq(root, dirRel string) (string, error) {
 	dirAbs := filepath.Join(root, filepath.FromSlash(dirRel))
 	entries, err := os.ReadDir(dirAbs)
@@ -511,8 +502,7 @@ func nextMigrationSeq(root, dirRel string) (string, error) {
 	return fmt.Sprintf("%05d", maxSeq+1), nil
 }
 
-// pendingAnchor — подготовленная (отрендеренная, но не записанная) правка
-// одного якорного файла.
+// pendingAnchor — prepared (rendered but not written) edit of one anchor file.
 type pendingAnchor struct {
 	abs      string
 	rel      string
@@ -521,16 +511,16 @@ type pendingAnchor struct {
 	updated  []byte
 }
 
-// prepareAnchors рендерит вставки для всех anchors[] генератора и проверяет
-// идемпотентность каждой ДО какой-либо записи на диск — чтобы ошибка в
-// третьем якоре не оставляла первые два частично применёнными.
+// prepareAnchors renders insertions for all generator anchors and checks each
+// for idempotency BEFORE any disk write, so an error in the third anchor cannot
+// leave the first two partially applied.
 func prepareAnchors(opts Options, kind string, gctx Context, specs []manifest.Anchor) ([]pendingAnchor, error) {
 	return prepareAnchorsWithState(opts, kind, gctx, specs, nil)
 }
 
-// prepareAnchorsWithState подготавливает правки якорей поверх state. State
-// используется batch-генерацией, чтобы несколько операций, вставляющих в
-// один файл, видели вставки друг друга ещё до записи на диск.
+// prepareAnchorsWithState prepares anchor edits over state. Batch generation uses
+// state so multiple operations inserting into one file see each other's edits
+// before writing to disk.
 func prepareAnchorsWithState(opts Options, kind string, gctx Context, specs []manifest.Anchor, state map[string][]byte) ([]pendingAnchor, error) {
 	if len(specs) == 0 {
 		return nil, nil
@@ -581,7 +571,7 @@ func prepareAnchorsWithState(opts Options, kind string, gctx Context, specs []ma
 	return out, nil
 }
 
-// anchorAbsPaths возвращает абсолютные пути изменённых якорных файлов.
+// anchorAbsPaths returns absolute paths of changed anchor files.
 func anchorAbsPaths(anchors []pendingAnchor) []string {
 	out := make([]string, 0, len(anchors))
 	for _, a := range anchors {
@@ -590,10 +580,9 @@ func anchorAbsPaths(anchors []pendingAnchor) []string {
 	return out
 }
 
-// newContext строит [Context] из сырого имени, разрешённых настроек и
-// координат проекта, проверяя производный snake на валидность
-// Go-идентификатора (перенос go-template: имя становится частью Marker и
-// обычно — частью Go-кода сниппета).
+// newContext builds [Context] from the raw name, resolved settings, and project
+// coordinates, validating the derived snake as a valid Go identifier (go-template
+// port: the name becomes part of Marker and usually part of snippet Go code).
 func newContext(rawName string, values settings.Values, project manifest.ProjectInfo) (Context, error) {
 	if strings.TrimSpace(rawName) == "" {
 		return Context{}, errors.New("имя скаффолда не задано")

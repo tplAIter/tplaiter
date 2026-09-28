@@ -2,9 +2,9 @@ package cmd
 
 import "testing"
 
-// TestEnvSetupTriState проверяет перевод пары флагов --env-setup/--no-env-setup
-// в tri-state *bool: nil (спросить), &true, &false; --no-env-setup имеет
-// приоритет при одновременном указании.
+// TestEnvSetupTriState checks conversion of --env-setup/--no-env-setup into a
+// tri-state *bool: nil (ask), &true, or &false; --no-env-setup takes precedence
+// when both are supplied.
 func TestEnvSetupTriState(t *testing.T) {
 	cases := []struct {
 		name             string

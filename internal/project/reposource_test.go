@@ -37,9 +37,9 @@ func gitRun(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// TestRepoSource_LoadsFromCacheWithoutSnapshot проверяет приоритетный источник:
-// при живом кеше репозитория манифест грузится из него даже без снимка (
-// §4: порядок repo → snapshot).
+// TestRepoSource_LoadsFromCacheWithoutSnapshot verifies the preferred source:
+// with a live repository cache, the manifest loads from it even without a
+// snapshot (§4: repo → snapshot order).
 func TestRepoSource_LoadsFromCacheWithoutSnapshot(t *testing.T) {
 	requireGitBin(t)
 
@@ -49,7 +49,7 @@ func TestRepoSource_LoadsFromCacheWithoutSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// origin с одним single-шаблоном svc, тег v0.1.0.
+	// Origin with one single svc template, tagged v0.1.0.
 	origin := filepath.Join(t.TempDir(), "origin")
 	manifestSrc := `apiVersion: tplater.dev/v1alpha1
 kind: Template
@@ -86,8 +86,8 @@ requires:
 		t.Fatalf("repo add: %v", err)
 	}
 
-	// Проект без снимка: только маркер с зафиксированной версией.
-	root := t.TempDir() // снимок НЕ создаём
+	// Project without a snapshot: only a marker with a pinned version.
+	root := t.TempDir() // Do NOT create a snapshot.
 	proj := &manifest.Project{
 		Template: manifest.ProjectTemplate{Repo: "example", Name: "svc", Version: "v0.1.0"},
 	}

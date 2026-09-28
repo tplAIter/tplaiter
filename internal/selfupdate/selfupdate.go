@@ -1,11 +1,11 @@
-// Package selfupdate реализует самообновление CLI tplater:
-// определение канала установки, сверку версий с каноническим репозиторием
-// через `git ls-remote --tags`, выполнение обновления и ненавязчивую
-// фоновую suggest-проверку раз в 24ч.
+// Package selfupdate implements tplater CLI self-updates: detecting the install
+// channel, comparing versions with the canonical repository through
+// `git ls-remote --tags`, performing updates, and a quiet background suggest
+// check every 24h.
 //
-// Весь запуск внешних процессов (git, go install) идёт через
-// [github.com/tplAIter/tplaiter/internal/execx.Runner] — пакет не
-// трогает os/exec напрямую, чтобы оставаться юнит-тестируемым.
+// All external processes (git, go install) run through
+// [github.com/tplAIter/tplaiter/internal/execx.Runner]; the package does not
+// call os/exec directly, keeping it unit-testable.
 package selfupdate
 
 import (
@@ -15,19 +15,19 @@ import (
 	"strings"
 )
 
-// Channel — канал, через который установлен текущий бинарник tplater.
+// Channel is the channel through which the current tplater binary was installed.
 type Channel string
 
-// Поддерживаемые каналы установки (: go install — основной канал,
-// brew — дополнительный/будущий, unknown — источник не распознан, например
-// бинарник скопирован вручную или собран локально `go build`).
+// Supported installation channels (go install is primary, brew is additional or
+// future, unknown means the source was not recognized, such as a manually
+// copied binary or a local `go build`).
 const (
 	ChannelGoInstall Channel = "go-install"
 	ChannelBrew      Channel = "brew"
 	ChannelUnknown   Channel = "unknown"
 )
 
-// Label возвращает человекочитаемое имя канала для `tplater version`.
+// Label returns the human-readable channel name for `tplater version`.
 func (c Channel) Label() string {
 	switch c {
 	case ChannelGoInstall:
@@ -39,23 +39,21 @@ func (c Channel) Label() string {
 	}
 }
 
-// RepoEnv — переменная окружения, переопределяющая канонический URL
-// репозитория tplater для сверки версий/сборки модуля. Используется тестами,
-// чтобы не ходить в реальную сеть, и как временный обходной путь, если
-// [DefaultRepoURL] окажется неверным до релиза.
+// RepoEnv overrides the canonical tplater repository URL for version checks and
+// module builds. Tests use it to avoid real network access; it is also a
+// temporary workaround if [DefaultRepoURL] is wrong before release.
 const RepoEnv = "TPLAITER_SELF_REPO"
 
-// DefaultRepoURL — канонический git-репозиторий tplater, используемый для
-// `git ls-remote --tags` при сверке версий.
+// DefaultRepoURL is the canonical tplater git repository used for
+// `git ls-remote --tags` when checking versions.
 //
-// URL подтверждён владельцем (совпадает с module-путём из go.mod, см.
-// комментарий там), но заведён отдельной константой, а не выведен из
-// BuildInfo.Main.Path: репозиторий шаблонов (upgrade→MR, реализация реализацию) и
-// репозиторий CLI могут разойтись в будущем.
+// The URL is owner-confirmed (and matches the module path in go.mod), but is a
+// separate constant rather than derived from BuildInfo.Main.Path: the template
+// repository and CLI repository may diverge in the future.
 const DefaultRepoURL = "https://github.com/tplAIter/tplaiter.git"
 
-// RepoURL возвращает канонический URL репозитория tplater: значение
-// [RepoEnv], если оно задано, иначе [DefaultRepoURL].
+// RepoURL returns the canonical tplater repository URL: [RepoEnv] when set,
+// otherwise [DefaultRepoURL].
 func RepoURL() string {
 	if v := os.Getenv(RepoEnv); v != "" {
 		return v
@@ -63,18 +61,18 @@ func RepoURL() string {
 	return DefaultRepoURL
 }
 
-// brewPathMarkers — фрагменты пути, характерные для установки бинарника
-// Homebrew на macOS (Apple Silicon /opt/homebrew, Intel — /usr/local/Cellar).
-// Линуксовый linuxbrew (~/.linuxbrew, /home/linuxbrew) сюда сознательно не
-// включён — не входит в целевые платформы
+// brewPathMarkers are path fragments characteristic of a Homebrew installation
+// on macOS (Apple Silicon /opt/homebrew, Intel /usr/local/Cellar). Linuxbrew
+// (~/.linuxbrew, /home/linuxbrew) is intentionally excluded because it is not a
+// target platform.
 var brewPathMarkers = []string{"/opt/homebrew/", "/usr/local/Cellar/"}
 
-// DetectChannel определяет канал установки текущего исполняемого файла
-// tplater: по его пути (go install кладёт бинарники в $GOPATH/bin или
-// $HOME/go/bin, brew — в /opt/homebrew или /usr/local/Cellar) и, если путь
-// не распознан (например, бинарник скопирован/симлинкнут в произвольный
-// каталог PATH), по данным [debug.ReadBuildInfo] — `go install
-// module@version` проставляет настоящую версию модуля (не "(devel)").
+// DetectChannel determines how the current tplater executable was installed:
+// from its path (go install places binaries in $GOPATH/bin or $HOME/go/bin,
+// brew in /opt/homebrew or /usr/local/Cellar), and, when the path is unknown
+// (for example, a binary copied or symlinked into an arbitrary PATH directory),
+// from [debug.ReadBuildInfo] — `go install
+// module@version` sets the actual module version (not "(devel)").
 func DetectChannel() Channel {
 	exePath, err := os.Executable()
 	if err != nil {
@@ -84,10 +82,10 @@ func DetectChannel() Channel {
 	return detectChannel(exePath, info, goInstallBinDirs())
 }
 
-// goInstallBinDirs возвращает кандидаты каталогов, куда `go install` кладёт
-// бинарники: $GOPATH/bin для каждого элемента GOPATH (переменная окружения
-// может содержать несколько путей через [filepath.ListSeparator]) и
-// $HOME/go/bin — дефолт Go, когда GOPATH не задан явно.
+// goInstallBinDirs returns candidate directories where `go install` places
+// binaries: $GOPATH/bin for each GOPATH element (the environment variable may
+// contain multiple paths separated by [filepath.ListSeparator]) and $HOME/go/bin,
+// Go's default when GOPATH is not explicitly set.
 func goInstallBinDirs() []string {
 	var dirs []string
 	if gopath := os.Getenv("GOPATH"); gopath != "" {
@@ -103,9 +101,9 @@ func goInstallBinDirs() []string {
 	return dirs
 }
 
-// detectChannel — чистая функция, вынесенная из [DetectChannel] для
-// юнит-тестов: принимает уже вычисленные путь к бинарнику, BuildInfo и
-// кандидаты $GOPATH/bin явными аргументами вместо чтения окружения/os.
+// detectChannel is the pure function extracted from [DetectChannel] for unit
+// tests: it accepts the computed binary path, BuildInfo, and $GOPATH/bin
+// candidates explicitly instead of reading the environment or os.
 func detectChannel(exePath string, info *debug.BuildInfo, goBinDirs []string) Channel {
 	if exePath != "" {
 		for _, marker := range brewPathMarkers {
@@ -121,10 +119,10 @@ func detectChannel(exePath string, info *debug.BuildInfo, goBinDirs []string) Ch
 		}
 	}
 
-	// Фоллбек по BuildInfo: путь не совпал ни с одним известным каталогом
-	// (бинарник переставлен/симлинкнут), но версия модуля реальна — это
-	// возможно только если бинарник поставлен через `go install
-	// module@version` (обычная `go build` оставляет Main.Version == "(devel)").
+	// BuildInfo fallback: the path matches no known directory (the binary was
+	// moved or symlinked), but the module version is real—possible only when the
+	// binary was installed through `go install
+    // module@version` (ordinary `go build` leaves Main.Version == "(devel)").
 	if info != nil && info.Main.Path != "" && info.Main.Version != "" && info.Main.Version != "(devel)" {
 		return ChannelGoInstall
 	}

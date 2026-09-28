@@ -1,4 +1,4 @@
-// Package cmd содержит cobra-команды CLI tplaiter.
+// Package cmd contains tplaiter CLI cobra commands.
 package cmd
 
 import (
@@ -87,14 +87,14 @@ func stableVerifierFactory(ctx context.Context) (trustload.VerifierFactory, erro
 	}, nil
 }
 
-// ExitError несёт код выхода процесса, отличный от 1 (например, 2 — конфликты
-// при `tplaiter update`). main обрабатывает его через errors.As.
+// ExitError carries a process exit code other than 1 (for example, 2 for
+// conflicts during `tplaiter update`). main handles it through errors.As.
 type ExitError struct {
 	Code int
 	Err  error
 }
 
-// Error реализует интерфейс error.
+// Error implements the error interface.
 func (e *ExitError) Error() string {
 	if e.Err == nil {
 		return "exit"
@@ -102,20 +102,20 @@ func (e *ExitError) Error() string {
 	return e.Err.Error()
 }
 
-// Unwrap возвращает вложенную ошибку.
+// Unwrap returns the wrapped error.
 func (e *ExitError) Unwrap() error { return e.Err }
 
-// verbose — persistent-флаг подробного вывода. Заготовка: пока не влияет на
-// поведение команд, будет прокинут в логирование/UI последующими задачами
-// (см. PLAN.md §4, tp-U1).
+// verbose — persistent flag for verbose output. Placeholder: it does not yet
+// affect command behavior and will be passed to logging/UI by later tasks
+// (see PLAN.md §4, tp-U1).
 var verbose bool
 
-// upgradeFlag — root-флаг `--upgrade`, алиас команды `tplaiter self-upgrade`
-// (SPEC-05 §2). Локальный (не persistent) флаг: имеет смысл только на самой
-// root-команде, см. rootCmd.RunE и [rootPreRun].
+// upgradeFlag — root `--upgrade` flag, an alias for `tplaiter self-upgrade`
+// (SPEC-05 §2). A local (non-persistent) flag: meaningful only on the root
+// command; see rootCmd.RunE and [rootPreRun].
 var upgradeFlag bool
 
-// rootCmd — корневая команда tplaiter.
+// rootCmd — root tplaiter command.
 var rootCmd = &cobra.Command{
 	Use:   "tplaiter",
 	Short: "Менеджер репозиториев шаблонов",
@@ -124,14 +124,14 @@ var rootCmd = &cobra.Command{
 		"См. README.md и docs/ в репозитории tplaiter для деталей архитектуры.",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	// PersistentPreRunE — компоновка first-run приветствия (SPEC-05 §4) и
-	// suggest-проверки обновлений (SPEC-05 §2), см. [rootPreRun].
+	// PersistentPreRunE — composition of the first-run greeting (SPEC-05 §4) and
+	// update suggestion check (SPEC-05 §2); see [rootPreRun].
 	PersistentPreRunE: rootPreRun,
-	// RunE — есть только затем, чтобы `tplaiter --upgrade` работал как алиас
-	// `tplaiter self-upgrade` без объявления --upgrade persistent-флагом на
-	// каждой подкоманде. Без --upgrade поведение bare `tplaiter` не меняется
-	// (печатает help, как раньше — см. [rootPreRun] про сохранение этого
-	// поведения при появлении RunE).
+	// RunE — present only so `tplaiter --upgrade` works as an alias for
+	// `tplaiter self-upgrade` without declaring --upgrade as a persistent flag on
+	// every subcommand. Without --upgrade, bare `tplaiter` behavior is unchanged
+	// (it prints help as before; see [rootPreRun] on preserving this behavior when
+	// RunE was added).
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !upgradeFlag {
 			return cmd.Help()
@@ -155,21 +155,21 @@ func init() {
 	rootCmd.AddCommand(newTrustCmd())
 }
 
-// rootPreRun — единая PersistentPreRunE корневой команды: сначала
-// [firstRunPreRun] (SPEC-05 §4), затем [suggestUpdatePreRun] (SPEC-05 §2),
-// затем [projectSyncPreRun] (SPEC-04 §1). Скомпоновано явно одной функцией (а
-// не цепочкой cobra-хуков по дереву команд), чтобы порядок и общий обход
-// bare-инвокации читались в одном месте.
+// rootPreRun — the root command's single PersistentPreRunE: first
+// [firstRunPreRun] (SPEC-05 §4), then [suggestUpdatePreRun] (SPEC-05 §2),
+// then [projectSyncPreRun] (SPEC-04 §1). They are composed explicitly in one
+// function (rather than a chain of cobra hooks through the command tree) so the
+// order and common bare invocation path are visible in one place.
 //
-// До этой задачи rootCmd не имел Run/RunE и поэтому не был Runnable — cobra
-// печатала help ДО вызова PersistentPreRunE (см. cobra Command.execute:
-// `if !c.Runnable() { return flag.ErrHelp }` предшествует c.preRun()).
-// Флаг --upgrade требует RunE на root, что делает root Runnable всегда — без
-// этой явной проверки bare `tplaiter` начал бы создавать ~/.tplaiter и запускать
-// suggest-проверку, чего раньше не делал. Сохраняем прежнее отсутствие
-// побочных эффектов для этого конкретного случая (без подкоманды и без
-// --upgrade); `tplaiter --upgrade` (тоже bare-инвокация root, но с флагом)
-// проходит first-run/suggest как обычная команда.
+// Before this task rootCmd had no Run/RunE and therefore was not Runnable —
+// cobra printed help BEFORE calling PersistentPreRunE (see cobra
+// Command.execute: `if !c.Runnable() { return flag.ErrHelp }` precedes
+// c.preRun()). The --upgrade flag requires RunE on root, making root always
+// Runnable; without this explicit check, bare `tplaiter` would start creating
+// ~/.tplaiter and run the suggest check, which it did not do before. Preserve
+// the former lack of side effects for this specific case (no subcommand and no
+// --upgrade); `tplaiter --upgrade` (also a bare root invocation, but with the
+// flag) runs first-run/suggest like a normal command.
 func rootPreRun(cmd *cobra.Command, args []string) error {
 	// This classification precedes every legacy root hook.  A command that
 	// could execute manifest-derived input must not initialize process state,
@@ -195,11 +195,11 @@ func rootPreRun(cmd *cobra.Command, args []string) error {
 	if cmd.Name() == "trust" || (cmd.Parent() != nil && cmd.Parent().Name() == "trust") {
 		return nil
 	}
-	// !cmd.HasParent() вместо `cmd == rootCmd` — иначе замыкание создаёт
-	// цикл инициализации пакета (rootCmd содержит PersistentPreRunE:
-	// rootPreRun, а rootPreRun ссылался бы на rootCmd). Условие эквивалентно:
-	// PersistentPreRunE вызывается с cmd == та команда, которую нашла cobra
-	// (см. Find в cobra/command.go), а её нет родителя ровно у самого root.
+	// !cmd.HasParent() instead of `cmd == rootCmd` — otherwise the closure would
+	// create a package initialization cycle (rootCmd contains PersistentPreRunE:
+	// rootPreRun, while rootPreRun would reference rootCmd). The condition is
+	// equivalent: PersistentPreRunE receives the command cobra found (see Find
+	// in cobra/command.go), and only root itself has no parent.
 	if !cmd.HasParent() && !upgradeFlag {
 		return nil
 	}
@@ -242,7 +242,7 @@ func legacyActionCommand(cmd *cobra.Command, args []string) bool {
 	}
 }
 
-// Execute запускает корневую команду.
+// Execute runs the root command.
 func Execute() error {
 	return rootCmd.Execute()
 }

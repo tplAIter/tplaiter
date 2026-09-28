@@ -1,11 +1,10 @@
-// Package repo управляет репозиториями шаблонов (helm-модель):
-// добавление/удаление/обновление git-репозиториев, скан и индексация их
-// манифестов, аутентификация git-операций через стор токенов и резолюция
-// ссылок вида `<repo>/<name>@<version>`.
+// Package repo manages template repositories (Helm model): adding, removing,
+// and updating git repositories; scanning and indexing manifests; authenticating
+// git operations through the token store; and resolving `<repo>/<name>@<version>`.
 //
-// Все вызовы git идут через [execx.Runner], поэтому интеграционные тесты
-// используют реальный git в t.TempDir (без сети, через file://-репозитории), а
-// auth-ветки покрываются моками glab/gh поверх [execx.RecordingRunner].
+// All git calls go through [execx.Runner], so integration tests use real git in
+// t.TempDir (without network, through file:// repositories), while auth paths
+// use glab/gh mocks over [execx.RecordingRunner].
 package repo
 
 import (
@@ -27,15 +26,15 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// aliasRe — допустимый формат алиаса репозитория: строчная буква, затем
-// строчные буквы/цифры/дефис.
+// aliasRe is the allowed repository alias format: a lowercase letter followed
+// by lowercase letters, digits, or hyphens.
 var aliasRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
-// UI — набор потоков ввода-вывода и палитра для сообщений менеджера. In
-// используется для интерактивных ответов (выбор auth-варианта, ввод токена);
-// Interactive сообщает, можно ли вообще задавать вопросы (обычно — TTY на
-// stdin). ReadSecret, если задан, читает токен без эха (в CLI — через term); в
-// тестах остаётся nil, и токен читается строкой из In.
+// UI contains manager input/output streams and the message palette. In is used
+// for interactive answers (auth method selection and token input); Interactive
+// says whether questions may be asked (usually whether stdin is a TTY). When
+// set, ReadSecret reads a token without echo (the CLI uses term); tests leave it
+// nil and read the token as a line from In.
 type UI struct {
 	In          io.Reader
 	Out         io.Writer
@@ -45,7 +44,7 @@ type UI struct {
 	ReadSecret  func(prompt string) (string, error)
 }
 
-// Manager инкапсулирует операции над реестром репозиториев шаблонов.
+// Manager encapsulates operations on the template repository registry.
 type Manager struct {
 	home      string
 	runner    execx.Runner
@@ -53,13 +52,13 @@ type Manager struct {
 	ui        UI
 	in        *bufio.Reader
 
-	// now — источник времени для index.GeneratedAt; переопределяется в тестах.
+	// now supplies index.GeneratedAt and is overridden in tests.
 	now func() time.Time
 }
 
-// New создаёт менеджер. home — домашний каталог tplater (см. state.Home);
-// authStore может быть nil — тогда auth-флоу для https-URL недоступен (git
-// пойдёт без credential-helper'а, что подходит для публичных/file://-репо).
+// New creates a manager. home is the tplater home directory (see state.Home).
+// authStore may be nil, making the auth flow unavailable for https URLs; git
+// then runs without a credential helper, suitable for public/file:// repositories.
 func New(home string, runner execx.Runner, authStore *auth.Store, u UI) *Manager {
 	var r *bufio.Reader
 	if u.In != nil {
@@ -75,32 +74,31 @@ func New(home string, runner execx.Runner, authStore *auth.Store, u UI) *Manager
 	}
 }
 
-// AddOptions — параметры repo add.
+// AddOptions contains repo add parameters.
 type AddOptions struct {
 	Alias  string
 	URL    string
 	Branch string
-	// TokenStdin — читать токен из stdin (неинтерактивный auth) вместо диалога.
+	// TokenStdin reads a token from stdin (non-interactive auth) instead of prompting.
 	TokenStdin bool
 }
 
-// Info — строка вывода repo list: запись реестра + агрегаты из индекса.
+// Info is a repo list output row: registry entry plus index aggregates.
 type Info struct {
 	Ref       state.RepoRef
 	Templates int
 	UpdatedAt time.Time
 }
 
-// reposDir возвращает путь к каталогу кеша клонов (~/.tplaiter/repos).
+// reposDir returns the clone cache directory (~/.tplaiter/repos).
 func (m *Manager) reposDir() string { return filepath.Join(m.home, "repos") }
 
-// cloneDir возвращает путь к клону репозитория alias.
+// cloneDir returns the clone path for repository alias.
 func (m *Manager) cloneDir(alias string) string { return filepath.Join(m.reposDir(), alias) }
 
-// Add добавляет репозиторий: валидирует алиас, определяет тип по host,
-// проводит auth-флоу (для https), клонирует с фильтром blob:none, сканирует и
-// индексирует манифесты, затем атомарно пишет config.yaml и index.yaml под
-// межпроцессным локом.
+// Add adds a repository: validates the alias, detects kind from host, performs
+// auth for https, clones with the blob:none filter, scans and indexes manifests,
+// then atomically writes config.yaml and index.yaml under an interprocess lock.
 func (m *Manager) Add(ctx context.Context, opts AddOptions) error {
 	if err := validateAlias(opts.Alias); err != nil {
 		return err
@@ -126,7 +124,7 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) error {
 	}
 
 	dest := m.cloneDir(opts.Alias)
-	// Чистим возможный остаток от прерванной попытки с тем же алиасом.
+	// Remove a possible leftover from an interrupted attempt with the same alias.
 	_ = os.RemoveAll(dest)
 	if err := os.MkdirAll(m.reposDir(), 0o700); err != nil {
 		return fmt.Errorf("repo: создание каталога кеша: %w", err)
@@ -152,8 +150,8 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) error {
 		branch = m.currentBranch(ctx, dest)
 	}
 
-	// strict=true: битый манифест при add — фатальная ошибка (репо не
-	// регистрируется). Отличие от update см. в комментарии scanRepo.
+	// strict=true: a broken manifest during add is fatal (the repository is not
+	// registered). See scanRepo for the difference from update.
 	entries, err := m.scanRepo(ctx, dest, branch, true)
 	if err != nil {
 		_ = os.RemoveAll(dest)
@@ -183,7 +181,7 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) error {
 	return nil
 }
 
-// Remove удаляет репозиторий из конфига и индекса и стирает его клон.
+// Remove removes a repository from config and index and deletes its clone.
 func (m *Manager) Remove(alias string) error {
 	if err := state.WithLock(m.home, func() error {
 		cfg, err := state.LoadConfig(m.home)
@@ -216,9 +214,10 @@ func (m *Manager) Remove(alias string) error {
 	return nil
 }
 
-// Update делает git fetch --tags --force (кеш одноразовый: переехавший тег в origin не должен блокировать обновление) и переиндексацию: всех репозиториев (alias
-// пустой) либо одного. В отличие от Add, битый манифест шаблона при update —
-// предупреждение с пропуском шаблона (репозиторий не ломается), см. scanRepo.
+// Update runs git fetch --tags --force (the cache is disposable, so a moved
+// origin tag must not block an update) and reindexes all repositories (empty
+// alias) or one repository. Unlike Add, a broken template manifest during
+// update is a warning and skips that template; see scanRepo.
 func (m *Manager) Update(ctx context.Context, alias string) error {
 	cfg, err := state.LoadConfig(m.home)
 	if err != nil {
@@ -263,14 +262,11 @@ func (m *Manager) Update(ctx context.Context, alias string) error {
 			branch = m.currentBranch(ctx, dest)
 		}
 
-		// fetch (выше) обновляет только remote-tracking ref origin/<branch>;
-		// сам кеш-клон (рабочее дерево + локальный HEAD) без явного
-		// checkout+reset остаётся на прежнем коммите, и index.yaml
-		// переиндексируется по СТАРОМУ содержимому, хотя команда рапортует
-		// успех и обновляет метку времени index.yaml. Синхронизируем
-		// рабочее дерево с обновлённым origin/<branch>, чтобы update
-		// реально подтягивал новые правки (detached HEAD — пропускаем, это
-		// не наш обычный сценарий одноразового кеша).
+		// fetch above updates only the remote-tracking ref origin/<branch>;
+		// without explicit checkout+reset, the cache clone stays at the old commit
+		// and index.yaml is rebuilt from old content. Sync the working tree to the
+		// updated origin/<branch> so update actually pulls changes (skip detached
+		// HEAD, which is not our normal disposable-cache scenario).
 		if branch != "HEAD" {
 			if _, err := m.git(ctx, dest, []string{"checkout", branch}, authEnv); err != nil {
 				return fmt.Errorf("repo: checkout %q@%s: %w", ref.Alias, branch, err)
@@ -296,8 +292,8 @@ func (m *Manager) Update(ctx context.Context, alias string) error {
 	return nil
 }
 
-// List возвращает записи реестра, обогащённые числом шаблонов из индекса и
-// временем последнего обновления клона (mtime каталога repos/<alias>).
+// List returns registry entries enriched with the template count from the index
+// and the clone's last update time (mtime of repos/<alias>).
 func (m *Manager) List() ([]Info, error) {
 	cfg, err := state.LoadConfig(m.home)
 	if err != nil {
@@ -319,12 +315,11 @@ func (m *Manager) List() ([]Info, error) {
 	return out, nil
 }
 
-// Templates возвращает агрегированный индекс шаблонов по всем добавленным
-// репозиториям (alias -> его шаблоны), в том же виде, в каком он хранится в
-// index.yaml. Источник для `template list`:
-// команда сама фильтрует по repo/name/labels — здесь только чтение кеша с
-// той же устойчивостью к повреждённому index.yaml, что и у [Manager.List]/
-// [Manager.ResolveRef] (см. [Manager.loadIndex]).
+// Templates returns the aggregated template index for all added repositories
+// (alias -> its templates), in the same form as index.yaml. It is the source
+// for `template list`; the command filters by repo/name/labels, while this
+// method only reads the cache with the same tolerance for corrupt index.yaml as
+// [Manager.List]/[Manager.ResolveRef] (see [Manager.loadIndex]).
 func (m *Manager) Templates() (map[string][]state.TemplateEntry, error) {
 	idx, err := m.loadIndex()
 	if err != nil {
@@ -333,8 +328,8 @@ func (m *Manager) Templates() (map[string][]state.TemplateEntry, error) {
 	return idx.Repos, nil
 }
 
-// writeIndexEntry перезаписывает набор шаблонов одного репозитория в index.yaml.
-// Вызывать только под state.WithLock.
+// writeIndexEntry replaces one repository's templates in index.yaml. Call only
+// under state.WithLock.
 func (m *Manager) writeIndexEntry(alias string, entries []state.TemplateEntry) error {
 	idx, err := m.loadIndex()
 	if err != nil {
@@ -348,8 +343,8 @@ func (m *Manager) writeIndexEntry(alias string, entries []state.TemplateEntry) e
 	return state.SaveIndex(m.home, idx)
 }
 
-// loadIndex читает индекс, трактуя ErrIndexCorrupted как пустой кеш (индекс —
-// перестраиваемый кеш): повреждённый файл не должен ломать команду.
+// loadIndex reads the index, treating ErrIndexCorrupted as an empty cache (the
+// index is rebuildable); a corrupt file must not break the command.
 func (m *Manager) loadIndex() (state.Index, error) {
 	idx, err := state.LoadIndex(m.home)
 	if err != nil {
@@ -362,30 +357,27 @@ func (m *Manager) loadIndex() (state.Index, error) {
 	return idx, nil
 }
 
-// git запускает git в каталоге dir (пустой — текущий) с дополнительным
-// окружением extraEnv (обычно credential-helper из auth.HelperEnv).
+// git runs git in dir (empty means the current directory) with extraEnv,
+// usually the credential helper from auth.HelperEnv.
 func (m *Manager) git(ctx context.Context, dir string, args, extraEnv []string) (execx.Result, error) {
 	return m.runner.Run(ctx, "git", args, execx.Options{Dir: dir, Env: extraEnv})
 }
 
-// CloneDir возвращает путь к кеш-клону репозитория alias
-// (~/.tplaiter/repos/<alias>). Экспортирован АДДИТИВНО для internal/contribute
-// (`tplater upgrade`): команда апгрейда создаёт ветку прямо в
-// кеш-клоне и после push возвращает его на исходный ref, поэтому ей нужен путь
-// к клону (внутренний [Manager.cloneDir] остаётся приватным для остального кода).
+// CloneDir returns the cache clone path for repository alias
+// (~/.tplaiter/repos/<alias>). It is exported for internal/contribute
+// (`tplater upgrade`), which creates a branch in the cache clone and returns it
+// to the original ref after push; the private [Manager.cloneDir] serves the rest.
 func (m *Manager) CloneDir(alias string) string { return m.cloneDir(alias) }
 
-// RunGit запускает произвольную git-команду в каталоге dir с дополнительным
-// окружением extraEnv (обычно credential-helper из [auth.HelperEnv] для push).
-// Тонкая экспортированная обёртка над приватным [Manager.git]; добавлена
-// АДДИТИВНО для internal/contribute (`tplater upgrade`), которому
-// нужно вести ветку/коммит/push/format-patch в кеш-клоне тем же раннером, что и
-// остальные git-операции менеджера (важно для мокабельности в тестах).
+// RunGit runs an arbitrary git command in dir with extraEnv (usually the
+// credential helper from [auth.HelperEnv] for push). It is a thin exported
+// wrapper around private [Manager.git] for internal/contribute (`tplater upgrade`),
+// which needs to branch, commit, push, and format-patch through the same runner.
 func (m *Manager) RunGit(ctx context.Context, dir string, args, extraEnv []string) (execx.Result, error) {
 	return m.git(ctx, dir, args, extraEnv)
 }
 
-// currentBranch возвращает имя текущей ветки клона; при ошибке — "HEAD".
+// currentBranch returns the clone's current branch name, or "HEAD" on error.
 func (m *Manager) currentBranch(ctx context.Context, dir string) string {
 	res, err := m.git(ctx, dir, []string{"rev-parse", "--abbrev-ref", "HEAD"}, nil)
 	if err != nil {
@@ -412,7 +404,7 @@ func (m *Manager) warnf(format string, a ...any) {
 	fmt.Fprintf(m.ui.Err, format, a...)
 }
 
-// validateAlias проверяет формат алиаса (^[a-z][a-z0-9-]*$).
+// validateAlias checks the alias format (^[a-z][a-z0-9-]*$).
 func validateAlias(alias string) error {
 	if alias == "" {
 		return errors.New("repo: пустой алиас")
@@ -442,8 +434,8 @@ func removeRepo(repos []state.RepoRef, alias string) []state.RepoRef {
 	return out
 }
 
-// detectKind определяет вид хостинга по host: gitlab.* и scm.* →
-// gitlab; github.* → github; иначе — обычный git.
+// detectKind determines hosting from host: gitlab.* and scm.* mean gitlab;
+// github.* means github; otherwise it is ordinary git.
 func detectKind(host string) state.RepoKind {
 	h := strings.ToLower(host)
 	switch {
@@ -456,10 +448,10 @@ func detectKind(host string) state.RepoKind {
 	}
 }
 
-// parseGitURL извлекает host и нормализованный путь репозитория из git-URL:
-// http(s)://host/path, ssh://[user@]host[:port]/path и scp-подобного
-// [user@]host:path. Путь возвращается без ведущих/замыкающих «/» и суффикса
-// ".git". Для file://-URL host пуст (kind → git, auth не требуется).
+// parseGitURL extracts host and a normalized repository path from git URLs:
+// http(s)://host/path, ssh://[user@]host[:port]/path, and scp-like
+// [user@]host:path. The path has no leading/trailing "/" or ".git" suffix.
+// For file:// URLs host is empty (kind becomes git and auth is unnecessary).
 func parseGitURL(raw string) (host, repoPath string) {
 	if strings.Contains(raw, "://") {
 		if u, err := url.Parse(raw); err == nil {
@@ -467,7 +459,7 @@ func parseGitURL(raw string) (host, repoPath string) {
 		}
 		return "", normalizeRepoPath(raw)
 	}
-	// scp-подобная форма: [user@]host:path — двоеточие до первого «/».
+	// Scp-like form: [user@]host:path, with a colon before the first "/".
 	if i := strings.Index(raw, ":"); i > 0 {
 		if slash := strings.Index(raw, "/"); slash == -1 || slash > i {
 			hostPart := raw[:i]
@@ -480,16 +472,16 @@ func parseGitURL(raw string) (host, repoPath string) {
 	return "", normalizeRepoPath(raw)
 }
 
-// normalizeRepoPath приводит путь к виду хранения Credential.Repo: без ведущих/
-// замыкающих «/» и без суффикса ".git".
+// normalizeRepoPath converts a path to Credential.Repo storage form: no leading
+// or trailing "/" and no ".git" suffix.
 func normalizeRepoPath(p string) string {
 	p = strings.Trim(p, "/")
 	p = strings.TrimSuffix(p, ".git")
 	return p
 }
 
-// isHTTPURL сообщает, что URL требует http(s)-аутентификации (для ssh/file://
-// credential-helper не задействуется).
+// isHTTPURL reports whether a URL needs http(s) authentication; ssh/file:// URLs
+// do not use the credential helper.
 func isHTTPURL(raw string) bool {
 	return strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "http://")
 }

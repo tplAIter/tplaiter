@@ -10,9 +10,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
-// LatestTag возвращает старший тег вида v* (SemVer) удалённого репозитория
-// repoURL через `git ls-remote --tags`. Пустая строка без ошибки означает
-// «в репозитории нет ни одного v*-тега».
+// LatestTag returns the highest v* (SemVer) tag from repoURL via
+// `git ls-remote --tags`. An empty string without an error means the repository
+// has no v* tags.
 func LatestTag(ctx context.Context, runner execx.Runner, repoURL string) (string, error) {
 	res, err := runner.Run(ctx, "git", []string{"ls-remote", "--tags", repoURL}, execx.Options{})
 	if err != nil {
@@ -21,11 +21,11 @@ func LatestTag(ctx context.Context, runner execx.Runner, repoURL string) (string
 	return parseLatestTag(res.Stdout), nil
 }
 
-// parseLatestTag разбирает вывод `git ls-remote --tags` (строки вида
-// "<sha>\trefs/tags/<ref>") и возвращает старший корректный v*-SemVer тег.
-// Невалидные (не начинающиеся с "v" или не парсящиеся как SemVer) строки и
-// dereferenced-ссылки на annotated-теги ("^{}") игнорируются молча — это не
-// ошибка формата, просто шум, обычный для ls-remote.
+// parseLatestTag parses `git ls-remote --tags` output (lines of the form
+// "<sha>\trefs/tags/<ref>") and returns the highest valid v*-SemVer tag.
+// Invalid lines (not starting with "v" or not parseable as SemVer) and
+// dereferenced annotated-tag references ("^{}") are silently ignored; they are
+// normal ls-remote noise, not format errors.
 func parseLatestTag(output string) string {
 	var (
 		latest    *semver.Version
@@ -53,26 +53,26 @@ func parseLatestTag(output string) string {
 	return latestRaw
 }
 
-// CompareResult — итог сравнения текущей версии CLI со старшим найденным
-// тегом (см. [Compare]).
+// CompareResult is the result of comparing the current CLI version with the
+// highest discovered tag (see [Compare]).
 type CompareResult int
 
-// Возможные результаты [Compare].
+// Possible [Compare] results.
 const (
-	// CompareUnknown — сравнить невозможно: одна из версий (обычно текущая —
-	// локальная "dev"-сборка) не является корректным SemVer.
+	// CompareUnknown means comparison is impossible: one version (usually the
+	// current local "dev" build) is not valid SemVer.
 	CompareUnknown CompareResult = iota
-	// CompareUpToDate — текущая версия равна latest.
+	// CompareUpToDate means the current version equals latest.
 	CompareUpToDate
-	// CompareOutdated — текущая версия старше latest, есть смысл обновиться.
+	// CompareOutdated means the current version is older than latest and should update.
 	CompareOutdated
-	// CompareAhead — текущая версия новее latest (локальная/pre-release
-	// сборка опережает опубликованные теги) — обновление не требуется.
+	// CompareAhead means the current version is newer than latest (a local or
+	// prerelease build is ahead of published tags); no update is needed.
 	CompareAhead
 )
 
-// Compare сравнивает current (обычно результат `tplater version`) с latest
-// (результат [LatestTag]). Префикс "v" в обоих аргументах необязателен.
+// Compare compares current (usually the result of `tplater version`) with
+// latest (the result of [LatestTag]). The "v" prefix is optional in both.
 func Compare(current, latest string) CompareResult {
 	cv, err := semver.NewVersion(strings.TrimPrefix(current, "v"))
 	if err != nil {

@@ -14,9 +14,9 @@ func init() {
 	rootCmd.AddCommand(newLintTemplateCmd())
 }
 
-// newInitTemplateCmd — команда `tplaiter init-template <name>`:
-// требование владельца №2): генерирует ПУСТОЙ репозиторий шаблона со всем
-// инструментарием (манифест, files/, генераторы, ai-config, environment, CI).
+// newInitTemplateCmd — `tplaiter init-template <name>`: per owner requirement
+// 2, generates an EMPTY template repository with all tooling (manifest, files/,
+// generators, ai-config, environment, CI).
 func newInitTemplateCmd() *cobra.Command {
 	var (
 		dir   string
@@ -52,9 +52,9 @@ func newInitTemplateCmd() *cobra.Command {
 	return c
 }
 
-// newLintTemplateCmd — команда `tplaiter lint-template`:
-// generic-селфтест репозитория шаблона (валидация манифеста + пробный рендер
-// всех «угловых» комбинаций настроек). exit 1 при любом провале.
+// newLintTemplateCmd — `tplaiter lint-template`: a generic template-repository
+// self-test (manifest validation plus trial renders of all edge setting
+// combinations). Exit 1 on any failure.
 func newLintTemplateCmd() *cobra.Command {
 	var (
 		path  string

@@ -188,9 +188,9 @@ func TestRunPlaybook_PassesExtraVarsFileAndProjectRoot(t *testing.T) {
 			t.Errorf("call.Opts.Dir = %q, want /project/root", call.Opts.Dir)
 		}
 
-		// Файл должен существовать МОМЕНТ вызова (проверяем это отдельно через
-		// buildExtraVars — здесь важно, что путь был передан корректно и что файл
-		// удалён ПОСЛЕ завершения RunPlaybook).
+		// The file must exist at call time (checked separately through
+		// buildExtraVars); the important points here are that the path is passed
+		// correctly and the file is removed AFTER RunPlaybook completes.
 		if _, err := os.Stat(extraVarsPath); !os.IsNotExist(err) {
 			t.Errorf("extra-vars файл %s не удалён после RunPlaybook (err=%v)", extraVarsPath, err)
 		}
@@ -208,10 +208,9 @@ func TestRunPlaybook_ExtraVarsFileContentMatchesBuildExtraVars(t *testing.T) {
 	proj := manifest.ProjectInfo{Name: "svc", Slug: "svc", Module: "example.com/svc"}
 	values := settings.Values{"database": "postgres"}
 
-	// RunPlaybook удаляет временный файл extra-vars сразу после возврата из
-	// Run (defer) — единственный момент, когда файл гарантированно ещё
-	// существует, это ВНУТРИ самого вызова Run. capturingRunner читает его
-	// оттуда, пока RecordingRunner формирует ответ.
+	// RunPlaybook removes the extra-vars temporary file immediately after Run
+	// returns (defer); the only guaranteed time it exists is INSIDE the Run call.
+	// capturingRunner reads it there while RecordingRunner builds its response.
 	var fileContent string
 	runner := &capturingRunner{
 		RecordingRunner: execx.NewRecordingRunner(),
@@ -254,9 +253,9 @@ func TestRunPlaybook_ExtraVarsFileContentMatchesBuildExtraVars(t *testing.T) {
 	}
 }
 
-// capturingRunner — тестовый Runner, вызывающий onRunSync с аргументами Run
-// ДО делегирования RecordingRunner (файл extra-vars ещё существует к этому
-// моменту — RunPlaybook удаляет его только после возврата из Run).
+// capturingRunner — test Runner that calls onRunSync with Run arguments BEFORE
+// delegating to RecordingRunner (the extra-vars file still exists then;
+// RunPlaybook removes it only after Run returns).
 type capturingRunner struct {
 	*execx.RecordingRunner
 	onRunSync func(args []string)
@@ -269,7 +268,7 @@ func (r *capturingRunner) Run(ctx context.Context, name string, args []string, o
 	return r.RecordingRunner.Run(ctx, name, args, opts)
 }
 
-// ---- RunPlaybook: несуществующий playbook-файл ---------------------------
+// ---- RunPlaybook: nonexistent playbook file ---------------------------
 
 func TestRunPlaybook_MissingPlaybookFile(t *testing.T) {
 	dir := t.TempDir()
@@ -287,7 +286,7 @@ func TestRunPlaybook_MissingPlaybookFile(t *testing.T) {
 	assertAnsibleDenied(t, err, runner.Calls)
 }
 
-// ---- RunPlaybook: ansible отсутствует -------------------------------------
+// ---- RunPlaybook: Ansible missing -------------------------------------
 
 func TestRunPlaybook_AnsibleMissing_AutoYesFalse_ErrorWithRecipe(t *testing.T) {
 	dir := t.TempDir()
@@ -295,7 +294,7 @@ func TestRunPlaybook_AnsibleMissing_AutoYesFalse_ErrorWithRecipe(t *testing.T) {
 
 	runner := execx.NewRecordingRunner()
 	runner.SetLookPath("brew", "/opt/homebrew/bin/brew")
-	// ansible-playbook НЕ в PATH; AutoYes=false — установка не подтверждается.
+	// ansible-playbook is NOT in PATH; AutoYes=false means installation is not confirmed.
 
 	r := &Runner{Exec: runner, UI: deps.NewUI(&bytes.Buffer{}, ui.NewPalette(false)), DepsUI: deps.NewUI(&bytes.Buffer{}, ui.NewPalette(false))}
 
@@ -317,9 +316,9 @@ func TestRunPlaybook_AnsibleMissing_AutoYesTrue_InstallsThenRechecks(t *testing.
 	inner.On("brew", []string{"install", "ansible"}, execx.Response{Result: execx.Result{Stdout: "==> Installing ansible\n"}})
 	inner.OnCommand("ansible-playbook", execx.Response{Result: execx.Result{Stdout: "PLAY [setup]\n"}})
 
-	// ansible-playbook найден только со второй проверки LookPath (первая —
-	// до установки, вторая — после): имитирует появление бинарника в PATH
-	// сразу после `brew install ansible`.
+	// ansible-playbook is found only on the second LookPath check (first before
+	// installation, second after), simulating the binary appearing in PATH right
+	// after `brew install ansible`.
 	errNotFound := errors.New("ansible-playbook: не найден в PATH")
 	runner := &sequencedLookupRunner{RecordingRunner: inner, name: "ansible-playbook", seq: []error{
 		errNotFound,
@@ -357,7 +356,7 @@ func TestRunPlaybook_AnsibleAlreadyPresent_NoInstallAttempted(t *testing.T) {
 	assertAnsibleDenied(t, err, runner.Calls)
 }
 
-// ---- RunPlaybook: exit-код пробрасывается ---------------------------------
+// ---- RunPlaybook: exit code propagated ---------------------------------
 
 func TestRunPlaybook_ExitCodePropagates(t *testing.T) {
 	dir := t.TempDir()
@@ -408,9 +407,9 @@ func TestNewRunner_SharesUIAndDepsUI(t *testing.T) {
 
 // ---- helpers ---------------------------------------------------------------
 
-// writePlaybookFixture создаёт минимальный (пустой список tasks) валидный по
-// форме ansible-плейбук setup.yml в dir — содержимое не важно, RunPlaybook не
-// парсит YAML сам (это делает ansible-playbook, замоканный в тестах).
+// writePlaybookFixture creates a minimal ansible-valid setup.yml in dir (an
+// empty tasks list); contents do not matter because RunPlaybook does not parse
+// YAML itself (the mocked ansible-playbook does).
 func writePlaybookFixture(t *testing.T, dir string) {
 	t.Helper()
 	const name = "setup.yml"
@@ -419,13 +418,11 @@ func writePlaybookFixture(t *testing.T, dir string) {
 	}
 }
 
-// sequencedLookupRunner — Runner-обёртка, дающая полный контроль над
-// последовательными ответами LookPath(name) — нужен, чтобы протестировать
-// повторную проверку [ensureAnsiblePlaybook] после попытки установки: реальный
-// os/exec.LookPath увидел бы бинарник, появившийся в PATH после `brew
-// install`, но execx.RecordingRunner.LookPath статичен (не меняется по ходу
-// теста) — эта обёртка имитирует "появление после установки" явной
-// последовательностью ответов.
+// sequencedLookupRunner — Runner wrapper providing full control over sequential
+// LookPath(name) responses. It tests the repeated [ensureAnsiblePlaybook] check
+// after installation: real os/exec.LookPath would see a binary added to PATH by
+// `brew install`, but execx.RecordingRunner.LookPath is static. This wrapper
+// simulates "appeared after installation" with an explicit response sequence.
 type sequencedLookupRunner struct {
 	*execx.RecordingRunner
 	name  string

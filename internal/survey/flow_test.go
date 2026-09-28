@@ -11,10 +11,10 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// plainPalette — палитра без цвета для детерминируемого вывода в тестах.
+// plainPalette — colorless palette for deterministic test output.
 func plainPalette() ui.Palette { return ui.NewPalette(false) }
 
-// runInteractive прогоняет AskFlow в интерактивном режиме с заданным опросником.
+// runInteractive runs AskFlow interactively with the supplied prompter.
 func runInteractive(t *testing.T, preset settings.Values, p Prompter) (settings.Resolved, string, error) {
 	t.Helper()
 	var buf bytes.Buffer
@@ -23,7 +23,7 @@ func runInteractive(t *testing.T, preset settings.Values, p Prompter) (settings.
 }
 
 func TestAskFlow_DefaultsMode_SkipsPrompter(t *testing.T) {
-	// Опросник, паникующий при любом вызове — доказательство, что его не трогают.
+	// Prompter panics on any call, proving it is not touched.
 	p := &panicPrompter{t: t}
 	var buf bytes.Buffer
 	res, err := AskFlow(testTemplate(), settings.Values{"database": "postgres"},
@@ -42,7 +42,7 @@ func TestAskFlow_DefaultsMode_SkipsPrompter(t *testing.T) {
 func TestAskFlow_NonInteractive_DefaultForUnsetSelect(t *testing.T) {
 	p := &panicPrompter{t: t}
 	var buf bytes.Buffer
-	// svc_name задаём (иначе required-ошибка), database не задаём — берётся дефолт.
+	// Set svc_name (otherwise required error); leave database unset for its default.
 	res, err := AskFlow(testTemplate(), settings.Values{"svc_name": "svc"},
 		FlowOptions{Interactive: false}, p, &buf, plainPalette())
 	if err != nil {
@@ -71,8 +71,8 @@ func TestAskFlow_NonInteractive_RequiredStringMissing(t *testing.T) {
 }
 
 func TestAskFlow_NonInteractive_NestedRequiredNotTriggeredWhenInactive(t *testing.T) {
-	// kafka_topics (обязательная строка) активна только при выборе kafka.
-	// Без брокеров она неактивна и не должна порождать required-ошибку.
+	// kafka_topics (required string) is active only when kafka is selected. Without
+	// brokers it is inactive and must not produce a required error.
 	p := &panicPrompter{t: t}
 	var buf bytes.Buffer
 	_, err := AskFlow(testTemplate(), settings.Values{"svc_name": "svc"},
@@ -83,8 +83,7 @@ func TestAskFlow_NonInteractive_NestedRequiredNotTriggeredWhenInactive(t *testin
 }
 
 func TestAskFlow_NonInteractive_NestedRequiredTriggeredWhenActive(t *testing.T) {
-	// При preset brokers=kafka вложенная kafka_topics становится активной и
-	// обязательной.
+	// With preset brokers=kafka, nested kafka_topics becomes active and required.
 	p := &panicPrompter{t: t}
 	var buf bytes.Buffer
 	_, err := AskFlow(testTemplate(),
@@ -100,11 +99,11 @@ func TestAskFlow_NonInteractive_NestedRequiredTriggeredWhenActive(t *testing.T) 
 }
 
 func TestAskFlow_Interactive_PresetBeatsPromptAndDefault(t *testing.T) {
-	// preset фиксирует database=postgres; опрос его не спрашивает, но значение
-	// побеждает. Прочие группы приходят из ответов (prompt), незаданные — дефолт.
+	// preset fixes database=postgres; it is not asked, but wins. Other groups come
+	// from prompt answers; unset groups use defaults.
 	p := &ScriptedPrompter{
 		Answers: []settings.Values{{
-			"idempotency": true, // hoisted из postgres
+			"idempotency": true, // hoisted from postgres
 			"brokers":     []string{},
 			"auth":        []string{},
 			"svc_name":    "myservice",
@@ -121,10 +120,10 @@ func TestAskFlow_Interactive_PresetBeatsPromptAndDefault(t *testing.T) {
 	if got := res.Values["svc_name"]; got != "myservice" { // prompt
 		t.Fatalf("svc_name = %v, хотим myservice (prompt)", got)
 	}
-	if got := res.Values["replicas"]; got != 5 { // prompt переопределил дефолт 3
+	if got := res.Values["replicas"]; got != 5 { // prompt overrides default 3
 		t.Fatalf("replicas = %v, хотим 5 (prompt)", got)
 	}
-	// database не должна попадать в список опрошенных групп (она preset).
+	// database must not appear among asked groups (it is preset).
 	for _, id := range p.AskCalls[0] {
 		if id == "database" {
 			t.Fatalf("preset-группа database не должна опрашиваться, AskCalls=%v", p.AskCalls[0])
@@ -133,7 +132,7 @@ func TestAskFlow_Interactive_PresetBeatsPromptAndDefault(t *testing.T) {
 }
 
 func TestAskFlow_Interactive_NestedAskedOnlyWhenParentSelected(t *testing.T) {
-	// Итерация 1: database=none → idempotency НЕ спрашивается.
+	// Iteration 1: database=none → idempotency is NOT asked.
 	p := &ScriptedPrompter{
 		Answers: []settings.Values{{
 			"database": "none",
@@ -150,7 +149,7 @@ func TestAskFlow_Interactive_NestedAskedOnlyWhenParentSelected(t *testing.T) {
 		t.Fatalf("idempotency не должна опрашиваться при database=none: %v", p.AskCalls[0])
 	}
 
-	// database=postgres → idempotency спрашивается; kafka_* — нет (без kafka).
+	// database=postgres → idempotency is asked; kafka_* are not (no kafka).
 	p2 := &ScriptedPrompter{
 		Answers: []settings.Values{{
 			"database":    "postgres",
@@ -197,9 +196,9 @@ func TestAskFlow_Interactive_MultiselectRevealsNested(t *testing.T) {
 }
 
 func TestAskFlow_Interactive_SummaryPrinted(t *testing.T) {
-	// Выбор auth=sso_provider согласован с самостоятельно выбранным database=postgres;
-	// проверяем, что сводка печатается (доклад Implied проверяется напрямую в
-	// summary_test.go, т.к. в полном опросе все активные группы явные).
+	// Selecting auth=sso_provider agrees with independently selected
+	// database=postgres; verify the summary prints (Implied is checked directly in
+	// summary_test.go because all active groups are explicit in the full questionnaire).
 	p := &ScriptedPrompter{
 		Answers: []settings.Values{{
 			"database": "postgres",
@@ -222,9 +221,8 @@ func TestAskFlow_Interactive_SummaryPrinted(t *testing.T) {
 }
 
 func TestAskFlow_Interactive_ResolveConflictRepromptsSecondIteration(t *testing.T) {
-	// preset auth=[sso_provider] требует database=postgres. Итерация 1 выбирает
-	// database=none → конфликт с requires → переопрос. Итерация 2 выбирает
-	// database=postgres → согласовано.
+	// preset auth=[sso_provider] requires database=postgres. Iteration 1 selects
+	// database=none → requires conflict → re-ask. Iteration 2 selects postgres → agree.
 	p := &ScriptedPrompter{
 		Answers: []settings.Values{
 			{
@@ -266,7 +264,7 @@ func TestAskFlow_Interactive_ConfirmRejectReprompts(t *testing.T) {
 	}
 	p := &ScriptedPrompter{
 		Answers:  []settings.Values{answer, answer},
-		Confirms: []bool{false, true}, // сначала отказ, затем согласие
+		Confirms: []bool{false, true}, // reject first, then approve
 	}
 	if _, _, err := runInteractive(t, nil, p); err != nil {
 		t.Fatalf("AskFlow: %v", err)
@@ -285,10 +283,10 @@ func TestAskFlow_Interactive_AbortPropagates(t *testing.T) {
 	}
 }
 
-// --- вспомогательные опросники ---
+// --- helper prompters ---
 
-// panicPrompter проваливает тест при любом вызове — доказывает, что Prompter
-// не трогают (режимы defaults/non-interactive).
+// panicPrompter fails the test on any call, proving Prompter is untouched
+// (defaults/non-interactive modes).
 type panicPrompter struct{ t *testing.T }
 
 func (p *panicPrompter) Ask([]manifest.SettingGroup, settings.Values) (settings.Values, error) {
@@ -301,7 +299,7 @@ func (p *panicPrompter) Confirm(string) (bool, error) {
 	return false, nil
 }
 
-// abortPrompter имитирует Ctrl+C на первом же Ask.
+// abortPrompter simulates Ctrl+C on the first Ask.
 type abortPrompter struct{ err error }
 
 func (p *abortPrompter) Ask([]manifest.SettingGroup, settings.Values) (settings.Values, error) {

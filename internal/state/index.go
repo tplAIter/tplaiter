@@ -9,54 +9,52 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// IndexVersion — текущая поддерживаемая версия формата index.yaml.
+// IndexVersion is the currently supported index.yaml format version.
 const IndexVersion = 1
 
-// indexFileName — имя файла в домашнем каталоге tplater.
+// indexFileName is the file name in the tplater home directory.
 const indexFileName = "index.yaml"
 
-// ErrIndexCorrupted сообщает, что index.yaml не удалось разобрать как YAML
-// или как структуру [Index]. Индекс — чистый кеш: вызывающий
-// код должен перестроить его из ~/.tplaiter/repos/, а не считать это фатальной
-// ошибкой процесса. Проверяйте errors.Is(err, ErrIndexCorrupted).
+// ErrIndexCorrupted reports that index.yaml could not be parsed as YAML or as
+// an [Index]. The index is only a cache: callers should rebuild it from
+// ~/.tplaiter/repos/ rather than treat this as a fatal process error. Check with
+// errors.Is(err, ErrIndexCorrupted).
 var ErrIndexCorrupted = errors.New("state: index.yaml повреждён")
 
-// TemplateEntry — один шаблон в агрегированном индексе одного репозитория.
+// TemplateEntry is one template in an aggregated repository index.
 type TemplateEntry struct {
 	Name        string `yaml:"name"`
 	Version     string `yaml:"version"`
 	Description string `yaml:"description"`
-	// LabelsFlat — лейблы шаблона (label -> значения); имя поля отражает,
-	// что вложенность манифеста уже развёрнута в плоскую map для быстрой
-	// фильтрации `template list -l lang=go`.
+	// LabelsFlat contains template labels (label -> values); the name reflects
+	// that manifest nesting has been flattened for fast `template list -l lang=go`
+	// filtering.
 	LabelsFlat map[string][]string `yaml:"labelsFlat"`
 	Path       string              `yaml:"path"`
-	// Ref — git-ссылка «HEAD-версии» шаблона: отслеживаемая ветка репозитория
-	// (или "HEAD"), из которой прочитан текущий metadata.version. Используется
-	// как `@latest` при резолюции ссылок.
+	// Ref is the template's "HEAD version" git ref: the tracked repository branch
+	// (or "HEAD") from which metadata.version was read. Used as `@latest` when
+	// resolving references.
 	Ref string `yaml:"ref"`
-	// Tags — стабильные релизные теги, применимые к этому шаблону, в полном
-	// git-виде (`vX.Y.Z` для single-репо, `<name>/vX.Y.Z` для multi), уже
-	// отсортированные по убыванию версии (index 0 — старший). Задел под выбор
-	// версии `@vX.Y.Z` / умолчание «старший стабильный тег».
-	// Поле добавлено к закоммиченной схеме index.yaml как чисто аддитивное:
-	// старые индексы без него читаются (nil-слайс), формат-версия не меняется.
+	// Tags are stable release tags applicable to this template, in full git form
+	// (`vX.Y.Z` for a single repo, `<name>/vX.Y.Z` for multi), sorted descending
+	// by version (index 0 is highest). Reserved for `@vX.Y.Z` selection and the
+	// "highest stable tag" default. The field was added additively to index.yaml:
+	// old indexes without it still read as a nil slice and the format version stays.
 	Tags []string `yaml:"tags,omitempty"`
 }
 
-// Index — содержимое ~/.tplaiter/index.yaml: агрегированный кеш шаблонов по
-// всем добавленным репозиториям.
+// Index is the contents of ~/.tplaiter/index.yaml: an aggregated template cache
+// for all added repositories.
 type Index struct {
 	Version int `yaml:"version"`
-	// GeneratedAt — момент построения индекса. Передаётся аргументом в
-	// [NewIndex] тем, кто индекс перестраивает (repo add/update,
-	// §3) — сам пакет state время не читает, чтобы Load/Save оставались
-	// чистыми и тестируемыми без подмены часов.
+	// GeneratedAt is when the index was built. It is passed to [NewIndex] by the
+	// rebuilding caller (repo add/update, §3); state itself does not read the
+	// clock so Load/Save remain pure and testable.
 	GeneratedAt time.Time                  `yaml:"generatedAt"`
 	Repos       map[string][]TemplateEntry `yaml:"repos"`
 }
 
-// NewIndex создаёт пустой индекс с заданным моментом генерации generatedAt.
+// NewIndex creates an empty index with the given generatedAt time.
 func NewIndex(generatedAt time.Time) Index {
 	return Index{
 		Version:     IndexVersion,
@@ -65,16 +63,15 @@ func NewIndex(generatedAt time.Time) Index {
 	}
 }
 
-// indexPath возвращает путь к index.yaml в домашнем каталоге home.
+// indexPath returns the path to index.yaml in home.
 func indexPath(home string) string {
 	return filepath.Join(home, indexFileName)
 }
 
-// LoadIndex читает index.yaml из домашнего каталога home. Отсутствие файла
-// — не ошибка: возвращается пустой индекс (Version=[IndexVersion],
-// GeneratedAt — нулевое время, Repos — пустая map). Файл, который не
-// удалось разобрать как YAML/[Index], возвращает [ErrIndexCorrupted]
-// (см. errors.Is) — вызывающий код должен перестроить индекс, не паниковать.
+// LoadIndex reads index.yaml from home. A missing file is not an error and
+// returns an empty index (Version=[IndexVersion], zero GeneratedAt, empty Repos).
+// A file that cannot be parsed as YAML/[Index] returns [ErrIndexCorrupted] (see
+// errors.Is); callers should rebuild the index rather than panic.
 func LoadIndex(home string) (Index, error) {
 	data, existed, err := readFile(indexPath(home))
 	if err != nil {
@@ -86,7 +83,7 @@ func LoadIndex(home string) (Index, error) {
 	return decodeIndex(data)
 }
 
-// SaveIndex атомарно записывает idx в index.yaml домашнего каталога home.
+// SaveIndex atomically writes idx to index.yaml in home.
 func SaveIndex(home string, idx Index) error {
 	data, err := yaml.Marshal(idx)
 	if err != nil {
@@ -98,12 +95,12 @@ func SaveIndex(home string, idx Index) error {
 func decodeIndex(data []byte) (Index, error) {
 	version, err := peekVersion(data)
 	if err != nil {
-		return Index{}, fmt.Errorf("%w: %v", ErrIndexCorrupted, err) //nolint:errorlint // сознательная упаковка "причины" в текст: err — деталь парсинга, не отдельный проверяемый тип
+		return Index{}, fmt.Errorf("%w: %v", ErrIndexCorrupted, err) //nolint:errorlint // Deliberately embeds the cause as text: parsing detail, not a separate typed error.
 	}
 
-	// Версия новее поддерживаемой этим tplater — это не «повреждён», а
-	// «обновите tplater»: файл читаем, просто из будущего. Отдельная от
-	// ErrIndexCorrupted ветка ошибок.
+	// A version newer than this tplater is not "corrupt" but "update tplater":
+	// the file is readable, just from the future. Keep it separate from
+	// ErrIndexCorrupted.
 	migrated, err := checkAndMigrate(kindIndex, data, version, IndexVersion)
 	if err != nil {
 		return Index{}, err
@@ -111,7 +108,7 @@ func decodeIndex(data []byte) (Index, error) {
 
 	var idx Index
 	if err := yaml.Unmarshal(migrated, &idx); err != nil {
-		return Index{}, fmt.Errorf("%w: %v", ErrIndexCorrupted, err) //nolint:errorlint // см. выше
+		return Index{}, fmt.Errorf("%w: %v", ErrIndexCorrupted, err) //nolint:errorlint // See above.
 	}
 	if idx.Repos == nil {
 		idx.Repos = map[string][]TemplateEntry{}

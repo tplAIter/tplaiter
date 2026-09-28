@@ -17,7 +17,7 @@ func TestBuildForm_ConstructsFieldPerGroup(t *testing.T) {
 	if form == nil {
 		t.Fatalf("форма не должна быть nil")
 	}
-	// Все 8 групп дерева (включая вложенные) получили биндинг/поле.
+	// All 8 groups in the tree (including nested groups) received a binding/field.
 	want := []string{
 		"database", "idempotency", "brokers",
 		"kafka_ssl", "kafka_topics", "auth", "svc_name", "replicas",

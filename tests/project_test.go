@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-// TestEnvGenAI прогоняет env/gen/ai поверх сгенерированных проектов
-// (сценарий 6, требование реализацию): `env list` на проекте БЕЗ плейбуков
-// (testdata/fixtures/single-basic не объявляет environment.playbooks);
-// `gen list` и `ai validate` на проекте из `tplater init-template` (несёт
-// generators + ai-config "из коробки" — единственная фикстура, где эти
-// команды видят непустой результат).
+// TestEnvGenAI runs env/gen/ai against generated projects
+// (scenario 6, implementation requirement): `env list` on a project WITHOUT
+// playbooks (testdata/fixtures/single-basic declares no environment.playbooks);
+// `gen list` and `ai validate` on a project from `tplater init-template` (it
+// includes generators + ai-config "out of the box" — the only fixture where
+// these commands see a non-empty result).
 func TestEnvGenAI(t *testing.T) {
 	requireGit(t)
 	t.Parallel()
@@ -25,7 +25,7 @@ func TestEnvGenAI(t *testing.T) {
 		mustRun(t, home, "", "new", "sb/single-basic", "SB Project", "--dir", projDir, "--defaults")
 
 		res := mustRun(t, home, projDir, "env", "list")
-		_ = res // манифест не объявляет плейбуков — команде достаточно завершиться успешно.
+		_ = res // the manifest declares no playbooks; successful completion is enough.
 	})
 
 	t.Run("gen_and_ai_on_init_template_project", func(t *testing.T) {

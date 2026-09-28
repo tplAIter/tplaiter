@@ -1,8 +1,8 @@
-# multi — фикстура мульти-шаблонного репозитория, для тестов /
-# ("список/выбор шаблона репозитория"). Два предельно маленьких шаблона —
-# alpha (toggle-настройка) и beta (string-настройка) — достаточно, чтобы
-# упражнять выбор шаблона и рендер каждого движком, не тестируя сам движок
-# повторно (это делает single-basic).
+# multi — multi-template repository fixture for /
+# ("repository template list/selection") tests. Two very small templates —
+# alpha (toggle setting) and beta (string setting) — are enough to exercise
+# template selection and engine rendering without testing the engine again
+# (single-basic does that).
 apiVersion: tplater.dev/v1alpha1
 kind: Repository
 metadata:

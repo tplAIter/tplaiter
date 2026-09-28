@@ -6,7 +6,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// fileKind идентифицирует один из файлов состояния для реестра миграций.
+// fileKind identifies a state file for the migration registry.
 type fileKind string
 
 const (
@@ -16,25 +16,22 @@ const (
 	kindState    fileKind = "state.yaml"
 )
 
-// migrationFunc переносит сырые YAML-данные файла версии from к версии
-// from+1. Возвращает новые сырые данные (обычно — результат повторной
-// маршализации промежуточной структуры).
+// migrationFunc migrates raw YAML data from version from to from+1. It returns
+// new raw data, usually the marshaled form of an intermediate structure.
 type migrationFunc func(data []byte) ([]byte, error)
 
-// migrations — реестр миграций по (kind, from-версия). Сейчас пуст: все
-// файлы стартуют с version=1, переносить не с чего. Задел на будущее —
-// формат меняется, здесь регистрируется migrations[kindConfig][1] = func(...)
-// при добавлении version=2 и т.д.
+// migrations is the migration registry keyed by (kind, from version). It is
+// currently empty: all files start at version=1. Future format changes register
+// migrations[kindConfig][1] = func(...) when version=2 is introduced, and so on.
 var migrations = map[fileKind]map[int]migrationFunc{}
 
-// versionPeek — минимальная структура, чтобы прочитать только поле version
-// без разбора всего файла (нужно до того, как известно, какая версия
-// структуры валидна для остального содержимого).
+// versionPeek is the minimal structure for reading only version without parsing
+// the whole file, before the valid structure version is known.
 type versionPeek struct {
 	Version int `yaml:"version"`
 }
 
-// peekVersion читает поле version из сырых YAML-данных.
+// peekVersion reads version from raw YAML data.
 func peekVersion(data []byte) (int, error) {
 	var v versionPeek
 	if err := yaml.Unmarshal(data, &v); err != nil {
@@ -43,12 +40,11 @@ func peekVersion(data []byte) (int, error) {
 	return v.Version, nil
 }
 
-// checkAndMigrate проверяет версию файла (version) против текущей
-// поддерживаемой (current) и, если файл старее, последовательно применяет
-// зарегистрированные миграции до current. version > current — файл создан
-// более новой версией tplater, откатывать нечем — ошибка с понятной
-// подсказкой. version < current без зарегистрированной миграции на шаге —
-// тоже ошибка (реестр неполон, а не «само рассосётся»).
+// checkAndMigrate compares a file version with the supported current version
+// and applies registered migrations in sequence when the file is older.
+// version > current means a newer tplater created the file and there is no safe
+// rollback, so it returns a clear update hint. version < current without a
+// registered migration is also an error: the registry is incomplete.
 func checkAndMigrate(kind fileKind, data []byte, version, current int) ([]byte, error) {
 	if version > current {
 		return nil, fmt.Errorf(

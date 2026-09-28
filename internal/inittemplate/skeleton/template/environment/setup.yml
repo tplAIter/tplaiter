@@ -1,6 +1,6 @@
-# Пример ansible-плейбука настройки окружения.
-# Запускается через `tplaiter env setup` / предложение после `tplaiter new`.
-# TODO(мейнтейнер): замените debug-таск на реальную установку зависимостей.
+# Example Ansible environment-setup playbook.
+# Run through `tplaiter env setup` / the offer after `tplaiter new`.
+# TODO(maintainer): replace the debug task with real dependency installation.
 - name: Настройка окружения проекта (пример)
   hosts: localhost
   connection: local

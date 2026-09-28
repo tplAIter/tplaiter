@@ -11,17 +11,16 @@ import (
 	"strings"
 )
 
-// DefaultConflictExcludes — каталоги, исключаемые из сканера конфликтов по
-// умолчанию: служебный .tplaiter, .git и docs/ (может содержать примеры маркеров).
+// DefaultConflictExcludes are directories excluded by default: .tplaiter, .git,
+// and docs/ (which may contain marker examples).
 var DefaultConflictExcludes = []string{".git", ".tplaiter", "docs"}
 
-// conflictMarkerPrefix — начало строки-маркера конфликта (fail-fast при
+// conflictMarkerPrefix is the conflict-marker line prefix (fail-fast when
 // `<<<<<<< `).
 const conflictMarkerPrefix = "<<<<<<< "
 
-// ScanConflicts обходит дерево root и возвращает отсортированный список файлов,
-// содержащих строку-маркер конфликта `<<<<<<< `. Каталоги из
-// excludeDirs (по имени сегмента) и .git пропускаются. Пустой excludeDirs →
+// ScanConflicts walks root and returns sorted files containing `<<<<<<< `. It
+// skips excludeDirs (by segment name) and .git. Empty excludeDirs ->
 // DefaultConflictExcludes.
 func ScanConflicts(root string, excludeDirs []string) ([]string, error) {
 	if excludeDirs == nil {
@@ -63,8 +62,8 @@ func ScanConflicts(root string, excludeDirs []string) ([]string, error) {
 	return found, nil
 }
 
-// fileHasConflictMarker сообщает, содержит ли файл строку-маркер конфликта.
-// Бинарные файлы (с NUL в первом блоке) пропускаются.
+// fileHasConflictMarker reports whether a file contains a conflict marker.
+// Binary files (with NUL in the first block) are skipped.
 func fileHasConflictMarker(path string) (bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -80,7 +79,7 @@ func fileHasConflictMarker(path string) (bool, error) {
 		if first {
 			first = false
 			if bytes.IndexByte(line, 0) >= 0 {
-				return false, nil // бинарный файл
+				return false, nil // binary file
 			}
 		}
 		if strings.HasPrefix(string(line), conflictMarkerPrefix) {
@@ -88,7 +87,7 @@ func fileHasConflictMarker(path string) (bool, error) {
 		}
 	}
 	if err := sc.Err(); err != nil {
-		// Слишком длинная строка/бинарь — не конфликт, не ошибка операции.
+		// Overlong line/binary data is not a conflict or operation error.
 		return false, nil
 	}
 	return false, nil

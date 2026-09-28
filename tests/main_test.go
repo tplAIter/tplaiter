@@ -1,14 +1,13 @@
-// Package e2e — чёрный-ящик e2e-харнесс CLI tplater (реализация реализацию).
+// Package e2e is the black-box e2e harness for the tplater CLI.
 //
-// Все тесты гоняют РЕАЛЬНЫЙ бинарник tplater через os/exec (не вызывают ни
-// один internal-пакет напрямую — это отдельный go-модуль, см. go.mod), с
-// изолированным TPLAITER_HOME на каждый тест и реальными git file://-репо
-// (без сети). Ассерты — по контракту harness_test.go: exit-коды,
-// существование файлов/каталогов, валидность JSON, вхождение КЛЮЧЕВЫХ
-// подстрок (имена шаблонов/групп, которые контролирует ЭТА реализация через
-// testdata/fixtures и inittemplate-скелет), НЕ полные строки вывода —
-// оформление вывода (internal/ui, cmd/*) полируется параллельной реализацией
-// реализацию и может измениться в любой момент.
+// All tests run the REAL tplater binary through os/exec (they call no
+// internal package directly; this is a separate module, see go.mod), with
+// an isolated TPLAITER_HOME per test and real file:// git repositories
+// (without network). Assertions follow harness_test.go: exit codes,
+// file/directory existence, valid JSON, and presence of KEY
+// substrings (template/group names controlled by THIS implementation through
+// testdata/fixtures and the inittemplate skeleton), not full output lines;
+// output formatting (internal/ui, cmd/*) is owned elsewhere and may change.
 package e2e
 
 import (
@@ -19,26 +18,24 @@ import (
 	"testing"
 )
 
-// binPath — путь к собранному бинарнику tplater, готовится один раз в
-// TestMain и разделяется всеми тестами пакета (сборка занимает заметное
-// время — гонять её на каждый тест было бы расточительно).
+// binPath is the built tplater binary path, prepared once in TestMain and shared
+// by all package tests (building it for every test would be wasteful).
 var binPath string
 
-// buildVersion — версия, вкомпилированная в тестовый бинарник через
-// -ldflags (тот же механизм, что Makefile/CI использует для релиза, см.
-// internal/cmd/version.go: resolveVersion). Фиксированная РАЗБИРАЕМАЯ
-// semver-версия обязательна для теста версия-гейта (requires.tplaiter,
-// internal/newcmd/slug.go: checkTplaterVersion) — сборка БЕЗ ldflags выглядит
-// как dev-сборка ("dev"/BuildInfo.Main.Version == "(devel)") и версия-гейт
-// для неё эту проверку пропускает ВСЕГДА, что сделало бы весь сценарий 3
-// (version-гейт) непроверяемым.
+// buildVersion is compiled into the test binary through
+// -ldflags (the same mechanism used by Makefile/CI for releases; see
+// internal/cmd/version.go: resolveVersion). A fixed parseable semver is
+// required for the version-gate test (requires.tplaiter,
+// internal/newcmd/slug.go: checkTplaterVersion): a build without ldflags looks
+// like a dev build ("dev"/BuildInfo.Main.Version == "(devel)"), so the
+// version gate always skips this check and scenario 3 would be untestable.
 const buildVersion = "v1.0.0"
 
-// TestMain собирает бинарник tplater из корня репозитория (../) во временный
-// каталог перед запуском тестов пакета. Код возврата считается отдельной
-// функцией [runMain], а не строится из os.Exit внутри самой TestMain — иначе
-// `defer os.RemoveAll(tmp)` никогда не выполнился бы (os.Exit не разворачивает
-// defer-стек).
+// TestMain builds the tplater binary from the repository root (../) into a temporary
+// directory before package tests run. The exit code is handled separately by
+// [runMain], rather than os.Exit in TestMain itself, because otherwise
+// `defer os.RemoveAll(tmp)` would never run (os.Exit does not unwind the defer
+// stack).
 func TestMain(m *testing.M) {
 	os.Exit(runMain(m))
 }
@@ -60,11 +57,11 @@ func runMain(m *testing.M) int {
 	return m.Run()
 }
 
-// buildBinary собирает корневой модуль (../ относительно tests/) в out.
-// ldflags проставляет ту же переменную, что и релизный Makefile (LDFLAGS),
-// чтобы resolveVersion() вернула buildVersion, а не "dev" (см. её комментарий
-// выше). GOWORK=off — сборка идёт как отдельный модуль, воркспейс тут не
-// нужен и не должен влиять на список зависимостей.
+// buildBinary builds the root module (../ relative to tests/) into out.
+// ldflags sets the same variable as the release Makefile (LDFLAGS),
+// so resolveVersion() returns buildVersion rather than "dev" (see the comment
+// above). GOWORK=off makes the build use the module independently; the
+// workspace is unnecessary and must not affect the dependency list.
 func buildBinary(out string) error {
 	pkg := "github.com/tplAIter/tplaiter/internal/cmd"
 	ldflags := fmt.Sprintf("-s -w -X %s.version=%s", pkg, buildVersion)

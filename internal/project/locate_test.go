@@ -11,8 +11,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/naming"
 )
 
-// writeProjectMarker создаёт .tplaiter/project.yaml в dir с минимально
-// валидным содержимым — достаточным, чтобы manifest.LoadProject его принял.
+// writeProjectMarker creates .tplaiter/project.yaml in dir with the minimum
+// valid content accepted by manifest.LoadProject.
 func writeProjectMarker(t *testing.T, dir string) {
 	t.Helper()
 	tplDir := filepath.Join(dir, ".tplaiter")
@@ -28,8 +28,8 @@ func writeProjectMarker(t *testing.T, dir string) {
 	}
 }
 
-// cleanPath резолвит симлинки (macOS: /tmp -> /private/tmp) для стабильного
-// сравнения путей, возвращаемых FindRoot, с ожидаемыми.
+// cleanPath resolves symlinks (macOS: /tmp -> /private/tmp) so paths returned
+// by FindRoot compare consistently with expected paths.
 func cleanPath(t *testing.T, p string) string {
 	t.Helper()
 	resolved, err := filepath.EvalSymlinks(p)
@@ -91,14 +91,14 @@ func TestFindRoot_OutsideProject(t *testing.T) {
 	}
 }
 
-// TestFindRoot_StopsAtHome проверяет, что поиск не поднимается выше $HOME,
-// даже если маркер проекта есть в каком-то каталоге-предке $HOME (например,
-// пользователь работает внутри собственного проекта tplater, разложенного в
-// произвольном месте домашнего дерева, но родительский каталог самого $HOME
-// случайно тоже содержит чужой .tplaiter/project.yaml — искать там нельзя).
+// TestFindRoot_StopsAtHome verifies that the search does not walk above $HOME,
+// even when a project marker exists in a parent of $HOME (for example, the
+// user works in a tplater project somewhere in the home tree, while the
+// parent of $HOME happens to contain another .tplaiter/project.yaml that must
+// not be searched).
 func TestFindRoot_StopsAtHome(t *testing.T) {
 	sandbox := t.TempDir()
-	writeProjectMarker(t, sandbox) // маркер ВЫШЕ будущего $HOME.
+	writeProjectMarker(t, sandbox) // Marker ABOVE the future $HOME.
 
 	home := filepath.Join(sandbox, "home")
 	deep := filepath.Join(home, "work", "svc")
@@ -113,9 +113,8 @@ func TestFindRoot_StopsAtHome(t *testing.T) {
 	}
 }
 
-// TestFindRoot_MarkerAtHomeItself проверяет граничное условие: $HOME
-// проверяется как последний каталог перед остановкой поиска, а не
-// пропускается.
+// TestFindRoot_MarkerAtHomeItself verifies the boundary condition: $HOME is
+// checked as the last directory before stopping rather than skipped.
 func TestFindRoot_MarkerAtHomeItself(t *testing.T) {
 	sandbox := t.TempDir()
 	home := filepath.Join(sandbox, "home")

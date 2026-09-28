@@ -18,8 +18,8 @@ func TestLint_SingleBasicFixtureGreen(t *testing.T) {
 	if res.Failed {
 		t.Fatalf("single-basic должна быть зелёной:\n%s", failDetails(res))
 	}
-	// Ожидаем набор угловых комбо из двух групп (select database + multiselect
-	// brokers) плюс defaults/all-on/max.
+	// Expect corner combos from two groups (select database + multiselect brokers)
+	// plus defaults/all-on/max.
 	combos := map[string]bool{}
 	for _, r := range res.Rows {
 		combos[r.Combo] = true
@@ -36,7 +36,7 @@ func TestLint_ComboFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Lint: %v", err)
 	}
-	// validate-строка + ровно одна комбо-строка.
+	// validate row plus exactly one combo row.
 	comboRows := 0
 	for _, r := range res.Rows {
 		if r.Combo == "database=postgres" {
@@ -61,12 +61,12 @@ func TestLint_UnknownComboErrors(t *testing.T) {
 	}
 }
 
-// TestLint_BrokenConditionRed копирует фикстуру и портит условие в дереве
-// files (условный сегмент со ссылкой на несуществующую группу) — lint обязан
-// покраснеть с понятным сообщением (движок ловит битое условие на рендере).
+// TestLint_BrokenConditionRed copies the fixture and corrupts a files condition
+// (conditional segment referencing a nonexistent group); lint must fail clearly
+// (the engine catches the broken condition during rendering).
 func TestLint_BrokenConditionRed(t *testing.T) {
 	broken := copyTree(t, singleBasicFixture)
-	// __if_ghost__ ссылается на несуществующую группу ghost.
+	// __if_ghost__ references nonexistent group ghost.
 	dir := filepath.Join(broken, "files", "__if_ghost__")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestLint_BrokenConditionRed(t *testing.T) {
 	}
 }
 
-// copyTree копирует дерево src в новый временный каталог и возвращает его путь.
+// copyTree copies src into a new temporary directory and returns its path.
 func copyTree(t *testing.T, src string) string {
 	t.Helper()
 	dst := t.TempDir()

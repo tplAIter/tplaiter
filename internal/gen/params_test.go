@@ -40,7 +40,7 @@ func TestResolveParams_FieldsProvided(t *testing.T) {
 func TestResolveParams_BoolDefault(t *testing.T) {
 	g := genWithParams(manifest.Param{Name: "with-list", Type: manifest.ParamTypeBool, Default: true})
 
-	// Не задан → default true.
+	// Not set → default true.
 	params, _, err := ResolveParams(g, map[string]string{})
 	if err != nil {
 		t.Fatalf("ResolveParams: %v", err)
@@ -49,7 +49,7 @@ func TestResolveParams_BoolDefault(t *testing.T) {
 		t.Errorf("default bool = %#v, want true", params["with-list"])
 	}
 
-	// Задан явно → перекрывает default.
+	// Explicitly set → overrides default.
 	params, _, err = ResolveParams(g, map[string]string{"with-list": "false"})
 	if err != nil {
 		t.Fatalf("ResolveParams: %v", err)
@@ -117,7 +117,7 @@ func TestResolveParams_PatternRejectsInvalidDefault(t *testing.T) {
 }
 
 func TestResolveParams_RequiredWithDefaultOK(t *testing.T) {
-	// required + default → отсутствие флага не ошибка (берётся default).
+	// required + default → missing flag is not an error (default is used).
 	g := genWithParams(manifest.Param{Name: "table", Type: manifest.ParamTypeString, Required: true, Default: "t"})
 	params, _, err := ResolveParams(g, map[string]string{})
 	if err != nil {
@@ -138,7 +138,7 @@ func TestResolveParams_ListProvided(t *testing.T) {
 	if !ok {
 		t.Fatalf("params[activities] type = %T", params["activities"])
 	}
-	// Пробелы обрезаны, хвостовая запятая отброшена.
+	// Whitespace is trimmed and the trailing comma is discarded.
 	if len(list) != 2 || list[0] != "payments.DebitAccount" || list[1] != "notify.SendEmail" {
 		t.Errorf("list = %#v", list)
 	}
@@ -157,7 +157,7 @@ func TestResolveParams_ListDefault(t *testing.T) {
 }
 
 func TestResolveParams_ListEmptyOptional(t *testing.T) {
-	// Необязательный список без флага → nil []string, не ошибка.
+	// Optional list without a flag → nil []string, not an error.
 	g := genWithParams(manifest.Param{Name: "tags", Type: manifest.ParamTypeList})
 	params, _, err := ResolveParams(g, map[string]string{})
 	if err != nil {

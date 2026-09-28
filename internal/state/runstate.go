@@ -8,36 +8,36 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// RunStateVersion — текущая поддерживаемая версия формата state.yaml.
+// RunStateVersion is the currently supported state.yaml format version.
 const RunStateVersion = 1
 
-// runStateFileName — имя файла в домашнем каталоге tplater. Отдельное от
-// одноимённого пакета имя типа ([RunState]) и файла — во избежание путаницы
-// вида "state.State".
+// runStateFileName is the file name in the tplater home directory. It is kept
+// separate from the package, type ([RunState]), and file namesake to avoid
+// confusion such as "state.State".
 const runStateFileName = "state.yaml"
 
-// RunState — содержимое ~/.tplaiter/state.yaml: мелкие оперативные данные CLI,
-// не относящиеся к конфигурации или реестрам ( — suggest раз в 24ч).
+// RunState is the contents of ~/.tplaiter/state.yaml: small operational CLI data
+// unrelated to configuration or registries (such as the 24h suggest check).
 type RunState struct {
 	Version int `yaml:"version"`
-	// LastUpdateCheck — момент последней фоновой проверки новой версии
-	// tplater. Нулевое значение — проверка ещё не выполнялась.
+	// LastUpdateCheck is when tplater last checked for a new version in the
+	// background. Zero means the check has not run yet.
 	LastUpdateCheck time.Time `yaml:"lastUpdateCheck"`
 }
 
-// DefaultRunState возвращает состояние для случая, когда state.yaml ещё не
-// существует: проверка обновлений ещё не выполнялась.
+// DefaultRunState returns the state when state.yaml does not yet exist: update
+// checks have not run yet.
 func DefaultRunState() RunState {
 	return RunState{Version: RunStateVersion}
 }
 
-// runStatePath возвращает путь к state.yaml в домашнем каталоге home.
+// runStatePath returns the path to state.yaml in home.
 func runStatePath(home string) string {
 	return filepath.Join(home, runStateFileName)
 }
 
-// LoadRunState читает state.yaml из домашнего каталога home. Отсутствие
-// файла — не ошибка: возвращается [DefaultRunState].
+// LoadRunState reads state.yaml from home. A missing file is not an error and
+// returns [DefaultRunState].
 func LoadRunState(home string) (RunState, error) {
 	data, existed, err := readFile(runStatePath(home))
 	if err != nil {
@@ -49,7 +49,7 @@ func LoadRunState(home string) (RunState, error) {
 	return decodeRunState(data)
 }
 
-// SaveRunState атомарно записывает s в state.yaml домашнего каталога home.
+// SaveRunState atomically writes s to state.yaml in home.
 func SaveRunState(home string, s RunState) error {
 	data, err := yaml.Marshal(s)
 	if err != nil {

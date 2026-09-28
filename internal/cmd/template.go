@@ -19,18 +19,18 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// templateManifestFileName — имя манифеста шаблона в корне checkout'а
-// (см. internal/repo/scan.go: templateManifestName — та же константа, но
-// приватная своему пакету; здесь нужна вызывающей стороне для чтения из
-// fs.FS, отданного [repo.Manager.Checkout]).
+// templateManifestFileName — template manifest name at the checkout root
+// (see internal/repo/scan.go: templateManifestName, the same package-private
+// constant; this copy is needed to read the fs.FS returned by
+// [repo.Manager.Checkout]).
 const templateManifestFileName = "template.manifest.yaml"
 
 func init() {
 	rootCmd.AddCommand(newTemplateCmd())
 }
 
-// newTemplateCmd создаёт команду `tplater template`: каталог
-// шаблонов добавленных репозиториев — список, просмотр и выгрузка дерева.
+// newTemplateCmd creates `tplater template`: the catalog of templates from
+// added repositories, with listing, inspection, and tree export.
 func newTemplateCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "template",
@@ -46,14 +46,14 @@ func newTemplateCmd() *cobra.Command {
 	return c
 }
 
-// labelFilter — один разобранный `-l group=value`.
+// labelFilter — one parsed `-l group=value`.
 type labelFilter struct {
 	group string
 	value string
 }
 
-// templateRow — одна строка `template list`: запись индекса + алиас репо, в
-// котором она найдена.
+// templateRow — one `template list` row: an index entry and the repository alias
+// where it was found.
 type templateRow struct {
 	alias string
 	entry state.TemplateEntry
@@ -112,8 +112,8 @@ func runTemplateList(cmd *cobra.Command, mgr *repo.Manager, repoAlias, nameSub s
 	return nil
 }
 
-// parseLabelFilters разбирает повторяемые `-l group=value` в список фильтров.
-// Пустая группа или пустое значение — ошибка формата.
+// parseLabelFilters parses repeated `-l group=value` flags into filters. An
+// empty group or value is a format error.
 func parseLabelFilters(raw []string) ([]labelFilter, error) {
 	out := make([]labelFilter, 0, len(raw))
 	for _, r := range raw {
@@ -126,12 +126,11 @@ func parseLabelFilters(raw []string) ([]labelFilter, error) {
 	return out, nil
 }
 
-// filterTemplateRows фильтрует агрегированный индекс all по алиасу репо
-// (точное совпадение, если задан), подстроке имени (без учёта регистра, если
-// задана) и лейблам (AND по всем фильтрам: у шаблона в labels[group] должно
-// быть значение value для каждого фильтра). Результат детерминирован:
-// сортировка по алиасу репозитория, затем по имени шаблона (как оно уже
-// отсортировано в index.yaml).
+// filterTemplateRows filters the aggregate index all by repository alias
+// (exact match when set), name substring (case-insensitive when set), and
+// labels (AND across filters: labels[group] must equal value for each filter).
+// The result is deterministic: repository alias, then template name (already
+// sorted in index.yaml).
 func filterTemplateRows(all map[string][]state.TemplateEntry, repoAlias, nameSub string, filters []labelFilter) []templateRow {
 	aliases := make([]string, 0, len(all))
 	for a := range all {
@@ -179,9 +178,9 @@ func matchesLabelFilters(labels map[string][]string, filters []labelFilter) bool
 	return true
 }
 
-// reportEmptyTemplateList печатает дружелюбное сообщение о пустом результате
-// `template list`: если репозиториев вообще не добавлено — подсказку
-// `repo add`, иначе — пояснение, что не подошли фильтры.
+// reportEmptyTemplateList prints a friendly message for an empty `template
+// list` result: if no repositories are added, it suggests `repo add`; otherwise
+// it explains that the filters matched nothing.
 func reportEmptyTemplateList(out io.Writer, mgr *repo.Manager) error {
 	infos, err := mgr.List()
 	if err != nil {
@@ -267,9 +266,9 @@ func runTemplateShow(cmd *cobra.Command, mgr *repo.Manager, ref string) error {
 	return renderTemplateDocs(out, pal, fsys, tpl.Metadata.Docs)
 }
 
-// versionSuffixes переводит полные git-теги шаблона (`v1.2.0` для single,
-// `<name>/v1.2.0` для multi — см. [state.TemplateEntry.Tags]) в версии-
-// суффиксы для показа пользователю в шапке `template show`.
+// versionSuffixes converts full template git tags (`v1.2.0` for single,
+// `<name>/v1.2.0` for multi; see [state.TemplateEntry.Tags]) into version
+// suffixes shown to the user in the `template show` header.
 func versionSuffixes(entry state.TemplateEntry) []string {
 	out := make([]string, 0, len(entry.Tags))
 	for _, t := range entry.Tags {
@@ -278,11 +277,11 @@ func versionSuffixes(entry state.TemplateEntry) []string {
 	return out
 }
 
-// renderTemplateDocs печатает секцию docs `template show`: содержимое файла
-// metadata.docs из checkout'а fsys, рендер выбирает [templateview.RenderDocs]
-// по pal.Enabled(). Отсутствие metadata.docs или самого файла — не ошибка
-// команды (манифест мог его не объявить,  — поле опционально):
-// печатается приглушённая пояснительная строка.
+// renderTemplateDocs prints the `template show` docs section: the file named by
+// metadata.docs in checkout fsys, rendered through [templateview.RenderDocs]
+// according to pal.Enabled(). Missing metadata.docs or the file itself is not
+// a command error (the manifest may omit this optional field); a dimmed
+// explanatory line is printed.
 func renderTemplateDocs(out io.Writer, pal ui.Palette, fsys fs.FS, docsPath string) error {
 	ui.Section(out, pal, "docs:")
 	if docsPath == "" {
@@ -352,9 +351,9 @@ func runTemplatePull(cmd *cobra.Command, mgr *repo.Manager, ref, dest string) er
 	return nil
 }
 
-// ensureEmptyDest проверяет, что dest пригоден для выгрузки: либо не
-// существует (создастся при копировании), либо существует как пустой
-// каталог. Файл на месте dest или непустой каталог — ошибка.
+// ensureEmptyDest checks that dest is suitable for export: it either does not
+// exist (and will be created while copying) or is an empty directory. A file at
+// dest or a non-empty directory is an error.
 func ensureEmptyDest(dest string) error {
 	info, err := os.Stat(dest)
 	if err != nil {
@@ -376,12 +375,11 @@ func ensureEmptyDest(dest string) error {
 	return nil
 }
 
-// copyFSTree копирует всё дерево fsys (checkout шаблона) в каталог dest,
-// сохраняя относительные пути и права доступа исходных файлов. Каталог/файл
-// `.git` (см. [repo.Manager.Checkout]: worktree — это git-worktree, а не
-// самостоятельный клон, поэтому его корень содержит `.git`-файл со ссылкой на
-// основной клон в ~/.tplaiter/repos/) — служебный артефакт checkout'а, а не
-// часть дерева шаблона, и в выгрузку не копируется.
+// copyFSTree copies the entire fsys tree (template checkout) to dest, preserving
+// relative paths and source file permissions. The `.git` directory/file (see
+// [repo.Manager.Checkout]: a worktree is not an independent clone, so its root
+// contains a `.git` file pointing to the main clone in ~/.tplaiter/repos/) is a
+// checkout artifact rather than part of the template tree and is not exported.
 func copyFSTree(fsys fs.FS, dest string) error {
 	return fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {

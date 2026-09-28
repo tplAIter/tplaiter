@@ -13,17 +13,17 @@ import (
 	"github.com/tplAIter/tplaiter/internal/renderref"
 )
 
-// newRunner — Runner для deps-check/hooks/ansible команды `tplater new`.
-// Пакетная переменная по образцу runRunner/envRunner для подмены в тестах.
+// newRunner — runner for the deps-check/hooks/ansible steps of `tplater new`.
+// A package variable like runRunner/envRunner for substitution in tests.
 var newRunner execx.Runner = execx.Exec{}
 
 func init() {
 	rootCmd.AddCommand(newNewCmd())
 }
 
-// newNewCmd создаёт команду `tplater new <ref> <project-name>`:
-// ключевая сборочная команда — резолвит и разворачивает шаблон в новый проект,
-// опрашивает настройки, копирует ресурсы, регистрирует проект и печатает NOTES.
+// newNewCmd creates `tplater new <ref> <project-name>`: the main project
+// creation command. It resolves and renders a template, asks for settings,
+// copies resources, registers the project, and prints NOTES.
 func newNewCmd() *cobra.Command {
 	var (
 		dir         string
@@ -104,9 +104,9 @@ func newNewCmd() *cobra.Command {
 	return c
 }
 
-// envSetupTriState переводит пару флагов --env-setup/--no-env-setup в
-// tri-state *bool для оркестратора: nil (спросить), &true, &false. --no-env-setup
-// имеет приоритет над --env-setup при одновременном указании.
+// envSetupTriState converts --env-setup/--no-env-setup into the orchestrator's
+// tri-state *bool: nil (ask), &true, or &false. --no-env-setup takes precedence
+// when both flags are supplied.
 func envSetupTriState(cmd *cobra.Command, envSetup, noEnvSetup bool) *bool {
 	switch {
 	case cmd.Flags().Changed("no-env-setup") && noEnvSetup:

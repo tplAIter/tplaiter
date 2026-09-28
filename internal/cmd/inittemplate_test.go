@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// runInitLint прогоняет `init-template` в каталог dir, затем `lint-template`
-// на нём через реальные cobra-команды, возвращая объединённый вывод и ошибку
+// runInitLint runs `init-template` in dir and then `lint-template` on it through
+// real cobra commands, returning combined output and the error.
 // lint.
 func runInitLint(t *testing.T, extraInit ...string) (string, error) {
 	t.Helper()
@@ -81,7 +81,7 @@ func TestLintTemplateCmd_BrokenExitsNonZero(t *testing.T) {
 	if err := initCmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	// Портим условие: условный сегмент со ссылкой на несуществующую группу.
+	// Corrupt the condition: a conditional segment referring to a nonexistent group.
 	brokenDir := filepath.Join(dir, "files", "__if_ghost__")
 	if err := os.MkdirAll(brokenDir, 0o755); err != nil {
 		t.Fatal(err)

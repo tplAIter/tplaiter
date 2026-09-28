@@ -10,8 +10,8 @@ func TestScriptedPrompter_AsksOnlyActiveGroups(t *testing.T) {
 	tpl := testTemplate()
 	p := &ScriptedPrompter{
 		Answers: []settings.Values{{
-			"database": "postgres", // активирует idempotency
-			"brokers":  []string{}, // ни один broker → kafka_* неактивны
+			"database": "postgres", // activates idempotency
+			"brokers":  []string{}, // no broker → kafka_* inactive
 			"auth":     []string{},
 			"svc_name": "svc",
 			"replicas": 3,
@@ -21,7 +21,7 @@ func TestScriptedPrompter_AsksOnlyActiveGroups(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
 	}
-	// idempotency активна (postgres), kafka_* — нет.
+	// idempotency active (postgres), kafka_* inactive.
 	if _, ok := got["idempotency"]; !ok {
 		t.Errorf("idempotency должна быть опрошена: %v", p.AskCalls[0])
 	}

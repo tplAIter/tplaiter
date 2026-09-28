@@ -4,9 +4,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
-// testTemplate строит манифест по мотивам примера : select с
-// вложенным toggle, planned-опцией, multiselect с вложенными уточнениями,
-// cross-group requires, string с pattern, int и constraint.
+// testTemplate builds a manifest based on the example: select with a nested
+// toggle, planned option, multiselect with nested refinements, cross-group
+// requires, a patterned string, int, and constraint.
 func testTemplate() *manifest.Template {
 	return &manifest.Template{
 		APIVersion: manifest.APIVersion,

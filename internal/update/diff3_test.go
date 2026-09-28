@@ -7,8 +7,8 @@ import (
 
 func TestDiff3NonOverlapping(t *testing.T) {
 	base := []byte("a\nb\nc\n")
-	ours := []byte("A\nb\nc\n")   // изменена первая строка
-	theirs := []byte("a\nb\nC\n") // изменена последняя строка
+	ours := []byte("A\nb\nc\n")   // first line changed
+	theirs := []byte("a\nb\nC\n") // last line changed
 	got, conflict := merge3(base, ours, theirs)
 	if conflict {
 		t.Fatalf("unexpected conflict: %q", got)
@@ -32,8 +32,8 @@ func TestDiff3IdenticalEdit(t *testing.T) {
 
 func TestDiff3OnlyOneSideChanges(t *testing.T) {
 	base := []byte("a\nb\nc\n")
-	ours := []byte("a\nb\nc\n")   // без изменений
-	theirs := []byte("a\nX\nc\n") // изменил только шаблон
+	ours := []byte("a\nb\nc\n")   // unchanged
+	theirs := []byte("a\nX\nc\n") // only the template changed
 	got, conflict := merge3(base, ours, theirs)
 	if conflict || string(got) != "a\nX\nc\n" {
 		t.Errorf("expected theirs taken: got=%q conflict=%v", got, conflict)
@@ -54,7 +54,7 @@ func TestDiff3OverlappingConflict(t *testing.T) {
 			t.Errorf("conflict output missing %q:\n%s", marker, s)
 		}
 	}
-	// Стабильные строки сохранены.
+	// Stable lines are preserved.
 	if !strings.HasPrefix(s, "a\n") || !strings.HasSuffix(s, "c\n") {
 		t.Errorf("stable lines lost:\n%s", s)
 	}
@@ -79,7 +79,7 @@ func TestDiff3EmptyInputs(t *testing.T) {
 
 func TestDiff3NoTrailingNewline(t *testing.T) {
 	base := []byte("a\nb")
-	ours := []byte("a\nB") // без финального \n
+	ours := []byte("a\nB") // no final \n
 	theirs := []byte("a\nb")
 	got, conflict := merge3(base, ours, theirs)
 	if conflict {
@@ -99,7 +99,7 @@ func TestSplitJoinRoundTrip(t *testing.T) {
 }
 
 func TestDiff3InsertionBothSides(t *testing.T) {
-	// ours вставляет строку в начале, theirs — в конце: непересекающиеся.
+	// ours inserts at the beginning, theirs at the end: non-overlapping.
 	base := []byte("mid\n")
 	ours := []byte("top\nmid\n")
 	theirs := []byte("mid\nbottom\n")

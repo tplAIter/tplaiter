@@ -8,19 +8,18 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
-// Upgrade выполняет самообновление tplater согласно каналу установки channel
-//:
-//   - [ChannelGoInstall]: `go install <modulePath>@latest`, стримя вывод в out;
-//   - [ChannelBrew]: печатает подсказку `brew upgrade tplater` (brew сам
-//     управляет своими пакетами — вызывать его от имени tplater не входит в
-//     MVP, см.  "дополнительно, не MVP");
-//   - иначе (канал не распознан): печатает обе инструкции как fallback,
-//     чтобы пользователь выбрал подходящую вручную.
+// Upgrade performs a tplater self-update according to installation channel
+// :
+//   - [ChannelGoInstall]: `go install <modulePath>@latest`, streaming output to out;
+//   - [ChannelBrew]: prints `brew upgrade tplater` (brew manages its own
+//     packages, so invoking it from tplater is outside the MVP);
+//   - otherwise (unknown channel): prints both instructions as a fallback for
+//     the user to choose manually.
 //
-// modulePath — путь Go-модуля для go install (обычно
-// debug.BuildInfo.Main.Path текущего процесса, см. internal/cmd/version.go).
-// Пустой modulePath при [ChannelGoInstall] — ошибка: без пути модуля
-// `go install ...@latest` невозможно сформировать.
+// modulePath is the Go module path for go install (usually
+// debug.BuildInfo.Main.Path of the current process, see internal/cmd/version.go).
+// An empty modulePath with [ChannelGoInstall] is an error: without a module path
+// `go install ...@latest` cannot be formed.
 func Upgrade(ctx context.Context, runner execx.Runner, channel Channel, modulePath string, out io.Writer) error {
 	switch channel {
 	case ChannelGoInstall:
