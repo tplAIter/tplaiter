@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/mcpsrv"
+	"github.com/tplAIter/tplaiter/internal/trustload"
 )
 
 func init() {
@@ -44,7 +44,7 @@ func newMCPServerCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			exe, err := os.Executable()
 			if err != nil {
-				return fmt.Errorf("cmd: mcp-server: определение пути к бинарнику: %w", err)
+				return fmt.Errorf("MCP_UNAVAILABLE")
 			}
 
 			if printConfig != "" {
@@ -56,19 +56,23 @@ func newMCPServerCmd() *cobra.Command {
 				return nil
 			}
 
-			if direct {
-				for _, key := range []string{
-					"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
-					"http_proxy", "https_proxy", "all_proxy", "no_proxy",
-				} {
-					if err := os.Unsetenv(key); err != nil {
-						return fmt.Errorf("cmd: mcp-server: очистка %s: %w", key, err)
-					}
-				}
+			in, err := installedInvocation(cmd.Context())
+			if err != nil {
+				return err
 			}
-
-			fmt.Fprintf(os.Stderr, "tplaiter mcp-server: старт (bin=%s)\n", exe)
-			srv := mcpsrv.New(exe, resolveVersion(), execx.Exec{})
+			runtime, err := trustload.OpenRuntime(cmd.Context(), trustload.RuntimeOptions{Selection: in.Selection, ProjectKey: in.ProjectKey, Clock: in.Clock})
+			if err != nil {
+				return err
+			}
+			scratchRoot := runtime.ScratchRoot()
+			if err := runtime.Close(); err != nil {
+				return fmt.Errorf("MCP_UNAVAILABLE")
+			}
+			_ = direct // Retained for CLI compatibility; the child environment is always fixed.
+			srv := mcpsrv.NewInstalled(exe, resolveVersion(), scratchRoot)
+			if srv == nil {
+				return fmt.Errorf("MCP_UNAVAILABLE")
+			}
 			return srv.ServeStdio()
 		},
 	}

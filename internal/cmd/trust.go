@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -22,7 +23,8 @@ func newTrustCmd() *cobra.Command {
 }
 
 func newTrustInspectCmd() *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	c := &cobra.Command{
 		Use: "inspect", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			runtime, err := composeRuntime(cmd.Context())
@@ -30,15 +32,18 @@ func newTrustInspectCmd() *cobra.Command {
 				return err
 			}
 			defer runtime.Close()
-			// OpenRuntime constructs trustverify.Runtime, which verifies the current
-			// external authority, policy, bundle and store before returning.
-			if runtime.TrustRuntime() == nil {
-				return trustload.ErrProvenanceUnavailable
+			binding := runtime.TrustRuntime().Binding()
+			if asJSON {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetEscapeHTML(false)
+				return enc.Encode(binding)
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "trust authority verified")
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&asJSON, "json", false, "print the stable trust-profile binding")
+	return c
 }
 
 func newTrustProvisionCmd() *cobra.Command {

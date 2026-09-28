@@ -24,6 +24,7 @@ import (
 
 const (
 	maxApprovedStdout = 1 << 20
+	maxGofmtStdout    = 16 << 20
 	maxApprovedStderr = 64 << 10
 )
 
@@ -48,7 +49,8 @@ func approvedHooksFor(ctx context.Context) approvedHooks {
 }
 
 func executeApproved(ctx context.Context, scratch string, m trustverify.StagedMaterial) (_ []byte, retErr error) {
-	if ctx == nil || !validApprovedMaterial(m) || !validDarwinNative(m.ToolBytes) {
+	formatter := validGofmtMaterial(m)
+	if ctx == nil || (!validApprovedMaterial(m) && !formatter) || (formatter && !validGofmtDarwinNative(m.ToolBytes)) || (!formatter && !validDarwinNative(m.ToolBytes)) {
 		return nil, &ExecutionError{"TRUST_EXECUTION_MATERIAL_UNAVAILABLE"}
 	}
 	hooks := approvedHooksFor(ctx)
@@ -66,10 +68,17 @@ func executeApproved(ctx context.Context, scratch string, m trustverify.StagedMa
 	cmd := exec.Command(s.toolPath, m.Request.Action.Argv[1:]...)
 	cmd.Dir = s.cwdPath
 	cmd.Env = []string{"LANG=C"}
-	cmd.Stdin = bytes.NewReader(m.ContentBytes[0])
+	inputIndex := 0
+	if formatter {
+		inputIndex, _ = gofmtInputIndex(m)
+	}
+	cmd.Stdin = bytes.NewReader(m.ContentBytes[inputIndex])
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	var out, serr limitedBuffer
 	out.n, serr.n, out.observe = maxApprovedStdout, maxApprovedStderr, hooks.stdout
+	if formatter {
+		out.n = maxGofmtStdout
+	}
 	// Cmd-owned writers make Wait coordinate its internal pipe copy goroutines;
 	// external StdoutPipe readers would race Wait's pipe closure.
 	cmd.Stdout, cmd.Stderr = &out, &serr
@@ -102,6 +111,36 @@ func executeApproved(ctx context.Context, scratch string, m trustverify.StagedMa
 }
 func validApprovedMaterial(m trustverify.StagedMaterial) bool {
 	return len(m.ToolBytes) > 0 && len(m.ToolBytes) <= 16<<20 && len(m.Content) == 1 && len(m.ContentBytes) == 1 && m.Content[0].Root == "provider" && m.Content[0].Path == ".tplaiter-execution/stdin" && m.Content[0].Mode == "100644" && len(m.Request.Action.Argv) == 1 && m.Request.Action.Argv[0] == "native-snapshot-tool-v1" && len(m.ToolOptions) == 0 && !m.Environment.Inherit && len(m.Environment.Variables) == 1 && m.Environment.Variables[0].Name == "LANG" && m.Environment.Variables[0].Value == "C" && len(m.Environment.Capabilities) == 0
+}
+
+// validGofmtMaterial is the finite formatter branch of the same opaque
+// runner. It is deliberately not a general command capability.
+func validGofmtMaterial(m trustverify.StagedMaterial) bool {
+	inputIndex, ok := gofmtInputIndex(m)
+	return ok && len(m.ToolBytes) > 0 && len(m.ToolBytes) <= 16<<20 && len(m.ContentBytes[inputIndex]) <= maxGofmtStdout && m.Request.Action.Kind == "formatter" && m.Request.Action.Phase == "standalone" && !m.Request.Action.Shell && len(m.Request.Action.Argv) == 1 && m.Request.Action.Argv[0] == "gofmt" && m.Request.Tool.ID == "gofmt" && len(m.ToolOptions) == 0 && m.Request.WorkingDirectoryScope == (trustverify.WorkingDirectoryScope{Root: "project", Path: "."}) && m.Request.TimeoutMillis > 0 && m.Request.TimeoutMillis <= 120000 && !m.Environment.Inherit && len(m.Environment.Variables) == 1 && m.Environment.Variables[0].Name == "LANG" && m.Environment.Variables[0].Value == "C" && len(m.Environment.Capabilities) == 0
+}
+
+func gofmtInputIndex(m trustverify.StagedMaterial) (int, bool) {
+	if len(m.Content) != 3 || len(m.ContentBytes) != 3 {
+		return 0, false
+	}
+	input := -1
+	for i, entry := range m.Content {
+		if entry.Root != "project" || entry.Mode != "100644" {
+			return 0, false
+		}
+		switch entry.Path {
+		case "formatter/plan.json", "formatter/tool.json":
+			continue
+		default:
+			folded := strings.ToLower(entry.Path)
+			if input >= 0 || entry.Path == "" || folded == "formatter" || strings.HasPrefix(folded, "formatter/") || folded == "native-tool" || folded == ".tplaiter-execution" || strings.HasPrefix(folded, ".tplaiter-execution/") {
+				return 0, false
+			}
+			input = i
+		}
+	}
+	return input, input >= 0
 }
 
 type limitedBuffer struct {
@@ -158,6 +197,7 @@ type approvedStage struct {
 	root, dir, tool, cwd    int
 	name, toolPath, cwdPath string
 	closeHook               func() error
+	projected, projectDirs  []string
 }
 
 func newApprovedStage(root string, m trustverify.StagedMaterial, closeHook func() error) (*approvedStage, error) {
@@ -211,6 +251,13 @@ func newApprovedStage(root string, m trustverify.StagedMaterial, closeHook func(
 	if e = verifyApprovedTool(s.tool, m.ToolBytes, m.Request.Tool.BinarySHA256); e != nil {
 		return fail(fmt.Errorf("stage tool verify: %w", e))
 	}
+	if m.Request.Action.Kind == "formatter" {
+		for i, entry := range m.Content {
+			if e = s.project(entry.Path, m.ContentBytes[i], entry.Mode); e != nil {
+				return fail(fmt.Errorf("stage formatter content: %w", e))
+			}
+		}
+	}
 	if e = unix.Mkdirat(s.dir, ".tplaiter-execution", 0o700); e != nil {
 		return fail(fmt.Errorf("stage cwd mkdir: %w", e))
 	}
@@ -218,7 +265,14 @@ func newApprovedStage(root string, m trustverify.StagedMaterial, closeHook func(
 	if e != nil {
 		return fail(fmt.Errorf("stage cwd open: %w", e))
 	}
-	stdinFD, e := writeApprovedFile(s.cwd, "stdin", m.ContentBytes[0], 0o400)
+	inputIndex := 0
+	if m.Request.Action.Kind == "formatter" {
+		var ok bool
+		if inputIndex, ok = gofmtInputIndex(m); !ok {
+			return fail(errors.New("invalid formatter content"))
+		}
+	}
+	stdinFD, e := writeApprovedFile(s.cwd, "stdin", m.ContentBytes[inputIndex], 0o400)
 	if e != nil {
 		return fail(fmt.Errorf("stage stdin: %w", e))
 	}
@@ -234,7 +288,67 @@ func newApprovedStage(root string, m trustverify.StagedMaterial, closeHook func(
 	if e != nil {
 		return fail(fmt.Errorf("stage cwd path: %w", e))
 	}
+	if m.Request.Action.Kind == "formatter" {
+		s.cwdPath = stagePath
+	}
 	return s, nil
+}
+
+func (s *approvedStage) project(path string, data []byte, mode string) error {
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || len(parts) > 64 {
+		return errors.New("invalid projection path")
+	}
+	dir := s.dir
+	for i, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			return errors.New("invalid projection path")
+		}
+		if i == len(parts)-1 {
+			perm := uint32(0o400)
+			if mode == "100755" {
+				perm = 0o500
+			}
+			fd, err := writeApprovedFile(dir, part, data, perm)
+			if dir != s.dir {
+				_ = unix.Close(dir)
+			}
+			if err != nil {
+				return err
+			}
+			if err = unix.Close(fd); err != nil {
+				return err
+			}
+			s.projected = append(s.projected, path)
+			return nil
+		}
+		if err := unix.Mkdirat(dir, part, 0o700); err != nil && err != unix.EEXIST {
+			if dir != s.dir {
+				_ = unix.Close(dir)
+			}
+			return err
+		}
+		next, err := unix.Openat(dir, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		if dir != s.dir {
+			_ = unix.Close(dir)
+		}
+		if err != nil {
+			return err
+		}
+		dir = next
+		prefix := strings.Join(parts[:i+1], "/")
+		seen := false
+		for _, old := range s.projectDirs {
+			if old == prefix {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			s.projectDirs = append(s.projectDirs, prefix)
+		}
+	}
+	return errors.New("invalid projection path")
 }
 func openApprovedRoot(root string) (int, error) {
 	if root == "" || root[0] != '/' {
@@ -329,6 +443,18 @@ func (s *approvedStage) Close() error {
 		return nil
 	}
 	var es []error
+	if s.dir >= 0 {
+		for i := len(s.projected) - 1; i >= 0; i-- {
+			if e := unix.Unlinkat(s.dir, s.projected[i], 0); e != nil && e != unix.ENOENT {
+				es = append(es, e)
+			}
+		}
+		for i := len(s.projectDirs) - 1; i >= 0; i-- {
+			if e := unix.Unlinkat(s.dir, s.projectDirs[i], unix.AT_REMOVEDIR); e != nil && e != unix.ENOENT {
+				es = append(es, e)
+			}
+		}
+	}
 	if s.cwd >= 0 {
 		if e := unix.Unlinkat(s.cwd, "stdin", 0); e != nil && e != unix.ENOENT {
 			es = append(es, e)

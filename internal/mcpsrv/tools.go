@@ -3,6 +3,7 @@ package mcpsrv
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -21,6 +22,13 @@ import (
 //   - upgrade / self-upgrade: an agent performing git push/MR work or binary
 //     self-upgrade without explicit human approval is dangerous.
 func (s *Server) registerTools() {
+	s.mcp.AddTool(mcp.NewTool(
+		"trust_inspect",
+		mcp.WithDescription("Check and return the pinned trust-profile binding as JSON."),
+		mcp.WithReadOnlyHintAnnotation(true),
+	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, error) {
+		return s.exec(ctx, "", argvTrustInspect(), defaultTimeout), nil
+	}))
 	s.addRepoTools()
 	s.addTemplateTools()
 	s.addProjectTools()
@@ -131,6 +139,8 @@ type projectNewArgs struct {
 	NoEnvSetup  bool              `json:"noEnvSetup"`
 	Yes         bool              `json:"yes"`
 	Port        int               `json:"port"`
+	DryRun      bool              `json:"dryRun"`
+	SourceInput string            `json:"sourceInput"`
 }
 
 type runArgs struct {
@@ -144,10 +154,11 @@ type dirArgs struct {
 }
 
 type updateArgs struct {
-	Dir    string `json:"dir"`
-	To     string `json:"to"`
-	DryRun bool   `json:"dryRun"`
-	Check  bool   `json:"check"`
+	Dir         string `json:"dir"`
+	To          string `json:"to"`
+	DryRun      bool   `json:"dryRun"`
+	Check       bool   `json:"check"`
+	SourceInput string `json:"sourceInput"`
 }
 
 type doctorArgs struct {
@@ -168,12 +179,14 @@ func (s *Server) addProjectTools() {
 		mcp.WithBoolean("noEnvSetup", mcp.Description("Не предлагать и не запускать env setup после создания (--no-env-setup)"), mcp.DefaultBool(false)),
 		mcp.WithBoolean("yes", mcp.Description("Автоматически подтвердить действия CLI (--yes), включая установку недостающих инструментов и env setup"), mcp.DefaultBool(false)),
 		mcp.WithNumber("port", mcp.Description("Порт проекта (.Runtime.Port); 0 — не задавать")),
+		mcp.WithBoolean("dryRun", mcp.Description("Prepare a plan without changing files"), mcp.DefaultBool(false)),
+		mcp.WithString("sourceInput", mcp.Description("Path to the closed JSON source selection")),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a projectNewArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return s.exec(ctx, cwd, argvProjectNew(a.Ref, a.Name, a.Set, a.Defaults, a.NoHooks, a.NoDepsCheck, a.NoEnvSetup, a.Yes, a.Port), longTimeout), nil
+		return s.exec(ctx, cwd, argvProjectNew(a.Ref, a.Name, a.Set, a.Defaults, a.NoHooks, a.NoDepsCheck, a.NoEnvSetup, a.Yes, a.Port, strconv.FormatBool(a.DryRun), a.SourceInput), longTimeout), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
@@ -200,12 +213,13 @@ func (s *Server) addProjectTools() {
 		mcp.WithString("to", mcp.Description("Целевая версия шаблона; пусто — старший стабильный тег")),
 		mcp.WithBoolean("dryRun", mcp.Description("Показать план без изменения файлов"), mcp.DefaultBool(false)),
 		mcp.WithBoolean("check", mcp.Description("Проверить дерево на маркеры конфликта (код 1 при находке)"), mcp.DefaultBool(false)),
+		mcp.WithString("sourceInput", mcp.Description("Path to the closed JSON source selection")),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return s.exec(ctx, cwd, argvUpdate(a.To, a.DryRun, a.Check), longTimeout), nil
+		return s.exec(ctx, cwd, argvUpdate(a.To, a.DryRun, a.Check, a.SourceInput), longTimeout), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
@@ -503,7 +517,7 @@ func (s *Server) addMiscTools() {
 }
 
 // exec is the common tool execution path: it starts a child process and
-// translates its result into an MCP result (failure yields isError with complete diagnostics).
+// returns a fixed failure code without exposing child diagnostics.
 func (s *Server) exec(ctx context.Context, cwd string, argv []string, timeout time.Duration) *mcp.CallToolResult {
 	res, runErr := s.runCLI(ctx, cwd, argv, timeout)
 	return toolResult(res, runErr)

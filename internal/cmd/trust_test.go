@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
@@ -357,9 +358,20 @@ type t5FFixture struct {
 	projectRoot            string
 	source, target         trustverify.Subject
 	sourceRefs, targetRefs trustverify.EvidenceRefs
+	publisher              ed25519.PrivateKey
+	now                    time.Time
 }
 
 func t5FTrustFixture(t *testing.T) t5FFixture {
+	return t5FTrustFixtureWith(t, t5FFixtureOptions{})
+}
+
+type t5FFixtureOptions struct {
+	Anchor, Publisher ed25519.PrivateKey
+	Now               time.Time
+}
+
+func t5FTrustFixtureWith(t *testing.T, options t5FFixtureOptions) t5FFixture {
 	t.Helper()
 	base := "/private/var/tmp"
 	if _, err := os.Stat(base); err != nil {
@@ -375,9 +387,22 @@ func t5FTrustFixture(t *testing.T) t5FFixture {
 			t.Fatal(err)
 		}
 	}
-	clock := bootstrap.ClockFunc(func() time.Time { return time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) })
-	anchor := ed25519.NewKeyFromSeed([]byte("01234567890123456789012345678901"))
-	publisher := ed25519.NewKeyFromSeed([]byte("12345678901234567890123456789012"))
+	now := options.Now
+	if now.IsZero() {
+		now = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	}
+	clock := bootstrap.ClockFunc(func() time.Time { return now })
+	anchor, publisher := options.Anchor, options.Publisher
+	if anchor == nil {
+		anchor = ed25519.NewKeyFromSeed([]byte("01234567890123456789012345678901"))
+	}
+	if publisher == nil {
+		publisher = ed25519.NewKeyFromSeed([]byte("12345678901234567890123456789012"))
+	}
+	validity := bootstrap.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}
+	if !options.Now.IsZero() {
+		validity = bootstrap.Validity{NotBefore: now.Add(-time.Hour).UTC().Format(time.RFC3339), NotAfter: now.Add(24 * time.Hour).UTC().Format(time.RFC3339)}
+	}
 	evidence := map[string][]byte{}
 	put := func(raw []byte) string {
 		digest := evidencecas.Digest(raw)
@@ -386,7 +411,7 @@ func t5FTrustFixture(t *testing.T) t5FFixture {
 	}
 	publisherPublic := publisher.Public().(ed25519.PublicKey)
 	rootKey := put([]byte(bootstrap.EncodePublicKey(publisherPublic)))
-	envelope := bootstrap.Envelope{APIVersion: bootstrap.TrustRootsAPIVersion, AuthorityID: "t5f-authority", Sequence: 1, Validity: bootstrap.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, AllowedPolicyOrigins: []string{"https://example.test/policy"}, RootKeys: []bootstrap.RootKey{{Fingerprint: bootstrap.Fingerprint(publisherPublic), PublicKeyCAS: rootKey, Issuer: "publisher-1", Status: "active"}}, Threshold: 1, Revocations: []bootstrap.Revocation{}}
+	envelope := bootstrap.Envelope{APIVersion: bootstrap.TrustRootsAPIVersion, AuthorityID: "t5f-authority", Sequence: 1, Validity: validity, AllowedPolicyOrigins: []string{"https://example.test/policy"}, RootKeys: []bootstrap.RootKey{{Fingerprint: bootstrap.Fingerprint(publisherPublic), PublicKeyCAS: rootKey, Issuer: "publisher-1", Status: "active"}}, Threshold: 1, Revocations: []bootstrap.Revocation{}}
 	envelope.PayloadSHA256, err = envelope.ComputePayloadSHA256()
 	if err != nil {
 		t.Fatal(err)
@@ -420,7 +445,7 @@ func t5FTrustFixture(t *testing.T) t5FFixture {
 	provisioning.ProvisioningSHA256 = provisioning.ComputedSHA256()
 	state := bootstrap.OSSAcceptedState{APIVersion: bootstrap.OSSAcceptedStateAPIVersion, DescriptorSHA256: descriptor.DescriptorSHA256, ProvisioningSHA256: provisioning.ProvisioningSHA256, AuthorityID: envelope.AuthorityID, Sequence: 1, EnvelopePayloadSHA256: envelope.PayloadSHA256, ReceiptDigest: receipt.ReceiptDigest, TreeSize: 3, CheckpointDigest: checkpointRef}
 	state.StateSHA256 = state.ComputedSHA256()
-	policy := trustverify.ExecutionPolicy{APIVersion: trustverify.ExecutionPolicyAPIVersion, PolicyID: "t5f-policy", Profile: "oss", MinimumProfile: "oss", Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Principals: []trustverify.Principal{{ID: "principal:publisher"}, {ID: "principal:submitter"}}, IssuerPrincipals: []trustverify.IssuerPrincipal{{Issuer: "publisher-1", PrincipalID: "principal:publisher"}}, SourceRules: []trustverify.SourceRule{{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: "https://example.test/source", TemplatePath: ".", Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"}}, Approvers: []trustverify.Approver{}, AllowInvocationHuman: false, MaxTimeoutMillis: 1000}
+	policy := trustverify.ExecutionPolicy{APIVersion: trustverify.ExecutionPolicyAPIVersion, PolicyID: "t5f-policy", Profile: "oss", MinimumProfile: "oss", Validity: trustverify.Validity{NotBefore: validity.NotBefore, NotAfter: validity.NotAfter}, Principals: []trustverify.Principal{{ID: "principal:publisher"}, {ID: "principal:submitter"}}, IssuerPrincipals: []trustverify.IssuerPrincipal{{Issuer: "publisher-1", PrincipalID: "principal:publisher"}}, SourceRules: []trustverify.SourceRule{{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: "https://example.test/source", TemplatePath: ".", Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"}}, Approvers: []trustverify.Approver{}, AllowInvocationHuman: false, MaxTimeoutMillis: 1000}
 	policy.PolicySHA256, err = policy.ComputePolicySHA256()
 	if err != nil {
 		t.Fatal(err)
@@ -461,7 +486,7 @@ func t5FTrustFixture(t *testing.T) t5FFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return t5FFixture{selection: trustload.LaunchSelection{Profile: bootstrap.ProfileOSS, RuntimeConfig: trustload.FilePin{Path: installPath, SHA256: installDigest}, OperatorRecord: install.OperatorRecord, InstallationID: install.InstallationID}, clock: clock, store: install.OSS.StorePath, evidenceRoot: install.EvidenceRoot, bundleRaw: bundleRaw, projectRoot: filepath.Join(dir, "project"), source: source, target: target, sourceRefs: sourceRefs, targetRefs: targetRefs}
+	return t5FFixture{selection: trustload.LaunchSelection{Profile: bootstrap.ProfileOSS, RuntimeConfig: trustload.FilePin{Path: installPath, SHA256: installDigest}, OperatorRecord: install.OperatorRecord, InstallationID: install.InstallationID}, clock: clock, store: install.OSS.StorePath, evidenceRoot: install.EvidenceRoot, bundleRaw: bundleRaw, projectRoot: filepath.Join(dir, "project"), source: source, target: target, sourceRefs: sourceRefs, targetRefs: targetRefs, publisher: publisher, now: now}
 }
 
 func t5FJSON(t *testing.T, v any) []byte {
@@ -566,6 +591,10 @@ func t5FSelection(s trustverify.Subject, e trustverify.EvidenceRefs) []byte {
 // tree as the command. It deliberately has a distinct authority sequence and
 // target tree, so refresh reaches the real rotation and store-update path.
 func t5FRefreshBundle(t *testing.T, f t5FFixture) ([]byte, map[string][]byte) {
+	return t5FRefreshBundleWithValidity(t, f, nil)
+}
+
+func t5FRefreshBundleWithValidity(t *testing.T, f t5FFixture, validity *bootstrap.Validity) ([]byte, map[string][]byte) {
 	t.Helper()
 	current, err := trustload.DecodeStoredBundle(f.bundleRaw)
 	if err != nil {
@@ -599,9 +628,23 @@ func t5FRefreshBundle(t *testing.T, f t5FFixture) ([]byte, map[string][]byte) {
 		return digest
 	}
 	newKey := ed25519.NewKeyFromSeed([]byte("23456789012345678901234567890123"))
+	if !f.now.Equal(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)) {
+		_, newKey, err = ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	newPublic := newKey.Public().(ed25519.PublicKey)
 	newKeyRef := put([]byte(bootstrap.EncodePublicKey(newPublic)))
-	next := bootstrap.Envelope{APIVersion: bootstrap.TrustRootsAPIVersion, AuthorityID: oldEnvelope.AuthorityID, Sequence: oldEnvelope.Sequence + 1, Validity: oldEnvelope.Validity, AllowedPolicyOrigins: oldEnvelope.AllowedPolicyOrigins, RootKeys: []bootstrap.RootKey{{Fingerprint: bootstrap.Fingerprint(newPublic), PublicKeyCAS: newKeyRef, Issuer: "publisher-1", Status: "active"}}, Threshold: 1, RevocationEpoch: oldEnvelope.RevocationEpoch + 1, Revocations: []bootstrap.Revocation{}, Rotation: &bootstrap.Rotation{PreviousSequence: oldEnvelope.Sequence, OverlapUntil: "2026-12-01T00:00:00Z"}}
+	overlap := "2026-12-01T00:00:00Z"
+	if !f.now.Equal(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)) {
+		overlap = f.now.Add(time.Hour).UTC().Format(time.RFC3339)
+	}
+	nextValidity := oldEnvelope.Validity
+	if validity != nil {
+		nextValidity = *validity
+	}
+	next := bootstrap.Envelope{APIVersion: bootstrap.TrustRootsAPIVersion, AuthorityID: oldEnvelope.AuthorityID, Sequence: oldEnvelope.Sequence + 1, Validity: nextValidity, AllowedPolicyOrigins: oldEnvelope.AllowedPolicyOrigins, RootKeys: []bootstrap.RootKey{{Fingerprint: bootstrap.Fingerprint(newPublic), PublicKeyCAS: newKeyRef, Issuer: "publisher-1", Status: "active"}}, Threshold: 1, RevocationEpoch: oldEnvelope.RevocationEpoch + 1, Revocations: []bootstrap.Revocation{}, Rotation: &bootstrap.Rotation{PreviousSequence: oldEnvelope.Sequence, OverlapUntil: overlap}}
 	next.PayloadSHA256, err = next.ComputePayloadSHA256()
 	if err != nil {
 		t.Fatal(err)
@@ -610,7 +653,7 @@ func t5FRefreshBundle(t *testing.T, f t5FFixture) ([]byte, map[string][]byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []ed25519.PrivateKey{ed25519.NewKeyFromSeed([]byte("12345678901234567890123456789012")), newKey} {
+	for _, key := range []ed25519.PrivateKey{f.publisher, newKey} {
 		signature := put([]byte(bootstrap.EncodeSignature(ed25519.Sign(key, payload))))
 		next.Signatures = append(next.Signatures, bootstrap.Signature{KeyFingerprint: bootstrap.Fingerprint(key.Public().(ed25519.PublicKey)), SignatureCAS: signature})
 	}

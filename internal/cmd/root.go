@@ -36,12 +36,9 @@ func withInvocation(ctx context.Context, in invocation) context.Context {
 }
 
 func composeRuntime(ctx context.Context) (*trustload.Runtime, error) {
-	if ctx == nil {
-		return nil, trustload.ErrAnchorMissing
-	}
-	in, ok := ctx.Value(invocationKey{}).(invocation)
-	if !ok || in.Clock == nil || in.ProjectKey == "" {
-		return nil, trustload.ErrAnchorMissing
+	in, err := commandInvocation(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return trustload.OpenRuntime(ctx, trustload.RuntimeOptions{Selection: in.Selection, ProjectKey: in.ProjectKey, Clock: in.Clock})
 }
@@ -51,10 +48,10 @@ func commandInvocation(ctx context.Context) (invocation, error) {
 		return invocation{}, trustload.ErrAnchorMissing
 	}
 	in, ok := ctx.Value(invocationKey{}).(invocation)
-	if !ok || in.Clock == nil || in.ProjectKey == "" {
-		return invocation{}, trustload.ErrAnchorMissing
+	if ok && in.Clock != nil && in.ProjectKey != "" {
+		return in, nil
 	}
-	return in, nil
+	return installedInvocation(ctx)
 }
 
 // newTrustRootCommand is the explicit per-invocation composition seam. The

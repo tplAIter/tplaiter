@@ -8,6 +8,7 @@ import (
 	"crypto/ed25519"
 	"crypto/sha1"
 	"crypto/sha256"
+	"debug/buildinfo"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/trustload"
@@ -177,6 +179,39 @@ func TestDarwinNativeParserAcceptsFiniteEnvelope(t *testing.T) {
 	}
 }
 
+func TestGofmtDarwinParserAllowsOnlyReviewedLibresolvClosure(t *testing.T) {
+	commands := [][]byte{
+		machoStringCommand(0xe, "/usr/lib/dyld"),
+		machoStringCommand(0xc, "/usr/lib/libSystem.B.dylib"),
+		machoStringCommand(0xc, "/usr/lib/libresolv.9.dylib"),
+	}
+	size := 0
+	for _, command := range commands {
+		size += len(command)
+	}
+	image := make([]byte, 32+size)
+	binary.LittleEndian.PutUint32(image, 0xfeedfacf)
+	binary.LittleEndian.PutUint32(image[4:], 0x0100000c)
+	binary.LittleEndian.PutUint32(image[12:], 2)
+	binary.LittleEndian.PutUint32(image[16:], uint32(len(commands)))
+	binary.LittleEndian.PutUint32(image[20:], uint32(size))
+	off := 32
+	for _, command := range commands {
+		copy(image[off:], command)
+		off += len(command)
+	}
+	if !validGofmtDarwinNative(image) {
+		t.Fatal("reviewed gofmt closure rejected")
+	}
+	if validDarwinNative(image) {
+		t.Fatal("native-snapshot branch accepted gofmt-only libresolv closure")
+	}
+	copy(image[off-len(commands[2])+12:], []byte("/usr/lib/libevil__.dylib\x00"))
+	if validGofmtDarwinNative(image) {
+		t.Fatal("unreviewed dylib accepted")
+	}
+}
+
 func TestDarwinNativeParserRejectsIncompatibleCPUSubtype(t *testing.T) {
 	b := machoFixture("/usr/lib/dyld", "/usr/lib/libSystem.B.dylib", false)
 	binary.LittleEndian.PutUint32(b[8:], 2) // arm64e is outside the declared generic arm64 envelope.
@@ -263,6 +298,89 @@ func TestApprovedRunnerExecutesSignedNativeSnapshotMaterial(t *testing.T) {
 		t.Fatalf("receipt stdout = %q, %v", stdout, err)
 	}
 	t6BAssertEmptyScratch(t, p.fixture.scratch)
+}
+
+// This is the Go D6 proof: the tool and its version record are inside the
+// signed source snapshot, both requests belong to one full operation, and two
+// different persistent permits execute F(original), never F(F(original)).
+func TestApprovedRunnerExecutesSignedGofmtPair(t *testing.T) {
+	f := newT6BFixture(t, "gofmt", "gofmt")
+	r, err := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: t6BClock{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	stable := r.TrustRuntime()
+	resolution, err := stable.VerifySubject(context.Background(), f.subject, f.refs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := []byte("package fixture\nfunc f(){ }\n")
+	plan, err := canonicaljson.Canonical(map[string]any{"adapter": "gofmt-stdin-v1", "apiVersion": "tplaiter.dev/formatter-plan/v1", "inputSHA256": evidencecas.Digest(input), "path": "z.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, requests := f.formatterInputs(t, stable.Binding(), r.ProjectContext().ProjectID, input, plan)
+	permits := make([]*trustverify.ExecutionPermit, len(requests))
+	for i, request := range requests {
+		permits[i], err = stable.Authorize(context.Background(), resolution, op, request, f.persistentApproval(t, request))
+		if err != nil || permits[i] == nil {
+			t.Fatalf("Authorize[%d] = %#v, %v", i, permits[i], err)
+		}
+		if _, err = stable.PersistentApprovalReference(permits[i]); err != nil {
+			t.Fatalf("PersistentApprovalReference[%d]: %v", i, err)
+		}
+	}
+	runner, err := NewApprovedRunner(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs := make([][]byte, 2)
+	materials := make([]*operationtrust.ExecutionMaterial, 2)
+	for i, request := range requests {
+		materialInput := operationtrust.FormatterInput{Path: "z.go", Mode: "100644", Bytes: input, PlanJSON: plan}
+		selection, err := operationtrust.ResolveFormatterComposition(context.Background(), stable, resolution, resolution, op, op.Actions[i], materialInput)
+		if err != nil {
+			t.Fatalf("ResolveFormatterComposition[%d]: %v", i, err)
+		}
+		material, err := operationtrust.BindFormatterMaterial(context.Background(), stable, resolution, resolution, op, op.Actions[i], materialInput, selection)
+		if err != nil {
+			t.Fatalf("BindFormatterMaterial[%d]: %v", i, err)
+		}
+		materials[i] = material
+		receipt, err := runner.Execute(context.Background(), permits[i], request, material)
+		if err != nil || receipt == nil {
+			t.Fatalf("Execute[%d] = %#v, %v", i, receipt, err)
+		}
+		outputs[i], err = receipt.StdoutFor(runner, request)
+		if err != nil {
+			t.Fatalf("StdoutFor[%d]: %v", i, err)
+		}
+	}
+	if requests[0].Action.ID == requests[1].Action.ID || requests[0].RequestSHA256 == requests[1].RequestSHA256 || !bytes.Equal(outputs[0], outputs[1]) || !bytes.Contains(outputs[0], []byte("func f() {}")) {
+		t.Fatalf("paired gofmt proof failed: requests=%#v outputs=%q / %q", requests, outputs[0], outputs[1])
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	started := false
+	ctx = withApprovedHooks(ctx, approvedHooks{start: func(cmd *exec.Cmd) error {
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		started = true
+		cancel()
+		return nil
+	}})
+	receipt, err := runner.Execute(ctx, permits[0], requests[0], materials[0])
+	cancel()
+	if !started || err == nil || receipt != nil {
+		t.Fatalf("in-flight gofmt cancellation: started=%t receipt=%#v err=%v", started, receipt, err)
+	}
+	t6BAssertEmptyScratch(t, f.scratch)
+	receipt, err = runner.Execute(withApprovedHooks(context.Background(), approvedHooks{close: func() error { return errors.New("injected gofmt cleanup failure") }}), permits[1], requests[1], materials[1])
+	if err == nil || receipt != nil {
+		t.Fatalf("gofmt cleanup failure exposed receipt=%#v err=%v", receipt, err)
+	}
+	t6BAssertEmptyScratch(t, f.scratch)
 }
 
 type t6BPrepared struct {
@@ -568,8 +686,15 @@ type t6BFixture struct {
 
 func newT6BFixture(t *testing.T, toolMode, sourceVariant string) *t6BFixture {
 	t.Helper()
-	dir := t6BTempDir(t)
-	var err error
+	base := "/private/var/tmp"
+	if _, err := os.Stat(base); err != nil {
+		base = "/tmp"
+	}
+	dir, err := os.MkdirTemp(base, "tplaiter-t6-b-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	f := &t6BFixture{dir: dir, scratch: filepath.Join(dir, "scratch"), project: filepath.Join(dir, "project"), evidence: filepath.Join(dir, "evidence"), anchor: ed25519.NewKeyFromSeed([]byte("01234567890123456789012345678901")), publisher: ed25519.NewKeyFromSeed([]byte("12345678901234567890123456789012")), approver: ed25519.NewKeyFromSeed([]byte("23456789012345678901234567890123")), stdin: []byte("literal signed stdin\n")}
 	for _, p := range []string{f.scratch, f.project, f.evidence, filepath.Join(dir, "objects"), filepath.Join(dir, "home")} {
 		if err := os.Mkdir(p, 0o700); err != nil {
@@ -616,7 +741,7 @@ func newT6BFixture(t *testing.T, toolMode, sourceVariant string) *t6BFixture {
 	state := bootstrap.OSSAcceptedState{APIVersion: bootstrap.OSSAcceptedStateAPIVersion, DescriptorSHA256: desc.DescriptorSHA256, ProvisioningSHA256: prov.ProvisioningSHA256, AuthorityID: env.AuthorityID, Sequence: 1, EnvelopePayloadSHA256: env.PayloadSHA256, RevocationEpoch: 0, ReceiptDigest: receipt.ReceiptDigest, TreeSize: 2, CheckpointDigest: checkpointRef}
 	state.StateSHA256 = state.ComputedSHA256()
 	approverPub := f.approver.Public().(ed25519.PublicKey)
-	f.policy = trustverify.ExecutionPolicy{APIVersion: trustverify.ExecutionPolicyAPIVersion, PolicyID: "t6b-policy", Profile: "oss", MinimumProfile: "oss", Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Principals: []trustverify.Principal{{ID: "principal:approver"}, {ID: "principal:publisher"}, {ID: "principal:submitter"}}, IssuerPrincipals: []trustverify.IssuerPrincipal{{Issuer: "publisher-1", PrincipalID: "principal:publisher"}}, SourceRules: []trustverify.SourceRule{{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: f.subject.Origin, TemplatePath: ".", Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"}}, Approvers: []trustverify.Approver{{ID: "t6b-approver", PrincipalID: "principal:approver", IdentityClass: "operator", KeyFingerprint: bootstrap.Fingerprint(approverPub), PublicKeyBase64: base64.StdEncoding.EncodeToString(approverPub), Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Scopes: []trustverify.ApprovalScope{{ProjectID: "project-t6b", OperationScope: "run", ActionKind: "command", Origin: f.subject.Origin, TemplatePath: "."}}}}, AllowInvocationHuman: false, MaxTimeoutMillis: 5000}
+	f.policy = trustverify.ExecutionPolicy{APIVersion: trustverify.ExecutionPolicyAPIVersion, PolicyID: "t6b-policy", Profile: "oss", MinimumProfile: "oss", Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Principals: []trustverify.Principal{{ID: "principal:approver"}, {ID: "principal:publisher"}, {ID: "principal:submitter"}}, IssuerPrincipals: []trustverify.IssuerPrincipal{{Issuer: "publisher-1", PrincipalID: "principal:publisher"}}, SourceRules: []trustverify.SourceRule{{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: f.subject.Origin, TemplatePath: ".", Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"}}, Approvers: []trustverify.Approver{{ID: "t6b-approver", PrincipalID: "principal:approver", IdentityClass: "operator", KeyFingerprint: bootstrap.Fingerprint(approverPub), PublicKeyBase64: base64.StdEncoding.EncodeToString(approverPub), Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Scopes: []trustverify.ApprovalScope{{ProjectID: "project-t6b", OperationScope: "run", ActionKind: "command", Origin: f.subject.Origin, TemplatePath: "."}, {ProjectID: "project-t6b", OperationScope: "run", ActionKind: "formatter", Origin: f.subject.Origin, TemplatePath: "."}}}}, AllowInvocationHuman: false, MaxTimeoutMillis: 5000}
 	if f.policy.PolicySHA256, err = f.policy.ComputePolicySHA256(); err != nil {
 		t.Fatal(err)
 	}
@@ -660,6 +785,8 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 	src, out := filepath.Join(dir, "native-helper.go"), filepath.Join(dir, "native-tool")
 	var raw []byte
 	switch mode {
+	case "gofmt":
+		raw = []byte("package main\n")
 	case "normal":
 		raw = []byte("package main\nimport \"syscall\"\nfunc main(){if _,ok:=syscall.Getenv(\"T6B_EXEC_CANARY\");ok{syscall.Write(1,[]byte(\"inherited-env\"));return};b:=make([]byte,1024);n,_:=syscall.Read(0,b);syscall.Write(1,append([]byte(\"approved:\"),b[:n]...))}\n")
 	case "fail":
@@ -678,7 +805,11 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 	if err := os.WriteFile(src, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("/opt/homebrew/bin/go", "build", "-trimpath", "-o", out, src)
+	args := []string{"build", "-trimpath", "-o", out, src}
+	if mode == "gofmt" {
+		args = []string{"build", "-trimpath", "-o", out, "cmd/gofmt"}
+	}
+	cmd := exec.Command("/opt/homebrew/bin/go", args...)
 	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "GOOS=darwin", "GOARCH=arm64", "PATH=/usr/bin:/bin"}
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("helper build: %v", err)
@@ -706,9 +837,23 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 	files := t6BTree(add, []t6BTreeEntry{{"100644", "hello.txt.tmpl", blob([]byte("hello\n"))}})
 	execTree := []t6BTreeEntry{{"100755", "native-tool", blob(tool)}, {"100644", "stdin", blob(stdin)}}
 	execEntries := []trustverify.SourceEntry{{Path: ".tplaiter-execution", Kind: "directory", Mode: "40000"}, {Path: ".tplaiter-execution/native-tool", Kind: "file", Mode: "100755", ContentSHA256: evidencecas.Digest(tool)}, {Path: ".tplaiter-execution/stdin", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(stdin)}}
+	var formatterTree string
+	var formatterEntries []trustverify.SourceEntry
+	if variant == "gofmt" {
+		info, err := buildinfo.Read(bytes.NewReader(tool))
+		if err != nil {
+			t.Fatal(err)
+		}
+		record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": "darwin-arm64-dyld-libsystem-libresolv-v1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		formatterTree = t6BTree(add, []t6BTreeEntry{{"100755", "native-tool", blob(tool)}, {"100644", "tool.json", blob(record)}})
+		formatterEntries = []trustverify.SourceEntry{{Path: "formatter", Kind: "directory", Mode: "40000"}, {Path: "formatter/native-tool", Kind: "file", Mode: "100755", ContentSHA256: evidencecas.Digest(tool)}, {Path: "formatter/tool.json", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(record)}}
+	}
 	includeExec := true
 	switch variant {
-	case "normal", "oversize-tool", "oversize-stdin":
+	case "normal", "oversize-tool", "oversize-stdin", "gofmt":
 	case "absent":
 		includeExec, execTree, execEntries = false, nil, nil
 	case "extra":
@@ -737,6 +882,9 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 		t.Fatalf("unknown source variant %q", variant)
 	}
 	rootEntries := []t6BTreeEntry{{"40000", "files", files}, {"100644", "template.contract.json", blob(contract)}, {"100644", "template.manifest.yaml", blob(manifest)}}
+	if formatterTree != "" {
+		rootEntries = append(rootEntries, t6BTreeEntry{"40000", "formatter", formatterTree})
+	}
 	if includeExec {
 		execDir := t6BTree(add, execTree)
 		rootEntries = append(rootEntries, t6BTreeEntry{"40000", ".tplaiter-execution", execDir})
@@ -748,7 +896,8 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 			t.Fatal(err)
 		}
 	}
-	entries := append(execEntries, trustverify.SourceEntry{Path: "files", Kind: "directory", Mode: "40000"}, trustverify.SourceEntry{Path: "files/hello.txt.tmpl", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest([]byte("hello\n"))}, trustverify.SourceEntry{Path: "template.contract.json", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(contract)}, trustverify.SourceEntry{Path: "template.manifest.yaml", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(manifest)})
+	entries := append(execEntries, formatterEntries...)
+	entries = append(entries, trustverify.SourceEntry{Path: "files", Kind: "directory", Mode: "40000"}, trustverify.SourceEntry{Path: "files/hello.txt.tmpl", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest([]byte("hello\n"))}, trustverify.SourceEntry{Path: "template.contract.json", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(contract)}, trustverify.SourceEntry{Path: "template.manifest.yaml", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(manifest)})
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 	treeDigest, err := bootstrap.DomainDigest("tplaiter.dev/source-content-tree/v1", struct {
 		APIVersion string                    `json:"apiVersion"`
@@ -801,6 +950,66 @@ func (f *t6BFixture) executionInputs(t *testing.T, b bootstrap.ProfileBinding, p
 		t.Fatal(err)
 	}
 	return op, r
+}
+
+func (f *t6BFixture) formatterInputs(t *testing.T, b bootstrap.ProfileBinding, project string, input, plan []byte) (trustverify.OperationInputs, []trustverify.ExecutionRequest) {
+	t.Helper()
+	bd, err := bootstrap.DomainDigest(bootstrap.ProfileBindingAPIVersion, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, ok := f.formatterRecord()
+	if !ok {
+		t.Fatal("missing formatter record")
+	}
+	entries := []trustverify.ContentEntry{{Root: "project", Path: "z.go", Mode: "100644", ContentSHA256: evidencecas.Digest(input)}, {Root: "project", Path: "formatter/plan.json", Mode: "100644", ContentSHA256: evidencecas.Digest(plan)}, {Root: "project", Path: "formatter/tool.json", Mode: "100644", ContentSHA256: evidencecas.Digest(record)}}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Root+"\x00"+entries[i].Path < entries[j].Root+"\x00"+entries[j].Path
+	})
+	closure, err := trustverify.ComputeContentClosureSHA256(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts, err := trustverify.ComputeToolOptionsSHA256([]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := trustverify.ComputeEnvironmentPolicySHA256(trustverify.EnvironmentPolicy{APIVersion: "tplaiter.dev/execution-environment/v1", Variables: []trustverify.EnvironmentVariable{{Name: "LANG", Value: "C"}}, Capabilities: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := buildinfo.Read(bytes.NewReader(f.tool))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := trustverify.Provider{Origin: f.subject.Origin, TemplatePath: f.subject.TemplatePath, Commit: f.subject.Commit, TreeSHA256: f.subject.TreeSHA256, ContractSHA256: f.subject.ContractSHA256}
+	actions := make([]trustverify.ActionMaterial, 2)
+	for i := range actions {
+		actions[i] = trustverify.ActionMaterial{Provider: p, Action: trustverify.Action{ID: "format-" + strings.Repeat("a", 63) + string(rune('1'+i)), Kind: "formatter", Phase: "standalone", Argv: []string{"gofmt"}, ContentClosureSHA256: closure}, Tool: trustverify.Tool{ID: "gofmt", Version: strings.TrimPrefix(info.GoVersion, "go"), BinarySHA256: evidencecas.Digest(f.tool), OptionsSHA256: opts}, WorkingDirectoryScope: trustverify.WorkingDirectoryScope{Root: "project", Path: "."}, EnvironmentPolicySHA256: env, TimeoutMillis: 5000, Migration: trustverify.Migration{Kind: "none"}}
+	}
+	op := trustverify.OperationInputs{APIVersion: "tplaiter.dev/operation-inputs/v1", ProfileBindingSHA256: bd, ProjectID: project, Scope: "run", PreimageSHA256: evidencecas.Digest([]byte("preimage")), AnswersSHA256: evidencecas.Digest([]byte("{}")), Subjects: []trustverify.Provider{p}, Actions: actions}
+	od, err := trustverify.ComputeOperationInputsSHA256(op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests := make([]trustverify.ExecutionRequest, 2)
+	for i, action := range actions {
+		requests[i] = trustverify.ExecutionRequest{APIVersion: trustverify.ExecutionRequestAPIVersion, ProfileBindingSHA256: bd, OperationInputsSHA256: od, ProjectID: project, Scope: "run", Provider: p, Action: action.Action, Tool: action.Tool, WorkingDirectoryScope: action.WorkingDirectoryScope, EnvironmentPolicySHA256: action.EnvironmentPolicySHA256, TimeoutMillis: action.TimeoutMillis, Migration: action.Migration}
+		requests[i].RequestSHA256, err = requests[i].ComputeRequestSHA256()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return op, requests
+}
+
+func (f *t6BFixture) formatterRecord() ([]byte, bool) {
+	info, err := buildinfo.Read(bytes.NewReader(f.tool))
+	if err != nil {
+		return nil, false
+	}
+	record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(f.tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": "darwin-arm64-dyld-libsystem-libresolv-v1"})
+	return record, err == nil
 }
 func (f *t6BFixture) persistentApproval(t *testing.T, r trustverify.ExecutionRequest) trustverify.ApprovalRefs {
 	t.Helper()

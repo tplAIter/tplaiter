@@ -75,6 +75,8 @@ func argvRepoAdd(alias, url, branch string) []string {
 
 func argvRepoList() []string { return []string{"repo", "list"} }
 
+func argvTrustInspect() []string { return []string{"trust", "inspect", "--json"} }
+
 func argvRepoUpdate(alias string) []string {
 	argv := []string{"repo", "update"}
 	if alias != "" {
@@ -106,7 +108,7 @@ func argvTemplateShow(ref string) []string { return []string{"template", "show",
 // groups when --set is incomplete. --defaults forces defaults. dir is NOT used
 // here: it becomes the child process working directory (cwd), and the project is
 // created as <dir>/<slug> (the uniform dir=cwd rule for all tools; see tools.go).
-func argvProjectNew(ref, name string, set map[string]string, defaults, noHooks, noDepsCheck, noEnvSetup, yes bool, port int) []string {
+func argvProjectNew(ref, name string, set map[string]string, defaults, noHooks, noDepsCheck, noEnvSetup, yes bool, port int, extra ...string) []string {
 	argv := []string{"new", ref, name}
 	argv = append(argv, sortedSetPairs(set)...)
 	if defaults {
@@ -126,6 +128,12 @@ func argvProjectNew(ref, name string, set map[string]string, defaults, noHooks, 
 	}
 	if yes {
 		argv = append(argv, "--yes")
+	}
+	if len(extra) > 0 && extra[0] == "true" {
+		argv = append(argv, "--dry-run")
+	}
+	if len(extra) > 1 && extra[1] != "" {
+		argv = append(argv, "--source-input", extra[1])
 	}
 	return argv
 }
@@ -152,7 +160,7 @@ func argvSettingsSet(values map[string]string) []string {
 	return argv
 }
 
-func argvUpdate(to string, dryRun, check bool) []string {
+func argvUpdate(to string, dryRun, check bool, extra ...string) []string {
 	argv := []string{"update"}
 	if to != "" {
 		argv = append(argv, "--to", to)
@@ -162,6 +170,9 @@ func argvUpdate(to string, dryRun, check bool) []string {
 	}
 	if check {
 		argv = append(argv, "--check")
+	}
+	if len(extra) > 0 && extra[0] != "" {
+		argv = append(argv, "--source-input", extra[0])
 	}
 	return argv
 }

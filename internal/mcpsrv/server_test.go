@@ -72,6 +72,7 @@ func TestProtocolListTools(t *testing.T) {
 	}
 
 	want := []string{
+		"trust_inspect",
 		"repo_add", "repo_list", "repo_update", "repo_remove",
 		"template_list", "template_show",
 		"project_new", "run", "settings_list", "settings_set",
@@ -221,8 +222,8 @@ func TestGenBatchSuccess(t *testing.T) {
 	}
 }
 
-// TestTemplateShowNotFound: a nonzero child exit code yields isError with full
-// stderr in its text.
+// TestTemplateShowNotFound: a nonzero child exit code yields a fixed failure
+// code without child diagnostics.
 func TestTemplateShowNotFound(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	argv := argvTemplateShow("ghost/none")
@@ -243,16 +244,13 @@ func TestTemplateShowNotFound(t *testing.T) {
 		t.Fatalf("ожидался isError, получен успех: %s", resultText(t, res))
 	}
 	text := resultText(t, res)
-	if !strings.Contains(text, "шаблон не найден") {
-		t.Errorf("isError не содержит stderr подпроцесса: %q", text)
-	}
-	if !strings.Contains(text, "код возврата 1") {
-		t.Errorf("isError не содержит код возврата: %q", text)
+	if text != "MCP_CLI_FAILED" {
+		t.Errorf("unsafe transport diagnostic: %q", text)
 	}
 }
 
 // TestLaunchFailure: child launch failure (binary absent, exitCode -1 without
-// ExitError) yields isError with the launch-error text.
+// ExitError) yields a fixed unavailable code.
 func TestLaunchFailure(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	runner.On(fakeExe, argvProjectsList(), execx.Response{
@@ -270,8 +268,8 @@ func TestLaunchFailure(t *testing.T) {
 	if !res.IsError {
 		t.Fatalf("ожидался isError при сбое запуска")
 	}
-	if !strings.Contains(resultText(t, res), "ошибка запуска") {
-		t.Errorf("не отражён сбой запуска: %q", resultText(t, res))
+	if resultText(t, res) != "MCP_UNAVAILABLE" {
+		t.Errorf("unsafe launch diagnostic: %q", resultText(t, res))
 	}
 }
 

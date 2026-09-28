@@ -10,6 +10,16 @@ const nativeArm64SubtypeAll uint32 = 0
 // exactly /usr/lib/dyld plus libSystem. It is structural, never a behavioral
 // safety claim about the admitted native code.
 func validDarwinNative(b []byte) bool {
+	return validDarwinNativeEnvelope(b, false)
+}
+
+// validGofmtDarwinNative is intentionally a separate closed loader policy.
+// The formatter record admits the one reviewed OS ABI dependency libresolv.9.
+func validGofmtDarwinNative(b []byte) bool {
+	return validDarwinNativeEnvelope(b, true)
+}
+
+func validDarwinNativeEnvelope(b []byte, allowLibresolv bool) bool {
 	if len(b) < 32 || binary.LittleEndian.Uint32(b) != 0xfeedfacf || binary.LittleEndian.Uint32(b[4:]) != 0x0100000c || binary.LittleEndian.Uint32(b[8:]) != nativeArm64SubtypeAll || binary.LittleEndian.Uint32(b[12:]) != 2 {
 		return false
 	}
@@ -17,7 +27,7 @@ func validDarwinNative(b []byte) bool {
 	if ncmd < 1 || ncmd > 4096 || size < 8 || size > len(b)-32 {
 		return false
 	}
-	off, end, dyld, lib := 32, 32+size, false, false
+	off, end, dyld, lib, resolv := 32, 32+size, false, false, false
 	for i := 0; i < ncmd; i++ {
 		if off+8 > end {
 			return false
@@ -35,16 +45,29 @@ func validDarwinNative(b []byte) bool {
 			dyld = true
 		case 0xc:
 			p, ok := machoName(b[off:off+n], 8)
-			if !ok || p != "/usr/lib/libSystem.B.dylib" || lib {
+			if !ok {
 				return false
 			}
-			lib = true
+			switch p {
+			case "/usr/lib/libSystem.B.dylib":
+				if lib {
+					return false
+				}
+				lib = true
+			case "/usr/lib/libresolv.9.dylib":
+				if !allowLibresolv || resolv {
+					return false
+				}
+				resolv = true
+			default:
+				return false
+			}
 		case 0x8000001c, 0x80000018, 0x8000001f, 0x80000023, 0x20:
 			return false
 		}
 		off += n
 	}
-	return off == end && dyld && lib
+	return off == end && dyld && lib && (allowLibresolv || !resolv)
 }
 func machoName(c []byte, at int) (string, bool) {
 	if len(c) < at+4 {

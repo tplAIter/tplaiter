@@ -3,132 +3,218 @@ package mcpsrv
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
-
 	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
-// Per-tool timeouts. Project generation and three-way updates take substantially
-// longer than other commands (checkout, rendering, hooks), so they get a longer limit.
+var (
+	errTransportTimeout = errors.New("MCP_TIMEOUT")
+	errOutputLimit      = errors.New("MCP_OUTPUT_LIMIT")
+)
+
 const (
 	defaultTimeout = 120 * time.Second
 	longTimeout    = 300 * time.Second
+	maxToolOutput  = 1 << 20
+	maxToolStderr  = 64 << 10
 )
 
-// runCLI executes a tplater subcommand in a separate process (the goca subprocess
-// pattern): the same binary (s.exe), separate argv elements (without shell
-// interpolation), cwd as working directory, and inherited environment
-// (TPLAITER_HOME and other values propagate automatically because Env is unset).
-// stdin is NOT connected, excluding interaction at the transport layer. The
-// timeout is applied through the context; expiration kills the process.
-func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout time.Duration) (execx.Result, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	return s.runner.Run(ctx, s.exe, argv, execx.Options{Dir: cwd})
+type boundedBuffer struct {
+	b        []byte
+	limit    int
+	overflow bool
+	signal   chan<- struct{}
 }
 
-// toolResult translates a child-process result into an MCP tool result. Failure
-// (a nonzero exit code OR launch failure) yields isError with complete stdout+stderr:
-// the agent must see all diagnostics. Success returns stdout as text (stderr is
-// appended in a separate section when nonempty, because tplater commands write
-// warnings as well as errors to stderr).
+func newBoundedBuffer(limit int, signal chan<- struct{}) *boundedBuffer {
+	return &boundedBuffer{limit: limit, signal: signal}
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if len(b.b)+len(p) > b.limit {
+		n := b.limit - len(b.b)
+		if n > 0 {
+			b.b = append(b.b, p[:n]...)
+		}
+		if !b.overflow {
+			b.overflow = true
+			if b.signal != nil {
+				select {
+				case b.signal <- struct{}{}:
+				default:
+				}
+			}
+		}
+		return len(p), nil
+	}
+	b.b = append(b.b, p...)
+	return len(p), nil
+}
+
+func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout time.Duration) (execx.Result, error) {
+	if s == nil || s.exe == "" {
+		return execx.Result{ExitCode: -1}, errTransportUnavailable
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if !s.installed {
+		if s.runner == nil {
+			return execx.Result{ExitCode: -1}, errTransportUnavailable
+		}
+		return s.runner.Run(ctx, s.exe, argv, execx.Options{Dir: cwd, Env: childEnvironment()})
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return execx.Result{ExitCode: -1}, errTransportUnavailable
+	}
+	s.children.Add(1)
+	s.mu.Unlock()
+	defer s.children.Done()
+	child, err := s.stage.launchPath()
+	if err != nil {
+		return execx.Result{ExitCode: -1}, errTransportUnavailable
+	}
+	cmd := exec.Command(child, argv...)
+	cmd.Dir = cwd
+	cmd.Env = s.childEnv
+	cmd.Stdin = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	overflow := make(chan struct{}, 1)
+	stdout, stderr := newBoundedBuffer(maxToolOutput, overflow), newBoundedBuffer(maxToolStderr, overflow)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Start(); err != nil {
+		return execx.Result{ExitCode: -1}, errTransportUnavailable
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	var waitErr error
+	select {
+	case waitErr = <-done:
+	case <-ctx.Done():
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		waitErr = <-done
+		return execx.Result{ExitCode: -1}, errTransportTimeout
+	case <-overflow:
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		waitErr = <-done
+		return execx.Result{ExitCode: -1}, errOutputLimit
+	}
+	if stdout.overflow || stderr.overflow {
+		return execx.Result{ExitCode: -1}, errOutputLimit
+	}
+	result := execx.Result{Stdout: string(stdout.b), Stderr: string(stderr.b), ExitCode: 0}
+	if waitErr != nil {
+		result.ExitCode = -1
+		if x, ok := waitErr.(*exec.ExitError); ok {
+			result.ExitCode = x.ExitCode()
+		}
+		return result, &execx.ExitError{ExitCode: result.ExitCode}
+	}
+	return result, nil
+}
+
 func toolResult(res execx.Result, runErr error) *mcp.CallToolResult {
 	if failed(res, runErr) {
 		return mcp.NewToolResultError(formatFailure(res, runErr))
 	}
-
 	out := res.Stdout
-	if strings.TrimSpace(res.Stderr) != "" {
-		out += "\n[stderr]\n" + res.Stderr
-	}
 	if strings.TrimSpace(out) == "" {
 		out = "(команда завершилась успешно, вывод пуст)"
 	}
 	return mcp.NewToolResultText(out)
 }
-
-// failed identifies a failed call: a nonzero child exit code OR launch failure
-// (binary not found, and so on; execx returns it without an ExitError wrapper,
-// with ExitCode -1).
-func failed(res execx.Result, runErr error) bool {
-	if res.ExitCode != 0 {
-		return true
-	}
-	var exitErr *execx.ExitError
-	// runErr != nil with ExitCode==0 is unlikely, but be defensive: every nonnil
-	// error except a clean ExitError with code 0 counts as failure.
-	return runErr != nil && !errors.As(runErr, &exitErr)
-}
-
-// formatFailure collects failure diagnostics: exit code, stdout, stderr, and
-// (for launch failure) the error text itself.
+func failed(res execx.Result, runErr error) bool { return res.ExitCode != 0 || runErr != nil }
 func formatFailure(res execx.Result, runErr error) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "команда завершилась с ошибкой (код возврата %d)\n", res.ExitCode)
-
-	var exitErr *execx.ExitError
-	if runErr != nil && !errors.As(runErr, &exitErr) {
-		fmt.Fprintf(&b, "ошибка запуска: %v\n", runErr)
+	switch {
+	case errors.Is(runErr, errTransportTimeout):
+		return "MCP_TIMEOUT"
+	case errors.Is(runErr, errOutputLimit):
+		return "MCP_OUTPUT_LIMIT"
+	case errors.Is(runErr, errTransportUnavailable):
+		return "MCP_UNAVAILABLE"
+	case res.ExitCode == -1:
+		return "MCP_UNAVAILABLE"
+	case res.ExitCode != 0:
+		if code := knownCLIError(res.Stderr); code != "" {
+			return code
+		}
+		return "MCP_CLI_FAILED"
+	default:
+		return "MCP_UNAVAILABLE"
 	}
-	if strings.TrimSpace(res.Stdout) != "" {
-		b.WriteString("\n[stdout]\n")
-		b.WriteString(res.Stdout)
-	}
-	if strings.TrimSpace(res.Stderr) != "" {
-		b.WriteString("\n[stderr]\n")
-		b.WriteString(res.Stderr)
-	}
-	return b.String()
 }
 
-// resolveWorkDir makes a tool working directory absolute and validates it: the
-// path must exist and be a directory. An empty dir yields an empty string (the
-// child inherits server cwd). Absolutization prevents ambiguity of relative paths
-// against the server cwd.
+// Only an entire fixed Cobra diagnostic may become a trust code. In
+// particular, raw child stderr or a substring from a hostile path is never
+// returned to the MCP caller.
+func knownCLIError(stderr string) string {
+	for _, code := range []string{"TRUST_ACTION_UNAVAILABLE", "TRUST_EXECUTION_UNAVAILABLE"} {
+		if stderr == "error: trustload: TRUST_PROVENANCE_UNAVAILABLE\n"+code+"\n" {
+			return code
+		}
+	}
+	for _, code := range []string{
+		"TRUST_ACTION_UNAVAILABLE", "TRUST_ANCHOR_MISSING", "TRUST_CONFIG_INVALID",
+		"TRUST_DOWNGRADE_DENIED", "TRUST_EVIDENCE_MISSING", "TRUST_EVIDENCE_TAMPERED",
+		"TRUST_EXPIRED", "TRUST_PIN_MISMATCH", "TRUST_PROFILE_INVALID",
+		"TRUST_LIFECYCLE_UNAVAILABLE", "TRUST_PROTECTED_UNAVAILABLE", "TRUST_PROVENANCE_UNAVAILABLE",
+		"TRUST_RUNTIME_INVALID", "TRUST_SOURCE_ADAPTER_UNSUPPORTED",
+	} {
+		for _, prefix := range []string{"error: ", "error: trustload: ", "error: bootstrap: ", "error: trustverify: "} {
+			if stderr == prefix+code+"\n" {
+				return code
+			}
+		}
+	}
+	return ""
+}
 func resolveWorkDir(dir string) (string, error) {
 	if dir == "" {
 		return "", nil
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return "", fmt.Errorf("некорректный путь %q: %w", dir, err)
+		return "", errTransportUnavailable
 	}
 	info, err := os.Stat(abs)
-	if err != nil {
-		return "", fmt.Errorf("каталог %q недоступен: %w", abs, err)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("%q не является каталогом", abs)
+	if err != nil || !info.IsDir() {
+		return "", errTransportUnavailable
 	}
 	return abs, nil
 }
-
-// resolveTargetDir makes a creator command's target directory (init-template)
-// absolute: the command creates that directory, so it need not exist, but its
-// parent must exist or there is nowhere to write. An empty dir yields an empty
-// string (the command uses its ./<name> default).
 func resolveTargetDir(dir string) (string, error) {
 	if dir == "" {
 		return "", nil
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return "", fmt.Errorf("некорректный путь %q: %w", dir, err)
+		return "", errTransportUnavailable
 	}
-	parent := filepath.Dir(abs)
-	info, err := os.Stat(parent)
-	if err != nil {
-		return "", fmt.Errorf("родительский каталог %q недоступен: %w", parent, err)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("%q не является каталогом", parent)
+	info, err := os.Stat(filepath.Dir(abs))
+	if err != nil || !info.IsDir() {
+		return "", errTransportUnavailable
 	}
 	return abs, nil
 }
+func capturedChildEnvironment() []string {
+	env := []string{"PATH=/usr/bin:/bin", "LANG=C", "LC_ALL=C", "TERM=dumb", "NO_COLOR=1"}
+	for _, key := range []string{"HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "TPLAITER_HOME", "TMPDIR"} {
+		if v, ok := os.LookupEnv(key); ok && validLocation(v) {
+			env = append(env, key+"="+v)
+		}
+	}
+	return env
+}
+func validLocation(v string) bool {
+	return len([]byte(v)) > 0 && len([]byte(v)) <= 4096 && filepath.IsAbs(v) && filepath.Clean(v) == v && v != "/" && !strings.ContainsAny(v, "\x00\n\r")
+}
+func childEnvironment() []string { return capturedChildEnvironment() }

@@ -29,7 +29,10 @@ type FixedCompositionSelection struct {
 	tool, stdin []byte
 }
 
-type ExecutionMaterial struct{ selection *FixedCompositionSelection }
+type ExecutionMaterial struct {
+	selection *FixedCompositionSelection
+	formatter *FormatterSelection
+}
 
 func ResolveFixedComposition(ctx context.Context, runtime *trustverify.Runtime, resolution *trustverify.VerifiedResolution, operation trustverify.OperationInputs, request trustverify.ExecutionRequest) (*FixedCompositionSelection, error) {
 	if ctx == nil || ctx.Err() != nil || runtime == nil || resolution == nil || request.VerifyRequestSHA256() != nil || !resolution.ValidFor(runtime, runtime.Binding()) {
@@ -117,6 +120,9 @@ func BindExecutionMaterial(ctx context.Context, runtime *trustverify.Runtime, re
 	return &ExecutionMaterial{selection: s}, nil
 }
 func (m *ExecutionMaterial) StagedFor(ctx context.Context, runtime *trustverify.Runtime, request trustverify.ExecutionRequest) (trustverify.StagedMaterial, error) {
+	if m != nil && m.formatter != nil {
+		return m.stagedFormatter(ctx, runtime, request)
+	}
 	if ctx == nil || ctx.Err() != nil || m == nil || m.selection == nil || m.selection.runtime != runtime || !reflect.DeepEqual(m.selection.request, request) {
 		return trustverify.StagedMaterial{}, ErrExecutionMaterialUnavailable
 	}
