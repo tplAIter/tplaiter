@@ -6,7 +6,7 @@
 
 <p align="center">Composable template blocks and validation for AI-assisted product development.</p>
 
-<p align="center"><strong>Status: private development preview · not a release</strong></p>
+<p align="center"><strong>Status: development preview · not a release</strong></p>
 
 <p align="center"><a href="https://github.com/tplAIter/template-base">base template</a> · <a href="https://github.com/tplAIter/template-go">Go template</a> · <a href="https://github.com/tplAIter/template-rust">Rust template</a> · <a href="https://github.com/tplAIter/docs">docs</a> · <a href="./docs/STATUS.md">status</a> · <a href="./docs/template-validation.md">template validation</a> · <a href="./docs/graph-explorer.md">graph explorer</a></p>
 
@@ -49,7 +49,7 @@ Published template repositories are intended to use the shared checker, then run
 
 ## Checkpoint status
 
-This is a private development preview. It has no published release, compatibility promise, production support commitment, or production-installed trust anchors.
+This is a development preview. It has no published release, compatibility promise, production support commitment, or production-installed trust anchors.
 
 The ordinary live `new` and `update` paths are unavailable until their fixed adapters are complete. A stock CLI stops those paths with `TRUST_ANCHOR_MISSING`; registering an anchor does not make the live lifecycle available and still leads to `TRUST_LIFECYCLE_UNAVAILABLE`. Fixed simulated registration tests cover dry-run and maintenance behavior, but they do not establish production provisioning or an end-to-end lifecycle.
 
