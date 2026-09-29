@@ -3,12 +3,12 @@ kind: Template
 metadata:
   name: alpha
   version: 0.1.0
-  description: "Крошечный шаблон alpha для мульти-репо тестов."
+  description: "Tiny template alpha for multi-repo tests."
 engine:
   type: gotemplate
   root: files
 settings:
   - group: greeting
-    title: "Приветствие"
+    title: "Greeting"
     type: toggle
     default: true

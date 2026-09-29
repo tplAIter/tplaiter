@@ -136,7 +136,7 @@ func Lookup(tpl *manifest.Template, kind string) (*manifest.Generator, error) {
 			return &tpl.Generators[i], nil
 		}
 	}
-	return nil, fmt.Errorf("gen: неизвестный вид %q (доступны: %s)", kind, strings.Join(kindNames(tpl), ", "))
+	return nil, fmt.Errorf("gen: unknown kind %q (available: %s)", kind, strings.Join(kindNames(tpl), ", "))
 }
 
 // kindNames returns the sorted manifest generator-kind list.
@@ -209,7 +209,7 @@ func suggestSet(when []string) string {
 	if len(parts) == 1 {
 		return parts[0]
 	}
-	return parts[0] + " (или: " + strings.Join(parts[1:], " | ") + ")"
+	return parts[0] + " (or: " + strings.Join(parts[1:], " | ") + ")"
 }
 
 // Generate performs one kind scaffolding with rawName (SPEC-01 §6).
@@ -232,11 +232,11 @@ func Generate(ctx context.Context, tpl *manifest.Template, kind, rawName string,
 
 	available, gateErr := evalGate(g.When, opts.Values)
 	if gateErr != nil {
-		return nil, fmt.Errorf("gen %s: вычисление when: %w", kind, gateErr)
+		return nil, fmt.Errorf("gen %s: evaluating when: %w", kind, gateErr)
 	}
 	if !available {
 		return nil, fmt.Errorf(
-			"gen %s недоступен при текущих настройках (%s) — включи настройку: tplater settings set %s",
+			"gen %s is unavailable with current settings (%s) — enable the setting: tplater settings set %s",
 			kind, gateReason(g.When, nil), suggestSet(g.When),
 		)
 	}
@@ -255,7 +255,7 @@ func Generate(ctx context.Context, tpl *manifest.Template, kind, rawName string,
 		return nil, fmt.Errorf("gen %s: %w", kind, err)
 	}
 	if len(specs) == 0 {
-		return nil, fmt.Errorf("gen %s: при текущих настройках ни один таргет не подлежит генерации", kind)
+		return nil, fmt.Errorf("gen %s: no targets are available for generation with current settings", kind)
 	}
 
 	// The goose migration number (when a target has numbered: goose) is computed
@@ -381,16 +381,16 @@ func planTargetsWithReserved(opts Options, kind, rawName string, gctx Context, s
 			return nil, fmt.Errorf("gen %s: targets[%d].target: %w", kind, i, err)
 		}
 		if seen[rel] {
-			return nil, fmt.Errorf("gen %s: целевой путь %s встречается дважды", kind, rel)
+			return nil, fmt.Errorf("gen %s: target path %s appears twice", kind, rel)
 		}
 		seen[rel] = true
 		if _, ok := reserved[rel]; ok {
-			return nil, fmt.Errorf("gen %s %q: файл %s уже запланирован другой операцией batch", kind, rawName, rel)
+			return nil, fmt.Errorf("gen %s %q: file %s is already planned by another batch operation", kind, rawName, rel)
 		}
 
 		abs := filepath.Join(opts.ProjectRoot, filepath.FromSlash(rel))
 		if _, statErr := os.Stat(abs); statErr == nil {
-			return nil, fmt.Errorf("gen %s %q: файл %s уже существует (уже сгенерировано)", kind, rawName, rel)
+			return nil, fmt.Errorf("gen %s %q: file %s already exists (already generated)", kind, rawName, rel)
 		}
 		content, err := renderTemplateFile(filepath.Join(opts.GeneratorsDir, filepath.FromSlash(t.Snippet)), gctx)
 		if err != nil {
@@ -445,7 +445,7 @@ func resolveMigrationSeqWithReserved(gctx *Context, root string, specs []manifes
 			}
 			current, convErr := strconv.Atoi(seq)
 			if convErr != nil {
-				return fmt.Errorf("некорректный номер миграции %q: %w", seq, convErr)
+				return fmt.Errorf("invalid migration number %q: %w", seq, convErr)
 			}
 			if maxReserved >= current {
 				seq = fmt.Sprintf("%05d", maxReserved+1)
@@ -462,7 +462,7 @@ func resolveMigrationSeqWithReserved(gctx *Context, root string, specs []manifes
 			}
 			n, convErr := strconv.Atoi(seq)
 			if convErr != nil {
-				return fmt.Errorf("некорректный номер миграции %q: %w", seq, convErr)
+				return fmt.Errorf("invalid migration number %q: %w", seq, convErr)
 			}
 			seq = fmt.Sprintf("%05d", n+1)
 		}
@@ -483,7 +483,7 @@ func nextMigrationSeq(root, dirRel string) (string, error) {
 		if os.IsNotExist(err) {
 			return "00001", nil
 		}
-		return "", fmt.Errorf("чтение каталога миграций %s: %w", dirRel, err)
+		return "", fmt.Errorf("reading migration directory %s: %w", dirRel, err)
 	}
 	maxSeq := 0
 	for _, e := range entries {
@@ -540,11 +540,11 @@ func prepareAnchorsWithState(opts Options, kind string, gctx Context, specs []ma
 			var readErr error
 			orig, readErr = os.ReadFile(anchorAbs)
 			if readErr != nil {
-				return nil, fmt.Errorf("gen %s: чтение якорного файла %s: %w", kind, a.File, readErr)
+				return nil, fmt.Errorf("gen %s: reading anchor file %s: %w", kind, a.File, readErr)
 			}
 		}
 		if strings.Contains(string(orig), marker) {
-			return nil, fmt.Errorf("gen %s %q: маркер %q уже присутствует в %s (уже сгенерировано)",
+			return nil, fmt.Errorf("gen %s %q: marker %q is already present in %s (already generated)",
 				kind, gctx.Name.Raw, marker, a.File)
 		}
 
@@ -585,7 +585,7 @@ func anchorAbsPaths(anchors []pendingAnchor) []string {
 // port: the name becomes part of Marker and usually part of snippet Go code).
 func newContext(rawName string, values settings.Values, project manifest.ProjectInfo) (Context, error) {
 	if strings.TrimSpace(rawName) == "" {
-		return Context{}, errors.New("имя скаффолда не задано")
+		return Context{}, errors.New("scaffold name not provided")
 	}
 	n := Name{
 		Raw:    rawName,
@@ -595,7 +595,7 @@ func newContext(rawName string, values settings.Values, project manifest.Project
 		Kebab:  engine.Kebab(rawName),
 	}
 	if n.Pascal == "" || !identRe.MatchString(n.Snake) {
-		return Context{}, fmt.Errorf("недопустимое имя %q (производный snake %q должен соответствовать %s)",
+		return Context{}, fmt.Errorf("invalid name %q (derived snake %q must match %s)",
 			rawName, n.Snake, identRe.String())
 	}
 	return Context{

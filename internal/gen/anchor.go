@@ -21,5 +21,5 @@ func insertBeforeAnchor(content, anchor, block string) (string, error) {
 		out = append(out, lines[i:]...)
 		return strings.Join(out, "\n"), nil
 	}
-	return "", fmt.Errorf("gen: якорь %q не найден", anchor)
+	return "", fmt.Errorf("gen: anchor %q not found", anchor)
 }

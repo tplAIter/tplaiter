@@ -286,7 +286,7 @@ func walkExtras(workDir string, refFiles map[string][]byte) ([]string, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("stats: обход рабочего дерева: %w", err)
+		return nil, fmt.Errorf("stats: walk work tree: %w", err)
 	}
 	sort.Strings(extras)
 	return extras, nil
@@ -300,7 +300,7 @@ func readWork(workDir, rel string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("stats: чтение %s: %w", rel, err)
+		return nil, false, fmt.Errorf("stats: read %s: %w", rel, err)
 	}
 	return data, true, nil
 }

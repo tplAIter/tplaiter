@@ -41,22 +41,22 @@ func evalIfSegment(seg string, values settings.Values) (active, ok bool, err err
 	if idx := strings.Index(inner, manifest.OpEq); idx >= 0 {
 		group, value := inner[:idx], inner[idx+1:]
 		if group == "" || value == "" {
-			return false, true, fmt.Errorf("некорректный условный сегмент пути %q", seg)
+			return false, true, fmt.Errorf("invalid conditional path segment %q", seg)
 		}
 		cond, err := manifest.ParseCondition(group + manifest.OpEq + value)
 		if err != nil {
-			return false, true, fmt.Errorf("условный сегмент пути %q: %w", seg, err)
+			return false, true, fmt.Errorf("conditional path segment %q: %w", seg, err)
 		}
 		active, err = settings.Eval(cond, values)
 		if err != nil {
-			return false, true, fmt.Errorf("условный сегмент пути %q: %w", seg, err)
+			return false, true, fmt.Errorf("conditional path segment %q: %w", seg, err)
 		}
 		return active, true, nil
 	}
 
 	raw, exists := values[inner]
 	if !exists {
-		return false, true, fmt.Errorf("условный сегмент пути %q ссылается на неизвестную группу %q", seg, inner)
+		return false, true, fmt.Errorf("conditional path segment %q references unknown group %q", seg, inner)
 	}
 	return truthy(raw), true, nil
 }

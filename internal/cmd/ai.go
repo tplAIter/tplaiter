@@ -28,10 +28,10 @@ func init() {
 func newAICmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "ai",
-		Short: "AI-конфигурация проекта (CLAUDE.md, .cursor/**, AGENTS.md, GEMINI.md)",
-		Long: "Работает с каталогом-копией ai-config, который `tplater new` кладёт в проект " +
-			"как .tplaiter/ai-config (). Модули гейтятся условием `when` (§3.2) на " +
-			"текущих настройках проекта — модуль без when активен всегда.",
+		Short: "AI configuration for the project (CLAUDE.md, .cursor/**, AGENTS.md, GEMINI.md)",
+		Long: "Works with the ai-config directory copy that `tplater new` places in the project " +
+			"as .tplaiter/ai-config. Modules are gated by a `when` condition (§3.2) based on " +
+			"current project settings — a module without when is always active.",
 	}
 	c.AddCommand(newAIGenCmd(), newAIListCmd(), newAIValidateCmd())
 	return c
@@ -50,7 +50,7 @@ func loadAIContext() (tpl *manifest.Template, values settings.Values, root strin
 	dir := filepath.Join(root, aiconfig.AIConfigRelPath)
 	if _, statErr := os.Stat(dir); statErr != nil {
 		return nil, nil, "", nil, fmt.Errorf(
-			"ai: каталог %s не найден — шаблон не подключает aiConfig либо проект создан без него", aiconfig.AIConfigRelPath,
+			"ai: directory %s not found — template does not include aiConfig or project was created without it", aiconfig.AIConfigRelPath,
 		)
 	}
 
@@ -70,7 +70,7 @@ func newAIGenCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunLegacyAction),
 
 		Use:   "gen",
-		Short: "Сгенерировать AI-артефакты в корень проекта",
+		Short: "Generate AI artifacts in project root",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, values, root, src, err := loadAIContext()
@@ -90,7 +90,7 @@ func newAIGenCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringSliceVar(&aiTargetsFlag, "targets", nil,
-		"ограничить генерацию списком таргетов (по умолчанию — все config.targets источника)")
+		"limit generation to list of targets (default — all config.targets from source)")
 	return c
 }
 
@@ -98,10 +98,10 @@ func newAIGenCmd() *cobra.Command {
 func printAIResult(cmd *cobra.Command, res *aiconfig.Result) error {
 	out := cmd.OutOrStdout()
 	for _, f := range res.Written {
-		fmt.Fprintf(out, "записан %s\n", f)
+		fmt.Fprintf(out, "written %s\n", f)
 	}
 	for _, f := range res.SkippedProtected {
-		fmt.Fprintf(out, "пропущен %s (проектное дополнение 99-*)\n", f)
+		fmt.Fprintf(out, "skipped %s (project extension 99-*)\n", f)
 	}
 	return nil
 }
@@ -110,7 +110,7 @@ func printAIResult(cmd *cobra.Command, res *aiconfig.Result) error {
 func newAIListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "Список модулей ai-config (id/title/activation/when/available)",
+		Short: "List of ai-config modules (id/title/activation/when/available)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, values, _, src, err := loadAIContext()
@@ -126,7 +126,7 @@ func newAIListCmd() *cobra.Command {
 func printAIList(cmd *cobra.Command, src *aiconfig.Source, values settings.Values) error {
 	out := cmd.OutOrStdout()
 	if len(src.Modules) == 0 {
-		fmt.Fprintln(out, "источник ai-config не объявляет модулей")
+		fmt.Fprintln(out, "ai-config source does not declare modules")
 		return nil
 	}
 
@@ -152,7 +152,7 @@ func printAIList(cmd *cobra.Command, src *aiconfig.Source, values settings.Value
 		case activeIDs[m.ID]:
 			when = ui.StatusIcon(pal, ui.StatusOK) + " " + when
 		default:
-			when = ui.StatusIcon(pal, ui.StatusWarn) + " " + pal.Muted(when+" — недоступно при текущих настройках")
+			when = ui.StatusIcon(pal, ui.StatusWarn) + " " + pal.Muted(when+" — unavailable with current settings")
 		}
 		table.AddRow(m.ID, m.Title, m.Activation, when)
 	}
@@ -169,7 +169,7 @@ func printAIList(cmd *cobra.Command, src *aiconfig.Source, values settings.Value
 func newAIValidateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "validate",
-		Short: "Проверить источник ai-config против манифеста шаблона проекта",
+		Short: "Validate ai-config source against project template manifest",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			tpl, _, _, src, err := loadAIContext()
@@ -179,7 +179,7 @@ func newAIValidateCmd() *cobra.Command {
 			if err := src.Validate(tpl); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "ai-config валиден")
+			fmt.Fprintln(cmd.OutOrStdout(), "ai-config is valid")
 			return nil
 		},
 	}

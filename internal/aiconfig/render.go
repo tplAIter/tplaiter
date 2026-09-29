@@ -99,7 +99,7 @@ func (s *Source) Render(opts RenderOptions) (*Result, error) {
 	res := &Result{}
 	for _, target := range targets {
 		if !knownTargets[target] {
-			return nil, fmt.Errorf("aiconfig: неизвестный target %q", target)
+			return nil, fmt.Errorf("aiconfig: unknown target %q", target)
 		}
 		if err := s.renderTarget(target, tmpl, agg, opts, res); err != nil {
 			return nil, err
@@ -123,7 +123,7 @@ func (s *Source) renderTarget(target string, tmpl *template.Template, agg aggreg
 	case TargetGemini:
 		return renderAggregate(tmpl, tmplGemini, "GEMINI.md", agg, opts, res)
 	default:
-		return fmt.Errorf("aiconfig: неизвестный target %q", target)
+		return fmt.Errorf("aiconfig: unknown target %q", target)
 	}
 }
 
@@ -155,7 +155,7 @@ func renderAggregate(tmpl *template.Template, name, rel string, agg aggregateCtx
 func renderTemplate(tmpl *template.Template, name, rel string, data any, opts RenderOptions, res *Result) error {
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
-		return fmt.Errorf("aiconfig: рендер %s: %w", name, err)
+		return fmt.Errorf("aiconfig: rendering %s: %w", name, err)
 	}
 	return writeFile(rel, buf.Bytes(), opts, res)
 }
@@ -168,10 +168,10 @@ func writeFile(rel string, content []byte, opts RenderOptions, res *Result) erro
 	}
 	abs := filepath.Join(opts.TargetRoot, rel)
 	if err := os.MkdirAll(filepath.Dir(abs), 0o750); err != nil {
-		return fmt.Errorf("aiconfig: mkdir для %s: %w", rel, err)
+		return fmt.Errorf("aiconfig: mkdir for %s: %w", rel, err)
 	}
 	if err := os.WriteFile(abs, content, 0o600); err != nil {
-		return fmt.Errorf("aiconfig: запись %s: %w", rel, err)
+		return fmt.Errorf("aiconfig: writing %s: %w", rel, err)
 	}
 	res.Written = append(res.Written, rel)
 	return nil
@@ -189,7 +189,7 @@ func (s *Source) parseTargets() (*template.Template, error) {
 	pattern := filepath.Join(s.Dir, "targets", "*.tmpl")
 	tmpl, err := template.New("targets").Funcs(funcMap).ParseGlob(pattern)
 	if err != nil {
-		return nil, fmt.Errorf("aiconfig: разбор targets (%s): %w", pattern, err)
+		return nil, fmt.Errorf("aiconfig: parsing targets (%s): %w", pattern, err)
 	}
 	return tmpl, nil
 }

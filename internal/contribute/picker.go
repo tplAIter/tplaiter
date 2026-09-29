@@ -41,8 +41,8 @@ func (p HuhPicker) Pick(candidates []string) ([]string, error) {
 
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewMultiSelect[string]().
-			Title("Файлы для вклада в шаблон").
-			Description("Отмеченные файлы будут де-параметризованы и предложены в MR").
+			Title("Files to contribute to template").
+			Description("Selected files will be de-parameterized and proposed in MR").
 			Options(opts...).
 			Value(&selected),
 	))

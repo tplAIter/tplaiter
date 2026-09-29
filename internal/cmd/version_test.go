@@ -126,7 +126,7 @@ func TestNewVersionCmd_PrintsVersionCommitChannelAndConfig(t *testing.T) {
 	}
 
 	got := out.String()
-	for _, want := range []string{"v1.2.3", "commit:", "канал установки:", "конфиг:", home} {
+	for _, want := range []string{"v1.2.3", "commit:", "installation channel:", "config:", home} {
 		if !strings.Contains(got, want) {
 			t.Errorf("newVersionCmd() output = %q, want it to contain %q", got, want)
 		}

@@ -28,13 +28,13 @@ func newMCPServerCmd() *cobra.Command {
 
 	c := &cobra.Command{
 		Use:   "mcp-server",
-		Short: "MCP-сервер: команды tplaiter как инструменты для AI-агентов (stdio JSON-RPC)",
-		Long: "Запускает MCP-сервер поверх CLI tplaiter (заимствование из goca, " +
+		Short: "MCP server: tplaiter commands as tools for AI agents (stdio JSON-RPC)",
+		Long: "Runs an MCP server on top of the tplaiter CLI (pattern borrowed from goca, " +
 			"docs/research/clean-codegen.md §1): ~20 tools (repo/template/project/gen/...) " +
-			"доступны AI-агентам по протоколу MCP через stdio. Каждый tool исполняет tplaiter " +
-			"отдельным процессом с раздельными аргументами (без shell-интерполяции).\n\n" +
-			"Логи сервера идут в stderr (stdout занят протоколом). " +
-			"`--print-config claude|cursor|vscode` печатает готовый сниппет конфигурации клиента.",
+			"are available to AI agents via the MCP protocol over stdio. Each tool executes tplaiter " +
+			"as a separate process with separate arguments (no shell interpolation).\n\n" +
+			"Server logs go to stderr (stdout is occupied by the protocol). " +
+			"`--print-config claude|cursor|vscode` prints a ready configuration snippet for the client.",
 		Args: cobra.NoArgs,
 		// PersistentPreRunE overrides rootPreRun (first-run greeting, suggest check,
 		// and registry sync): all write to stdout and/or use the network, which is
@@ -79,8 +79,8 @@ func newMCPServerCmd() *cobra.Command {
 	}
 
 	c.Flags().StringVar(&printConfig, "print-config", "",
-		"напечатать JSON-сниппет конфигурации MCP-клиента ("+strings.Join(mcpsrv.SupportedPrintConfigClients(), "|")+") и выйти")
+		"print JSON configuration snippet for MCP client ("+strings.Join(mcpsrv.SupportedPrintConfigClients(), "|")+") and exit")
 	c.Flags().BoolVar(&direct, "direct", false,
-		"не наследовать HTTP(S)_PROXY/ALL_PROXY/NO_PROXY в MCP tools и их дочерние процессы")
+		"do not inherit HTTP(S)_PROXY/ALL_PROXY/NO_PROXY in MCP tools and their child processes")
 	return c
 }

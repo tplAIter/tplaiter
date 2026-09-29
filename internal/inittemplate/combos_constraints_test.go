@@ -18,16 +18,16 @@ func TestCombosSatisfyConstraints(t *testing.T) {
 			{Group: "idempotency", Type: manifest.TypeToggle, Default: false},
 		},
 		Constraints: []manifest.Constraint{
-			{If: "idempotency=true", Require: "database=postgres", Message: "нужен postgres"},
+			{If: "idempotency=true", Require: "database=postgres", Message: "postgres is required"},
 		},
 	}
 	for _, c := range Combos(tpl) {
 		if c.Name == "all-on" {
 			if got, ok := c.Explicit["database"].(string); !ok || got != "postgres" {
-				t.Fatalf("all-on не довключил database=postgres: %#v", c.Explicit)
+				t.Fatalf("all-on did not auto-enable database=postgres: %#v", c.Explicit)
 			}
 			return
 		}
 	}
-	t.Fatal("комбо all-on не найдено")
+	t.Fatal("combo all-on not found")
 }

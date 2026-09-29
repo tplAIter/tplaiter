@@ -38,10 +38,10 @@ func runInitLint(t *testing.T, extraInit ...string) (string, error) {
 func TestInitTemplateCmd_GeneratesAndLintsGreen(t *testing.T) {
 	out, err := runInitLint(t)
 	if err != nil {
-		t.Fatalf("lint-template должен пройти, получено: %v\n%s", err, out)
+		t.Fatalf("lint-template must pass, got: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "все комбинации зелёные") {
-		t.Errorf("ожидался зелёный вывод lint, получено:\n%s", out)
+	if !strings.Contains(out, "all combinations are green") {
+		t.Errorf("expected green lint output, got:\n%s", out)
 	}
 }
 
@@ -66,10 +66,10 @@ func TestInitTemplateCmd_BootstrapUsesTplaiter(t *testing.T) {
 func TestInitTemplateCmd_MultiGeneratesAndLintsGreen(t *testing.T) {
 	out, err := runInitLint(t, "--multi")
 	if err != nil {
-		t.Fatalf("multi lint-template должен пройти: %v\n%s", err, out)
+		t.Fatalf("multi lint-template must pass: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "все комбинации зелёные") {
-		t.Errorf("ожидался зелёный вывод lint (multi):\n%s", out)
+	if !strings.Contains(out, "all combinations are green") {
+		t.Errorf("expected green lint output (multi):\n%s", out)
 	}
 }
 
@@ -96,10 +96,10 @@ func TestLintTemplateCmd_BrokenExitsNonZero(t *testing.T) {
 	lintCmd.SetArgs([]string{"--path", dir})
 	err := lintCmd.Execute()
 	if err == nil {
-		t.Fatal("сломанный шаблон должен давать ошибку (exit != 0)")
+		t.Fatal("a broken template must fail (exit != 0)")
 	}
 	var exit *ExitError
 	if !errors.As(err, &exit) || exit.Code != 1 {
-		t.Errorf("ожидался ExitError{Code:1}, получено %T: %v", err, err)
+		t.Errorf("expected ExitError{Code:1}, got %T: %v", err, err)
 	}
 }

@@ -12,12 +12,12 @@ func genWithParams(params ...manifest.Param) *manifest.Generator {
 }
 
 func TestResolveParams_RequiredMissing(t *testing.T) {
-	g := genWithParams(manifest.Param{Name: "fields", Type: manifest.ParamTypeFields, Required: true, Description: "поля сущности"})
+	g := genWithParams(manifest.Param{Name: "fields", Type: manifest.ParamTypeFields, Required: true, Description: "entity fields"})
 	_, _, err := ResolveParams(g, map[string]string{})
-	if err == nil || !strings.Contains(err.Error(), "--fields обязателен") {
+	if err == nil || !strings.Contains(err.Error(), "--fields is required") {
 		t.Fatalf("expected required error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "поля сущности") {
+	if !strings.Contains(err.Error(), "entity fields") {
 		t.Errorf("required error should include description: %v", err)
 	}
 }
@@ -92,7 +92,7 @@ func TestResolveParams_PatternRejectsProvidedValue(t *testing.T) {
 	for _, raw := range []string{"ride events", `rides; DROP TABLE rides`, `\"rides\"`, "rides--comment"} {
 		t.Run(raw, func(t *testing.T) {
 			_, _, err := ResolveParams(g, map[string]string{"table": raw})
-			if err == nil || !strings.Contains(err.Error(), "не соответствует pattern") {
+			if err == nil || !strings.Contains(err.Error(), "does not match pattern") {
 				t.Fatalf("ResolveParams(%q): expected pattern rejection, got %v", raw, err)
 			}
 		})
@@ -111,7 +111,7 @@ func TestResolveParams_PatternRejectsInvalidDefault(t *testing.T) {
 		Name: "port", Type: manifest.ParamTypeInt, Default: 0, Pattern: `^[1-9][0-9]*$`,
 	})
 	_, _, err := ResolveParams(g, nil)
-	if err == nil || !strings.Contains(err.Error(), "(default)") || !strings.Contains(err.Error(), "не соответствует pattern") {
+	if err == nil || !strings.Contains(err.Error(), "(default)") || !strings.Contains(err.Error(), "does not match pattern") {
 		t.Fatalf("invalid patterned default must fail, got %v", err)
 	}
 }

@@ -33,12 +33,12 @@ func WithLock(home string, fn func() error) error {
 
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, filePerm)
 	if err != nil {
-		return fmt.Errorf("state: открытие лок-файла %s: %w", path, err)
+		return fmt.Errorf("state: opening lock file %s: %w", path, err)
 	}
 	defer func() { _ = f.Close() }()
 
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		return fmt.Errorf("state: захват лока %s: %w", path, err)
+		return fmt.Errorf("state: acquiring lock %s: %w", path, err)
 	}
 	defer func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }()
 

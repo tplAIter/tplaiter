@@ -30,7 +30,7 @@ func TestValidateGenBatchParams(t *testing.T) {
 		t.Fatalf("known param: %v", err)
 	}
 	err := validateGenBatchParams(declared, map[string]string{"unknown": "x"})
-	if err == nil || !strings.Contains(err.Error(), "неизвестный параметр --unknown") {
+	if err == nil || !strings.Contains(err.Error(), "unknown parameter --unknown") {
 		t.Fatalf("unknown param: got %v", err)
 	}
 }
@@ -41,10 +41,10 @@ func TestRunGen_ArgValidation(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"no_args", nil, "требует аргументы"},
-		{"one_arg", []string{"crud"}, "требует аргументы"},
-		{"kind_is_flag", []string{"--fields", "x"}, "ожидается <kind>"},
-		{"name_is_flag", []string{"crud", "--fields"}, "ожидается <name>"},
+		{"no_args", nil, "requires arguments"},
+		{"one_arg", []string{"crud"}, "requires arguments"},
+		{"kind_is_flag", []string{"--fields", "x"}, "expected <kind>"},
+		{"name_is_flag", []string{"crud", "--fields"}, "expected <name>"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -73,10 +73,10 @@ func TestGenBatch_ValidatesOperationsBeforeProjectLookup(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"missing", nil, "обязателен --operations"},
-		{"invalid_json", []string{"--operations", "["}, "разбор --operations JSON"},
-		{"empty", []string{"--operations", "[]"}, "список операций пуст"},
-		{"missing_kind", []string{"--operations", `[{"name":"Ride"}]`}, "требует kind и name"},
+		{"missing", nil, "--operations with JSON array of operations is required"},
+		{"invalid_json", []string{"--operations", "["}, "parsing --operations JSON"},
+		{"empty", []string{"--operations", "[]"}, "operation list is empty"},
+		{"missing_kind", []string{"--operations", `[{"name":"Ride"}]`}, "requires kind and name"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

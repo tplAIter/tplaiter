@@ -95,7 +95,7 @@ func copyAIConfig(src fs.FS, target string, tpl *manifest.Template) error {
 	}
 	dst := filepath.Join(target, aiconfig.AIConfigRelPath)
 	if err := copyFSTree(src, aiPath, dst, true); err != nil {
-		return fmt.Errorf("resources: копирование aiConfig.path %q: %w", tpl.AIConfig.Path, err)
+		return fmt.Errorf("resources: copying aiConfig.path %q: %w", tpl.AIConfig.Path, err)
 	}
 	return nil
 }
@@ -112,7 +112,7 @@ func copyRootsPreserving(src fs.FS, refs []string, dst, what string) error {
 		}
 		seen[root] = true
 		if err := copyFSTree(src, root, dst, false); err != nil {
-			return fmt.Errorf("resources: копирование ресурса %s (%q): %w", what, root, err)
+			return fmt.Errorf("resources: copying resource %s (%q): %w", what, root, err)
 		}
 	}
 	return nil
@@ -166,7 +166,7 @@ func copyFSTree(src fs.FS, srcRel, dst string, flatten bool) error {
 		}
 		data, rerr := fs.ReadFile(src, p)
 		if rerr != nil {
-			return fmt.Errorf("чтение %s: %w", p, rerr)
+			return fmt.Errorf("reading %s: %w", p, rerr)
 		}
 		if mkErr := os.MkdirAll(filepath.Dir(outPath), 0o755); mkErr != nil {
 			return mkErr
@@ -176,7 +176,7 @@ func copyFSTree(src fs.FS, srcRel, dst string, flatten bool) error {
 			mode = info.Mode().Perm()
 		}
 		if werr := os.WriteFile(outPath, data, mode); werr != nil {
-			return fmt.Errorf("запись %s: %w", outPath, werr)
+			return fmt.Errorf("writing %s: %w", outPath, werr)
 		}
 		return nil
 	})

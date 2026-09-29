@@ -27,7 +27,7 @@ func TestMiscCommandsExitZero(t *testing.T) {
 			home := newHome(t)
 			res := mustRun(t, home, "", tc.args...)
 			if res.Stdout == "" && res.Stderr == "" {
-				t.Errorf("tplater %v: пустой вывод и на stdout, и на stderr", tc.args)
+				t.Errorf("tplater %v: empty output on both stdout and stderr", tc.args)
 			}
 		})
 	}

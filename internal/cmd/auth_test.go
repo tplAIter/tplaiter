@@ -83,7 +83,7 @@ func TestAuthRemove(t *testing.T) {
 	if err != nil {
 		t.Fatalf("auth remove error = %v", err)
 	}
-	if !strings.Contains(out, "удалён") {
+	if !strings.Contains(out, "Token deleted") {
 		t.Errorf("remove output = %q", out)
 	}
 

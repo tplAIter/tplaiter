@@ -17,7 +17,7 @@ type UnknownGroupError struct {
 }
 
 func (e *UnknownGroupError) Error() string {
-	return fmt.Sprintf("условие ссылается на неизвестную группу %q", e.Group)
+	return fmt.Sprintf("condition refers to unknown group %q", e.Group)
 }
 
 // Eval evaluates a §3.2 condition on a value set: a conjunction of all atoms.

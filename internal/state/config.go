@@ -84,7 +84,7 @@ func LoadConfig(home string) (Config, error) {
 func SaveConfig(home string, cfg Config) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
-		return fmt.Errorf("state: маршализация config.yaml: %w", err)
+		return fmt.Errorf("state: marshaling config.yaml: %w", err)
 	}
 	return writeFileAtomic(configPath(home), data)
 }
@@ -92,7 +92,7 @@ func SaveConfig(home string, cfg Config) error {
 func decodeConfig(data []byte) (Config, error) {
 	version, err := peekVersion(data)
 	if err != nil {
-		return Config{}, fmt.Errorf("state: разбор config.yaml: %w", err)
+		return Config{}, fmt.Errorf("state: parsing config.yaml: %w", err)
 	}
 
 	migrated, err := checkAndMigrate(kindConfig, data, version, ConfigVersion)
@@ -102,7 +102,7 @@ func decodeConfig(data []byte) (Config, error) {
 
 	var cfg Config
 	if err := yaml.Unmarshal(migrated, &cfg); err != nil {
-		return Config{}, fmt.Errorf("state: разбор config.yaml: %w", err)
+		return Config{}, fmt.Errorf("state: parsing config.yaml: %w", err)
 	}
 	return cfg, nil
 }

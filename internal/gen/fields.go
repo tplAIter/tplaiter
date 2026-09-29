@@ -63,13 +63,13 @@ func ParseFields(spec string) ([]Field, error) {
 	for _, raw := range parts {
 		item := strings.TrimSpace(raw)
 		if item == "" {
-			return nil, fmt.Errorf("поля %q: пустой элемент (ожидается name:type)", spec)
+			return nil, fmt.Errorf("fields %q: empty element (expected name:type)", spec)
 		}
 		name, typ, ok := strings.Cut(item, ":")
 		name = strings.TrimSpace(name)
 		typ = strings.TrimSpace(typ)
 		if !ok || name == "" || typ == "" {
-			return nil, fmt.Errorf("поле %q: ожидается name:type", item)
+			return nil, fmt.Errorf("field %q: expected name:type", item)
 		}
 
 		n := Name{
@@ -80,17 +80,17 @@ func ParseFields(spec string) ([]Field, error) {
 			Kebab:  engine.Kebab(name),
 		}
 		if n.Pascal == "" || !identRe.MatchString(n.Snake) {
-			return nil, fmt.Errorf("поле %q: недопустимое имя %q (производный snake %q должен соответствовать %s)",
+			return nil, fmt.Errorf("field %q: invalid name %q (derived snake %q must match %s)",
 				item, name, n.Snake, identRe.String())
 		}
 		if seen[n.Snake] {
-			return nil, fmt.Errorf("поле %q: дублирующееся имя %q", spec, name)
+			return nil, fmt.Errorf("field %q: duplicate name %q", spec, name)
 		}
 		seen[n.Snake] = true
 
 		goType, sqlType, zero, isSlice, typErr := parseFieldType(typ)
 		if typErr != nil {
-			return nil, fmt.Errorf("поле %q: %w", item, typErr)
+			return nil, fmt.Errorf("field %q: %w", item, typErr)
 		}
 		out = append(out, Field{
 			NameRaw: name,
@@ -110,13 +110,13 @@ func parseFieldType(typ string) (goType, sqlType, zero string, isSlice bool, err
 	if base, ok := strings.CutPrefix(typ, "[]"); ok {
 		info, known := fieldTypes[base]
 		if !known {
-			return "", "", "", false, fmt.Errorf("неизвестный тип элемента слайса %q (допустимы: %s)", base, allowedTypesList())
+			return "", "", "", false, fmt.Errorf("unknown slice element type %q (allowed: %s)", base, allowedTypesList())
 		}
 		return "[]" + info.goType, "jsonb", "nil", true, nil
 	}
 	info, ok := fieldTypes[typ]
 	if !ok {
-		return "", "", "", false, fmt.Errorf("неизвестный тип %q (допустимы: %s)", typ, allowedTypesList())
+		return "", "", "", false, fmt.Errorf("unknown type %q (allowed: %s)", typ, allowedTypesList())
 	}
 	return info.goType, info.sqlType, info.zero, false, nil
 }

@@ -22,7 +22,7 @@ var gitExec = execx.Exec{}
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := gitExec.LookPath("git"); err != nil {
-		t.Skip("git не найден в PATH — интеграционный тест пропущен")
+		t.Skip("git not found in PATH — integration test skipped")
 	}
 }
 
@@ -132,7 +132,7 @@ func TestIntegration_SingleRepoLifecycle(t *testing.T) {
 		t.Fatalf("List = %+v", infos)
 	}
 	if infos[0].Ref.Type != state.RepoKindGit {
-		t.Errorf("тип = %q, want git", infos[0].Ref.Type)
+		t.Errorf("type = %q, want git", infos[0].Ref.Type)
 	}
 
 	// Index: two stable tags, highest is v1.1.0.
@@ -154,10 +154,10 @@ func TestIntegration_SingleRepoLifecycle(t *testing.T) {
 	}
 	res, err = m.ResolveRef("go-service")
 	if err != nil {
-		t.Fatalf("ResolveRef после update: %v", err)
+		t.Fatalf("ResolveRef after update: %v", err)
 	}
 	if res.Version != "v1.2.0" {
-		t.Errorf("после update старший тег = %q, want v1.2.0", res.Version)
+		t.Errorf("after update the latest tag = %q, want v1.2.0", res.Version)
 	}
 
 	// Remove: config, index, and clone disappear.
@@ -166,10 +166,10 @@ func TestIntegration_SingleRepoLifecycle(t *testing.T) {
 	}
 	infos, _ = m.List()
 	if len(infos) != 0 {
-		t.Errorf("после Remove List = %+v", infos)
+		t.Errorf("after Remove List = %+v", infos)
 	}
 	if _, err := os.Stat(m.cloneDir("example")); !os.IsNotExist(err) {
-		t.Errorf("клон не удалён: %v", err)
+		t.Errorf("clone not removed: %v", err)
 	}
 }
 
@@ -211,7 +211,7 @@ metadata:
 
 	infos, _ := m.List()
 	if len(infos) != 1 || infos[0].Templates != 2 {
-		t.Fatalf("List = %+v, want 2 шаблона", infos)
+		t.Fatalf("List = %+v, want 2 templates", infos)
 	}
 
 	// alpha has the namespaced tag alpha/v0.1.0.
@@ -262,10 +262,10 @@ metadata:
 	}
 	infos, _ := m.List()
 	if len(infos) != 1 || infos[0].Templates != 2 {
-		t.Fatalf("авто-скан нашёл не 2 шаблона: %+v", infos)
+		t.Fatalf("auto-scan did not find exactly 2 templates: %+v", infos)
 	}
 	if _, err := m.ResolveRef("svc-b"); err != nil {
-		t.Errorf("ResolveRef svc-b (глубина 2): %v", err)
+		t.Errorf("ResolveRef svc-b (depth 2): %v", err)
 	}
 }
 
@@ -278,25 +278,25 @@ func TestIntegration_BrokenManifestFailsAdd(t *testing.T) {
 	writeFile(t, filepath.Join(origin, templateManifestName), `apiVersion: tplater.dev/v1alpha1
 kind: Template
 metadata:
-  description: "без имени и версии"
+  description: "no name and no version"
 `)
 	commitAll(t, origin, "init")
 
 	m := newIntegrationManager(t)
 	err := m.Add(ctx, AddOptions{Alias: "bad", URL: fileURL(origin)})
 	if err == nil {
-		t.Fatal("Add должен упасть на битом манифесте")
+		t.Fatal("Add must fail on a broken manifest")
 	}
 	if !strings.Contains(err.Error(), templateManifestName) {
-		t.Errorf("ошибка без пути к манифесту: %v", err)
+		t.Errorf("error lacks the manifest path: %v", err)
 	}
 	// The repository is NOT registered and the clone is removed.
 	infos, _ := m.List()
 	if len(infos) != 0 {
-		t.Errorf("битый репозиторий зарегистрирован: %+v", infos)
+		t.Errorf("broken repository was registered: %+v", infos)
 	}
 	if _, statErr := os.Stat(m.cloneDir("bad")); !os.IsNotExist(statErr) {
-		t.Errorf("клон битого репозитория не удалён")
+		t.Errorf("broken repository clone was not removed")
 	}
 }
 
@@ -316,7 +316,7 @@ func assertCheckout(ctx context.Context, t *testing.T, m *Manager, alias, ref, t
 
 	data, err := fs.ReadFile(fsys, wantFile)
 	if err != nil {
-		t.Fatalf("чтение %s: %v", wantFile, err)
+		t.Fatalf("reading %s: %v", wantFile, err)
 	}
 	if string(data) != wantContent {
 		t.Errorf("%s = %q, want %q", wantFile, string(data), wantContent)

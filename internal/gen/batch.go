@@ -38,7 +38,7 @@ type batchPlan struct {
 // gate runs; any write or build error fully restores the original files.
 func GenerateBatch(ctx context.Context, tpl *manifest.Template, operations []Operation, opts Options) (*BatchResult, error) {
 	if len(operations) == 0 {
-		return nil, errors.New("gen batch: требуется хотя бы одна операция")
+		return nil, errors.New("gen batch: at least one operation is required")
 	}
 	log := opts.Logf
 	if log == nil {
@@ -53,7 +53,7 @@ func GenerateBatch(ctx context.Context, tpl *manifest.Template, operations []Ope
 	for i, op := range operations {
 		plan, err := planBatchOperation(tpl, op, opts, reservedTargets, anchorState)
 		if err != nil {
-			return nil, fmt.Errorf("gen batch: операция %d (%s %s): %w", i+1, op.Kind, op.Name, err)
+			return nil, fmt.Errorf("gen batch: operation %d (%s %s): %w", i+1, op.Kind, op.Name, err)
 		}
 		for _, p := range plan.planned {
 			reservedTargets[p.rel] = struct{}{}
@@ -154,7 +154,7 @@ func mkdirAllTracked(dir string, created *[]string) error {
 		info, err := os.Stat(current)
 		if err == nil {
 			if !info.IsDir() {
-				return fmt.Errorf("%s существует, но не является каталогом", current)
+				return fmt.Errorf("%s exists but is not a directory", current)
 			}
 			break
 		}
@@ -181,10 +181,10 @@ func planBatchOperation(tpl *manifest.Template, op Operation, opts Options, rese
 	}
 	available, gateErr := evalGate(g.When, opts.Values)
 	if gateErr != nil {
-		return batchPlan{}, fmt.Errorf("gen %s: вычисление when: %w", op.Kind, gateErr)
+		return batchPlan{}, fmt.Errorf("gen %s: evaluating when: %w", op.Kind, gateErr)
 	}
 	if !available {
-		return batchPlan{}, fmt.Errorf("gen %s недоступен при текущих настройках (%s) — включи настройку: tplater settings set %s", op.Kind, gateReason(g.When, nil), suggestSet(g.When))
+		return batchPlan{}, fmt.Errorf("gen %s is unavailable with current settings (%s) — enable the setting: tplater settings set %s", op.Kind, gateReason(g.When, nil), suggestSet(g.When))
 	}
 
 	gctx, err := newContext(op.Name, opts.Values, opts.Project)
@@ -197,7 +197,7 @@ func planBatchOperation(tpl *manifest.Template, op Operation, opts Options, rese
 		return batchPlan{}, fmt.Errorf("gen %s: %w", op.Kind, err)
 	}
 	if len(specs) == 0 {
-		return batchPlan{}, fmt.Errorf("gen %s: при текущих настройках ни один таргет не подлежит генерации", op.Kind)
+		return batchPlan{}, fmt.Errorf("gen %s: no targets are available for generation with current settings", op.Kind)
 	}
 	if err := resolveMigrationSeqWithReserved(&gctx, opts.ProjectRoot, specs, reserved); err != nil {
 		return batchPlan{}, fmt.Errorf("gen %s: %w", op.Kind, err)

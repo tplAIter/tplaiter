@@ -147,18 +147,18 @@ import (
 
 func New(logger *slog.Logger) error {
 	_ = usecase.Placeholder
-	// CODEGEN:WIRING — сюда tplater gen use-case добавляет новые сценарии.
+	// CODEGEN:WIRING — here tplater gen use-case adds new use cases.
 	return nil
 }
 `
 
-const usecaseSnippetTmpl = `// Package usecase содержит бизнес-сценарии сервиса.
+const usecaseSnippetTmpl = `// Package usecase contains business use cases for the service.
 package usecase
 
-// Placeholder существует, чтобы пакет не был пустым до первого gen.
+// Placeholder exists so the package is not empty until the first gen.
 var Placeholder int
 
-// {{ .Name.Pascal }}UseCase — сценарий {{ .Name.Pascal }}.
+// {{ .Name.Pascal }}UseCase — use case {{ .Name.Pascal }}.
 type {{ .Name.Pascal }}UseCase struct{}
 `
 
@@ -180,7 +180,7 @@ func setupProject(t *testing.T) (dir string, tpl *manifest.Template) {
 		Generators: []manifest.Generator{
 			{
 				Kind:        "use-case",
-				Description: "Сценарий",
+				Description: "Use case",
 				Snippet:     "use-case.go.tmpl",
 				Target:      "internal/usecase/{{ .Name.Snake }}.go",
 				Anchors: []manifest.Anchor{
@@ -219,7 +219,7 @@ func TestGenerate_UnknownKind(t *testing.T) {
 	dir, tpl := setupProject(t)
 	opts := Options{ProjectRoot: dir, GeneratorsDir: filepath.Join(dir, GeneratorsRelPath), NoBuild: true}
 	_, err := Generate(context.Background(), tpl, "nope", "Foo", opts)
-	if err == nil || !strings.Contains(err.Error(), "неизвестный вид") {
+	if err == nil || !strings.Contains(err.Error(), "unknown kind") {
 		t.Errorf("expected unknown kind error, got %v", err)
 	}
 }
@@ -252,7 +252,7 @@ func TestGenerate_MissingAnchorFails(t *testing.T) {
 
 	opts := Options{ProjectRoot: dir, GeneratorsDir: filepath.Join(dir, GeneratorsRelPath), NoBuild: true}
 	_, err := Generate(context.Background(), tpl, "use-case", "Foo", opts)
-	if err == nil || !strings.Contains(err.Error(), "якорь") {
+	if err == nil || !strings.Contains(err.Error(), "anchor") {
 		t.Errorf("expected anchor-not-found error, got %v", err)
 	}
 	// Nothing should be created when anchor preparation fails (before writing).

@@ -82,11 +82,11 @@ func TestProtocolListTools(t *testing.T) {
 		"projects_list", "doctor", "ai_gen", "env_setup",
 	}
 	if len(res.Tools) != len(want) {
-		t.Errorf("число tools = %d, want %d", len(res.Tools), len(want))
+		t.Errorf("tool count = %d, want %d", len(res.Tools), len(want))
 	}
 	for _, name := range want {
 		if !got[name] {
-			t.Errorf("tool %q не зарегистрирован", name)
+			t.Errorf("tool %q is not registered", name)
 		}
 	}
 }
@@ -98,8 +98,8 @@ func TestProjectNewAndGenLifecycleFlags(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	projectArgv := argvProjectNew("go/service", "billing", nil, false, true, true, true, true, 0)
 	genArgv := argvGen("rust-module", "billing", nil, true)
-	runner.On(fakeExe, projectArgv, execx.Response{Result: execx.Result{Stdout: "проект создан\n", ExitCode: 0}})
-	runner.On(fakeExe, genArgv, execx.Response{Result: execx.Result{Stdout: "файл создан\n", ExitCode: 0}})
+	runner.On(fakeExe, projectArgv, execx.Response{Result: execx.Result{Stdout: "project created\n", ExitCode: 0}})
+	runner.On(fakeExe, genArgv, execx.Response{Result: execx.Result{Stdout: "file created\n", ExitCode: 0}})
 	c := newTestClient(t, runner)
 
 	tools, err := c.ListTools(context.Background(), mcp.ListToolsRequest{})
@@ -126,7 +126,7 @@ func TestProjectNewAndGenLifecycleFlags(t *testing.T) {
 		t.Fatalf("CallTool project_new: %v", err)
 	}
 	if projectRes.IsError {
-		t.Fatalf("project_new вернул isError: %s", resultText(t, projectRes))
+		t.Fatalf("project_new returned isError: %s", resultText(t, projectRes))
 	}
 
 	genReq := mcp.CallToolRequest{}
@@ -139,7 +139,7 @@ func TestProjectNewAndGenLifecycleFlags(t *testing.T) {
 		t.Fatalf("CallTool gen: %v", err)
 	}
 	if genRes.IsError {
-		t.Fatalf("gen вернул isError: %s", resultText(t, genRes))
+		t.Fatalf("gen returned isError: %s", resultText(t, genRes))
 	}
 }
 
@@ -147,14 +147,14 @@ func requireBooleanToolProperty(t *testing.T, tool mcp.Tool, field string) {
 	t.Helper()
 	property, ok := tool.InputSchema.Properties[field]
 	if !ok {
-		t.Fatalf("tool %q не публикует поле %q", tool.Name, field)
+		t.Fatalf("tool %q does not publish field %q", tool.Name, field)
 	}
 	schema, ok := property.(map[string]any)
 	if !ok || schema["type"] != "boolean" {
 		t.Fatalf("tool %q: schema %q = %#v, want boolean", tool.Name, field, property)
 	}
 	if description, _ := schema["description"].(string); description == "" {
-		t.Errorf("tool %q: у поля %q нет описания", tool.Name, field)
+		t.Errorf("tool %q: field %q has no description", tool.Name, field)
 	}
 }
 
@@ -163,7 +163,7 @@ func requireBooleanToolProperty(t *testing.T, tool mcp.Tool, field string) {
 func TestRepoListSuccess(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	runner.On(fakeExe, argvRepoList(), execx.Response{
-		Result: execx.Result{Stdout: "нет добавленных репозиториев\n", ExitCode: 0},
+		Result: execx.Result{Stdout: "no repositories added\n", ExitCode: 0},
 	})
 	c := newTestClient(t, runner)
 
@@ -174,17 +174,17 @@ func TestRepoListSuccess(t *testing.T) {
 		t.Fatalf("CallTool repo_list: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("repo_list вернул isError: %s", resultText(t, res))
+		t.Fatalf("repo_list returned isError: %s", resultText(t, res))
 	}
-	if !strings.Contains(resultText(t, res), "нет добавленных репозиториев") {
-		t.Errorf("текст результата не содержит вывод: %q", resultText(t, res))
+	if !strings.Contains(resultText(t, res), "no repositories added") {
+		t.Errorf("result text does not contain the output: %q", resultText(t, res))
 	}
 
 	if len(runner.Calls) != 1 {
-		t.Fatalf("ожидался 1 вызов подпроцесса, получено %d", len(runner.Calls))
+		t.Fatalf("expected 1 subprocess call, got %d", len(runner.Calls))
 	}
 	if got := runner.Calls[0]; got.Name != fakeExe {
-		t.Errorf("вызван %q, want %q", got.Name, fakeExe)
+		t.Errorf("called %q, want %q", got.Name, fakeExe)
 	}
 }
 
@@ -195,7 +195,7 @@ func TestGenBatchSuccess(t *testing.T) {
 		{Kind: "workflow", Name: "MatchRide"},
 	}
 	argv := argvGenBatch(operations, false)
-	runner.On(fakeExe, argv, execx.Response{Result: execx.Result{Stdout: "создан internal/ride.go\n", ExitCode: 0}})
+	runner.On(fakeExe, argv, execx.Response{Result: execx.Result{Stdout: "created internal/ride.go\n", ExitCode: 0}})
 	c := newTestClient(t, runner)
 
 	req := mcp.CallToolRequest{}
@@ -212,13 +212,13 @@ func TestGenBatchSuccess(t *testing.T) {
 		t.Fatalf("CallTool gen_batch: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("gen_batch вернул isError: %s", resultText(t, res))
+		t.Fatalf("gen_batch returned isError: %s", resultText(t, res))
 	}
-	if !strings.Contains(resultText(t, res), "создан internal/ride.go") {
-		t.Errorf("неожиданный вывод: %q", resultText(t, res))
+	if !strings.Contains(resultText(t, res), "created internal/ride.go") {
+		t.Errorf("unexpected output: %q", resultText(t, res))
 	}
 	if len(runner.Calls) != 1 || runner.Calls[0].Opts.Dir == "" {
-		t.Errorf("ожидался один вызов с workdir, calls = %#v", runner.Calls)
+		t.Errorf("expected one call with workdir, calls = %#v", runner.Calls)
 	}
 }
 
@@ -228,8 +228,8 @@ func TestTemplateShowNotFound(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	argv := argvTemplateShow("ghost/none")
 	runner.On(fakeExe, argv, execx.Response{
-		Result: execx.Result{Stderr: "шаблон не найден: ghost/none\n", ExitCode: 1},
-		Err:    &execx.ExitError{Name: fakeExe, Args: argv, ExitCode: 1, Stderr: "шаблон не найден: ghost/none\n"},
+		Result: execx.Result{Stderr: "template not found: ghost/none\n", ExitCode: 1},
+		Err:    &execx.ExitError{Name: fakeExe, Args: argv, ExitCode: 1, Stderr: "template not found: ghost/none\n"},
 	})
 	c := newTestClient(t, runner)
 
@@ -241,7 +241,7 @@ func TestTemplateShowNotFound(t *testing.T) {
 		t.Fatalf("CallTool template_show: %v", err)
 	}
 	if !res.IsError {
-		t.Fatalf("ожидался isError, получен успех: %s", resultText(t, res))
+		t.Fatalf("expected isError, got success: %s", resultText(t, res))
 	}
 	text := resultText(t, res)
 	if text != "MCP_CLI_FAILED" {
@@ -266,7 +266,7 @@ func TestLaunchFailure(t *testing.T) {
 		t.Fatalf("CallTool projects_list: %v", err)
 	}
 	if !res.IsError {
-		t.Fatalf("ожидался isError при сбое запуска")
+		t.Fatalf("expected isError on launch failure")
 	}
 	if resultText(t, res) != "MCP_UNAVAILABLE" {
 		t.Errorf("unsafe launch diagnostic: %q", resultText(t, res))

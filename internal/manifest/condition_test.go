@@ -47,7 +47,7 @@ func TestParseCondition_OK(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := ParseCondition(tc.in)
 			if err != nil {
-				t.Fatalf("ParseCondition(%q) вернул ошибку: %v", tc.in, err)
+				t.Fatalf("ParseCondition(%q) returned an error: %v", tc.in, err)
 			}
 			if len(got.Atoms) != len(tc.want) {
 				t.Fatalf("atoms = %v, want %v", got.Atoms, tc.want)
@@ -77,7 +77,7 @@ func TestParseCondition_Errors(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := ParseCondition(tc.in); err == nil {
-				t.Fatalf("ParseCondition(%q) ожидалась ошибка, got nil", tc.in)
+				t.Fatalf("ParseCondition(%q) expected an error, got nil", tc.in)
 			}
 		})
 	}

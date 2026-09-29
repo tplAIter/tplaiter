@@ -239,7 +239,7 @@ func TestProcessMarkers_Errors(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !strings.Contains(err.Error(), "неизвестную группу") {
+		if !strings.Contains(err.Error(), "unknown group") {
 			t.Errorf("expected unknown-group error, got: %v", err)
 		}
 	})
@@ -250,7 +250,7 @@ func TestProcessMarkers_Errors(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !strings.Contains(err.Error(), "f.txt:1:") || !strings.Contains(err.Error(), "неизвестный tplater-маркер") {
+		if !strings.Contains(err.Error(), "f.txt:1:") || !strings.Contains(err.Error(), "unknown tplater marker") {
 			t.Errorf("expected unknown-marker error at f.txt:1, got: %v", err)
 		}
 	})

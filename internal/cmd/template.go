@@ -34,9 +34,9 @@ func init() {
 func newTemplateCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "template",
-		Short: "Каталог шаблонов: list/show/pull",
-		Long: "Список, просмотр метаданных с деревом настроек и документацией, а также " +
-			"выгрузка дерева шаблонов из добавленных репозиториев. См. документацию.",
+		Short: "Template catalog: list/show/pull",
+		Long: "List templates, view metadata with settings tree and documentation, and " +
+			"export template tree from added repositories. See documentation.",
 	}
 	c.AddCommand(
 		newTemplateListCmd(),
@@ -67,7 +67,7 @@ func newTemplateListCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "list",
-		Short: "Список шаблонов каталога (NAME/REPO/VERSION/DESCRIPTION/LABELS)",
+		Short: "List catalog templates (NAME/REPO/VERSION/DESCRIPTION/LABELS)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			mgr, st, err := newManager(cmd)
@@ -80,10 +80,10 @@ func newTemplateListCmd() *cobra.Command {
 		},
 	}
 	f := c.Flags()
-	f.StringVar(&repoAlias, "repo", "", "фильтр по алиасу репозитория (точное совпадение)")
-	f.StringVar(&nameSub, "name", "", "фильтр по подстроке имени шаблона (без учёта регистра)")
+	f.StringVar(&repoAlias, "repo", "", "filter by repository alias (exact match)")
+	f.StringVar(&nameSub, "name", "", "filter by template name substring (case-insensitive)")
 	f.StringArrayVarP(&labels, "label", "l", nil,
-		"фильтр по лейблу group=value (повторяемый флаг, семантика AND)")
+		"filter by label group=value (repeatable flag, AND semantics)")
 	return c
 }
 
@@ -119,7 +119,7 @@ func parseLabelFilters(raw []string) ([]labelFilter, error) {
 	for _, r := range raw {
 		i := strings.Index(r, "=")
 		if i <= 0 || i == len(r)-1 {
-			return nil, fmt.Errorf("cmd: template list: некорректный формат -l %q (ожидается group=value)", r)
+			return nil, fmt.Errorf("cmd: template list: invalid -l format %q (expected group=value)", r)
 		}
 		out = append(out, labelFilter{group: r[:i], value: r[i+1:]})
 	}
@@ -187,22 +187,22 @@ func reportEmptyTemplateList(out io.Writer, mgr *repo.Manager) error {
 		return err
 	}
 	if len(infos) == 0 {
-		fmt.Fprintln(out, "Шаблоны не найдены: нет ни одного добавленного репозитория. "+
-			"Добавьте репозиторий: `tplater repo add <alias> <url>`.")
+		fmt.Fprintln(out, "No templates found: no repositories have been added. "+
+			"Add a repository: `tplater repo add <alias> <url>`.")
 		return nil
 	}
-	fmt.Fprintln(out, "Шаблоны не найдены: ни один шаблон не подходит по заданным фильтрам.")
+	fmt.Fprintln(out, "No templates found: no template matches the specified filters.")
 	return nil
 }
 
 func newTemplateShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <ref>",
-		Short: "Метаданные, дерево настроек и документация шаблона",
-		Long: "Разрешает ссылку <ref> (полная `repo/name@version` либо короткая `name`), " +
-			"делает checkout на выбранной версии и печатает: шапку метаданных, дерево групп настроек " +
-			"(), список команд (`commands`) и рендер docs-файла (glamour при цветном выводе, " +
-			"иначе — как есть).",
+		Short: "Template metadata, settings tree, and documentation",
+		Long: "Resolves reference <ref> (full `repo/name@version` or short `name`), " +
+			"checks out the selected version, and prints: metadata header, settings groups tree, " +
+			"command list (`commands`), and docs file rendering (glamour with color output, " +
+			"otherwise as-is).",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mgr, st, err := newManager(cmd)
@@ -228,13 +228,13 @@ func runTemplateShow(cmd *cobra.Command, mgr *repo.Manager, ref string) error {
 	}
 	defer func() {
 		if cerr := cleanup(); cerr != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "предупреждение: очистка checkout: %v\n", cerr)
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: checkout cleanup: %v\n", cerr)
 		}
 	}()
 
 	data, err := fs.ReadFile(fsys, templateManifestFileName)
 	if err != nil {
-		return fmt.Errorf("cmd: template show: чтение %s: %w", templateManifestFileName, err)
+		return fmt.Errorf("cmd: template show: reading %s: %w", templateManifestFileName, err)
 	}
 	tpl, err := manifest.ParseTemplate(data)
 	if err != nil {
@@ -256,7 +256,7 @@ func runTemplateShow(cmd *cobra.Command, mgr *repo.Manager, ref string) error {
 	})
 	fmt.Fprintln(out)
 
-	ui.Section(out, pal, "настройки:")
+	ui.Section(out, pal, "settings:")
 	templateview.RenderSettings(out, pal, tpl.Settings, 1)
 	fmt.Fprintln(out)
 
@@ -285,14 +285,14 @@ func versionSuffixes(entry state.TemplateEntry) []string {
 func renderTemplateDocs(out io.Writer, pal ui.Palette, fsys fs.FS, docsPath string) error {
 	ui.Section(out, pal, "docs:")
 	if docsPath == "" {
-		fmt.Fprintln(out, pal.Muted("  манифест не указывает metadata.docs"))
+		fmt.Fprintln(out, pal.Muted("  manifest does not specify metadata.docs"))
 		return nil
 	}
 
 	clean := path.Clean(strings.TrimPrefix(docsPath, "/"))
 	data, err := fs.ReadFile(fsys, clean)
 	if err != nil {
-		fmt.Fprintln(out, pal.Muted(fmt.Sprintf("  не удалось прочитать docs (%s): %v", docsPath, err)))
+		fmt.Fprintln(out, pal.Muted(fmt.Sprintf("  failed to read docs (%s): %v", docsPath, err)))
 		return nil
 	}
 	return templateview.RenderDocs(out, data, pal.Enabled())
@@ -302,10 +302,10 @@ func newTemplatePullCmd() *cobra.Command {
 	var dest string
 	c := &cobra.Command{
 		Use:   "pull <ref>",
-		Short: "Выгрузить дерево шаблона на диск (checkout ref) для изучения/форка",
-		Long: "Разрешает ссылку <ref>, делает checkout на выбранной версии и копирует " +
-			"всё дерево шаблона (манифест, files/, docs) в dest (по умолчанию ./<name>). dest должен " +
-			"не существовать либо быть пустым каталогом.",
+		Short: "Export template tree to disk (checkout ref) for study/fork",
+		Long: "Resolves reference <ref>, checks out the selected version, and copies " +
+			"the entire template tree (manifest, files/, docs) to dest (defaults to ./<name>). dest must " +
+			"not exist or be an empty directory.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mgr, st, err := newManager(cmd)
@@ -317,7 +317,7 @@ func newTemplatePullCmd() *cobra.Command {
 			return runTemplatePull(cmd, mgr, args[0], dest)
 		},
 	}
-	c.Flags().StringVar(&dest, "dest", "", "каталог выгрузки (по умолчанию ./<name>)")
+	c.Flags().StringVar(&dest, "dest", "", "export directory (defaults to ./<name>)")
 	return c
 }
 
@@ -339,15 +339,15 @@ func runTemplatePull(cmd *cobra.Command, mgr *repo.Manager, ref, dest string) er
 	}
 	defer func() {
 		if cerr := cleanup(); cerr != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "предупреждение: очистка checkout: %v\n", cerr)
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: checkout cleanup: %v\n", cerr)
 		}
 	}()
 
 	if err := copyFSTree(fsys, dest); err != nil {
-		return fmt.Errorf("cmd: template pull: копирование в %s: %w", dest, err)
+		return fmt.Errorf("cmd: template pull: copying to %s: %w", dest, err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "шаблон %s@%s выгружен в %s\n", resolved.Entry.Name, resolved.Version, dest)
+	fmt.Fprintf(cmd.OutOrStdout(), "template %s@%s exported to %s\n", resolved.Entry.Name, resolved.Version, dest)
 	return nil
 }
 
@@ -360,17 +360,17 @@ func ensureEmptyDest(dest string) error {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("cmd: template pull: проверка %s: %w", dest, err)
+		return fmt.Errorf("cmd: template pull: checking %s: %w", dest, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("cmd: template pull: %s существует и не является каталогом", dest)
+		return fmt.Errorf("cmd: template pull: %s exists and is not a directory", dest)
 	}
 	entries, err := os.ReadDir(dest)
 	if err != nil {
-		return fmt.Errorf("cmd: template pull: чтение %s: %w", dest, err)
+		return fmt.Errorf("cmd: template pull: reading %s: %w", dest, err)
 	}
 	if len(entries) > 0 {
-		return fmt.Errorf("cmd: template pull: каталог %s не пуст", dest)
+		return fmt.Errorf("cmd: template pull: directory %s is not empty", dest)
 	}
 	return nil
 }
@@ -398,7 +398,7 @@ func copyFSTree(fsys fs.FS, dest string) error {
 
 		data, err := fs.ReadFile(fsys, p)
 		if err != nil {
-			return fmt.Errorf("чтение %s: %w", p, err)
+			return fmt.Errorf("reading %s: %w", p, err)
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
@@ -409,7 +409,7 @@ func copyFSTree(fsys fs.FS, dest string) error {
 			mode = info.Mode().Perm()
 		}
 		if err := os.WriteFile(target, data, mode); err != nil {
-			return fmt.Errorf("запись %s: %w", target, err)
+			return fmt.Errorf("writing %s: %w", target, err)
 		}
 		return nil
 	})

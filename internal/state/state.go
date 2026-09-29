@@ -36,11 +36,11 @@ const (
 func Home() (string, error) {
 	dir, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("state: определение домашнего каталога пользователя: %w", err)
+		return "", fmt.Errorf("state: determining user home directory: %w", err)
 	}
 	home, err := naming.ResolveHome(os.Getenv, dir)
 	if err != nil {
-		return "", fmt.Errorf("state: выбор домашнего каталога: %w", err)
+		return "", fmt.Errorf("state: selecting home directory: %w", err)
 	}
 	return home, nil
 }
@@ -65,11 +65,11 @@ func EnsureHome() (home string, created bool, err error) {
 	case os.IsNotExist(statErr):
 		created = true
 	default:
-		return "", false, fmt.Errorf("state: проверка каталога %s: %w", home, statErr)
+		return "", false, fmt.Errorf("state: checking directory %s: %w", home, statErr)
 	}
 
 	if err := os.MkdirAll(filepath.Join(home, reposDirName), homeDirPerm); err != nil {
-		return "", false, fmt.Errorf("state: создание каталога %s: %w", home, err)
+		return "", false, fmt.Errorf("state: creating directory %s: %w", home, err)
 	}
 
 	return home, created, nil

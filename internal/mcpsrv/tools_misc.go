@@ -17,7 +17,7 @@ type envSetupArgs struct {
 func (s *Server) addMiscTools() {
 	s.mcp.AddTool(mcp.NewTool(
 		"projects_list",
-		mcp.WithDescription("Список проектов локального реестра (путь, шаблон, время, статус)."),
+		mcp.WithDescription("List of projects in the local registry (path, template, time, status)."),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, error) {
 		return s.exec(ctx, "", argvProjectsList(), defaultTimeout), nil
@@ -25,10 +25,10 @@ func (s *Server) addMiscTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"env_setup",
-		mcp.WithDescription("Запустить ansible-плейбук окружения проекта (dir). Установка ansible подтверждается автоматически (yes всегда true)."),
-		mcp.WithString("dir", mcp.Required(), mcp.Description("Каталог проекта")),
-		mcp.WithString("name", mcp.Description("Имя плейбука (по умолчанию setup)")),
-		mcp.WithBoolean("yes", mcp.Required(), mcp.Description("Форсирующее подтверждение — всегда true"), mcp.DefaultBool(true)),
+		mcp.WithDescription("Execute an Ansible playbook for the project environment (dir). Ansible setup is confirmed automatically (yes is always true)."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
+		mcp.WithString("name", mcp.Description("Playbook name (default: setup)")),
+		mcp.WithBoolean("yes", mcp.Required(), mcp.Description("Force confirmation — always true"), mcp.DefaultBool(true)),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a envSetupArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
 		if err != nil {

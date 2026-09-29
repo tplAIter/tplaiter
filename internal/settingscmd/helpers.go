@@ -38,7 +38,7 @@ func exitForConflicts(conflicts []string) error {
 	}
 	return &update.ExitCodeError{
 		Code: 2,
-		Err:  fmt.Errorf("settings: %d конфликт(ов) требуют ручного разрешения", len(conflicts)),
+		Err:  fmt.Errorf("settings: %d conflict(s) require manual resolution", len(conflicts)),
 	}
 }
 
@@ -46,13 +46,13 @@ func exitForConflicts(conflicts []string) error {
 // warnings (for example, clearing an inactive nested group).
 func printResolveReport(d Deps, rep settings.Report) {
 	if len(rep.Implied) > 0 {
-		fmt.Fprintln(d.Out, d.Palette.Warn("довключено автоматически (требуется выбранными опциями):"))
+		fmt.Fprintln(d.Out, d.Palette.Warn("auto-enabled (required by selected options):"))
 		for _, im := range rep.Implied {
-			fmt.Fprintf(d.Out, "  %s=%s (требует %s)\n", im.Group, im.Value, im.RequiredBy)
+			fmt.Fprintf(d.Out, "  %s=%s (required by %s)\n", im.Group, im.Value, im.RequiredBy)
 		}
 	}
 	for _, w := range rep.Warnings {
-		fmt.Fprintln(d.Err, d.Palette.Warn("предупреждение: ")+w)
+		fmt.Fprintln(d.Err, d.Palette.Warn("warning: ")+w)
 	}
 }
 
@@ -64,9 +64,9 @@ func printSettingsTable(out io.Writer, pal ui.Palette, tpl *manifest.Template, v
 	walkGroups(tpl.Settings, values, true, 0, func(g *manifest.SettingGroup, active bool, depth int) {
 		name := strings.Repeat("  ", depth) + g.Group
 		val := formatValue(values[g.Group])
-		activeCell := "да"
+		activeCell := "yes"
 		if !active {
-			activeCell = "нет"
+			activeCell = "no"
 		}
 		if active {
 			tbl.AddRow(name, val, activeCell)
@@ -83,7 +83,7 @@ func printChangedGroups(out io.Writer, pal ui.Palette, changed []groupChange) {
 	if len(changed) == 0 {
 		return
 	}
-	fmt.Fprintln(out, "изменённые группы:")
+	fmt.Fprintln(out, "changed groups:")
 	for _, c := range changed {
 		fmt.Fprintf(out, "  %s: %s → %s\n", c.Group, pal.Muted(c.Old), pal.Success(c.New))
 	}
@@ -189,11 +189,11 @@ func markSubtree(g *manifest.SettingGroup, out map[string]bool) {
 func saveMarker(root string, proj *manifest.Project) error {
 	data, err := yaml.Marshal(proj)
 	if err != nil {
-		return fmt.Errorf("settings: сериализация project.yaml: %w", err)
+		return fmt.Errorf("settings: serializing project.yaml: %w", err)
 	}
 	path := filepath.Join(root, project.MarkerRelPath)
 	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: the marker is not secret.
-		return fmt.Errorf("settings: запись project.yaml: %w", err)
+		return fmt.Errorf("settings: writing project.yaml: %w", err)
 	}
 	return nil
 }
@@ -203,7 +203,7 @@ func saveMarker(root string, proj *manifest.Project) error {
 func refreshRegistry(d Deps, root string, proj *manifest.Project) error {
 	baselineSHA, err := hashFile(filepath.Join(root, engine.BaselineRelPath))
 	if err != nil {
-		return fmt.Errorf("settings: хеш baseline: %w", err)
+		return fmt.Errorf("settings: baseline hash: %w", err)
 	}
 	now := time.Now
 	if d.Now != nil {

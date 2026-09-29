@@ -1,33 +1,33 @@
-# Как дорабатывать ЭТОТ шаблон
+# How to develop THIS template
 
-Правила ниже адресованы AI-ассистенту и человеку, которые развивают САМ шаблон
-(этот репозиторий), а не сгенерированный из него проект.
+The rules below are addressed to the AI assistant and the person who develops the TEMPLATE itself
+(this repository), not a project generated from it.
 
-## Условия и группы настроек
+## Conditions and setting groups
 
-- Новую опцию поведения выражайте группой настроек в `template.manifest.yaml`,
-  а НЕ хардкодом. Типы: `toggle`, `select`, `multiselect`, `string`, `int`.
-- В шаблонах `files/` ветвитесь через хелперы: `{{ if is "variant" "advanced" }}`
-  (select/toggle/string/int) и `{{ if has "brokers" "kafka" }}` (multiselect).
-- Точечные включения — условными сегментами пути `__if_<group>__` /
-  `__if_<group>=<value>__` или внутрифайловыми маркерами `tplater:if` /
+- Express a new behavior option as a setting group in `template.manifest.yaml`,
+  NOT hardcoded. Types: `toggle`, `select`, `multiselect`, `string`, `int`.
+- In `files/` templates branch via helpers: `{{ if is "variant" "advanced" }}`
+  (select/toggle/string/int) and `{{ if has "brokers" "kafka" }}` (multiselect).
+- Fine-grained inclusions — via conditional path segments `__if_<group>__` /
+  `__if_<group>=<value>__` or in-file markers `tplater:if` /
   `tplater:begin`…`tplater:end`.
-- Уточнение, зависящее от выбора, кладите во вложенный `options[].settings` —
-  так оно спрашивается/активно только при выбранной опции.
+- Put choice-dependent refinement in nested `options[].settings` —
+  this way it is asked/active only with the selected option.
 
-## Files-глобы при добавлении вертикали
+## Files globs when adding a vertical
 
-- Каталог новой вертикали подключайте `files`-правилом: `paths` — «включить при
-  true», `remove` — «удалить при true». Условие — ровно одно из `when`/`anyOf`.
-- Держите дерево `files/` рендеримым во ВСЕХ комбинациях: любой `{{ … }}` должен
-  парситься независимо от значений настроек (ветка может быть неактивной, но
-  синтаксически валидной).
+- Connect a new vertical's directory via a `files` rule: `paths` — "include when
+  true", `remove` — "delete when true". Condition — exactly one of `when`/`anyOf`.
+- Keep the `files/` tree renderable in ALL combinations: any `{{ … }}` must
+  parse independently of setting values (a branch may be inactive but
+  syntactically valid).
 
-## Тесты и публикация
+## Tests and publishing
 
-- Перед публикацией прогоняйте `tplaiter lint-template` — он рендерит все угловые
-  комбинации настроек и проверяет NOTES, генераторы, ai-config и плейбуки.
-- Версионируйте тегами (SemVer): `git tag v0.1.0`. Для multi-репозитория тег —
+- Before publishing run `tplaiter lint-template` — it renders all edge-case
+  setting combinations and checks NOTES, generators, ai-config, and playbooks.
+- Version with tags (SemVer): `git tag v0.1.0`. For multi-repo the tag is
   `<template-name>/vX.Y.Z`.
-- ai-config: новый модуль — файл `modules/NN-*.json` + `rules/NN-*.md` +
-  `docs/NN-*.md`; гейтинг модуля задаётся полем `when` в терминах групп настроек.
+- ai-config: new module — file `modules/NN-*.json` + `rules/NN-*.md` +
+  `docs/NN-*.md`; module gating is set by the `when` field in terms of setting groups.

@@ -18,31 +18,31 @@ import (
 func printSingle(d Deps, opts Options, res *Result) {
 	if opts.Check {
 		if len(res.Conflicts) > 0 {
-			fmt.Fprintln(d.Out, d.Palette.Warn("обнаружены маркеры конфликта:"))
+			fmt.Fprintln(d.Out, d.Palette.Warn("conflict markers found:"))
 			for _, c := range res.Conflicts {
 				fmt.Fprintf(d.Out, "  %s\n", c)
 			}
 			return
 		}
-		fmt.Fprintln(d.Out, "маркеров конфликта не найдено")
+		fmt.Fprintln(d.Out, "no conflict markers found")
 		return
 	}
 
 	if res.NoOp {
-		fmt.Fprintf(d.Out, "проект уже на версии %s — обновлять нечего\n", res.NewVersion)
+		fmt.Fprintf(d.Out, "project is already at version %s — nothing to update\n", res.NewVersion)
 		return
 	}
 
-	verb := "обновление"
+	verb := "update"
 	if res.DryRun {
-		verb = "план обновления (--dry-run, изменения не записаны)"
+		verb = "update plan (--dry-run, changes not written)"
 	}
 	fmt.Fprintf(d.Out, "%s %s → %s\n\n", verb, res.OldVersion, res.NewVersion)
 	if res.Report != nil {
 		res.Report.Render(d.Out, d.Palette, opts.Verbose)
 	}
 	if len(res.Conflicts) > 0 && !res.DryRun {
-		fmt.Fprintln(d.Out, d.Palette.Warn("\nобновление завершилось с конфликтами — разрешите маркеры и закоммитьте изменения"))
+		fmt.Fprintln(d.Out, d.Palette.Warn("\nupdate completed with conflicts — resolve markers and commit changes"))
 	}
 }
 
@@ -51,12 +51,12 @@ func printSingle(d Deps, opts Options, res *Result) {
 func exitFor(res *Result, opts Options) error {
 	if opts.Check {
 		if len(res.Conflicts) > 0 {
-			return &ExitCodeError{Code: 1, Err: fmt.Errorf("update: найдены маркеры конфликта в %d файле(ах)", len(res.Conflicts))}
+			return &ExitCodeError{Code: 1, Err: fmt.Errorf("update: conflict markers found in %d file(s)", len(res.Conflicts))}
 		}
 		return nil
 	}
 	if len(res.Conflicts) > 0 {
-		return &ExitCodeError{Code: 2, Err: fmt.Errorf("update: %d конфликт(ов) требуют ручного разрешения", len(res.Conflicts))}
+		return &ExitCodeError{Code: 2, Err: fmt.Errorf("update: %d conflict(s) require manual resolution", len(res.Conflicts))}
 	}
 	return nil
 }
@@ -70,7 +70,7 @@ func runAll(ctx context.Context, d Deps, opts Options) error {
 		return err
 	}
 	if len(projects.Items) == 0 {
-		fmt.Fprintln(d.Out, "реестр проектов пуст — нечего обновлять")
+		fmt.Fprintln(d.Out, "project registry is empty — nothing to update")
 		return nil
 	}
 
@@ -80,18 +80,18 @@ func runAll(ctx context.Context, d Deps, opts Options) error {
 	for _, item := range projects.Items {
 		name := filepath.Base(item.Path)
 		if !dirExists(item.Path) {
-			table.AddRow(name, item.Template.Version, d.Palette.Muted("missing — пропуск"), "")
+			table.AddRow(name, item.Template.Version, d.Palette.Muted("missing — skipping"), "")
 			continue
 		}
 		proj, lerr := manifest.LoadProject(filepath.Join(item.Path, project.MarkerRelPath))
 		if lerr != nil {
-			table.AddRow(name, item.Template.Version, d.Palette.Error("ошибка маркера"), "")
+			table.AddRow(name, item.Template.Version, d.Palette.Error("marker error"), "")
 			warnf(d, "%s: %v", item.Path, lerr)
 			continue
 		}
 		res, uerr := updateOne(ctx, d, opts, item.Path, proj)
 		if uerr != nil {
-			table.AddRow(name, item.Template.Version, d.Palette.Error("ошибка"), "")
+			table.AddRow(name, item.Template.Version, d.Palette.Error("error"), "")
 			warnf(d, "%s: %v", item.Path, uerr)
 			continue
 		}
@@ -108,7 +108,7 @@ func runAll(ctx context.Context, d Deps, opts Options) error {
 		if opts.Check {
 			code = 1
 		}
-		return &ExitCodeError{Code: code, Err: errors.New("update --all: часть проектов завершилась с конфликтами")}
+		return &ExitCodeError{Code: code, Err: errors.New("update --all: some projects completed with conflicts")}
 	}
 	return nil
 }
@@ -118,17 +118,17 @@ func summaryCells(d Deps, opts Options, res *Result) (status, conflicts string) 
 	switch {
 	case opts.Check:
 		if len(res.Conflicts) > 0 {
-			return d.Palette.Warn("маркеры"), strconv.Itoa(len(res.Conflicts))
+			return d.Palette.Warn("markers"), strconv.Itoa(len(res.Conflicts))
 		}
-		return d.Palette.Success("чисто"), "0"
+		return d.Palette.Success("clean"), "0"
 	case res.NoOp:
-		return d.Palette.Muted("актуально"), "0"
+		return d.Palette.Muted("up-to-date"), "0"
 	case len(res.Conflicts) > 0:
-		return d.Palette.Warn("конфликты"), strconv.Itoa(len(res.Conflicts))
+		return d.Palette.Warn("conflicts"), strconv.Itoa(len(res.Conflicts))
 	case opts.DryRun:
-		return "план", "0"
+		return "plan", "0"
 	default:
-		return d.Palette.Success("обновлено"), "0"
+		return d.Palette.Success("updated"), "0"
 	}
 }
 

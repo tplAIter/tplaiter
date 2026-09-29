@@ -11,7 +11,7 @@ import (
 
 // ErrUnsupportedAPIVersion is returned when this tplater does not support the
 // contract major version (the message asks the user to update).
-var ErrUnsupportedAPIVersion = errors.New("неподдерживаемая версия контракта apiVersion")
+var ErrUnsupportedAPIVersion = errors.New("unsupported contract API version")
 
 // LoadTemplate reads and parses a template manifest at path. Unknown fields are
 // rejected (KnownFields), and apiVersion and kind are checked. Content validation
@@ -23,7 +23,7 @@ func LoadTemplate(path string) (*Template, error) {
 	}
 	var t Template
 	if err := decodeStrict(data, &t); err != nil {
-		return nil, fmt.Errorf("разбор манифеста шаблона %s: %w", path, err)
+		return nil, fmt.Errorf("parsing template manifest %s: %w", path, err)
 	}
 	if err := checkKind(t.APIVersion, t.Kind, KindTemplate); err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func LoadRepository(path string) (*Repository, error) {
 	}
 	var r Repository
 	if err := decodeStrict(data, &r); err != nil {
-		return nil, fmt.Errorf("разбор манифеста репозитория %s: %w", path, err)
+		return nil, fmt.Errorf("parsing repository manifest %s: %w", path, err)
 	}
 	if err := checkKind(r.APIVersion, r.Kind, KindRepository); err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func LoadProject(path string) (*Project, error) {
 	}
 	var p Project
 	if err := decodeStrict(data, &p); err != nil {
-		return nil, fmt.Errorf("разбор проектного маркера %s: %w", path, err)
+		return nil, fmt.Errorf("parsing project marker %s: %w", path, err)
 	}
 	if err := checkKind(p.APIVersion, p.Kind, KindProject); err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func LoadProject(path string) (*Project, error) {
 func ParseTemplate(data []byte) (*Template, error) {
 	var t Template
 	if err := decodeStrict(data, &t); err != nil {
-		return nil, fmt.Errorf("разбор манифеста шаблона: %w", err)
+		return nil, fmt.Errorf("parsing template manifest: %w", err)
 	}
 	if err := checkKind(t.APIVersion, t.Kind, KindTemplate); err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func ParseTemplate(data []byte) (*Template, error) {
 func readFile(path string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("чтение манифеста %s: %w", path, err)
+		return nil, fmt.Errorf("reading manifest %s: %w", path, err)
 	}
 	return data, nil
 }
@@ -103,7 +103,7 @@ func checkKind(apiVersion, kind, want string) error {
 		return err
 	}
 	if kind != want {
-		return fmt.Errorf("ожидается kind %q, получен %q", want, kind)
+		return fmt.Errorf("expected kind %q, got %q", want, kind)
 	}
 	return nil
 }
@@ -111,19 +111,19 @@ func checkKind(apiVersion, kind, want string) error {
 // checkAPIVersion validates the contract group and major version.
 func checkAPIVersion(apiVersion string) error {
 	if apiVersion == "" {
-		return fmt.Errorf("%w: поле apiVersion пустое (ожидается %s)", ErrUnsupportedAPIVersion, APIVersion)
+		return fmt.Errorf("%w: apiVersion field is empty (expected %s)", ErrUnsupportedAPIVersion, APIVersion)
 	}
 	group, version, ok := splitAPIVersion(apiVersion)
 	if !ok || group != APIGroup {
-		return fmt.Errorf("%w: неизвестный apiVersion %q (ожидается группа %s)", ErrUnsupportedAPIVersion, apiVersion, APIGroup)
+		return fmt.Errorf("%w: unknown apiVersion %q (expected group %s)", ErrUnsupportedAPIVersion, apiVersion, APIGroup)
 	}
 	major, ok := parseMajor(version)
 	if !ok {
-		return fmt.Errorf("%w: не удалось определить major в apiVersion %q", ErrUnsupportedAPIVersion, apiVersion)
+		return fmt.Errorf("%w: could not determine major version in apiVersion %q", ErrUnsupportedAPIVersion, apiVersion)
 	}
 	if major != SupportedMajor {
 		return fmt.Errorf(
-			"%w: манифест использует major v%d (%s), а этот tplater поддерживает v%d — обнови tplater",
+			"%w: manifest uses major v%d (%s), but this tplater supports v%d — update tplater",
 			ErrUnsupportedAPIVersion, major, apiVersion, SupportedMajor,
 		)
 	}

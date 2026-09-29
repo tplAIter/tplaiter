@@ -1,5 +1,5 @@
-# База (толстый док)
+# Base (thick doc)
 
-Расширенные материалы базового модуля правил. В скелете — заглушка; заполните
-эталонными примерами кода вашей вертикали (толстые доки попадают в `.cursor/docs`
-и на них ссылаются per-module правила).
+Extended materials for the base rules module. In the skeleton — a stub; fill with
+reference code examples for your vertical (thick docs go into `.cursor/docs`
+and are referenced by per-module rules).

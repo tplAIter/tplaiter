@@ -1,11 +1,11 @@
 # Example Ansible environment-setup playbook.
 # Run through `tplaiter env setup` / the offer after `tplaiter new`.
 # TODO(maintainer): replace the debug task with real dependency installation.
-- name: Настройка окружения проекта (пример)
+- name: Project environment setup (example)
   hosts: localhost
   connection: local
   gather_facts: false
   tasks:
-    - name: Приветствие
+    - name: Greeting
       ansible.builtin.debug:
-        msg: "Окружение шаблона настраивается — замените этот таск реальными шагами."
+        msg: "Template environment is being configured — replace this task with real steps."

@@ -58,15 +58,15 @@ func TestParseFields_Errors(t *testing.T) {
 	cases := []struct {
 		spec, want string
 	}{
-		{"customer", "ожидается name:type"},
-		{"customer:", "ожидается name:type"},
-		{":string", "ожидается name:type"},
-		{"amount:,x:int", "ожидается name:type"},
-		{"a:int,,b:int", "пустой элемент"},
-		{"1bad:string", "недопустимое имя"},
-		{"x:decimal", "неизвестный тип"},
-		{"x:[]decimal", "неизвестный тип элемента слайса"},
-		{"amount:int,amount:string", "дублирующееся имя"},
+		{"customer", "expected name:type"},
+		{"customer:", "expected name:type"},
+		{":string", "expected name:type"},
+		{"amount:,x:int", "expected name:type"},
+		{"a:int,,b:int", "empty element"},
+		{"1bad:string", "invalid name"},
+		{"x:decimal", "unknown type"},
+		{"x:[]decimal", "unknown slice element type"},
+		{"amount:int,amount:string", "duplicate name"},
 	}
 	for _, c := range cases {
 		_, err := ParseFields(c.spec)

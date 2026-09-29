@@ -167,7 +167,7 @@ func (r *run) execute(ctx context.Context) error {
 	}
 	defer func() {
 		if cerr := cleanup(); cerr != nil {
-			r.warnf("очистка checkout шаблона: %v", cerr)
+			r.warnf("template checkout cleanup: %v", cerr)
 		}
 	}()
 
@@ -226,7 +226,7 @@ func (r *run) execute(ctx context.Context) error {
 
 	absTarget, err := filepath.Abs(target)
 	if err != nil {
-		return fmt.Errorf("newcmd: определение абсолютного пути %s: %w", target, err)
+		return fmt.Errorf("newcmd: determine absolute path %s: %w", target, err)
 	}
 
 	// From this point the directory exists: any required-step failure removes it.
@@ -241,7 +241,7 @@ func (r *run) execute(ctx context.Context) error {
 		return err
 	}
 	if err := manifest.SaveSnapshot(filepath.Join(absTarget, manifest.SnapshotRelPath), tpl); err != nil {
-		return fmt.Errorf("newcmd: сохранение снимка манифеста: %w", err)
+		return fmt.Errorf("newcmd: save manifest snapshot: %w", err)
 	}
 	projMarker, err := r.writeProjectMarker(absTarget, tpl, res, projInfo, port, resolved)
 	if err != nil {
@@ -266,7 +266,7 @@ func (r *run) execute(ctx context.Context) error {
 	r.offerEnvSetup(ctx, absTarget, tpl, res, projInfo)
 	r.printNotes(src, tpl, renderRes)
 
-	r.infof("Проект %s создан в %s (шаблон %s/%s@%s)\n",
+	r.infof("Project %s created in %s (template %s/%s@%s)\n",
 		projInfo.Slug, target, resolved.RepoAlias, tpl.Metadata.Name, resolved.Version)
 	return nil
 }
@@ -327,7 +327,7 @@ func (r *run) render(
 	}
 
 	sp := ui.NewSpinner(r.d.Err, r.d.Palette)
-	sp.Start("Рендерю проект %s", target)
+	sp.Start("Rendering project %s", target)
 	renderRes, err := engine.Render(engine.Options{
 		Source:   src,
 		Target:   target,
@@ -340,7 +340,7 @@ func (r *run) render(
 	})
 	sp.Stop()
 	if err != nil {
-		return nil, fmt.Errorf("newcmd: рендер проекта: %w", err)
+		return nil, fmt.Errorf("newcmd: rendering project: %w", err)
 	}
 	return renderRes, nil
 }
@@ -378,14 +378,14 @@ func (r *run) writeProjectMarker(
 
 	data, err := yaml.Marshal(proj)
 	if err != nil {
-		return projectMarker{}, fmt.Errorf("newcmd: сериализация project.yaml: %w", err)
+		return projectMarker{}, fmt.Errorf("newcmd: marshal project.yaml: %w", err)
 	}
 	markerPath := filepath.Join(target, project.MarkerRelPath)
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
-		return projectMarker{}, fmt.Errorf("newcmd: создание каталога .tplaiter: %w", err)
+		return projectMarker{}, fmt.Errorf("newcmd: create .tplaiter directory: %w", err)
 	}
 	if err := os.WriteFile(markerPath, data, 0o644); err != nil { //nolint:gosec // G306: the marker is not secret.
-		return projectMarker{}, fmt.Errorf("newcmd: запись project.yaml: %w", err)
+		return projectMarker{}, fmt.Errorf("newcmd: write project.yaml: %w", err)
 	}
 	return projectMarker{ID: id}, nil
 }
@@ -395,7 +395,7 @@ func (r *run) writeProjectMarker(
 func (r *run) register(target string, tpl *manifest.Template, resolved repo.Resolved, id string) error {
 	baselineSHA, err := hashFile(filepath.Join(target, engine.BaselineRelPath))
 	if err != nil {
-		return fmt.Errorf("newcmd: хеш baseline: %w", err)
+		return fmt.Errorf("newcmd: hash baseline: %w", err)
 	}
 	now := r.now()
 	ref := state.ProjectRef{
@@ -443,10 +443,10 @@ func (r *run) runHooks(
 			continue
 		}
 		if h.Optional {
-			r.warnf("postCreate-хук пропущен (optional): %v", err)
+			r.warnf("postCreate hook skipped (optional): %v", err)
 			continue
 		}
-		return fmt.Errorf("newcmd: postCreate-хук: %w", err)
+		return fmt.Errorf("newcmd: postCreate hook: %w", err)
 	}
 	return nil
 }
@@ -506,7 +506,7 @@ func (r *run) renderAITargets(target string, tpl *manifest.Template, res setting
 }
 
 func (r *run) warnAI(err error) {
-	r.warnf("AI-таргеты не сгенерированы: %v — можно повторить `tplaiter ai gen`", err)
+	r.warnf("AI targets not generated: %v — you can retry `tplaiter ai gen`", err)
 }
 
 // offerEnvSetup offers to run the "setup" playbook after creation.
@@ -527,9 +527,9 @@ func (r *run) offerEnvSetup(ctx context.Context, target string, tpl *manifest.Te
 	case r.opts.Yes || (r.opts.EnvSetup != nil && *r.opts.EnvSetup):
 		run = true
 	case r.opts.Interactive && r.d.Confirm != nil:
-		ok, err := r.d.Confirm(fmt.Sprintf("Запустить настройку окружения (env setup: %s)?", pb.Name))
+		ok, err := r.d.Confirm(fmt.Sprintf("Run environment setup (env setup: %s)?", pb.Name))
 		if err != nil {
-			r.warnf("подтверждение env setup: %v", err)
+			r.warnf("env setup confirmation: %v", err)
 			return
 		}
 		run = ok
@@ -547,7 +547,7 @@ func (r *run) offerEnvSetup(ctx context.Context, target string, tpl *manifest.Te
 		Project:     projInfo,
 		AutoYes:     r.opts.Yes,
 	}); err != nil {
-		r.warnf("env setup не выполнен: %v — можно повторить `tplaiter env setup`", err)
+		r.warnf("env setup not completed: %v — you can retry `tplaiter env setup`", err)
 	}
 }
 
@@ -560,17 +560,17 @@ func (r *run) printNotes(src fs.FS, tpl *manifest.Template, renderRes *engine.Re
 	}
 	data, err := fs.ReadFile(src, filepath.ToSlash(tpl.Metadata.Notes))
 	if err != nil {
-		r.warnf("NOTES не прочитан (%s): %v", tpl.Metadata.Notes, err)
+		r.warnf("NOTES not read (%s): %v", tpl.Metadata.Notes, err)
 		return
 	}
 	tmpl, err := template.New("notes").Funcs(engine.FuncMap(renderRes.Context.Settings)).Parse(string(data))
 	if err != nil {
-		r.warnf("NOTES не разобран: %v", err)
+		r.warnf("NOTES not parsed: %v", err)
 		return
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, renderRes.Context); err != nil {
-		r.warnf("NOTES не отрендерен: %v", err)
+		r.warnf("NOTES not rendered: %v", err)
 		return
 	}
 	fmt.Fprintln(r.d.Out)
@@ -587,7 +587,7 @@ func (r *run) warnf(format string, a ...any) {
 	if r.d.Err == nil {
 		return
 	}
-	fmt.Fprint(r.d.Err, r.d.Palette.Warn("предупреждение: "))
+	fmt.Fprint(r.d.Err, r.d.Palette.Warn("warning: "))
 	fmt.Fprintf(r.d.Err, format+"\n", a...)
 }
 
@@ -605,14 +605,14 @@ func findSetupPlaybook(playbooks []manifest.Playbook) (manifest.Playbook, bool) 
 func loadTemplateFromFS(src fs.FS) (*manifest.Template, error) {
 	data, err := fs.ReadFile(src, templateManifestFileName)
 	if err != nil {
-		return nil, fmt.Errorf("newcmd: чтение %s: %w", templateManifestFileName, err)
+		return nil, fmt.Errorf("newcmd: read %s: %w", templateManifestFileName, err)
 	}
 	tpl, err := manifest.ParseTemplate(data)
 	if err != nil {
 		return nil, fmt.Errorf("newcmd: %w", err)
 	}
 	if err := tpl.Validate(); err != nil {
-		return nil, fmt.Errorf("newcmd: манифест шаблона невалиден: %w", err)
+		return nil, fmt.Errorf("newcmd: template manifest is invalid: %w", err)
 	}
 	return tpl, nil
 }
@@ -626,7 +626,7 @@ func templatePartials(src fs.FS) ([]fs.FS, error) {
 	}
 	sub, err := fs.Sub(src, partialsDirName)
 	if err != nil {
-		return nil, fmt.Errorf("newcmd: подкаталог partials: %w", err)
+		return nil, fmt.Errorf("newcmd: partials subdirectory: %w", err)
 	}
 	return []fs.FS{sub}, nil
 }
@@ -640,17 +640,17 @@ func ensureVacant(target string) error {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("newcmd: проверка целевого каталога %s: %w", target, err)
+		return fmt.Errorf("newcmd: check target directory %s: %w", target, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("newcmd: %s существует и не является каталогом", target)
+		return fmt.Errorf("newcmd: %s exists and is not a directory", target)
 	}
 	entries, err := os.ReadDir(target)
 	if err != nil {
-		return fmt.Errorf("newcmd: чтение целевого каталога %s: %w", target, err)
+		return fmt.Errorf("newcmd: read target directory %s: %w", target, err)
 	}
 	if len(entries) > 0 {
-		return fmt.Errorf("newcmd: каталог %s не пуст — повторное создание не поддерживается (используйте `tplaiter update`)", target)
+		return fmt.Errorf("newcmd: directory %s is not empty — re-creation not supported (use `tplaiter update`)", target)
 	}
 	return nil
 }

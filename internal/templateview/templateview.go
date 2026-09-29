@@ -42,14 +42,14 @@ func RenderHeader(w io.Writer, pal ui.Palette, h HeaderInfo) {
 	}
 	fmt.Fprintln(w, pal.Header(title))
 
-	kv := ui.NewKeyValue().Add("репозиторий", h.Repo)
+	kv := ui.NewKeyValue().Add("repository", h.Repo)
 	if len(h.Versions) > 0 {
-		kv.Add("версия", h.Version+"  (доступны: "+strings.Join(h.Versions, ", ")+")")
+		kv.Add("version", h.Version+"  (available: "+strings.Join(h.Versions, ", ")+")")
 	} else {
-		kv.Add("версия", h.Version)
+		kv.Add("version", h.Version)
 	}
 	if h.Description != "" {
-		kv.Add("описание", h.Description)
+		kv.Add("description", h.Description)
 	}
 	if m := formatMaintainers(h.Maintainers); m != "" {
 		kv.Add("maintainers", m)
@@ -103,9 +103,9 @@ func formatMaintainers(ms []manifest.Maintainer) string {
 // COMMAND/DESCRIPTION table. An empty command list is not an error; it writes
 // an explanatory line.
 func RenderCommands(w io.Writer, pal ui.Palette, commands map[string]manifest.Command) {
-	fmt.Fprintln(w, pal.Header("команды:"))
+	fmt.Fprintln(w, pal.Header("commands:"))
 	if len(commands) == 0 {
-		fmt.Fprintln(w, "  манифест не объявляет commands")
+		fmt.Fprintln(w, "  manifest does not declare commands")
 		return
 	}
 

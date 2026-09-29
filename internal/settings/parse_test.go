@@ -27,10 +27,10 @@ func TestParseSet_Types(t *testing.T) {
 			continue
 		}
 		if g != tc.wantGroup {
-			t.Errorf("ParseSet(%q) group = %q, ожидалось %q", tc.expr, g, tc.wantGroup)
+			t.Errorf("ParseSet(%q) group = %q, expected %q", tc.expr, g, tc.wantGroup)
 		}
 		if !reflect.DeepEqual(v, tc.wantVal) {
-			t.Errorf("ParseSet(%q) value = %#v, ожидалось %#v", tc.expr, v, tc.wantVal)
+			t.Errorf("ParseSet(%q) value = %#v, expected %#v", tc.expr, v, tc.wantVal)
 		}
 	}
 }
@@ -41,21 +41,21 @@ func TestParseSet_Errors(t *testing.T) {
 		expr string
 		want string
 	}{
-		{"database", "формате group=value"},
-		{"nosuch=x", "неизвестная группа"},
-		{"database=oracle", "допустимо: none, postgres, mysql"},
-		{"idempotency=maybe", "не булево"},
-		{"pg_shards=many", "не является целым"},
-		{"brokers=kafka,nats", "допустимо: kafka, rabbitmq"},
+		{"database", "group=value format"},
+		{"nosuch=x", "unknown group"},
+		{"database=oracle", "allowed:"},
+		{"idempotency=maybe", "not boolean"},
+		{"pg_shards=many", "not an integer"},
+		{"brokers=kafka,nats", "allowed:"},
 	}
 	for _, tc := range tests {
 		_, _, err := ParseSet(tpl, tc.expr)
 		if err == nil {
-			t.Errorf("ParseSet(%q): ожидалась ошибка", tc.expr)
+			t.Errorf("ParseSet(%q): expected error", tc.expr)
 			continue
 		}
 		if !strings.Contains(err.Error(), tc.want) {
-			t.Errorf("ParseSet(%q) ошибка %q не содержит %q", tc.expr, err.Error(), tc.want)
+			t.Errorf("ParseSet(%q) error %q does not contain %q", tc.expr, err.Error(), tc.want)
 		}
 	}
 }
@@ -64,7 +64,7 @@ func TestParseSet_PlannedOptionRejected(t *testing.T) {
 	tpl := loadRepoFixture(t, "full.yaml") // mysql is marked planned
 	_, _, err := ParseSet(tpl, "database=mysql")
 	if err == nil || !strings.Contains(err.Error(), "planned") {
-		t.Fatalf("planned-опция должна отклоняться, получено: %v", err)
+		t.Fatalf("a planned option must be rejected, got: %v", err)
 	}
 }
 
@@ -87,14 +87,14 @@ func TestTypeAnswers_Native(t *testing.T) {
 		"pg_shards":   16,
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("typeAnswers = %#v, ожидалось %#v", got, want)
+		t.Errorf("typeAnswers = %#v, expected %#v", got, want)
 	}
 }
 
 func TestTypeAnswers_UnknownGroups(t *testing.T) {
 	tpl := loadFixture(t, "nested3.yaml")
 	_, err := typeAnswers(tpl, map[string]any{"bogus": 1, "database": "none"})
-	if err == nil || !strings.Contains(err.Error(), "неизвестные группы") {
-		t.Fatalf("ожидалась ошибка про неизвестные группы, получено: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "unknown groups") {
+		t.Fatalf("expected error about unknown groups, got: %v", err)
 	}
 }

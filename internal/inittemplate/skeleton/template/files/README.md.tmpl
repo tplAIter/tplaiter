@@ -1,22 +1,22 @@
 # {{ .Project.Name }}
 
-Модуль: `{{ .Project.Module }}`
+Module: `{{ .Project.Module }}`
 Slug: `{{ .Project.Slug }}` (Pascal: `{{ .Project.Pascal }}`, Kebab: `{{ .Project.Kebab }}`)
-Создан из шаблона `{{ .Template.Name }}@{{ .Template.Version }}`.
+Created from template `{{ .Template.Name }}@{{ .Template.Version }}`.
 
-## Настройки сборки
+## Build Settings
 
-- Вариант: **{{ .Settings.variant }}**
+- Variant: **{{ .Settings.variant }}**
 {{- if is "variant" "advanced" }}
-- Подробный вывод (verbose): **{{ .Settings.verbose }}**
+- Verbose output: **{{ .Settings.verbose }}**
 {{- end }}
-- Feature X: **{{ if is "feature_x" "true" }}включён{{ else }}выключен{{ end }}**
+- Feature X: **{{ if is "feature_x" "true" }}enabled{{ else }}disabled{{ end }}**
 
 {{ if is "feature_x" "true" -}}
-> Feature X активна — см. `extra.txt` (добавлен условным каталогом `__if_feature_x__/`).
+> Feature X is active — see `extra.txt` (added by conditional directory `__if_feature_x__/`).
 {{- end }}
 
-## Запуск
+## Running
 
 ```sh
 tplaiter run dev

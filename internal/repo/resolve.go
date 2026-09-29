@@ -40,7 +40,7 @@ func (m *Manager) ResolveRef(ref string) (Resolved, error) {
 	coord, version := splitVersion(ref)
 	repoPart, namePart := splitRepoName(coord)
 	if namePart == "" {
-		return Resolved{}, fmt.Errorf("repo: пустое имя шаблона в ссылке %q", ref)
+		return Resolved{}, fmt.Errorf("repo: empty template name in reference %q", ref)
 	}
 
 	alias, entry, err := m.findTemplate(idx, repoPart, namePart)
@@ -53,7 +53,7 @@ func (m *Manager) ResolveRef(ref string) (Resolved, error) {
 		return Resolved{}, err
 	}
 	if version == "" && len(entry.Tags) == 0 {
-		m.warnf("шаблон %s/%s не имеет стабильных тегов — использую %s (@latest)\n", alias, namePart, entry.Ref)
+		m.warnf("template %s/%s has no stable tags — using %s (@latest)\n", alias, namePart, entry.Ref)
 	}
 	return Resolved{RepoAlias: alias, Entry: entry, GitRef: gitRef, Version: chosen}, nil
 }
@@ -63,14 +63,14 @@ func (m *Manager) findTemplate(idx state.Index, repoPart, name string) (string, 
 	if repoPart != "" {
 		entries, ok := idx.Repos[repoPart]
 		if !ok {
-			return "", state.TemplateEntry{}, fmt.Errorf("repo: репозиторий %q не найден в индексе", repoPart)
+			return "", state.TemplateEntry{}, fmt.Errorf("repo: repository %q not found in index", repoPart)
 		}
 		for _, e := range entries {
 			if e.Name == name {
 				return repoPart, e, nil
 			}
 		}
-		return "", state.TemplateEntry{}, fmt.Errorf("repo: шаблон %q не найден в репозитории %q", name, repoPart)
+		return "", state.TemplateEntry{}, fmt.Errorf("repo: template %q not found in repository %q", name, repoPart)
 	}
 
 	// Short form: search all repositories and require uniqueness.
@@ -88,7 +88,7 @@ func (m *Manager) findTemplate(idx state.Index, repoPart, name string) (string, 
 	}
 	switch len(hits) {
 	case 0:
-		return "", state.TemplateEntry{}, fmt.Errorf("repo: шаблон %q не найден ни в одном репозитории", name)
+		return "", state.TemplateEntry{}, fmt.Errorf("repo: template %q not found in any repository", name)
 	case 1:
 		return hits[0].alias, hits[0].entry, nil
 	default:
@@ -97,7 +97,7 @@ func (m *Manager) findTemplate(idx state.Index, repoPart, name string) (string, 
 			cands = append(cands, h.alias+"/"+name)
 		}
 		return "", state.TemplateEntry{}, fmt.Errorf(
-			"repo: имя %q неоднозначно — уточните репозиторий (%s)", name, strings.Join(cands, ", "),
+			"repo: name %q is ambiguous — specify repository (%s)", name, strings.Join(cands, ", "),
 		)
 	}
 }
@@ -119,9 +119,9 @@ func selectVersion(entry state.TemplateEntry, version string) (gitRef, chosen st
 			}
 		}
 		if len(entry.Tags) == 0 {
-			return "", "", fmt.Errorf("repo: у шаблона %q нет стабильных тегов (запрошена версия %q)", entry.Name, version)
+			return "", "", fmt.Errorf("repo: template %q has no stable tags (requested version %q)", entry.Name, version)
 		}
-		return "", "", fmt.Errorf("repo: версия %q не найдена у шаблона %q (доступны: %s)",
+		return "", "", fmt.Errorf("repo: version %q not found for template %q (available: %s)",
 			version, entry.Name, strings.Join(versionSuffixes(entry), ", "))
 	}
 }
@@ -140,12 +140,12 @@ func selectVersion(entry state.TemplateEntry, version string) (gitRef, chosen st
 func (m *Manager) Checkout(ctx context.Context, alias, gitRef, templatePath string) (fs.FS, func() error, error) {
 	clone := m.cloneDir(alias)
 	if _, err := os.Stat(clone); err != nil {
-		return nil, nil, fmt.Errorf("repo: клон %q отсутствует: %w", alias, err)
+		return nil, nil, fmt.Errorf("repo: clone %q missing: %w", alias, err)
 	}
 
 	wt, err := os.MkdirTemp("", "tplater-checkout-"+alias+"-")
 	if err != nil {
-		return nil, nil, fmt.Errorf("repo: временный каталог для checkout: %w", err)
+		return nil, nil, fmt.Errorf("repo: temporary directory for checkout: %w", err)
 	}
 
 	// After `repo update`, branches live at origin/<ref> (fetch in a non-bare

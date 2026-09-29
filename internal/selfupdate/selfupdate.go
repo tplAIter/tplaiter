@@ -35,7 +35,7 @@ func (c Channel) Label() string {
 	case ChannelBrew:
 		return "brew"
 	default:
-		return "неизвестен"
+		return "unknown"
 	}
 }
 

@@ -13,10 +13,10 @@ func TestCheckTplaterVersionDevBuilds(t *testing.T) {
 		"v1.2.3+dirty",
 	} {
 		if err := checkTplaterVersion(">=0.1.0", ver); err != nil {
-			t.Errorf("версия %q должна проходить гейт: %v", ver, err)
+			t.Errorf("version %q must pass the gate: %v", ver, err)
 		}
 	}
 	if err := checkTplaterVersion(">=0.1.0", "v0.0.1"); err == nil {
-		t.Error("v0.0.1 не должна проходить гейт >=0.1.0")
+		t.Error("v0.0.1 must not pass the >=0.1.0 gate")
 	}
 }

@@ -32,7 +32,7 @@ import (
 func RunGitCredential(s *Store, op string, in io.Reader, out, logw io.Writer, now time.Time) error {
 	attrs, err := parseCredentialInput(in)
 	if err != nil {
-		return fmt.Errorf("auth: git-credential: чтение ввода: %w", err)
+		return fmt.Errorf("auth: git-credential: reading input: %w", err)
 	}
 	host := attrs["host"]
 	repo := normalizeRepoPath(attrs["path"])
@@ -57,18 +57,18 @@ func RunGitCredential(s *Store, op string, in io.Reader, out, logw io.Writer, no
 			return err
 		}
 		if !found {
-			fmt.Fprintln(logw, "tplater auth: store — нет сохранённого токена для этого хоста, "+
-				"автоматически не создаём (используйте `tplater auth add`)")
+			fmt.Fprintln(logw, "tplater auth: store — no saved token for this host, "+
+				"not creating automatically (use `tplater auth add`)")
 			return nil
 		}
 		return s.TouchLastUsed(cred.ID, now)
 
 	case "erase":
-		fmt.Fprintln(logw, "tplater auth: erase — no-op (токены удаляются только через `tplater auth remove`)")
+		fmt.Fprintln(logw, "tplater auth: erase — no-op (tokens are removed only through `tplater auth remove`)")
 		return nil
 
 	default:
-		return fmt.Errorf("auth: git-credential: неизвестная операция %q", op)
+		return fmt.Errorf("auth: git-credential: unknown operation %q", op)
 	}
 }
 

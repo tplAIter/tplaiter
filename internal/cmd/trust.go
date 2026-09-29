@@ -112,7 +112,7 @@ func newTrustRefreshCmd() *cobra.Command {
 			return err
 		},
 	}
-	cmd.Flags().StringVar(&bundleInput, "bundle-input", "", "кандидатный закрытый JSON bootstrap bundle")
+	cmd.Flags().StringVar(&bundleInput, "bundle-input", "", "candidate sealed JSON bootstrap bundle")
 	return cmd
 }
 

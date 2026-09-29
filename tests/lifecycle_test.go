@@ -29,10 +29,10 @@ func TestLifecycle(t *testing.T) {
 	// 1. init-template: generates the template repository + git init/commit.
 	mustRun(t, home, "", "init-template", "demo-svc", "--dir", repoDir)
 	if !exists(filepath.Join(repoDir, ".git")) {
-		t.Fatalf("init-template: ожидался git-репозиторий в %s", repoDir)
+		t.Fatalf("init-template: expected a git repository in %s", repoDir)
 	}
 	if !exists(filepath.Join(repoDir, "template.manifest.yaml")) {
-		t.Fatalf("init-template: ожидался template.manifest.yaml в %s", repoDir)
+		t.Fatalf("init-template: expected template.manifest.yaml in %s", repoDir)
 	}
 
 	// 2. repo add file://<repoDir>.
@@ -60,15 +60,15 @@ func TestLifecycle(t *testing.T) {
 	)
 
 	readme := mustReadFile(t, filepath.Join(projDir, "README.md"))
-	mustContain(t, readme, "My Service", "README.md рендер имени проекта")
+	mustContain(t, readme, "My Service", "README.md renders the project name")
 	if !exists(filepath.Join(projDir, "extra.txt")) {
-		t.Error("new: feature_x=true должен дать extra.txt (__if_feature_x__/)")
+		t.Error("new: feature_x=true must produce extra.txt (__if_feature_x__/)")
 	}
 	if !exists(filepath.Join(projDir, "advanced", "notes.md")) {
-		t.Error("new: variant=advanced должен дать advanced/notes.md (files-правило)")
+		t.Error("new: variant=advanced must produce advanced/notes.md (files rule)")
 	}
 	if !exists(filepath.Join(projDir, ".tplaiter", "project.yaml")) {
-		t.Fatal("new: отсутствует проектный маркер .tplaiter/project.yaml")
+		t.Fatal("new: project marker .tplaiter/project.yaml is missing")
 	}
 
 	// 5. run test — manifest command (the skeleton's echo stub).
@@ -77,7 +77,7 @@ func TestLifecycle(t *testing.T) {
 	// 6. settings set: turn off feature_x — 3-way must remove extra.txt.
 	mustRun(t, home, projDir, "settings", "set", "feature_x=false", "--yes")
 	if exists(filepath.Join(projDir, "extra.txt")) {
-		t.Error("settings set feature_x=false: extra.txt должен быть удалён 3-way-слиянием")
+		t.Error("settings set feature_x=false: extra.txt must be removed by the 3-way merge")
 	}
 
 	// 7. update --check — scans the tree for conflict markers; none should
@@ -89,10 +89,10 @@ func TestLifecycle(t *testing.T) {
 	statsRes := mustRun(t, home, projDir, "stats", "--json")
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(statsRes.Stdout), &parsed); err != nil {
-		t.Fatalf("stats --json: невалидный JSON: %v\nstdout:\n%s", err, statsRes.Stdout)
+		t.Fatalf("stats --json: invalid JSON: %v\nstdout:\n%s", err, statsRes.Stdout)
 	}
 	if _, ok := parsed["score"]; !ok {
-		t.Errorf("stats --json: ожидалось поле %q, получено: %v", "score", parsed)
+		t.Errorf("stats --json: expected field %q, got: %v", "score", parsed)
 	}
 
 	// 9. projects list — the project is registered in the ~/.tplaiter registry.

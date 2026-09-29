@@ -129,13 +129,13 @@ func (bd *binding) field() (huh.Field, error) {
 		if bd.g.Pattern != "" {
 			v, err := patternValidator(bd.g.Pattern)
 			if err != nil {
-				return nil, fmt.Errorf("группа %q: неверный pattern %q: %w", bd.g.Group, bd.g.Pattern, err)
+				return nil, fmt.Errorf("group %q: invalid pattern %q: %w", bd.g.Group, bd.g.Pattern, err)
 			}
 			in = in.Validate(v)
 		}
 		return in, nil
 	default:
-		return nil, fmt.Errorf("группа %q: неизвестный тип %q", bd.g.Group, bd.g.Type)
+		return nil, fmt.Errorf("group %q: unknown type %q", bd.g.Group, bd.g.Type)
 	}
 }
 
@@ -222,10 +222,10 @@ func (p HuhPrompter) Confirm(summary string) (bool, error) {
 	var ok bool
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
-			Title("Применить эти настройки?").
+			Title("Apply these settings?").
 			Description(summary).
-			Affirmative("Да").
-			Negative("Изменить").
+			Affirmative("Yes").
+			Negative("Change").
 			Value(&ok),
 	))
 	p.configure(form)
@@ -274,7 +274,7 @@ func selectableOptions(g *manifest.SettingGroup, preselected []string) (opts []h
 func fieldDescription(g *manifest.SettingGroup, planned []string) string {
 	d := g.Description
 	if len(planned) > 0 {
-		hint := "(planned — недоступно): " + strings.Join(planned, ", ")
+		hint := "(planned — unavailable): " + strings.Join(planned, ", ")
 		if d != "" {
 			d += "\n" + hint
 		} else {
@@ -287,7 +287,7 @@ func fieldDescription(g *manifest.SettingGroup, planned []string) string {
 // intValidator checks that input is an integer.
 func intValidator(s string) error {
 	if _, err := strconv.Atoi(s); err != nil {
-		return fmt.Errorf("значение %q не является целым числом", s)
+		return fmt.Errorf("value %q is not an integer", s)
 	}
 	return nil
 }
@@ -300,7 +300,7 @@ func patternValidator(pattern string) (func(string) error, error) {
 	}
 	return func(s string) error {
 		if !re.MatchString(s) {
-			return fmt.Errorf("значение не соответствует шаблону %s", pattern)
+			return fmt.Errorf("value does not match pattern %s", pattern)
 		}
 		return nil
 	}, nil

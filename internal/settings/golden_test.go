@@ -38,9 +38,9 @@ func TestReport_GoldenSerialization(t *testing.T) {
 
 	want, err := os.ReadFile(golden)
 	if err != nil {
-		t.Fatalf("чтение golden (запусти с TPLAITER_UPDATE_GOLDEN=1 для генерации): %v", err)
+		t.Fatalf("reading golden (run with TPLAITER_UPDATE_GOLDEN=1 to generate): %v", err)
 	}
 	if string(got) != string(want) {
-		t.Errorf("сериализация Report не совпала с golden:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+		t.Errorf("Report serialization does not match golden:\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }

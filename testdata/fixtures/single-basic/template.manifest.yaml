@@ -9,7 +9,7 @@ metadata:
   name: single-basic
   displayName: "Single Basic Fixture"
   version: 0.1.0
-  description: "Фикстура engine-тестов: select+вложенный toggle, multiselect, files-правила."
+  description: "Engine test fixture: select+nested toggle, multiselect, file rules."
   labels:
     lang: [fixture]
     type: [fixture]
@@ -29,21 +29,21 @@ requires:
 
 settings:
   - group: database
-    title: "База данных"
+    title: "Database"
     type: select
     default: none
     options:
       - id: none
-        title: "Без БД"
+        title: "No DB"
       - id: postgres
         title: "PostgreSQL"
         settings:
           - group: migrations
-            title: "Миграции"
+            title: "Migrations"
             type: toggle
             default: false
   - group: brokers
-    title: "Брокеры сообщений"
+    title: "Message brokers"
     type: multiselect
     options:
       - id: kafka
@@ -68,10 +68,10 @@ files:
 commands:
   dev:
     run: "echo dev"
-    description: "локальный запуск фикстуры"
+    description: "local fixture run"
   test:
     run: "echo test"
-    description: "прогон тестов фикстуры"
+    description: "fixture test run"
 
 hooks:
   postCreate:

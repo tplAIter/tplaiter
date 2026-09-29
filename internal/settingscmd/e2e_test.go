@@ -37,7 +37,7 @@ var gitExec = execx.Exec{}
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := gitExec.LookPath("git"); err != nil {
-		t.Skip("git не найден в PATH — интеграционный тест пропущен")
+		t.Skip("git not found in PATH — integration test skipped")
 	}
 }
 
@@ -314,7 +314,7 @@ func TestSettings_Set_DatabaseAppears(t *testing.T) {
 	mgr, home, projDir := setup(t, nil, nil)
 	// Initial state: database=none and no vertical.
 	if !absent(t, projDir, "schema.sql") {
-		t.Fatalf("до set schema.sql не должен существовать")
+		t.Fatalf("schema.sql must not exist before set")
 	}
 
 	before := fixtureState(t, home, projDir)
@@ -332,7 +332,7 @@ func TestSettings_Set_DatabaseNone_RemovesCleanKeepsModified(t *testing.T) {
 		writeFiles(t, p, map[string]string{"seed.sql": "insert into t; -- MINE\n"})
 	})
 	if absent(t, projDir, "schema.sql") {
-		t.Fatalf("до set schema.sql должен существовать")
+		t.Fatalf("schema.sql must exist before set")
 	}
 	before := fixtureState(t, home, projDir)
 	var out, errOut bytes.Buffer
@@ -364,17 +364,17 @@ func TestSettings_Set_DryRun(t *testing.T) {
 	}
 
 	if !absent(t, projDir, "schema.sql") {
-		t.Errorf("--dry-run создал schema.sql")
+		t.Errorf("--dry-run created schema.sql")
 	}
 	if got := loadSettings(t, projDir)["database"]; got != "none" {
-		t.Errorf("--dry-run изменил project.yaml: database=%v", got)
+		t.Errorf("--dry-run modified project.yaml: database=%v", got)
 	}
 	s := out.String()
 	if !strings.Contains(s, "--dry-run") {
-		t.Errorf("нет пометки --dry-run:\n%s", s)
+		t.Errorf("no --dry-run note:\n%s", s)
 	}
-	if !strings.Contains(s, "изменённые группы") {
-		t.Errorf("нет сводки групп в dry-run:\n%s", s)
+	if !strings.Contains(s, "changed groups") {
+		t.Errorf("no group summary in dry-run:\n%s", s)
 	}
 }
 
@@ -402,11 +402,11 @@ func TestSettings_Edit_NoArg_ListsGroups(t *testing.T) {
 	err := settingscmd.Edit(context.Background(), testDeps(mgr, home, &out, &errOut, nil, false),
 		settingscmd.Options{StartDir: projDir})
 	if err != nil {
-		t.Fatalf("Edit без группы: %v", err)
+		t.Fatalf("Edit without a group: %v", err)
 	}
 	s := out.String()
 	if !strings.Contains(s, "database") || !strings.Contains(s, "settings edit <group>") {
-		t.Errorf("нет списка групп/подсказки:\n%s", s)
+		t.Errorf("no group list/hint:\n%s", s)
 	}
 }
 
@@ -441,7 +441,7 @@ func TestSettings_List_ActiveColumn(t *testing.T) {
 	// migrations is active (database=postgres selected) and appears in the table.
 	for _, want := range []string{"database", "migrations", "brokers", "ACTIVE"} {
 		if !strings.Contains(s, want) {
-			t.Errorf("в таблице нет %q:\n%s", want, s)
+			t.Errorf("table does not contain %q:\n%s", want, s)
 		}
 	}
 }

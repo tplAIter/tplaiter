@@ -1,2 +1,2 @@
-Проект {{ .Project.Name }} ({{ .Project.Slug }}) создан из шаблона {{ .Template.Name }}@{{ .Template.Version }}.
-{{ if is "database" "postgres" }}База данных: PostgreSQL.{{ else }}База данных не выбрана.{{ end }}
+Project {{ .Project.Name }} ({{ .Project.Slug }}) was created from template {{ .Template.Name }}@{{ .Template.Version }}.
+{{ if is "database" "postgres" }}Database: PostgreSQL.{{ else }}No database selected.{{ end }}

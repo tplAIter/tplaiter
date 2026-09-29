@@ -40,15 +40,15 @@ func (s *Source) Validate(tpl *manifest.Template) error {
 	var problems []string
 
 	if len(s.Config.Targets) == 0 {
-		problems = append(problems, "config.targets пуст")
+		problems = append(problems, "config.targets is empty")
 	}
 	for _, t := range s.Config.Targets {
 		if !knownTargets[t] {
-			problems = append(problems, fmt.Sprintf("config.targets: неизвестный target %q", t))
+			problems = append(problems, fmt.Sprintf("config.targets: unknown target %q", t))
 		}
 	}
 	if s.Config.LineLength <= 0 {
-		problems = append(problems, fmt.Sprintf("config.line_length должен быть положительным, получено %d", s.Config.LineLength))
+		problems = append(problems, fmt.Sprintf("config.line_length must be positive, got %d", s.Config.LineLength))
 	}
 
 	knownGroups := settings.DefaultValues(tpl)
@@ -59,7 +59,7 @@ func (s *Source) Validate(tpl *manifest.Template) error {
 
 	if len(problems) > 0 {
 		sort.Strings(problems)
-		return fmt.Errorf("aiconfig: источник невалиден:\n  - %s", strings.Join(problems, "\n  - "))
+		return fmt.Errorf("aiconfig: source is invalid:\n  - %s", strings.Join(problems, "\n  - "))
 	}
 	return nil
 }
@@ -67,28 +67,28 @@ func (s *Source) Validate(tpl *manifest.Template) error {
 // validateModule collects problems for one module.
 func validateModule(root string, knownGroups settings.Values, seen map[string]bool, m LoadedModule) []string {
 	var problems []string
-	prefix := "модуль " + m.ID
+	prefix := "module " + m.ID
 
 	if m.ID == "" {
-		problems = append(problems, "модуль с пустым id")
-		prefix = "модуль <пусто>"
+		problems = append(problems, "module with empty id")
+		prefix = "module <empty>"
 	}
 	if seen[m.ID] {
-		problems = append(problems, prefix+": дублирующийся id")
+		problems = append(problems, prefix+": duplicate id")
 	}
 	seen[m.ID] = true
 
 	if m.Title == "" {
-		problems = append(problems, prefix+": пустой title")
+		problems = append(problems, prefix+": empty title")
 	}
 	if !knownActivations[m.Activation] {
-		problems = append(problems, fmt.Sprintf("%s: неизвестная activation %q", prefix, m.Activation))
+		problems = append(problems, fmt.Sprintf("%s: unknown activation %q", prefix, m.Activation))
 	}
 	if m.Activation == ActivationGlobs && len(m.Globs) == 0 {
-		problems = append(problems, prefix+": activation=globs требует непустые globs")
+		problems = append(problems, prefix+": activation=globs requires non-empty globs")
 	}
 	if m.Activation == ActivationSemantic && strings.TrimSpace(m.Description) == "" {
-		problems = append(problems, prefix+": activation=semantic требует description")
+		problems = append(problems, prefix+": activation=semantic requires description")
 	}
 
 	problems = append(problems, validateModuleFile(root, prefix, "rule_file", m.RuleFile)...)
@@ -110,7 +110,7 @@ func validateWhen(prefix string, groups settings.Values, when string) []string {
 	var problems []string
 	for _, atom := range cond.Atoms {
 		if _, ok := groups[atom.Group]; !ok {
-			problems = append(problems, fmt.Sprintf("%s: when ссылается на несуществующую группу %q", prefix, atom.Group))
+			problems = append(problems, fmt.Sprintf("%s: when references non-existent group %q", prefix, atom.Group))
 		}
 	}
 	return problems
@@ -119,11 +119,11 @@ func validateWhen(prefix string, groups settings.Values, when string) []string {
 // validateModuleFile checks that a path is set and the file exists.
 func validateModuleFile(root, prefix, field, rel string) []string {
 	if rel == "" {
-		return []string{fmt.Sprintf("%s: %s пуст", prefix, field)}
+		return []string{fmt.Sprintf("%s: %s is empty", prefix, field)}
 	}
 	info, err := os.Stat(filepath.Join(root, rel))
 	if err != nil || info.IsDir() {
-		return []string{fmt.Sprintf("%s: %s %q не существует", prefix, field, rel)}
+		return []string{fmt.Sprintf("%s: %s %q does not exist", prefix, field, rel)}
 	}
 	return nil
 }

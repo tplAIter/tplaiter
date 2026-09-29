@@ -25,23 +25,23 @@ import (
 func ParseSet(tpl *manifest.Template, expr string) (group string, value any, err error) {
 	eq := strings.IndexByte(expr, '=')
 	if eq < 0 {
-		return "", nil, fmt.Errorf("значение %q не в формате group=value", expr)
+		return "", nil, fmt.Errorf("value %q not in group=value format", expr)
 	}
 	group = strings.TrimSpace(expr[:eq])
 	raw := strings.TrimSpace(expr[eq+1:])
 	if group == "" {
-		return "", nil, fmt.Errorf("значение %q без имени группы", expr)
+		return "", nil, fmt.Errorf("value %q missing group name", expr)
 	}
 
 	idx := indexGroups(tpl)
 	m, ok := idx[group]
 	if !ok {
-		return "", nil, fmt.Errorf("неизвестная группа %q", group)
+		return "", nil, fmt.Errorf("unknown group %q", group)
 	}
 
 	value, err = typeString(m.g, raw)
 	if err != nil {
-		return "", nil, fmt.Errorf("группа %q: %w", group, err)
+		return "", nil, fmt.Errorf("group %q: %w", group, err)
 	}
 	return group, value, nil
 }
@@ -53,11 +53,11 @@ func ParseSet(tpl *manifest.Template, expr string) (group string, value any, err
 func LoadAnswersFile(tpl *manifest.Template, path string) (Values, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("чтение файла ответов %s: %w", path, err)
+		return nil, fmt.Errorf("reading answers file %s: %w", path, err)
 	}
 	var raw map[string]any
 	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("разбор файла ответов %s: %w", path, err)
+		return nil, fmt.Errorf("parsing answers file %s: %w", path, err)
 	}
 	return typeAnswers(tpl, raw)
 }
@@ -84,12 +84,12 @@ func typeAnswers(tpl *manifest.Template, raw map[string]any) (Values, error) {
 		}
 		val, err := typeNative(m.g, raw[k])
 		if err != nil {
-			return nil, fmt.Errorf("группа %q: %w", k, err)
+			return nil, fmt.Errorf("group %q: %w", k, err)
 		}
 		out[k] = val
 	}
 	if len(unknown) > 0 {
-		return nil, fmt.Errorf("неизвестные группы в файле ответов: %s", strings.Join(unknown, ", "))
+		return nil, fmt.Errorf("unknown groups in answers file: %s", strings.Join(unknown, ", "))
 	}
 	return out, nil
 }
@@ -129,7 +129,7 @@ func typeString(g *manifest.SettingGroup, raw string) (any, error) {
 	case manifest.TypeInt:
 		n, err := strconv.Atoi(raw)
 		if err != nil {
-			return nil, fmt.Errorf("значение %q не является целым числом", raw)
+			return nil, fmt.Errorf("value %q is not an integer", raw)
 		}
 		return n, nil
 	default: // string
@@ -144,7 +144,7 @@ func typeNative(g *manifest.SettingGroup, raw any) (any, error) {
 	case manifest.TypeSelect:
 		s, ok := raw.(string)
 		if !ok {
-			return nil, fmt.Errorf("ожидалась строка (id опции), получено %T", raw)
+			return nil, fmt.Errorf("expected string (option id), got %T", raw)
 		}
 		if err := checkOption(g, s); err != nil {
 			return nil, err
@@ -168,7 +168,7 @@ func typeNative(g *manifest.SettingGroup, raw any) (any, error) {
 		case string:
 			return parseBool(b)
 		default:
-			return nil, fmt.Errorf("ожидался bool, получено %T", raw)
+			return nil, fmt.Errorf("expected bool, got %T", raw)
 		}
 	case manifest.TypeInt:
 		if n, ok := toInt(raw); ok {
@@ -177,7 +177,7 @@ func typeNative(g *manifest.SettingGroup, raw any) (any, error) {
 		if s, ok := raw.(string); ok {
 			return typeString(g, s)
 		}
-		return nil, fmt.Errorf("ожидалось целое число, получено %T", raw)
+		return nil, fmt.Errorf("expected integer, got %T", raw)
 	default: // string
 		if s, ok := raw.(string); ok {
 			return s, nil
@@ -194,7 +194,7 @@ func checkOption(g *manifest.SettingGroup, value string) error {
 		opt := &g.Options[i]
 		if opt.Status == manifest.StatusPlanned {
 			if opt.ID == value {
-				return fmt.Errorf("опция %q помечена planned и недоступна для выбора", value)
+				return fmt.Errorf("option %q marked planned and unavailable for selection", value)
 			}
 			continue
 		}
@@ -203,7 +203,7 @@ func checkOption(g *manifest.SettingGroup, value string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("недопустимое значение %q, допустимо: %s", value, strings.Join(allowed, ", "))
+	return fmt.Errorf("invalid value %q, allowed: %s", value, strings.Join(allowed, ", "))
 }
 
 // parseBool parses CLI boolean input in a broad set of forms.
@@ -214,6 +214,6 @@ func parseBool(raw string) (bool, error) {
 	case "false", "no", "n", "off", "0":
 		return false, nil
 	default:
-		return false, fmt.Errorf("значение %q не булево (true/false/yes/no/on/off/1/0)", raw)
+		return false, fmt.Errorf("value %q not boolean (true/false/yes/no/on/off/1/0)", raw)
 	}
 }

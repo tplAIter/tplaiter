@@ -13,7 +13,7 @@ func TestWorkspaceUseDirs(t *testing.T) {
 	dir := t.TempDir()
 
 	if got, err := workspaceUseDirs(dir); err != nil || got != nil {
-		t.Fatalf("без go.work ожидается nil,nil: %v %v", got, err)
+		t.Fatalf("without go.work expected nil,nil: %v %v", got, err)
 	}
 
 	work := "go 1.26\n\nuse (\n\t./services/a\n\t./services/b\n)\n"
@@ -25,7 +25,7 @@ func TestWorkspaceUseDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got) != 2 || got[0] != "./services/a" || got[1] != "./services/b" {
-		t.Fatalf("use-директории: %v", got)
+		t.Fatalf("use-directories: %v", got)
 	}
 }
 

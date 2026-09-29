@@ -31,7 +31,7 @@ func setupMultiProject(t *testing.T) (dir string, tpl *manifest.Template) {
 
 	tpl = &manifest.Template{Generators: []manifest.Generator{{
 		Kind:        "pair",
-		Description: "пара файлов",
+		Description: "pair of files",
 		Params:      []manifest.Param{{Name: "fields", Type: manifest.ParamTypeFields, Required: true}},
 		Targets: []manifest.Target{
 			{Snippet: "pair/entity.txt.tmpl", Target: "out/{{ .Name.Snake }}.txt"},
@@ -71,7 +71,7 @@ func TestGenerateBatch_PreflightFailureLeavesProjectUntouched(t *testing.T) {
 		{Kind: "pair", Name: "Ride", Fields: opts.Fields, Params: opts.Params},
 		{Kind: "pair", Name: "Ride", Fields: opts.Fields, Params: opts.Params},
 	}, opts)
-	if err == nil || !strings.Contains(err.Error(), "уже запланирован") {
+	if err == nil || !strings.Contains(err.Error(), "already planned") {
 		t.Fatalf("expected planned-target collision, got %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "out/ride.txt")); !os.IsNotExist(statErr) {

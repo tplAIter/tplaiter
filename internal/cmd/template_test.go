@@ -23,7 +23,7 @@ var templateGitExec = execx.Exec{}
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := templateGitExec.LookPath("git"); err != nil {
-		t.Skip("git не найден в PATH — тест пропущен")
+		t.Skip("git not found in PATH — test skipped")
 	}
 }
 
@@ -146,7 +146,7 @@ settings:
 commands:
   build:
     run: "go build ./..."
-    description: "Собрать бинарь"
+    description: "Build the binary"
 `
 
 const alphaReadme = "# Alpha Service\n\nSome **docs** content for alpha.\n"
@@ -226,7 +226,7 @@ func TestTemplateList_NoFilters(t *testing.T) {
 	}
 	for _, want := range []string{"alpha", "beta", "gamma", "a", "b"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("вывод не содержит %q:\n%s", want, out)
+			t.Errorf("output does not contain %q:\n%s", want, out)
 		}
 	}
 }
@@ -248,10 +248,10 @@ func TestTemplateList_RepoFilter(t *testing.T) {
 		t.Fatalf("template list --repo b: %v\n%s", err, out)
 	}
 	if strings.Contains(out, "alpha") {
-		t.Errorf("--repo b не должен показывать alpha:\n%s", out)
+		t.Errorf("--repo b must not show alpha:\n%s", out)
 	}
 	if !strings.Contains(out, "beta") || !strings.Contains(out, "gamma") {
-		t.Errorf("--repo b должен показывать beta и gamma:\n%s", out)
+		t.Errorf("--repo b must show beta and gamma:\n%s", out)
 	}
 }
 
@@ -273,10 +273,10 @@ func TestTemplateList_NameFilter(t *testing.T) {
 		t.Fatalf("template list --name GAM: %v\n%s", err, out)
 	}
 	if !strings.Contains(out, "gamma") {
-		t.Errorf("--name GAM должен показывать gamma:\n%s", out)
+		t.Errorf("--name GAM must show gamma:\n%s", out)
 	}
 	if strings.Contains(out, "alpha") || strings.Contains(out, "beta") {
-		t.Errorf("--name GAM не должен показывать alpha/beta:\n%s", out)
+		t.Errorf("--name GAM must not show alpha/beta:\n%s", out)
 	}
 }
 
@@ -299,10 +299,10 @@ func TestTemplateList_LabelFiltersAND(t *testing.T) {
 		t.Fatalf("template list -l lang=go -l infra=kafka: %v\n%s", err, out)
 	}
 	if !strings.Contains(out, "alpha") || !strings.Contains(out, "gamma") {
-		t.Errorf("ожидались alpha и gamma:\n%s", out)
+		t.Errorf("expected alpha and gamma:\n%s", out)
 	}
 	if strings.Contains(out, "beta") {
-		t.Errorf("beta (python) не должна пройти фильтр lang=go:\n%s", out)
+		t.Errorf("beta (python) must not pass the lang=go filter:\n%s", out)
 	}
 
 	// lang=go AND infra=postgres — only gamma (alpha has no postgres).
@@ -311,10 +311,10 @@ func TestTemplateList_LabelFiltersAND(t *testing.T) {
 		t.Fatalf("template list -l lang=go -l infra=postgres: %v\n%s", err, out)
 	}
 	if strings.Contains(out, "alpha") {
-		t.Errorf("alpha не имеет infra=postgres, не должна пройти AND-фильтр:\n%s", out)
+		t.Errorf("alpha has no infra=postgres and must not pass the AND filter:\n%s", out)
 	}
 	if !strings.Contains(out, "gamma") {
-		t.Errorf("ожидалась gamma:\n%s", out)
+		t.Errorf("expected gamma:\n%s", out)
 	}
 }
 
@@ -327,12 +327,12 @@ func TestTemplateList_EmptyByFilter(t *testing.T) {
 		t.Fatalf("Add a: %v", err)
 	}
 
-	out, err := runTemplateCmd(t, "list", "--name", "не-существует-такого-имени")
+	out, err := runTemplateCmd(t, "list", "--name", "no-such-template-name")
 	if err != nil {
-		t.Fatalf("template list --name <нет>: %v\n%s", err, out)
+		t.Fatalf("template list --name <none>: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "не подходит по заданным фильтрам") {
-		t.Errorf("ожидалось дружелюбное сообщение о пустом результате фильтра:\n%s", out)
+	if !strings.Contains(out, "no template matches the specified filters") {
+		t.Errorf("expected a friendly message about an empty filter result:\n%s", out)
 	}
 }
 
@@ -341,10 +341,10 @@ func TestTemplateList_EmptyNoRepos(t *testing.T) {
 
 	out, err := runTemplateCmd(t, "list")
 	if err != nil {
-		t.Fatalf("template list (без репозиториев): %v\n%s", err, out)
+		t.Fatalf("template list (no repositories): %v\n%s", err, out)
 	}
 	if !strings.Contains(out, "repo add") {
-		t.Errorf("ожидалась подсказка `repo add` при полном отсутствии репозиториев:\n%s", out)
+		t.Errorf("expected a `repo add` hint when no repositories exist:\n%s", out)
 	}
 }
 
@@ -367,49 +367,49 @@ func TestTemplateShow_HeaderSettingsDocs(t *testing.T) {
 	// description, maintainers, labels.
 	for _, want := range []string{
 		"Alpha Service (alpha)",
-		"репозиторий: a",
-		"версия:      v1.0.0",
-		"доступны: v1.0.0",
-		"описание:    Demo alpha template",
+		"repository:  a",
+		"version:     v1.0.0",
+		"available: v1.0.0",
+		"description: Demo alpha template",
 		"maintainers: Alice <alice@example.com>",
 		"labels:      infra=kafka; lang=go",
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("шапка не содержит %q:\n%s", want, out)
+			t.Errorf("header does not contain %q:\n%s", want, out)
 		}
 	}
 
 	// Settings tree: top-level group, nested group with greater indentation, and
 	// the planned option marked.
 	if !strings.Contains(out, "- framework — Framework [select, default=gin]") {
-		t.Errorf("нет строки группы framework:\n%s", out)
+		t.Errorf("framework group row missing:\n%s", out)
 	}
 	if !strings.Contains(out, "* fiber — Fiber [planned]") {
-		t.Errorf("planned-опция fiber не помечена:\n%s", out)
+		t.Errorf("planned option fiber is not marked:\n%s", out)
 	}
 	if !strings.Contains(out, "- fiberMode — Fiber mode [select, default=standalone]") {
-		t.Errorf("нет вложенной группы fiberMode:\n%s", out)
+		t.Errorf("nested group fiberMode missing:\n%s", out)
 	}
 	// The nested group must be indented more than framework.
 	frIdx := strings.Index(out, "- framework")
 	fmIdx := strings.Index(out, "- fiberMode")
 	if frIdx < 0 || fmIdx < 0 || fmIdx < frIdx {
-		t.Fatalf("не удалось найти обе группы в ожидаемом порядке:\n%s", out)
+		t.Fatalf("could not find both groups in the expected order:\n%s", out)
 	}
 	frIndent := frIdx - strings.LastIndex(out[:frIdx], "\n") - 1
 	fmIndent := fmIdx - strings.LastIndex(out[:fmIdx], "\n") - 1
 	if fmIndent <= frIndent {
-		t.Errorf("вложенная группа fiberMode (отступ %d) не глубже framework (отступ %d)", fmIndent, frIndent)
+		t.Errorf("nested group fiberMode (indent %d) is not deeper than framework (indent %d)", fmIndent, frIndent)
 	}
 
 	// Commands.
-	if !strings.Contains(out, "build") || !strings.Contains(out, "Собрать бинарь") {
-		t.Errorf("нет команды build в выводе:\n%s", out)
+	if !strings.Contains(out, "build") || !strings.Contains(out, "Build the binary") {
+		t.Errorf("build command not found in output:\n%s", out)
 	}
 
 	// Docs: NO_COLOR=1 means raw README text without glamour formatting.
 	if !strings.Contains(out, "# Alpha Service") || !strings.Contains(out, "Some **docs** content for alpha.") {
-		t.Errorf("docs не выведены как plain-текст:\n%s", out)
+		t.Errorf("docs were not printed as plain text:\n%s", out)
 	}
 }
 
@@ -427,14 +427,14 @@ func TestTemplateShow_Ambiguous(t *testing.T) {
 
 	out, err := runTemplateCmd(t, "show", "alpha")
 	if err == nil {
-		t.Fatalf("ожидалась ошибка неоднозначности, вывод:\n%s", out)
+		t.Fatalf("expected an ambiguity error, output:\n%s", out)
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "неоднозначно") {
-		t.Errorf("сообщение об ошибке не упоминает неоднозначность: %v", err)
+	if !strings.Contains(msg, "ambiguous") {
+		t.Errorf("error message does not mention ambiguity: %v", err)
 	}
 	if !strings.Contains(msg, "a/alpha") || !strings.Contains(msg, "c/alpha") {
-		t.Errorf("сообщение об ошибке не перечисляет обоих кандидатов: %v", err)
+		t.Errorf("error message does not list both candidates: %v", err)
 	}
 }
 
@@ -453,41 +453,41 @@ func TestTemplatePull_CopiesTreeAndRejectsNonEmptyDest(t *testing.T) {
 		t.Fatalf("template pull: %v\n%s", err, out)
 	}
 	if !strings.Contains(out, "alpha@v1.0.0") || !strings.Contains(out, dest) {
-		t.Errorf("сообщение об успешной выгрузке неожиданное: %q", out)
+		t.Errorf("unexpected export success message: %q", out)
 	}
 
 	gotManifest, err := os.ReadFile(filepath.Join(dest, "template.manifest.yaml"))
 	if err != nil {
-		t.Fatalf("template.manifest.yaml не выгружен: %v", err)
+		t.Fatalf("template.manifest.yaml not exported: %v", err)
 	}
 	if string(gotManifest) != alphaManifest {
-		t.Errorf("template.manifest.yaml содержимое не совпадает")
+		t.Errorf("template.manifest.yaml content mismatch")
 	}
 	gotReadme, err := os.ReadFile(filepath.Join(dest, "README.md"))
 	if err != nil {
-		t.Fatalf("README.md не выгружен: %v", err)
+		t.Fatalf("README.md not exported: %v", err)
 	}
 	if string(gotReadme) != alphaReadme {
-		t.Errorf("README.md содержимое не совпадает")
+		t.Errorf("README.md content mismatch")
 	}
 	gotMain, err := os.ReadFile(filepath.Join(dest, "files", "main.go"))
 	if err != nil {
-		t.Fatalf("files/main.go не выгружен: %v", err)
+		t.Fatalf("files/main.go not exported: %v", err)
 	}
 	if string(gotMain) != alphaMainGo {
-		t.Errorf("files/main.go содержимое не совпадает")
+		t.Errorf("files/main.go content mismatch")
 	}
 	if _, err := os.Stat(filepath.Join(dest, ".git")); !os.IsNotExist(err) {
-		t.Errorf(".git worktree-артефакт не должен попадать в выгрузку (err=%v)", err)
+		t.Errorf(".git worktree artifact must not be exported (err=%v)", err)
 	}
 
 	// Exporting again to the same (now non-empty) dest is an error.
 	_, err = runTemplateCmd(t, "pull", "a/alpha", "--dest", dest)
 	if err == nil {
-		t.Fatal("повторный pull в непустой dest должен вернуть ошибку")
+		t.Fatal("a repeated pull into a non-empty dest must fail")
 	}
-	if !strings.Contains(err.Error(), "не пуст") {
-		t.Errorf("ошибка не упоминает непустой каталог: %v", err)
+	if !strings.Contains(err.Error(), "is not empty") {
+		t.Errorf("error does not mention the non-empty directory: %v", err)
 	}
 }
 
@@ -503,9 +503,9 @@ func TestTemplatePull_DefaultDest(t *testing.T) {
 	t.Chdir(t.TempDir())
 	out, err := runTemplateCmd(t, "pull", "a/alpha")
 	if err != nil {
-		t.Fatalf("template pull (без --dest): %v\n%s", err, out)
+		t.Fatalf("template pull (no --dest): %v\n%s", err, out)
 	}
 	if _, err := os.Stat("alpha"); err != nil {
-		t.Errorf("выгрузка по умолчанию ./alpha не создана: %v", err)
+		t.Errorf("default export ./alpha was not created: %v", err)
 	}
 }

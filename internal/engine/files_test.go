@@ -49,7 +49,7 @@ func TestCompileFileRulesAnyOfIsOr(t *testing.T) {
 		t.Fatalf("compileFileRules: %v", err)
 	}
 	if !gs.matchAny("legacy/notice.txt") {
-		t.Error("anyOf — OR: истинности одного условия достаточно, remove должен сработать")
+		t.Error("anyOf is OR: one true condition is enough, remove must apply")
 	}
 
 	// Both atoms are false; OR is false and remove does not apply.
@@ -58,7 +58,7 @@ func TestCompileFileRulesAnyOfIsOr(t *testing.T) {
 		t.Fatalf("compileFileRules: %v", err)
 	}
 	if gs.matchAny("legacy/notice.txt") {
-		t.Error("anyOf — OR: оба условия ложны, remove не должен срабатывать")
+		t.Error("anyOf is OR: both conditions are false, remove must not apply")
 	}
 }
 
@@ -75,7 +75,7 @@ func TestCompileFileRulesCompositeRemovalUsesWhenWithAnd(t *testing.T) {
 		t.Fatalf("compileFileRules: %v", err)
 	}
 	if !gs.matchAny("internal/integrations/events/consumer.go") {
-		t.Error("ни kafka, ни rabbitmq не выбраны — remove должен сработать")
+		t.Error("neither kafka nor rabbitmq is selected — remove must apply")
 	}
 
 	gs, err = compileFileRules(rules, settings.Values{"brokers": []string{"kafka"}})
@@ -83,7 +83,7 @@ func TestCompileFileRulesCompositeRemovalUsesWhenWithAnd(t *testing.T) {
 		t.Fatalf("compileFileRules: %v", err)
 	}
 	if gs.matchAny("internal/integrations/events/consumer.go") {
-		t.Error("kafka выбрана — remove не должен сработать")
+		t.Error("kafka is selected — remove must not apply")
 	}
 }
 

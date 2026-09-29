@@ -20,7 +20,7 @@ const indentUnit = "  "
 // indent level, usually 0.
 func RenderSettings(w io.Writer, pal ui.Palette, groups []manifest.SettingGroup, depth int) {
 	if len(groups) == 0 {
-		fmt.Fprintln(w, strings.Repeat(indentUnit, depth)+"манифест не объявляет settings")
+		fmt.Fprintln(w, strings.Repeat(indentUnit, depth)+"manifest does not declare settings")
 		return
 	}
 	for i := range groups {

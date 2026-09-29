@@ -45,7 +45,7 @@ func buildInfoVersion(read func() (*debug.BuildInfo, bool)) string {
 
 // unknownRevision — placeholder when the commit hash is unavailable (for
 // example, a local build without VCS metadata; see [buildRevision]).
-const unknownRevision = "неизвестен"
+const unknownRevision = "unknown"
 
 // buildRevision extracts vcs.revision (short commit hash) from
 // BuildInfo.Settings — Go sets it automatically when building from VCS
@@ -72,15 +72,15 @@ func newVersionCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunReadonly),
 
 		Use:   "version",
-		Short: "Показать версию tplaiter",
+		Short: "Show tplaiter version",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
 			fmt.Fprintln(out, resolveVersion())
 			fmt.Fprintln(out, "commit:", buildRevision(debug.ReadBuildInfo))
-			fmt.Fprintln(out, "канал установки:", selfupdate.DetectChannel().Label())
+			fmt.Fprintln(out, "installation channel:", selfupdate.DetectChannel().Label())
 			if home, err := state.Home(); err == nil {
-				fmt.Fprintln(out, "конфиг:", filepath.Join(home, "config.yaml"))
+				fmt.Fprintln(out, "config:", filepath.Join(home, "config.yaml"))
 			}
 			return nil
 		},

@@ -30,11 +30,11 @@ func (r *Report) WriteJSON(w io.Writer) error {
 	}
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
-		return fmt.Errorf("stats: сериализация JSON: %w", err)
+		return fmt.Errorf("stats: JSON serialization: %w", err)
 	}
 	data = append(data, '\n')
 	if _, err := w.Write(data); err != nil {
-		return fmt.Errorf("stats: запись JSON: %w", err)
+		return fmt.Errorf("stats: JSON write: %w", err)
 	}
 	return nil
 }
@@ -45,20 +45,20 @@ func (r *Report) WriteJSON(w io.Writer) error {
 func (r *Report) Render(w io.Writer, p ui.Palette) {
 	counts := r.countByStatus()
 
-	fmt.Fprintln(w, p.Header(fmt.Sprintf("дрейф проекта от шаблона (версия %s)", r.OldVersion)))
+	fmt.Fprintln(w, p.Header(fmt.Sprintf("project drift from template (version %s)", r.OldVersion)))
 	fmt.Fprintln(w)
 
 	if r.isClean() {
-		fmt.Fprintln(w, p.Success("drift-score: 0 — проект соответствует шаблону"))
+		fmt.Fprintln(w, p.Success("drift-score: 0 — project matches template"))
 		return
 	}
 
 	scoreLine := fmt.Sprintf("drift-score: %d / 100", r.Score)
 	fmt.Fprintln(w, scoreColor(p, r.Score)(scoreLine))
-	fmt.Fprintf(w, "файлов эталона: %d  (identical %d, modified %d, deleted %d)\n",
+	fmt.Fprintf(w, "reference files: %d  (identical %d, modified %d, deleted %d)\n",
 		len(r.Files), counts[StatusIdentical], counts[StatusModified]+counts[StatusModifiedBinary], counts[StatusDeleted])
-	fmt.Fprintf(w, "extra-файлов (вне шаблона): %d\n", len(r.Extras))
-	fmt.Fprintf(w, "сломанные якоря: %d", len(r.BrokenAnchors))
+	fmt.Fprintf(w, "extra files (outside template): %d\n", len(r.Extras))
+	fmt.Fprintf(w, "broken anchors: %d", len(r.BrokenAnchors))
 	if len(r.BrokenAnchors) > 0 {
 		fmt.Fprintf(w, " (%s)", joinPaths(r.BrokenAnchors))
 	}
@@ -76,7 +76,7 @@ func (r *Report) renderTop(w io.Writer, p ui.Palette) {
 	if len(ranked) > topN {
 		ranked = ranked[:topN]
 	}
-	fmt.Fprintln(w, p.Header(fmt.Sprintf("топ-%d по дрейфу:", topN)))
+	fmt.Fprintln(w, p.Header(fmt.Sprintf("top-%d by drift:", topN)))
 	table := ui.NewTable("FILE", "STATUS", "CLASS", "±", "%")
 	for _, f := range ranked {
 		table.AddRow(f.Path, statusColor(p, f.Status), f.Class, plusMinus(f), pctCell(f))

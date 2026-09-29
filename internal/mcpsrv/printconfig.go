@@ -37,12 +37,12 @@ func PrintConfig(client, exe string) (string, error) {
 			"servers": map[string]any{"tplaiter": entry},
 		}
 	default:
-		return "", fmt.Errorf("mcpsrv: неизвестный клиент %q (ожидается claude|cursor|vscode)", client)
+		return "", fmt.Errorf("mcpsrv: unknown client %q (expected claude|cursor|vscode)", client)
 	}
 
 	data, err := json.MarshalIndent(root, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("mcpsrv: сериализация конфига: %w", err)
+		return "", fmt.Errorf("mcpsrv: config serialization: %w", err)
 	}
 	return string(data), nil
 }

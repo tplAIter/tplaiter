@@ -56,8 +56,8 @@ func TestLoadConfig_FutureVersionErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("LoadConfig() with future version = nil error, want error")
 	}
-	if !strings.Contains(err.Error(), "обновите tplater") {
-		t.Errorf("LoadConfig() error = %q, want mention of \"обновите tplater\"", err)
+	if !strings.Contains(err.Error(), "update tplater") {
+		t.Errorf("LoadConfig() error = %q, want mention of \"update tplater\"", err)
 	}
 }
 

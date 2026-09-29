@@ -23,8 +23,8 @@ func TestListPlaybooks_WhenFiltering(t *testing.T) {
 	tpl := &manifest.Template{
 		Environment: manifest.Environment{
 			Playbooks: []manifest.Playbook{
-				{Name: "setup", File: "environment/setup.yml", Description: "зависимости"},
-				{Name: "infra", File: "environment/infra.yml", Description: "инфра", When: "database=postgres"},
+				{Name: "setup", File: "environment/setup.yml", Description: "dependencies"},
+				{Name: "infra", File: "environment/infra.yml", Description: "infra", When: "database=postgres"},
 				{Name: "unreachable", File: "environment/x.yml", When: "database=mysql"},
 				{Name: "broken", File: "environment/y.yml", When: "unknown_group=x"},
 			},
@@ -53,7 +53,7 @@ func TestListPlaybooks_WhenFiltering(t *testing.T) {
 		t.Errorf("infra.WhenStr = %q, want %q", got[1].WhenStr, "database=postgres")
 	}
 	if got[0].WhenStr != "" {
-		t.Errorf("setup.WhenStr = %q, want empty (нет when)", got[0].WhenStr)
+		t.Errorf("setup.WhenStr = %q, want empty (no when)", got[0].WhenStr)
 	}
 }
 
@@ -191,7 +191,7 @@ func TestRunPlaybook_PassesExtraVarsFileAndProjectRoot(t *testing.T) {
 		// buildExtraVars); the important points here are that the path is passed
 		// correctly and the file is removed AFTER RunPlaybook completes.
 		if _, err := os.Stat(extraVarsPath); !os.IsNotExist(err) {
-			t.Errorf("extra-vars файл %s не удалён после RunPlaybook (err=%v)", extraVarsPath, err)
+			t.Errorf("extra-vars file %s not removed after RunPlaybook (err=%v)", extraVarsPath, err)
 		}
 
 		if !strings.Contains(out.String(), "PLAY [setup]") {
@@ -219,7 +219,7 @@ func TestRunPlaybook_ExtraVarsFileContentMatchesBuildExtraVars(t *testing.T) {
 					path := strings.TrimPrefix(args[i+1], "@")
 					data, readErr := os.ReadFile(path)
 					if readErr != nil {
-						t.Fatalf("чтение extra-vars файла %s: %v", path, readErr)
+						t.Fatalf("read extra-vars file %s: %v", path, readErr)
 					}
 					fileContent = string(data)
 				}
@@ -246,7 +246,7 @@ func TestRunPlaybook_ExtraVarsFileContentMatchesBuildExtraVars(t *testing.T) {
 			t.Fatalf("buildExtraVars() error = %v", err)
 		}
 		if fileContent != want {
-			t.Errorf("файл extra-vars = %s, want %s", fileContent, want)
+			t.Errorf("extra-vars file = %s, want %s", fileContent, want)
 		}
 	}
 }
@@ -317,7 +317,7 @@ func TestRunPlaybook_AnsibleMissing_AutoYesTrue_InstallsThenRechecks(t *testing.
 	// ansible-playbook is found only on the second LookPath check (first before
 	// installation, second after), simulating the binary appearing in PATH right
 	// after `brew install ansible`.
-	errNotFound := errors.New("ansible-playbook: не найден в PATH")
+	errNotFound := errors.New("ansible-playbook: not found in PATH")
 	runner := &sequencedLookupRunner{RecordingRunner: inner, name: "ansible-playbook", seq: []error{
 		errNotFound,
 		nil,
@@ -395,11 +395,11 @@ func TestNewRunner_SharesUIAndDepsUI(t *testing.T) {
 	}
 	r.UI.Info("hello")
 	if !strings.Contains(buf.String(), "hello") {
-		t.Errorf("buf = %q, want сообщение через UI.Info попавшим в общий writer", buf.String())
+		t.Errorf("buf = %q, want message through UI.Info in shared writer", buf.String())
 	}
 	r.DepsUI.Warn("world")
 	if !strings.Contains(buf.String(), "world") {
-		t.Errorf("buf = %q, want сообщение через DepsUI.Warn в том же writer, что UI", buf.String())
+		t.Errorf("buf = %q, want message through DepsUI.Warn in same writer as UI", buf.String())
 	}
 }
 

@@ -7,7 +7,7 @@ apiVersion: tplater.dev/v1alpha1
 kind: Repository
 metadata:
   name: fixture-repo
-  description: "Мульти-шаблонный репозиторий-фикстура для offline-тестов tplater."
+  description: "Multi-template repository fixture for offline tplater tests."
 templates:
   - path: alpha
   - path: beta

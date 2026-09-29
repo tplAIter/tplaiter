@@ -21,7 +21,7 @@ import (
 // caller can show it to the user and suggest installation.
 func ImportFromTool(ctx context.Context, s *Store, runner execx.Runner, bin, tool, host string) (int64, error) {
 	if _, err := runner.LookPath(bin); err != nil {
-		return 0, fmt.Errorf("auth: %s не найден в PATH — установите его и повторите (%s auth login)", bin, bin)
+		return 0, fmt.Errorf("auth: %s not found in PATH — install it and retry (%s auth login)", bin, bin)
 	}
 
 	runArgs := []string{"auth", "token"}
@@ -34,13 +34,13 @@ func ImportFromTool(ctx context.Context, s *Store, runner execx.Runner, bin, too
 	}
 	token := strings.TrimSpace(res.Stdout)
 	if token == "" {
-		return 0, fmt.Errorf("auth: %s вернул пустой токен (выполните `%s auth login`)", bin, bin)
+		return 0, fmt.Errorf("auth: %s returned empty token (run `%s auth login`)", bin, bin)
 	}
 
 	return s.Put(Credential{
 		Host:  host,
 		Tool:  tool,
 		Token: token,
-		Note:  "импортирован из " + bin,
+		Note:  "imported from " + bin,
 	})
 }

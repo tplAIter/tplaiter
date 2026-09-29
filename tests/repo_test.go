@@ -21,11 +21,11 @@ func TestRepoLifecycle(t *testing.T) {
 	badPath := filepath.Join(t.TempDir(), "does-not-exist")
 	bad := run(t, home, "", "repo", "add", "bad", "file://"+badPath)
 	if bad.ExitCode == 0 {
-		t.Fatalf("repo add с несуществующим путём: ожидался ненулевой exit, получен 0\nstdout:\n%s", bad.Stdout)
+		t.Fatalf("repo add with a non-existent path: expected a non-zero exit, got 0\nstdout:\n%s", bad.Stdout)
 	}
 	listAfterBad := mustRun(t, home, "", "repo", "list")
 	if strings.Contains(listAfterBad.Stdout, "bad") {
-		t.Errorf("repo add с несуществующим путём НЕ должен регистрировать алиас: %s", listAfterBad.Stdout)
+		t.Errorf("repo add with a non-existent path must NOT register the alias: %s", listAfterBad.Stdout)
 	}
 
 	// Add a valid repository under alias "dup".
@@ -34,9 +34,9 @@ func TestRepoLifecycle(t *testing.T) {
 	// Reusing the same alias with ANY URL is an error.
 	dupAgain := run(t, home, "", "repo", "add", "dup", "file://"+origin)
 	if dupAgain.ExitCode == 0 {
-		t.Fatalf("repo add с занятым алиасом: ожидался ненулевой exit, получен 0")
+		t.Fatalf("repo add with a taken alias: expected a non-zero exit, got 0")
 	}
-	mustContain(t, dupAgain.Stderr+dupAgain.Stdout, "dup", "repo add с занятым алиасом")
+	mustContain(t, dupAgain.Stderr+dupAgain.Stdout, "dup", "repo add with a taken alias")
 
 	// update: git fetch + reindexing — on a file:// repository with no new
 	// commits, it should simply complete cleanly.
@@ -46,9 +46,9 @@ func TestRepoLifecycle(t *testing.T) {
 	mustRun(t, home, "", "repo", "remove", "dup")
 	afterRemove := mustRun(t, home, "", "repo", "list")
 	if strings.Contains(afterRemove.Stdout, "dup") {
-		t.Errorf("repo remove: алиас %q всё ещё в списке:\n%s", "dup", afterRemove.Stdout)
+		t.Errorf("repo remove: alias %q is still listed:\n%s", "dup", afterRemove.Stdout)
 	}
 	if exists(filepath.Join(home, "repos", "dup")) {
-		t.Error("repo remove: каталог клона repos/dup должен быть удалён")
+		t.Error("repo remove: clone directory repos/dup must be removed")
 	}
 }

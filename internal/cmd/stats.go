@@ -24,14 +24,14 @@ func newStatsCmd() *cobra.Command {
 
 	c := &cobra.Command{
 		Use:   "stats",
-		Short: "Показать дрейф проекта от шаблона (drift-score)",
-		Long: "Сравнивает чистый рендер зафиксированной версии+ответов шаблона (эталон) с рабочим " +
-			"деревом проекта (): по каждому файлу — статус (identical/modified/deleted/extra), " +
-			"процент изменённых строк (LCS) и класс обновляемости — auto (update приведёт 3-way чисто), " +
-			"conflict-prone (шаблон исторически менял этот файл) или manual-only (удалённый эталонный файл, " +
-			"сломанный якорь CODEGEN, правка в copyWithoutRender-артефакте).\n\n" +
-			"Выводит суммарный drift-score 0..100, топ-10 файлов по дрейфу, число extra-файлов и сломанных " +
-			"якорей. --json даёт стабильную машиночитаемую схему для дашбордов эксплуатации шаблонов.",
+		Short: "Show project drift from template (drift-score)",
+		Long: "Compares a clean render of the pinned template version+answers (baseline) with the " +
+			"project working tree; for each file — status (identical/modified/deleted/extra), " +
+			"percentage of changed lines (LCS), and updateability class — auto (update will merge cleanly), " +
+			"conflict-prone (template historically modified this file), or manual-only (deleted baseline file, " +
+			"broken CODEGEN anchor, or edit in copyWithoutRender artifact).\n\n" +
+			"Outputs total drift-score 0..100, top-10 files by drift, count of extra files and broken " +
+			"anchors. --json provides a stable machine-readable schema for template operations dashboards.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mgr, st, err := newManager(cmd)
@@ -47,7 +47,7 @@ func newStatsCmd() *cobra.Command {
 
 			cwd, err := os.Getwd()
 			if err != nil {
-				return fmt.Errorf("cmd: stats: определение рабочего каталога: %w", err)
+				return fmt.Errorf("cmd: stats: determining working directory: %w", err)
 			}
 
 			return stats.Run(cmd.Context(), stats.Deps{
@@ -63,6 +63,6 @@ func newStatsCmd() *cobra.Command {
 		},
 	}
 
-	c.Flags().BoolVar(&asJSON, "json", false, "машиночитаемый JSON-отчёт")
+	c.Flags().BoolVar(&asJSON, "json", false, "machine-readable JSON report")
 	return c
 }

@@ -15,7 +15,7 @@ func loadFixture(t *testing.T, name string) *manifest.Template {
 		t.Fatalf("LoadTemplate(%s): %v", name, err)
 	}
 	if err := tpl.Validate(); err != nil {
-		t.Fatalf("фикстура %s невалидна: %v", name, err)
+		t.Fatalf("fixture %s is invalid: %v", name, err)
 	}
 	return tpl
 }

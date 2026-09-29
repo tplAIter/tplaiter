@@ -50,17 +50,17 @@ type doctorArgs struct {
 func (s *Server) addProjectTools() {
 	s.mcp.AddTool(mcp.NewTool(
 		"project_new",
-		mcp.WithDescription("Создать проект из шаблона (всегда неинтерактивно). Проект создаётся как <dir>/<slug>. При неполноте set сам инструмент вернёт ошибку про обязательные группы — либо задайте defaults=true."),
-		mcp.WithString("ref", mcp.Required(), mcp.Description("Ссылка на шаблон: repo/name@version или короткая name")),
-		mcp.WithString("name", mcp.Required(), mcp.Description("Имя нового проекта")),
-		mcp.WithString("dir", mcp.Description("Каталог, ВНУТРИ которого создаётся проект (должен существовать); по умолчанию — cwd сервера")),
-		mcp.WithObject("set", mcp.Description("Значения настроек: группа→значение (сериализуются в --set пары)")),
-		mcp.WithBoolean("defaults", mcp.Description("Взять значения по умолчанию для незаданных групп"), mcp.DefaultBool(false)),
-		mcp.WithBoolean("noHooks", mcp.Description("Пропустить hooks.postCreate (--no-hooks)"), mcp.DefaultBool(false)),
-		mcp.WithBoolean("noDepsCheck", mcp.Description("Пропустить проверку инструментов окружения (--no-deps-check)"), mcp.DefaultBool(false)),
-		mcp.WithBoolean("noEnvSetup", mcp.Description("Не предлагать и не запускать env setup после создания (--no-env-setup)"), mcp.DefaultBool(false)),
-		mcp.WithBoolean("yes", mcp.Description("Автоматически подтвердить действия CLI (--yes), включая установку недостающих инструментов и env setup"), mcp.DefaultBool(false)),
-		mcp.WithNumber("port", mcp.Description("Порт проекта (.Runtime.Port); 0 — не задавать")),
+		mcp.WithDescription("Create a project from a template (always non-interactive). The project is created as <dir>/<slug>. If set is incomplete, the tool will return an error about required groups — or set defaults=true."),
+		mcp.WithString("ref", mcp.Required(), mcp.Description("Template reference: repo/name@version or short name")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Name of the new project")),
+		mcp.WithString("dir", mcp.Description("Directory INSIDE which the project is created (must exist); default is the server's cwd")),
+		mcp.WithObject("set", mcp.Description("Settings values: group→value (serialized as --set pairs)")),
+		mcp.WithBoolean("defaults", mcp.Description("Use default values for unspecified groups"), mcp.DefaultBool(false)),
+		mcp.WithBoolean("noHooks", mcp.Description("Skip hooks.postCreate (--no-hooks)"), mcp.DefaultBool(false)),
+		mcp.WithBoolean("noDepsCheck", mcp.Description("Skip environment tools check (--no-deps-check)"), mcp.DefaultBool(false)),
+		mcp.WithBoolean("noEnvSetup", mcp.Description("Don't offer or run env setup after creation (--no-env-setup)"), mcp.DefaultBool(false)),
+		mcp.WithBoolean("yes", mcp.Description("Automatically confirm CLI actions (--yes), including missing tools installation and env setup"), mcp.DefaultBool(false)),
+		mcp.WithNumber("port", mcp.Description("Project port (.Runtime.Port); 0 — don't set")),
 		mcp.WithBoolean("dryRun", mcp.Description("Prepare a plan without changing files"), mcp.DefaultBool(false)),
 		mcp.WithString("sourceInput", mcp.Description("Path to the closed JSON source selection")),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a projectNewArgs) (*mcp.CallToolResult, error) {
@@ -73,10 +73,10 @@ func (s *Server) addProjectTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"run",
-		mcp.WithDescription("Исполнить команду манифеста шаблона в корне проекта (dir). ВНИМАНИЕ: долгоживущие команды (dev-серверы) прервутся по таймауту."),
-		mcp.WithString("dir", mcp.Required(), mcp.Description("Каталог проекта (рабочий каталог)")),
-		mcp.WithString("command", mcp.Required(), mcp.Description("Имя команды манифеста")),
-		mcp.WithArray("args", mcp.Description("Дополнительные аргументы, передаются команде после --"),
+		mcp.WithDescription("Execute a template manifest command at the project root (dir). WARNING: long-running commands (dev servers) will be interrupted on timeout."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory (working directory)")),
+		mcp.WithString("command", mcp.Required(), mcp.Description("Manifest command name")),
+		mcp.WithArray("args", mcp.Description("Additional arguments passed to the command after --"),
 			mcp.Items(map[string]any{"type": "string"})),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a runArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
@@ -90,11 +90,11 @@ func (s *Server) addProjectTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"update",
-		mcp.WithDescription("Обновить проект (dir) на новую версию шаблона по 3-way merge. Конфликты дают маркеры и ненулевой код возврата (isError)."),
-		mcp.WithString("dir", mcp.Required(), mcp.Description("Каталог проекта")),
-		mcp.WithString("to", mcp.Description("Целевая версия шаблона; пусто — старший стабильный тег")),
-		mcp.WithBoolean("dryRun", mcp.Description("Показать план без изменения файлов"), mcp.DefaultBool(false)),
-		mcp.WithBoolean("check", mcp.Description("Проверить дерево на маркеры конфликта (код 1 при находке)"), mcp.DefaultBool(false)),
+		mcp.WithDescription("Update project (dir) to a new template version using 3-way merge. Conflicts produce markers and non-zero return code (isError)."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
+		mcp.WithString("to", mcp.Description("Target template version; empty — latest stable tag")),
+		mcp.WithBoolean("dryRun", mcp.Description("Show plan without modifying files"), mcp.DefaultBool(false)),
+		mcp.WithBoolean("check", mcp.Description("Check tree for conflict markers (exit code 1 if found)"), mcp.DefaultBool(false)),
 		mcp.WithString("sourceInput", mcp.Description("Path to the closed JSON source selection")),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
@@ -106,8 +106,8 @@ func (s *Server) addProjectTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"stats",
-		mcp.WithDescription("Отчёт дрейфа проекта (dir) от шаблона в машиночитаемом JSON (drift-score, статусы файлов, классы обновляемости)."),
-		mcp.WithString("dir", mcp.Required(), mcp.Description("Каталог проекта")),
+		mcp.WithDescription("Report of project (dir) drift from template in machine-readable JSON (drift-score, file statuses, updateability classes)."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a dirArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
@@ -119,8 +119,8 @@ func (s *Server) addProjectTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"doctor",
-		mcp.WithDescription("Проверить окружение и инструменты активного шаблона. dir опционален (по умолчанию cwd сервера)."),
-		mcp.WithString("dir", mcp.Description("Каталог проекта (опционально)")),
+		mcp.WithDescription("Check environment and tools of the active template. dir is optional (default is server's cwd)."),
+		mcp.WithString("dir", mcp.Description("Project directory (optional)")),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a doctorArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
@@ -132,8 +132,8 @@ func (s *Server) addProjectTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"ai_gen",
-		mcp.WithDescription("Сгенерировать AI-артефакты (CLAUDE.md, .cursor/**, AGENTS.md, GEMINI.md) в корень проекта (dir)."),
-		mcp.WithString("dir", mcp.Required(), mcp.Description("Каталог проекта")),
+		mcp.WithDescription("Generate AI artifacts (CLAUDE.md, .cursor/**, AGENTS.md, GEMINI.md) to project root (dir)."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a dirArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
 		if err != nil {

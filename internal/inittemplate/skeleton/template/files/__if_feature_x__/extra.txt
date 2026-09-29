@@ -1,3 +1,3 @@
-Этот файл появляется в проекте только когда feature_x=true.
-Каталог __if_feature_x__/ — условный сегмент пути (): весь каталог
-включается в рендер-набор только при истинности группы feature_x.
+This file appears in the project only when feature_x=true.
+Directory __if_feature_x__/ is a conditional path segment: the entire directory
+is included in the render set only when the feature_x group is true.

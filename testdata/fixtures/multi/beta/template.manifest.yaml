@@ -3,12 +3,12 @@ kind: Template
 metadata:
   name: beta
   version: 0.2.0
-  description: "Крошечный шаблон beta для мульти-репо тестов."
+  description: "Tiny template beta for multi-repo tests."
 engine:
   type: gotemplate
   root: files
 settings:
   - group: label
-    title: "Метка"
+    title: "Label"
     type: string
     default: "beta"

@@ -15,7 +15,7 @@ func TestRenderContext_SettingsAndHelpers(t *testing.T) {
 	ctx := RenderContext(tpl, res)
 	sv, ok := ctx["Settings"].(View)
 	if !ok {
-		t.Fatalf(".Settings не View: %T", ctx["Settings"])
+		t.Fatalf(".Settings is not a View: %T", ctx["Settings"])
 	}
 
 	// Map-style access (.Settings.<group> in a template).
@@ -25,28 +25,28 @@ func TestRenderContext_SettingsAndHelpers(t *testing.T) {
 
 	// Is: select/string/toggle equality.
 	if !sv.Is("database", "postgres") {
-		t.Errorf("Is(database, postgres) должно быть true")
+		t.Errorf("Is(database, postgres) must be true")
 	}
 	if sv.Is("database", "mysql") {
-		t.Errorf("Is(database, mysql) должно быть false")
+		t.Errorf("Is(database, mysql) must be false")
 	}
 	if !sv.Is("metrics", "false") {
-		t.Errorf("Is(metrics, false) должно быть true (toggle=false)")
+		t.Errorf("Is(metrics, false) must be true (toggle=false)")
 	}
 	// Is on a multiselect is meaningless -> false.
 	if sv.Is("brokers", "kafka") {
-		t.Errorf("Is на multiselect должно быть false, используйте Has")
+		t.Errorf("Is on a multiselect must be false; use Has")
 	}
 
 	// Has: multiselect contains.
 	if !sv.Has("brokers", "kafka") {
-		t.Errorf("Has(brokers, kafka) должно быть true")
+		t.Errorf("Has(brokers, kafka) must be true")
 	}
 	if sv.Has("brokers", "nats") {
-		t.Errorf("Has(brokers, nats) должно быть false")
+		t.Errorf("Has(brokers, nats) must be false")
 	}
 	// Has on a non-multiselect -> false.
 	if sv.Has("database", "postgres") {
-		t.Errorf("Has на select должно быть false, используйте Is")
+		t.Errorf("Has on a select must be false; use Is")
 	}
 }

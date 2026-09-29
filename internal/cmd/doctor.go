@@ -57,14 +57,14 @@ func newDoctorCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunReadonly),
 
 		Use:   "doctor",
-		Short: "Проверить окружение и инструменты активного шаблона",
+		Short: "Check environment and tools of active template",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sections, critical := buildDoctorReport(cmd.Context(), nil, "", "")
 			renderDoctorReport(cmd.OutOrStdout(), ui.Default(), sections)
 
 			if critical {
-				return errors.New("cmd: doctor: критичные инструменты окружения недоступны — см. отчёт выше")
+				return errors.New("cmd: doctor: critical environment tools are not available — see report above")
 			}
 			return nil
 		},
@@ -81,7 +81,7 @@ func buildDoctorReport(ctx context.Context, runner execx.Runner, cwd, home strin
 	_ = runner
 	_ = cwd
 	_ = home
-	return []doctorSection{{Title: "Среда", Rows: []doctorRow{{Name: "инструменты", Status: rowWarn, Detail: "не проверено: требуется подтверждённое действие"}}}}, false
+	return []doctorSection{{Title: "Environment", Rows: []doctorRow{{Name: "tools", Status: rowWarn, Detail: "not checked: confirmed action required"}}}}, false
 	/*
 		envSection, envCritical := environmentSection(ctx, runner)
 		sections = append(sections, envSection)
@@ -125,7 +125,7 @@ func environmentSection(ctx context.Context, runner execx.Runner) (doctorSection
 	}
 
 	statuses := deps.Check(ctx, runner, tools)
-	section := doctorSection{Title: "Среда"}
+	section := doctorSection{Title: "Environment"}
 	critical := false
 	for _, st := range statuses {
 		row := toolRow(st)
@@ -146,14 +146,14 @@ func templateToolsSection(ctx context.Context, runner execx.Runner, cwd string) 
 		return doctorSection{}, false
 	}
 
-	section := doctorSection{Title: "Инструменты шаблона"}
+	section := doctorSection{Title: "Template tools"}
 
 	tmpl, err := manifest.LoadSnapshot(snapshotPath)
 	if err != nil {
 		section.Rows = append(section.Rows, doctorRow{
 			Name:   manifest.SnapshotRelPath,
 			Status: rowFail,
-			Detail: "не удалось разобрать снимок манифеста",
+			Detail: "failed to parse manifest snapshot",
 			Hint:   err.Error(),
 		})
 		return section, true
@@ -163,7 +163,7 @@ func templateToolsSection(ctx context.Context, runner execx.Runner, cwd string) 
 		section.Rows = append(section.Rows, doctorRow{
 			Name:   manifest.SnapshotRelPath,
 			Status: rowOK,
-			Detail: "шаблон не объявляет requires.tools",
+			Detail: "template does not declare requires.tools",
 		})
 		return section, true
 	}
@@ -177,21 +177,21 @@ func templateToolsSection(ctx context.Context, runner execx.Runner, cwd string) 
 // stateSection checks the tplater home directory (~/.tplaiter) and whether its
 // config.yaml can be read.
 func stateSection(home string) doctorSection {
-	section := doctorSection{Title: "Состояние"}
+	section := doctorSection{Title: "State"}
 
 	if _, err := os.Stat(home); err != nil {
 		section.Rows = append(section.Rows, doctorRow{
 			Name:   home,
 			Status: rowWarn,
-			Detail: "каталог не создан",
-			Hint:   "создаётся автоматически при первом запуске любой команды",
+			Detail: "directory not created",
+			Hint:   "created automatically on first run of any command",
 		})
 		return section
 	}
 	section.Rows = append(section.Rows, doctorRow{
 		Name:   home,
 		Status: rowOK,
-		Detail: "каталог существует",
+		Detail: "directory exists",
 	})
 
 	cfg, err := state.LoadConfig(home)
@@ -199,7 +199,7 @@ func stateSection(home string) doctorSection {
 		section.Rows = append(section.Rows, doctorRow{
 			Name:   "config.yaml",
 			Status: rowFail,
-			Detail: "не читается",
+			Detail: "not readable",
 			Hint:   err.Error(),
 		})
 		return section
@@ -207,7 +207,7 @@ func stateSection(home string) doctorSection {
 	section.Rows = append(section.Rows, doctorRow{
 		Name:   "config.yaml",
 		Status: rowOK,
-		Detail: fmt.Sprintf("версия %d, репозиториев: %d", cfg.Version, len(cfg.Repos)),
+		Detail: fmt.Sprintf("version %d, repositories: %d", cfg.Version, len(cfg.Repos)),
 	})
 	return section
 }
@@ -242,13 +242,13 @@ func toolRow(st deps.ToolStatus) doctorRow {
 func toolIssueDetail(st deps.ToolStatus) string {
 	switch {
 	case !st.Found:
-		return "не найден в PATH"
+		return "not found in PATH"
 	case st.Version != "" && !st.Satisfies:
-		return fmt.Sprintf("версия %s не удовлетворяет %q", st.Version, st.Tool.Version)
+		return fmt.Sprintf("version %s does not satisfy %q", st.Version, st.Tool.Version)
 	case st.Err != nil:
 		return st.Err.Error()
 	default:
-		return "не удовлетворяет требованиям"
+		return "does not satisfy requirements"
 	}
 }
 
@@ -279,7 +279,7 @@ func renderDoctorReport(out io.Writer, pal ui.Palette, sections []doctorSection)
 	for _, section := range sections {
 		ui.Section(out, pal, section.Title)
 
-		table := ui.NewTable("Компонент", "Детали", "Статус")
+		table := ui.NewTable("Component", "Details", "Status")
 		for _, row := range section.Rows {
 			table.AddRow(row.Name, row.Detail, statusCell(pal, row))
 		}

@@ -16,8 +16,8 @@ type settingsSetArgs struct {
 func (s *Server) addSettingsTools() {
 	s.mcp.AddTool(mcp.NewTool(
 		"settings_list",
-		mcp.WithDescription("Показать текущие значения настроек проекта (dir)."),
-		mcp.WithString("dir", mcp.Required(), mcp.Description("Каталог проекта")),
+		mcp.WithDescription("Show current values of project settings (dir)."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a dirArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
@@ -29,9 +29,9 @@ func (s *Server) addSettingsTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"settings_set",
-		mcp.WithDescription("Изменить настройки проекта (dir) 3-way merge на текущей версии шаблона. Применяется без подтверждения (--yes)."),
-		mcp.WithString("dir", mcp.Required(), mcp.Description("Каталог проекта")),
-		mcp.WithObject("values", mcp.Required(), mcp.Description("Новые значения: группа→значение")),
+		mcp.WithDescription("Change project (dir) settings using 3-way merge on current template version. Applied without confirmation (--yes)."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
+		mcp.WithObject("values", mcp.Required(), mcp.Description("New values: group→value")),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a settingsSetArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
 		if err != nil {

@@ -46,7 +46,7 @@ func TestResolveGitAuth_SSHSkips(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if env != nil {
-		t.Errorf("для ssh helper-env не нужен, got %v", env)
+		t.Errorf("ssh needs no helper env, got %v", env)
 	}
 }
 
@@ -60,7 +60,7 @@ func TestResolveGitAuth_ExistingToken(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if len(env) == 0 {
-		t.Error("ожидался helper-env для существующего токена")
+		t.Error("expected helper env for an existing token")
 	}
 }
 
@@ -71,11 +71,11 @@ func TestResolveGitAuth_TokenStdin(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if len(env) == 0 {
-		t.Error("ожидался helper-env после token-stdin")
+		t.Error("expected helper env after token-stdin")
 	}
 	got, found, _ := st.Get("gitlab.com", "group/repo", "gitlab")
 	if !found || got.Token != "glpat-frompipe" {
-		t.Errorf("токен не сохранён из stdin: found=%v cred=%+v", found, got)
+		t.Errorf("token was not saved from stdin: found=%v cred=%+v", found, got)
 	}
 }
 
@@ -86,10 +86,10 @@ func TestResolveGitAuth_NonInteractiveSkips(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if env != nil {
-		t.Errorf("в неинтерактивном режиме без токена — без helper-env, got %v", env)
+		t.Errorf("non-interactive mode without a token must not set helper env, got %v", env)
 	}
-	if !strings.Contains(errBuf.String(), "без аутентификации") {
-		t.Errorf("ожидалось предупреждение, got %q", errBuf.String())
+	if !strings.Contains(errBuf.String(), "without authentication") {
+		t.Errorf("expected warning, got %q", errBuf.String())
 	}
 }
 
@@ -101,11 +101,11 @@ func TestResolveGitAuth_InteractiveEnterToken(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if len(env) == 0 {
-		t.Error("ожидался helper-env после ввода токена")
+		t.Error("expected helper env after token input")
 	}
 	got, found, _ := st.Get("gitlab.com", "", "gitlab")
 	if !found || got.Token != "glpat-typed" {
-		t.Errorf("введённый токен не сохранён: found=%v cred=%+v", found, got)
+		t.Errorf("entered token was not saved: found=%v cred=%+v", found, got)
 	}
 }
 
@@ -121,11 +121,11 @@ func TestResolveGitAuth_InteractiveGlabImportOK(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if len(env) == 0 {
-		t.Error("ожидался helper-env после импорта из glab")
+		t.Error("expected helper env after import from the GitLab CLI")
 	}
 	got, found, _ := st.Get("gitlab.com", "", "gitlab")
 	if !found || got.Token != "glpat-imported" {
-		t.Errorf("импортированный токен не сохранён: found=%v cred=%+v", found, got)
+		t.Errorf("imported token was not saved: found=%v cred=%+v", found, got)
 	}
 }
 
@@ -134,10 +134,10 @@ func TestResolveGitAuth_InteractiveGlabMissing(t *testing.T) {
 	m, _, _ := newAuthTestManager(t, execx.NewRecordingRunner(), "g\n", true)
 	_, err := m.resolveGitAuth(context.Background(), gitlabURL, state.RepoKindGitLab, false)
 	if err == nil {
-		t.Fatal("ожидалась ошибка отсутствия glab")
+		t.Fatal("expected an error for missing GitLab CLI")
 	}
-	if !strings.Contains(err.Error(), "не найден в PATH") {
-		t.Errorf("ошибка без рецепта установки: %v", err)
+	if !strings.Contains(err.Error(), "not found in PATH") {
+		t.Errorf("error without installation recipe: %v", err)
 	}
 }
 
@@ -151,7 +151,7 @@ func TestResolveGitAuth_InteractiveGlabNotAuthorized(t *testing.T) {
 	m, _, _ := newAuthTestManager(t, runner, "g\n", true)
 	_, err := m.resolveGitAuth(context.Background(), gitlabURL, state.RepoKindGitLab, false)
 	if err == nil {
-		t.Fatal("ожидалась ошибка неавторизованного glab")
+		t.Fatal("expected an error for unauthenticated GitLab CLI")
 	}
 }
 
@@ -168,6 +168,6 @@ func TestResolveGitAuth_GitHubUsesGh(t *testing.T) {
 	}
 	got, found, _ := st.Get("github.com", "", "github")
 	if !found || got.Token != "ghp-imported" {
-		t.Errorf("токен gh не сохранён: found=%v cred=%+v", found, got)
+		t.Errorf("gh token was not saved: found=%v cred=%+v", found, got)
 	}
 }

@@ -48,7 +48,7 @@ func peekVersion(data []byte) (int, error) {
 func checkAndMigrate(kind fileKind, data []byte, version, current int) ([]byte, error) {
 	if version > current {
 		return nil, fmt.Errorf(
-			"state: %s: версия файла (%d) новее поддерживаемой этой версией tplater (%d) — обновите tplater",
+			"state: %s: file version (%d) is newer than supported by this tplater version (%d) — update tplater",
 			kind, version, current,
 		)
 	}
@@ -57,13 +57,13 @@ func checkAndMigrate(kind fileKind, data []byte, version, current int) ([]byte, 
 		fn, ok := migrations[kind][version]
 		if !ok {
 			return nil, fmt.Errorf(
-				"state: %s: не найдена миграция версии %d -> %d",
+				"state: %s: migration from version %d to %d not found",
 				kind, version, version+1,
 			)
 		}
 		migrated, err := fn(data)
 		if err != nil {
-			return nil, fmt.Errorf("state: %s: миграция версии %d -> %d: %w", kind, version, version+1, err)
+			return nil, fmt.Errorf("state: %s: migration from version %d to %d: %w", kind, version, version+1, err)
 		}
 		data = migrated
 		version++
