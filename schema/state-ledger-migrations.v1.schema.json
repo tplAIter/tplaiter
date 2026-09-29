@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/migrations/v1",
+  "title": "tplaiter applied template-migration ledger (.tplaiter/migrations.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "applied"],
+  "properties": {
+    "version": {"const": 1},
+    "applied": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "digest", "order"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "order": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  }
+}
