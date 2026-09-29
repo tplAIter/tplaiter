@@ -54,10 +54,11 @@ var doctorCriticalTools = map[string]bool{
 // newDoctorCmd creates `tplater doctor`.
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:         "doctor",
 		Annotations: prerunAnnotations(prerunReadonly),
-		Short:       "Проверить окружение и инструменты активного шаблона",
-		Args:        cobra.NoArgs,
+
+		Use:   "doctor",
+		Short: "Проверить окружение и инструменты активного шаблона",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sections, critical := buildDoctorReport(cmd.Context(), nil, "", "")
 			renderDoctorReport(cmd.OutOrStdout(), ui.Default(), sections)

@@ -29,9 +29,10 @@ func init() {
 // newRunCmd creates `tplater run` (SPEC-01 §5, SPEC-04 §4).
 func newRunCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:         "run [name] [-- args...]",
 		Annotations: prerunAnnotations(prerunLegacyAction, prerunReadonly),
-		Short:       "Показать команды проекта или исполнить одну из них",
+
+		Use:   "run [name] [-- args...]",
+		Short: "Показать команды проекта или исполнить одну из них",
 		Long: "Без аргументов печатает список команд манифеста шаблона (commands, SPEC-01 §5) — " +
 			"имя, описание и статус по when-условию текущих настроек проекта.\n\n" +
 			"С именем команды исполняет её `run` через $SHELL -c в корне проекта: " +

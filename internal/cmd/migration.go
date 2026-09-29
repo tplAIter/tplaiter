@@ -19,10 +19,11 @@ func newMigrationCmd() *cobra.Command {
 	var apply bool
 	var planPath, expectedDigest string
 	c := &cobra.Command{
-		Use:         "migrate-state --root kind=source:destination [--root ...] | --apply --plan file --expected-digest sha256",
 		Annotations: prerunAnnotations(prerunTrustOwned),
-		Short:       "Построить или применить явную миграцию состояния",
-		Args:        cobra.NoArgs,
+
+		Use:   "migrate-state --root kind=source:destination [--root ...] | --apply --plan file --expected-digest sha256",
+		Short: "Построить или применить явную миграцию состояния",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if apply {
 				if planPath == "" || expectedDigest == "" || len(roots) != 0 || len(relocations) != 0 {

@@ -44,9 +44,10 @@ func newUpdateCmd() *cobra.Command {
 	)
 
 	c := &cobra.Command{
-		Use:         "update",
 		Annotations: prerunAnnotations(prerunTrustOwned),
-		Short:       "Обновить проект на новую версию шаблона (3-way merge)",
+
+		Use:   "update",
+		Short: "Обновить проект на новую версию шаблона (3-way merge)",
 		Long: "Обновляет сгенерированный проект на целевую версию шаблона по модели 3-way merge " +
 			"(): base — чистый рендер зафиксированной версии, target — рендер новой, " +
 			"пользовательские правила определяются по .tplaiter/baseline.json. Непересекающиеся " +

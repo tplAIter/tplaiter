@@ -36,9 +36,10 @@ func init() {
 // parsing the parent's flags.
 func newGenCmd() *cobra.Command {
 	c := &cobra.Command{
-		Use:         "gen <kind> <name> [--<param> ...]",
 		Annotations: prerunAnnotations(prerunLegacyAction),
-		Short:       "Скаффолдер шаблона: создать файл(ы) вида <kind> с именем <name>",
+
+		Use:   "gen <kind> <name> [--<param> ...]",
+		Short: "Скаффолдер шаблона: создать файл(ы) вида <kind> с именем <name>",
 		Long: "Генерирует файлы и вставки якорей по generators манифеста шаблона (SPEC-01 §6). " +
 			"Вид (kind) и его сниппеты приходят из шаблона, не из бинарника tplater — " +
 			"`tplater gen list` показывает доступные виды текущего проекта.\n\n" +
@@ -145,10 +146,11 @@ func paramUsage(p *manifest.Param) string {
 // newGenListCmd creates `tplater gen list`.
 func newGenListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:         "list",
 		Annotations: prerunAnnotations(prerunReadonly),
-		Short:       "Список видов скаффолда манифеста шаблона (kind/description/available)",
-		Args:        cobra.NoArgs,
+
+		Use:   "list",
+		Short: "Список видов скаффолда манифеста шаблона (kind/description/available)",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			tpl, proj, _, err := loadRunContext()
 			if err != nil {
@@ -176,9 +178,10 @@ func newGenBatchCmd() *cobra.Command {
 	var operationsJSON string
 	var noBuild bool
 	c := &cobra.Command{
-		Use:         "batch --operations <JSON> [--no-build]",
 		Annotations: prerunAnnotations(prerunLegacyAction),
-		Short:       "Сгенерировать несколько scaffolds с одной сборкой и атомарным откатом",
+
+		Use:   "batch --operations <JSON> [--no-build]",
+		Short: "Сгенерировать несколько scaffolds с одной сборкой и атомарным откатом",
 		Long: "Планирует все операции до первой записи, затем создаёт файлы и выполняет один финальный " +
 			"build-gate (commands.build.run манифеста либо legacy fallback `go build ./...`). При ошибке любого шага изменения всех операций откатываются.\n\n" +
 			"Формат --operations: '[{\"kind\":\"crud\",\"name\":\"Ride\",\"params\":{\"fields\":\"status:string\"}}]'.",

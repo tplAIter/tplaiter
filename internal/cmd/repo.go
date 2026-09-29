@@ -152,13 +152,14 @@ func newRepoRemoveCmd() *cobra.Command {
 
 func newRepoUpdateCmd() *cobra.Command {
 	return &cobra.Command{
-		Use: "update [alias]",
 		// Preserved from the former name-based switch, which matched every command
 		// named "update": the root hooks do not run for `repo update`. Revisit when
 		// the live lifecycle returns (U07).
 		Annotations: prerunAnnotations(prerunTrustOwned),
-		Short:       "git fetch + переиндексация всех репозиториев или одного",
-		Args:        cobra.MaximumNArgs(1),
+
+		Use:   "update [alias]",
+		Short: "git fetch + переиндексация всех репозиториев или одного",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mgr, st, err := newManager(cmd)
 			if err != nil {

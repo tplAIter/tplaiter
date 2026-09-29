@@ -130,10 +130,10 @@ func registerCommand(factory func() *cobra.Command) {
 func newRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "tplaiter",
-		Short: "Менеджер репозиториев шаблонов",
-		Long: "tplaiter — менеджер репозиториев шаблонов: устанавливает, " +
-			"обновляет и отслеживает дрейф сгенерированных из шаблонов проектов.\n\n" +
-			"См. README.md и docs/ в репозитории tplaiter для деталей архитектуры.",
+		Short: "Template repository manager",
+		Long: "tplaiter is a template repository manager: it installs, updates and " +
+			"tracks drift of projects generated from templates.\n\n" +
+			"See README.md and docs/ in the tplaiter repository for architecture details.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// PersistentPreRunE — composition of the first-run greeting (SPEC-05 §4) and
@@ -151,8 +151,8 @@ func newRootCommand() *cobra.Command {
 			return runSelfUpgrade(cmd, args)
 		},
 	}
-	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "подробный вывод")
-	root.Flags().BoolVar(&upgradeFlag, "upgrade", false, "самообновление (алиас `tplaiter self-upgrade`)")
+	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	root.Flags().BoolVar(&upgradeFlag, "upgrade", false, "self-upgrade (alias of `tplaiter self-upgrade`)")
 	root.Version = resolveVersion()
 	root.SetVersionTemplate("{{.Version}}\n")
 	return root

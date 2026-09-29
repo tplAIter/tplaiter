@@ -69,10 +69,11 @@ func buildRevision(read func() (*debug.BuildInfo, bool)) string {
 // (~/.tplaiter/config.yaml or TPLAITER_HOME).
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:         "version",
 		Annotations: prerunAnnotations(prerunReadonly),
-		Short:       "Показать версию tplaiter",
-		Args:        cobra.NoArgs,
+
+		Use:   "version",
+		Short: "Показать версию tplaiter",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
 			fmt.Fprintln(out, resolveVersion())

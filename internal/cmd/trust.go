@@ -18,7 +18,7 @@ const trustCommandDocumentLimit = 1 << 20
 // newTrustCmd exposes the only updater entrypoints. They compose a fixed
 // launcher selection per invocation and never borrow new/update's runtime.
 func newTrustCmd() *cobra.Command {
-	root := &cobra.Command{Use: "trust", Annotations: prerunAnnotations(prerunTrustOwned), Short: "Проверка и обслуживание профиля доверия"}
+	root := &cobra.Command{Use: "trust", Annotations: prerunAnnotations(prerunTrustOwned), Short: "Inspect and maintain the trust profile"}
 	root.AddCommand(newTrustInspectCmd(), newTrustProvisionCmd(), newTrustRefreshCmd(), newTrustRecoverCmd())
 	return root
 }
