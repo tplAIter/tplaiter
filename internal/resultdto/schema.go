@@ -41,7 +41,8 @@ func GenerateSchema() ([]byte, error) {
 	props := root["properties"].(map[string]any)
 	props["operation"] = map[string]any{"enum": operations}
 	props["kind"] = map[string]any{"enum": sortedUnique(kinds)}
-	allOf = append(allOf,
+	allOf = append(
+		allOf,
 		map[string]any{
 			"if":   map[string]any{"properties": map[string]any{"operation": map[string]any{"enum": globals}}, "required": []any{"operation"}},
 			"then": map[string]any{"properties": map[string]any{"project": map[string]any{"type": "null"}}},
