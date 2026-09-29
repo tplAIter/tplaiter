@@ -143,6 +143,13 @@ type Result struct {
 // do not form a valid installation and Rotate was not requested.
 var ErrInstallRootConflict = errors.New("ossinstall: install root exists but is not a valid installation (re-run with rotation to replace it)")
 
+// ErrPublishersChanged is returned when publishers are requested for an
+// install root that already holds a valid installation trusting a different
+// publisher set and Rotate was not requested. Reusing the installation would
+// silently drop the requested publishers, so Generate refuses instead
+// (`make install TRUST_ROTATE=1` or `--rotate` replaces the installation).
+var ErrPublishersChanged = errors.New("ossinstall: the existing installation trusts a different publisher set (re-run with rotation, TRUST_ROTATE=1, to replace it)")
+
 // generatedEntries are the names Generate owns inside the install root.
 var generatedEntries = []string{RegistrationFile, "config", "evidence", "objects", "scratch", "store", "projects"}
 
@@ -160,13 +167,21 @@ func Generate(options Options) (Result, error) {
 		return Result{}, fmt.Errorf("ossinstall: resolve install root: %w", err)
 	}
 	root = filepath.Clean(root)
+	// Validate requested publishers before any reuse or rotation decision,
+	// so an invalid request never replaces or silently keeps an install.
+	var requested []publisherScope
+	if len(options.Publishers) > 0 {
+		if requested, err = normalizePublishers(options.Publishers); err != nil {
+			return Result{}, err
+		}
+	}
 	if options.Rotate {
 		for _, name := range generatedEntries {
 			if err := os.RemoveAll(filepath.Join(root, name)); err != nil {
 				return Result{}, fmt.Errorf("ossinstall: rotate: %w", err)
 			}
 		}
-	} else if existing, ok, err := reuse(root); err != nil {
+	} else if existing, ok, err := reuse(root, requested); err != nil {
 		return Result{}, err
 	} else if ok {
 		return existing, nil
@@ -188,8 +203,11 @@ func Generate(options Options) (Result, error) {
 }
 
 // reuse keeps an existing installation when its registration resolves to a
-// complete, pin-consistent runtime configuration.
-func reuse(root string) (Result, bool, error) {
+// complete, pin-consistent runtime configuration. When publishers are
+// requested, the installation is kept only if it trusts exactly that set;
+// otherwise ErrPublishersChanged is returned. With no requested publishers
+// the existing installation is kept as it is.
+func reuse(root string, requested []publisherScope) (Result, bool, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return Result{}, false, fmt.Errorf("ossinstall: read install root: %w", err)
@@ -209,6 +227,15 @@ func reuse(root string) (Result, bool, error) {
 	loaded, err := trustload.Load(context.Background(), registration.Selection())
 	if err != nil || loaded.Install.OSS == nil || !strings.HasPrefix(registration.RuntimeConfig.Path, root+string(filepath.Separator)) {
 		return Result{}, false, ErrInstallRootConflict
+	}
+	if len(requested) > 0 {
+		match, err := trustsExactly(root, loaded, requested)
+		if err != nil {
+			return Result{}, false, err
+		}
+		if !match {
+			return Result{}, false, ErrPublishersChanged
+		}
 	}
 	return Result{Root: root, RegistrationPath: path, RegistrationSHA256: evidencecas.Digest(raw), InstallationID: registration.InstallationID, Reused: true}, true, nil
 }
@@ -258,6 +285,11 @@ func (g *generator) publishers(configured []Publisher) ([]publisherScope, error)
 		}
 		configured = []Publisher{{Issuer: unconfiguredIssuer, PublicKeyBase64: base64.StdEncoding.EncodeToString(private.Public().(ed25519.PublicKey)), SourceOrigin: unconfiguredOrigin, TemplatePath: "."}}
 	}
+	return normalizePublishers(configured)
+}
+
+// normalizePublishers validates configured publishers and applies defaults.
+func normalizePublishers(configured []Publisher) ([]publisherScope, error) {
 	out := make([]publisherScope, 0, len(configured))
 	for _, p := range configured {
 		key, err := base64.StdEncoding.Strict().DecodeString(p.PublicKeyBase64)
@@ -487,6 +519,107 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 		return Result{}, fmt.Errorf("ossinstall: generated installation does not load: %w", err)
 	}
 	return Result{Root: g.root, RegistrationPath: registrationPath, RegistrationSHA256: pin.SHA256, InstallationID: installationID}, nil
+}
+
+// expectedScopes returns the sorted publisher scope keys, the trust-root key
+// set (fingerprint to issuer, first issuer per key wins) and the explicit
+// object roots per source origin that run would generate for publishers.
+func expectedScopes(publishers []publisherScope) ([]string, map[string]string, map[string]string) {
+	scopes := make([]string, 0, len(publishers))
+	keys := map[string]string{}
+	objects := map[string]string{}
+	for _, p := range publishers {
+		scopes = append(scopes, scopeKey(bootstrap.PublisherScope{PolicyOrigin: localPolicyOrigin, Issuer: p.Issuer, SourceOrigin: p.SourceOrigin, TemplatePath: p.TemplatePath, Predicate: localPredicate, Usage: "template-source"}))
+		fingerprint := bootstrap.Fingerprint(p.key)
+		if _, ok := keys[fingerprint]; !ok {
+			keys[fingerprint] = p.Issuer
+		}
+		if _, ok := objects[p.SourceOrigin]; !ok {
+			objects[p.SourceOrigin] = p.ObjectRoot
+		}
+	}
+	sort.Strings(scopes)
+	return scopes, keys, objects
+}
+
+// trustsExactly reports whether a loaded installation trusts exactly the
+// requested publishers: the same descriptor scopes, the same trust-root keys
+// and the same explicit object roots.
+func trustsExactly(root string, loaded *trustload.Loaded, requested []publisherScope) (bool, error) {
+	wantScopes, wantKeys, wantObjects := expectedScopes(requested)
+
+	descriptor, err := bootstrap.DecodeDescriptorDocument(loaded.DescriptorJSON)
+	if err != nil {
+		return false, ErrInstallRootConflict
+	}
+	haveScopes := make([]string, 0, len(descriptor.PublisherScopes))
+	for _, s := range descriptor.PublisherScopes {
+		haveScopes = append(haveScopes, scopeKey(s))
+	}
+	sort.Strings(haveScopes)
+	if strings.Join(haveScopes, "\x01") != strings.Join(wantScopes, "\x01") {
+		return false, nil
+	}
+
+	envelope, err := installedEnvelope(root, loaded)
+	if err != nil {
+		return false, err
+	}
+	if len(envelope.RootKeys) != len(wantKeys) {
+		return false, nil
+	}
+	for _, k := range envelope.RootKeys {
+		if issuer, ok := wantKeys[k.Fingerprint]; !ok || issuer != k.Issuer {
+			return false, nil
+		}
+	}
+
+	if len(loaded.Install.ObjectOrigins) != len(wantObjects) {
+		return false, nil
+	}
+	generated := filepath.Join(root, "objects") + string(filepath.Separator)
+	for _, o := range loaded.Install.ObjectOrigins {
+		want, ok := wantObjects[o.Origin]
+		if !ok {
+			return false, nil
+		}
+		if want == "" && !strings.HasPrefix(o.RootPath, generated) || want != "" && filepath.Clean(want) != filepath.Clean(o.RootPath) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// installedEnvelope reads the trust-root envelope the installation's initial
+// bundle references from the install's evidence store and checks its digest.
+func installedEnvelope(root string, loaded *trustload.Loaded) (*bootstrap.Envelope, error) {
+	bundleRaw, err := os.ReadFile(loaded.Install.OSS.InitialBundlePath)
+	if err != nil {
+		return nil, ErrInstallRootConflict
+	}
+	bundle, err := trustload.DecodeStoredBundle(bundleRaw)
+	if err != nil {
+		return nil, ErrInstallRootConflict
+	}
+	x := strings.TrimPrefix(bundle.EnvelopeCAS, "sha256:")
+	if _, hexErr := hex.DecodeString(x); hexErr != nil || len(x) != 64 || strings.ToLower(x) != x {
+		return nil, ErrInstallRootConflict
+	}
+	evidenceRoot := filepath.Clean(loaded.Install.EvidenceRoot)
+	if !strings.HasPrefix(evidenceRoot, root+string(filepath.Separator)) {
+		return nil, ErrInstallRootConflict
+	}
+	// The path is confined: the evidence root lies inside the install root
+	// and the digest was checked to be 64 lowercase hex characters.
+	raw, err := os.ReadFile(filepath.Join(evidenceRoot, "sha256", x[:2], x[2:])) //nolint:gosec // G703: confined path, see above.
+	if err != nil || evidencecas.Digest(raw) != bundle.EnvelopeCAS {
+		return nil, ErrInstallRootConflict
+	}
+	envelope, err := bootstrap.DecodeEnvelope(raw)
+	if err != nil {
+		return nil, ErrInstallRootConflict
+	}
+	return envelope, nil
 }
 
 func scopeKey(s bootstrap.PublisherScope) string {

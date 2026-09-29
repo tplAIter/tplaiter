@@ -251,6 +251,101 @@ func TestGenerateWithConfiguredPublishers(t *testing.T) {
 	}
 }
 
+func TestGenerateRefusesToDropRequestedPublishersOnReuse(t *testing.T) {
+	newPublisher := func(t *testing.T, issuer, origin string) Publisher {
+		t.Helper()
+		public, _, err := ed25519.GenerateKey(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Publisher{Issuer: issuer, PublicKeyBase64: base64.StdEncoding.EncodeToString(public), SourceOrigin: origin}
+	}
+	fixture := newPublisher(t, "fixture-publisher", "https://git.example.test/templates")
+
+	t.Run("placeholder_install_then_publishers", func(t *testing.T) {
+		root := tempRoot(t)
+		first, err := Generate(Options{Root: root})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Generate(Options{Root: root, Publishers: []Publisher{fixture}}); !errors.Is(err, ErrPublishersChanged) {
+			t.Fatalf("publishers over a placeholder install: %v", err)
+		}
+		// The refused request left the existing installation intact.
+		kept, err := Generate(Options{Root: root})
+		if err != nil || !kept.Reused || kept.RegistrationSHA256 != first.RegistrationSHA256 {
+			t.Fatalf("existing installation changed after refusal: %+v err=%v", kept, err)
+		}
+		rotated, err := Generate(Options{Root: root, Publishers: []Publisher{fixture}, Rotate: true})
+		if err != nil || rotated.Reused {
+			t.Fatalf("rotation with publishers: %+v err=%v", rotated, err)
+		}
+		loaded, err := trustload.Load(context.Background(), loadRegistration(t, rotated).Selection())
+		if err != nil {
+			t.Fatal(err)
+		}
+		descriptor, err := bootstrap.DecodeDescriptorDocument(loaded.DescriptorJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(descriptor.PublisherScopes) != 1 || descriptor.PublisherScopes[0].Issuer != fixture.Issuer {
+			t.Fatalf("rotated scopes %+v", descriptor.PublisherScopes)
+		}
+	})
+
+	t.Run("same_publishers_reuse", func(t *testing.T) {
+		root := tempRoot(t)
+		first, err := Generate(Options{Root: root, Publishers: []Publisher{fixture}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		again, err := Generate(Options{Root: root, Publishers: []Publisher{fixture}})
+		if err != nil || !again.Reused || again.RegistrationSHA256 != first.RegistrationSHA256 {
+			t.Fatalf("identical publishers not reused: %+v err=%v", again, err)
+		}
+		// No publishers requested keeps the configured installation as is.
+		kept, err := Generate(Options{Root: root})
+		if err != nil || !kept.Reused || kept.RegistrationSHA256 != first.RegistrationSHA256 {
+			t.Fatalf("plain reinstall did not keep publishers: %+v err=%v", kept, err)
+		}
+	})
+
+	t.Run("changed_publishers_refused", func(t *testing.T) {
+		root := tempRoot(t)
+		if _, err := Generate(Options{Root: root, Publishers: []Publisher{fixture}}); err != nil {
+			t.Fatal(err)
+		}
+		otherKey := newPublisher(t, fixture.Issuer, fixture.SourceOrigin)
+		otherPath := fixture
+		otherPath.TemplatePath = "templates/service"
+		extra := newPublisher(t, "second-publisher", "https://git.example.test/more")
+		objects := t.TempDir()
+		otherObjects := fixture
+		otherObjects.ObjectRoot = objects
+		for name, publishers := range map[string][]Publisher{
+			"rotated_key":     {otherKey},
+			"template_path":   {otherPath},
+			"added_publisher": {fixture, extra},
+			"object_root":     {otherObjects},
+		} {
+			if _, err := Generate(Options{Root: root, Publishers: publishers}); !errors.Is(err, ErrPublishersChanged) {
+				t.Errorf("%s: %v, want ErrPublishersChanged", name, err)
+			}
+		}
+	})
+
+	t.Run("invalid_publishers_rejected_before_reuse", func(t *testing.T) {
+		root := tempRoot(t)
+		if _, err := Generate(Options{Root: root}); err != nil {
+			t.Fatal(err)
+		}
+		bad := Publisher{Issuer: "x", PublicKeyBase64: "not-a-key", SourceOrigin: "https://git.example.test/x"}
+		if _, err := Generate(Options{Root: root, Publishers: []Publisher{bad}}); err == nil || errors.Is(err, ErrPublishersChanged) {
+			t.Fatalf("invalid publisher: %v", err)
+		}
+	})
+}
+
 func TestDecodeRegistrationRejectsDevelopmentAndUnknownFields(t *testing.T) {
 	for name, raw := range map[string]string{
 		"development": `{"apiVersion":"` + RegistrationAPIVersion + `","profile":"development","runtimeConfig":{"path":"/a","sha256":"x"},"operatorRecord":{"path":"/b","sha256":"y"},"installationID":"i","projectKey":"p"}`,
