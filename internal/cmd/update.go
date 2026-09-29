@@ -108,7 +108,7 @@ func newUpdateCmd() *cobra.Command {
 				return errors.New("TRUST_RUNTIME_INVALID")
 			}
 			if jsonMode(cmd) {
-				return emitData(cmd, resultdto.OperationUpdatePlan, projectAt(runtime.ProjectContext().RootPath),
+				return emitData(cmd, resultdto.OperationUpdatePlan, trustProject(runtime.ProjectContext()),
 					resultdto.UpdateData{DryRun: true, To: to, ConflictMarkers: []string{}})
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "dry-run prepared")
@@ -123,6 +123,16 @@ func newUpdateCmd() *cobra.Command {
 	f.BoolVar(&check, "check", false, "check tree for conflict markers (exit code 1 if found)")
 	f.StringVar(&sourceInput, "source-input", "", "sealed JSON of target source selection")
 	return withResult(c, resultdto.OperationUpdateApply)
+}
+
+// trustProject identifies the project of a trust runtime for a result
+// envelope: the project id and root pinned by the runtime configuration, or
+// the project marker at that root when the configuration names no id.
+func trustProject(pc trustload.ProjectContext) *resultdto.Project {
+	if pc.ProjectID != "" && pc.RootPath != "" {
+		return &resultdto.Project{ID: pc.ProjectID, Root: pc.RootPath}
+	}
+	return projectAt(pc.RootPath)
 }
 
 // registeredSourceInput reads the existing project pair at its fixed metadata

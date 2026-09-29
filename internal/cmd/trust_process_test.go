@@ -287,18 +287,11 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	if result["id"] != float64(3) || result["error"] != nil {
 		t.Fatalf("trust inspect response: %#v", result)
 	}
-	callResult, _ := result["result"].(map[string]any)
-	content, _ := callResult["content"].([]any)
-	if len(content) != 1 {
-		t.Fatalf("trust inspect content: %#v", result)
+	mcpBinding, envelope := mcpTrustBinding(result)
+	if !equalJSONBinding(binding, mcpBinding) {
+		t.Fatalf("direct=%s mcp=%#v", out, result)
 	}
-	item, _ := content[0].(map[string]any)
-	text, _ := item["text"].(string)
-	var mcpBinding map[string]any
-	if err := json.Unmarshal([]byte(text), &mcpBinding); err != nil || !equalJSONBinding(binding, mcpBinding) {
-		t.Fatalf("direct=%s mcp=%q err=%v", out, text, err)
-	}
-	mcpInspectDigest := sha256.Sum256([]byte(text))
+	mcpInspectDigest := sha256.Sum256(envelope)
 	t.Logf("T7_PROOF mcp_inspect_sha256=%x", mcpInspectDigest)
 	for id, callSpec := range []struct {
 		name string
@@ -309,15 +302,13 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 		if response["error"] != nil || result["isError"] == true {
 			t.Fatalf("mcp %s: %#v", callSpec.name, response)
 		}
-		content, _ := result["content"].([]any)
-		if len(content) != 1 {
+		structured, _ := result["structuredContent"].(map[string]any)
+		data, _ := structured["data"].(map[string]any)
+		if structured["status"] != "ok" || data["dryRun"] != true {
 			t.Fatalf("mcp %s result: %#v", callSpec.name, response)
 		}
-		item, _ := content[0].(map[string]any)
-		if item["text"] != "dry-run prepared\n" {
-			t.Fatalf("mcp %s result: %#v", callSpec.name, response)
-		}
-		previewDigest := sha256.Sum256([]byte(item["text"].(string)))
+		preview, _ := json.Marshal(structured)
+		previewDigest := sha256.Sum256(preview)
 		t.Logf("T7_PROOF mcp_preview_%d_sha256=%x", id, previewDigest)
 	}
 	expectFailure := func(response map[string]any, want string) {
@@ -326,22 +317,21 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 		if response["error"] != nil || result["isError"] != true {
 			t.Fatalf("negative request accepted: %#v", response)
 		}
-		content, _ := result["content"].([]any)
-		if len(content) != 1 {
-			t.Fatalf("negative content: %#v", response)
+		structured, _ := result["structuredContent"].(map[string]any)
+		diagnostics, _ := structured["diagnostics"].([]any)
+		for _, d := range diagnostics {
+			diagnostic, _ := d.(map[string]any)
+			code, _ := diagnostic["code"].(string)
+			if code == want || (strings.HasSuffix(want, "*") && strings.HasPrefix(code, strings.TrimSuffix(want, "*"))) {
+				return
+			}
 		}
-		item, _ := content[0].(map[string]any)
-		if item["text"] != want {
-			t.Fatalf("negative diagnostic = %q, want %q", item["text"], want)
-		}
+		t.Fatalf("negative diagnostics = %#v, want %q", diagnostics, want)
 	}
 	// Unknown MCP fields are inert data, never a registration/profile selector.
 	unknown := call(4, "trust_inspect", map[string]any{"authority": "development", "profile": "organization"})
-	unknownResult, _ := unknown["result"].(map[string]any)
-	unknownContent, _ := unknownResult["content"].([]any)
-	unknownItem, _ := unknownContent[0].(map[string]any)
-	var unknownBinding map[string]any
-	if unknown["error"] != nil || json.Unmarshal([]byte(unknownItem["text"].(string)), &unknownBinding) != nil || !equalJSONBinding(binding, unknownBinding) {
+	unknownBinding, _ := mcpTrustBinding(unknown)
+	if unknown["error"] != nil || !equalJSONBinding(binding, unknownBinding) {
 		t.Fatalf("unknown authority fields affected binding: %#v", unknown)
 	}
 	liveBaseline := snapshotOwned(t, filepath.Dir(f.projectRoot), root)
@@ -401,13 +391,10 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 		}
 		recovered := call(31, "trust_inspect", map[string]any{})
 		recoveredResult, _ := recovered["result"].(map[string]any)
-		recoveredContent, _ := recoveredResult["content"].([]any)
-		if recovered["error"] != nil || recoveredResult["isError"] == true || len(recoveredContent) != 1 {
+		if recovered["error"] != nil || recoveredResult["isError"] == true {
 			t.Fatalf("restored %s did not recover child: %#v", candidate.name, recovered)
 		}
-		recoveredItem, _ := recoveredContent[0].(map[string]any)
-		var recoveredBinding map[string]any
-		if json.Unmarshal([]byte(recoveredItem["text"].(string)), &recoveredBinding) != nil || !equalJSONBinding(binding, recoveredBinding) {
+		if recoveredBinding, _ := mcpTrustBinding(recovered); !equalJSONBinding(binding, recoveredBinding) {
 			t.Fatalf("restored %s changed binding: %#v", candidate.name, recovered)
 		}
 	}
@@ -440,7 +427,8 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	}
 	// Authenticated CAS evidence and the raw source object are consumed by
 	// each child. Changing either one must fail the same preview in both
-	// transports without changing any other owned file.
+	// transports without changing any other owned file. Over MCP the child's
+	// result/v1 envelope carries the typed trust refusal (never the path).
 	casHex := strings.TrimPrefix(f.sourceRefs.StatementCAS, "sha256:")
 	casPath := filepath.Join(f.evidenceRoot, "sha256", casHex[:2], casHex[2:])
 	objectPath := filepath.Join(filepath.Dir(f.projectRoot), "objects", f.source.Commit)
@@ -455,7 +443,7 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 			t.Fatal(err)
 		}
 		driftBaseline := snapshotOwned(t, filepath.Dir(f.projectRoot), root)
-		expectFailure(call(20, "project_new", map[string]any{"ref": f.source.Commit, "name": "project", "dir": filepath.Dir(f.projectRoot), "dryRun": true, "sourceInput": sourceInput}), "MCP_CLI_FAILED")
+		expectFailure(call(20, "project_new", map[string]any{"ref": f.source.Commit, "name": "project", "dir": filepath.Dir(f.projectRoot), "dryRun": true, "sourceInput": sourceInput}), "TRUST_*")
 		if out, err := run("new", f.source.Commit, "project", "--dry-run", "--source-input", sourceInput); err == nil || bytes.Contains(out, []byte(candidate.path)) {
 			t.Fatalf("direct %s drift: exit=%v output=%q", candidate.name, err, out)
 		}
@@ -489,24 +477,17 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	if rotated["error"] != nil {
 		t.Fatalf("mcp child after refresh: %#v", rotated)
 	}
-	rotatedResult, _ := rotated["result"].(map[string]any)
-	rotatedContent, _ := rotatedResult["content"].([]any)
-	if len(rotatedContent) != 1 {
-		t.Fatalf("rotated MCP binding absent: %#v", rotated)
-	}
-	rotatedItem, _ := rotatedContent[0].(map[string]any)
-	rotatedText, _ := rotatedItem["text"].(string)
-	var rotatedBinding map[string]any
-	if err := json.Unmarshal([]byte(rotatedText), &rotatedBinding); err != nil ||
+	rotatedBinding, rotatedEnvelope := mcpTrustBinding(rotated)
+	if rotatedBinding == nil ||
 		rotatedBinding["authoritySHA256"] == binding["authoritySHA256"] ||
 		rotatedBinding["configSHA256"] != binding["configSHA256"] ||
 		rotatedBinding["policySHA256"] == binding["policySHA256"] {
-		t.Fatalf("rotation did not update signed policy and authority binding: %s err=%v", rotatedText, err)
+		t.Fatalf("rotation did not update signed policy and authority binding: %s", rotatedEnvelope)
 	}
 	rotatedDirect, err := run("trust", "inspect", "--json")
 	var rotatedDirectBinding map[string]any
 	if err != nil || json.Unmarshal(rotatedDirect, &rotatedDirectBinding) != nil || !equalJSONBinding(rotatedBinding, rotatedDirectBinding) {
-		t.Fatalf("rotated direct/MCP binding mismatch: direct=%q MCP=%q err=%v", rotatedDirect, rotatedText, err)
+		t.Fatalf("rotated direct/MCP binding mismatch: direct=%q MCP=%s err=%v", rotatedDirect, rotatedEnvelope, err)
 	}
 	rotatedInspectDigest := sha256.Sum256(rotatedDirect)
 	t.Logf("T7_PROOF rotated_inspect_sha256=%x", rotatedInspectDigest)
@@ -519,13 +500,10 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	}
 	recovered := call(9, "trust_inspect", map[string]any{})
 	recoveredResult, _ := recovered["result"].(map[string]any)
-	recoveredContent, _ := recoveredResult["content"].([]any)
-	if recovered["error"] != nil || recoveredResult["isError"] == true || len(recoveredContent) != 1 {
+	if recovered["error"] != nil || recoveredResult["isError"] == true {
 		t.Fatalf("restored registration did not recover child: %#v", recovered)
 	}
-	recoveredItem, _ := recoveredContent[0].(map[string]any)
-	var recoveredBinding map[string]any
-	if json.Unmarshal([]byte(recoveredItem["text"].(string)), &recoveredBinding) != nil || !equalJSONBinding(rotatedBinding, recoveredBinding) {
+	if recoveredBinding, _ := mcpTrustBinding(recovered); !equalJSONBinding(rotatedBinding, recoveredBinding) {
 		t.Fatalf("restored registration changed binding: %#v", recovered)
 	}
 	// The rotated envelope is signed with a short finite validity. A later
@@ -661,6 +639,20 @@ func equalStringMap(a, b map[string]string) bool {
 		}
 	}
 	return true
+}
+
+// mcpTrustBinding extracts data.binding of a trust_inspect result/v1
+// envelope from a tools/call response, with the canonical envelope bytes.
+func mcpTrustBinding(response map[string]any) (map[string]any, []byte) {
+	result, _ := response["result"].(map[string]any)
+	structured, _ := result["structuredContent"].(map[string]any)
+	if structured["operation"] != "trust.inspect" {
+		return nil, nil
+	}
+	data, _ := structured["data"].(map[string]any)
+	binding, _ := data["binding"].(map[string]any)
+	raw, _ := json.Marshal(structured)
+	return binding, raw
 }
 
 func testProcessEnv(home string) []string {
