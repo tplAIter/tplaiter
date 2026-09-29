@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -23,6 +22,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 )
 
@@ -87,7 +87,7 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	bin := filepath.Join(root, "tplaiter")
 	ldflags := "-X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationPath=" + registrationPath +
 		" -X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationSHA256=sha256:" + hex.EncodeToString(h[:])
-	build := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-ldflags", ldflags, "-o", bin, ".")
+	build := exec.Command(testfixture.GoBinary(t), "build", "-ldflags", ldflags, "-o", bin, ".")
 	build.Dir = filepath.Join("..", "..")
 	build.Env = testBuildEnv(home)
 	if out, err := build.CombinedOutput(); err != nil {
@@ -100,7 +100,7 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	binaryDigest := sha256.Sum256(binaryRaw)
 	t.Logf("T7_PROOF registration_sha256=%x runtime_digest=%s binary_sha256=%x", h, f.selection.RuntimeConfig.SHA256, binaryDigest)
 	unpinned := filepath.Join(root, "tplaiter-unpinned")
-	unpinnedBuild := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-o", unpinned, ".")
+	unpinnedBuild := exec.Command(testfixture.GoBinary(t), "build", "-o", unpinned, ".")
 	unpinnedBuild.Dir, unpinnedBuild.Env = filepath.Join("..", ".."), testBuildEnv(home)
 	if out, err := unpinnedBuild.CombinedOutput(); err != nil {
 		t.Fatalf("build stock binary: %v\n%s", err, out)

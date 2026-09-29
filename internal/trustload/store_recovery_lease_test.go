@@ -224,8 +224,8 @@ func TestStoreRecoveryBorrowTerminalRetainsActualVFSAndRoot(t *testing.T) {
 	// The recovery stack now drops all local owner references.  The root lease
 	// must be the only path retaining the actual binding/VFS after a terminal
 	// teardown error.
-	binding = nil
-	terminalOwner = nil
+	binding = nil       //nolint:wastedassign // drop the reference before runtime.GC()
+	terminalOwner = nil //nolint:ineffassign,wastedassign // drop the reference before runtime.GC()
 	runtime.GC()
 	lease.mu.Lock()
 	retained := lease.recoveryTerminalOwner

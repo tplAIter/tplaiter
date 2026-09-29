@@ -1,6 +1,6 @@
 package bootstrap
 
-import "fmt"
+import "errors"
 
 const OSSAcceptedStateAPIVersion = "tplaiter.dev/oss-accepted-state/v1"
 
@@ -22,7 +22,7 @@ var stateFields = []string{"apiVersion", "descriptorSHA256", "provisioningSHA256
 
 func DecodeOSSAcceptedState(raw []byte) (*OSSAcceptedState, error) {
 	if len(raw) > maxBootstrapDocument {
-		return nil, fmt.Errorf("bootstrap: accepted state exceeds size limit")
+		return nil, errors.New("bootstrap: accepted state exceeds size limit")
 	}
 	var s OSSAcceptedState
 	if err := decodeBootstrapDocument(raw, stateFields, &s); err != nil {
@@ -32,14 +32,14 @@ func DecodeOSSAcceptedState(raw []byte) (*OSSAcceptedState, error) {
 		return nil, err
 	}
 	if s.StateSHA256 != s.ComputedSHA256() {
-		return nil, fmt.Errorf("bootstrap: accepted state digest mismatch")
+		return nil, errors.New("bootstrap: accepted state digest mismatch")
 	}
 	return &s, nil
 }
 
 func (s OSSAcceptedState) Validate() error {
 	if s.APIVersion != OSSAcceptedStateAPIVersion || !validDigest(s.DescriptorSHA256) || !validDigest(s.ProvisioningSHA256) || !validDescriptorToken(s.AuthorityID, 256) || s.Sequence == 0 || s.Sequence > maxSafeInteger || !validDigest(s.EnvelopePayloadSHA256) || s.RevocationEpoch > maxSafeInteger || !validDigest(s.ReceiptDigest) || s.TreeSize == 0 || s.TreeSize > maxSafeInteger || !validDigest(s.CheckpointDigest) || !validDigest(s.StateSHA256) {
-		return fmt.Errorf("bootstrap: invalid accepted state")
+		return errors.New("bootstrap: invalid accepted state")
 	}
 	return nil
 }

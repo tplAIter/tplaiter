@@ -15,7 +15,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -544,48 +543,6 @@ func observeCrash01Journal(t *testing.T, root string) crash01JournalObservation 
 	return obs
 }
 
-func observeCrash01Recovery(t *testing.T, root string, before crash01JournalObservation) crash01RecoveryObservation {
-	t.Helper()
-	obs := crash01RecoveryObservation{BeforeJournal: before}
-	proof := &storeProofObserver{}
-	ctx := context.WithValue(context.Background(), storeProofObserverKey{}, proof)
-	lease, err := openRootLease(ctx, root, storeRecover)
-	if err != nil {
-		obs.OpenErr = err.Error()
-		obs.AfterJournal = observeCrash01Journal(t, root)
-		return obs
-	}
-	binding, err := openSQLBinding(ctx, lease, storeRecover)
-	if err != nil {
-		obs.OpenErr = err.Error()
-		_ = lease.Close()
-		obs.AfterJournal = observeCrash01Journal(t, root)
-		return obs
-	}
-	if err := binding.conn.QueryRowContext(ctx, "PRAGMA journal_mode=DELETE").Scan(&obs.JournalMode); err != nil {
-		obs.QueryErr = err.Error()
-	}
-	if err := binding.conn.QueryRowContext(ctx, "SELECT count(*) FROM crash_blobs").Scan(&obs.Count); err != nil {
-		obs.QueryErr = err.Error()
-	}
-	if err := binding.conn.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&obs.Integrity); err != nil {
-		if obs.QueryErr == "" {
-			obs.QueryErr = err.Error()
-		}
-	}
-	if binding.vfs != nil && binding.vfs.ctx != 0 {
-		vc := (*vfsContext)(libcPtr(binding.vfs.ctx))
-		for i := range obs.CallbackCounts {
-			obs.CallbackCounts[i] = atomic.LoadInt64(&vc.callbackCounts[i])
-		}
-	}
-	obs.Trace = proof.traceSnapshot()
-	_ = binding.Close()
-	_ = lease.Close()
-	obs.AfterJournal = observeCrash01Journal(t, root)
-	return obs
-}
-
 func runCrash01Child(t *testing.T) {
 	eventFD := os.NewFile(uintptr(3), "crash01-events")
 	ackFD := os.NewFile(uintptr(4), "crash01-acks")
@@ -637,7 +594,7 @@ func runCrash01Child(t *testing.T) {
 	observer.traceHook = gate
 	observer.traceReset()
 	if err := writeCrash01Record(eventFD, crash01WireRecord{Ordinal: 0}); err != nil {
-		os.Exit(2)
+		os.Exit(2) //nolint:gocritic // crash child: exit immediately, deferred cleanup must not run
 	}
 	var ack [1]byte
 	if _, err := io.ReadFull(ackFD, ack[:]); err != nil || ack[0] != 1 {
@@ -943,10 +900,10 @@ func runCrash01Cut(t *testing.T, cut int, wantTrace []storeTraceEvent) {
 	t.Logf("CRASH01 cut=%d recovery-diagnostic=%s", cut, encodedRecovery)
 	got := loadCrashTuple(t, root)
 	old := oldCrashTuple()
-	new := newCrashTuple()
+	next := newCrashTuple()
 	if cut >= len(wantTrace)-2 {
-		assertCrashTupleEqual(t, got, new, "post-control")
-	} else if !crashTupleEqual(got, old) && !crashTupleEqual(got, new) {
+		assertCrashTupleEqual(t, got, next, "post-control")
+	} else if !crashTupleEqual(got, old) && !crashTupleEqual(got, next) {
 		t.Fatalf("cut %d produced mixed tuple: got=%+v", cut, got)
 	}
 }
@@ -1148,7 +1105,7 @@ func assertCrashTrace(t *testing.T, trace []storeTraceEvent, committed bool) {
 
 func validateCrashTraceSchema(trace []storeTraceEvent) error {
 	if len(trace) == 0 {
-		return fmt.Errorf("empty trace")
+		return errors.New("empty trace")
 	}
 	commitControls, closeControls := 0, 0
 	commitIndex, closeIndex := -1, -1
@@ -1210,7 +1167,7 @@ func validateCrashTraceSchema(trace []storeTraceEvent) error {
 		return fmt.Errorf("controls commit=%d close=%d", commitControls, closeControls)
 	}
 	if closeIndex <= commitIndex {
-		return fmt.Errorf("close control does not follow commit/rollback control")
+		return errors.New("close control does not follow commit/rollback control")
 	}
 	for i, event := range trace {
 		if event.Op < storeTraceCommitControl && i > commitIndex {
@@ -1251,7 +1208,7 @@ func rollbackDiscoveryIDs(trace []storeTraceEvent) []string {
 		case storeTraceCloseControl:
 			ids = append(ids, fmt.Sprintf("after-ordinary-close-seq%d", event.Seq))
 		default:
-			ids = append(ids, fmt.Sprintf("rollback-observed-%s", nativeCrashID(event)))
+			ids = append(ids, "rollback-observed-"+nativeCrashID(event))
 		}
 	}
 	return ids

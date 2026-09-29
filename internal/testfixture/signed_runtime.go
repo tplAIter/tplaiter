@@ -12,9 +12,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"os/exec"
+	"os/exec" //nolint:depguard // test fixture builds and runs signed helper binaries
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -173,8 +172,8 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 	if err := os.Mkdir(cache, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), args...)
-	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "modcache"), "GOCACHE=" + cache, "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "GOOS=darwin", "GOARCH=arm64", "PATH=" + filepath.Join(runtime.GOROOT(), "bin") + ":/usr/bin:/bin"}
+	cmd := exec.Command(GoBinary(t), args...)
+	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "modcache"), "GOCACHE=" + cache, "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "GOOS=darwin", "GOARCH=arm64", "PATH=" + filepath.Join(GoRoot(t), "bin") + ":/usr/bin:/bin"}
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("helper build: %v", err)
 	}
@@ -261,7 +260,8 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 			t.Fatal(err)
 		}
 	}
-	entries := append(execEntries, formatterEntries...)
+	entries := execEntries
+	entries = append(entries, formatterEntries...)
 	entries = append(entries, trustverify.SourceEntry{Path: "files", Kind: "directory", Mode: "40000"}, trustverify.SourceEntry{Path: "files/hello.txt.tmpl", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest([]byte("hello\n"))}, trustverify.SourceEntry{Path: "template.contract.json", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(contract)}, trustverify.SourceEntry{Path: "template.manifest.yaml", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(manifest)})
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 	treeDigest, err := bootstrap.DomainDigest("tplaiter.dev/source-content-tree/v1", struct {

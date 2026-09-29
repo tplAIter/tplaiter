@@ -19,14 +19,14 @@ func (r *testReader) ReadObject(_ context.Context, _ SourceOrigin, id ObjectID) 
 	r.calls++
 	o, ok := r.objects[string(id)]
 	if !ok {
-		return GitObject{}, errMissing{}
+		return GitObject{}, missingError{}
 	}
 	return GitObject{Kind: o.Kind, Data: append([]byte(nil), o.Data...)}, nil
 }
 
-type errMissing struct{}
+type missingError struct{}
 
-func (errMissing) Error() string { return "missing" }
+func (missingError) Error() string { return "missing" }
 func refOID(w int, k string, d []byte) string {
 	p := []byte(k + " " + itoa(len(d)) + "\x00")
 	p = append(p, d...)
@@ -51,7 +51,7 @@ func itoa(n int) string {
 }
 func refB(b []byte) string { h := sha256.Sum256(b); return "sha256:" + hex.EncodeToString(h[:]) }
 func refD(d string, v any) string {
-	var x any = v
+	x := v
 	switch q := v.(type) {
 	case refTree:
 		a := make([]any, len(q.Entries))
@@ -238,7 +238,7 @@ func parserFixture(w int, root, commit []byte) (*testReader, Subject) {
 		return id
 	}
 	rootID := add("tree", root)
-	if commit == nil || len(commit) == 0 {
+	if len(commit) == 0 {
 		commit = []byte("tree " + rootID + "\n\n")
 	}
 	commitID := add("commit", commit)

@@ -3,6 +3,7 @@
 package trustload
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -340,6 +341,8 @@ func (v *storeVFS) dsn() string {
 		mode = "ro"
 	case storeEnroll:
 		mode = "rwc"
+	default:
+		// storeRefresh and storeRecover open read-write.
 	}
 	return "file:" + v.main + "?vfs=" + v.name + "&mode=" + mode
 }
@@ -484,7 +487,7 @@ func storeVFSOpen(tls *libc.TLS, pVFS uintptr, zPath sqlite3.Tsqlite3_filename, 
 	if flags&sqlite3.SQLITE_OPEN_READWRITE != 0 && ctx.mode != int64(storeRead) {
 		openFlags = unix.O_RDWR
 	}
-	if flags&sqlite3.SQLITE_OPEN_CREATE != 0 && !(kind == storeFileJournal && ctx.mode == int64(storeRecover)) {
+	if flags&sqlite3.SQLITE_OPEN_CREATE != 0 && (kind != storeFileJournal || ctx.mode != int64(storeRecover)) {
 		openFlags |= unix.O_CREAT | unix.O_EXCL
 	}
 	openPhase := "main-open"
@@ -539,13 +542,13 @@ func storeVFSDelete(tls *libc.TLS, pVFS, zPath uintptr, dirSync int32) int32 {
 		return sqlite3.SQLITE_IOERR_DELETE
 	}
 	atomic.AddInt64(&ctx.pathSyscalls, 1)
-	if err := validatePrivateJournalAt(int(ctx.rootFD), uint32(ctx.ownerUID)); err != nil && err != unix.ENOENT {
+	if err := validatePrivateJournalAt(int(ctx.rootFD), uint32(ctx.ownerUID)); err != nil && !errors.Is(err, unix.ENOENT) {
 		return sqlite3.SQLITE_IOERR_DELETE
 	}
 	atomic.AddInt64(&ctx.pathSyscalls, 1)
 	atomic.AddInt64(&ctx.deleteSyscalls, 1)
 	unlinkErr := storeUnlinkat(int(ctx.rootFD), storeDBName+"-journal", 0)
-	if unlinkErr != nil && unlinkErr != unix.ENOENT {
+	if unlinkErr != nil && !errors.Is(unlinkErr, unix.ENOENT) {
 		return sqlite3.SQLITE_IOERR_DELETE
 	}
 	if observer := storeVFSObserverFor(ctx); observer != nil && unlinkErr == nil {
@@ -595,7 +598,7 @@ func storeVFSAccess(tls *libc.TLS, pVFS, zPath uintptr, flags int32, pRes uintpt
 	var st unix.Stat_t
 	atomic.AddInt64(&ctx.pathSyscalls, 1)
 	err := storeFstatat(int(ctx.rootFD), leaf, &st, unix.AT_SYMLINK_NOFOLLOW)
-	if err == unix.ENOENT {
+	if errors.Is(err, unix.ENOENT) {
 		return sqlite3.SQLITE_OK
 	}
 	if err != nil || st.Mode&unix.S_IFMT != unix.S_IFREG || st.Nlink != 1 || st.Uid != uint32(ctx.ownerUID) || st.Mode&0o077 != 0 {
@@ -702,7 +705,7 @@ func storeFileRead(tls *libc.TLS, p, out uintptr, n int32, off sqlite3.Tsqlite3_
 	var err error
 	for {
 		got, err = storePread(int(f.fd), b, int64(off))
-		if err == unix.EINTR {
+		if errors.Is(err, unix.EINTR) {
 			continue
 		}
 		break
@@ -740,7 +743,7 @@ func storeFileWrite(tls *libc.TLS, p, in uintptr, n int32, off sqlite3.Tsqlite3_
 		atomic.AddInt64(&c.writeSyscalls, 1)
 		requested := int64(len(b))
 		m, e := storePwrite(int(f.fd), b, int64(off))
-		if e == unix.EINTR {
+		if errors.Is(e, unix.EINTR) {
 			continue
 		}
 		if e != nil {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
-	"fmt"
 	"regexp"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
@@ -130,7 +129,7 @@ func (v *Verifier) VerifyPublisherClaim(ctx context.Context, a *Authority, x Pub
 		return nil, e
 	}
 	if !ed25519.Verify(key, msg, sig) {
-		return nil, fmt.Errorf("bootstrap: invalid publisher signature")
+		return nil, errors.New("bootstrap: invalid publisher signature")
 	}
 	return &VerifiedPublisherClaim{x, a.binding.AuthoritySHA256}, nil
 }

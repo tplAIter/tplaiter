@@ -19,11 +19,8 @@ import (
 const ExportPayloadAPIVersion = "tplaiter.dev/export-payload/v1"
 
 var (
-	materialDigestRE   = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	materialIDRE       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
-	materialProviderRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._/-]{0,127}$`)
-	materialAliasRE    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,127}$`)
-	materialVersionRE  = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+][0-9A-Za-z.-]+)?$`)
+	materialDigestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	materialIDRE     = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
 )
 
 type ExportPayload struct {
@@ -184,13 +181,13 @@ func windowsDevice(s string) bool {
 
 func foldPath(s string) string {
 	return strings.Map(func(r rune) rune {
-		min := r
+		minimum := r
 		for next := unicode.SimpleFold(r); next != r; next = unicode.SimpleFold(next) {
-			if next < min {
-				min = next
+			if next < minimum {
+				minimum = next
 			}
 		}
-		return min
+		return minimum
 	}, s)
 }
 
@@ -458,9 +455,11 @@ func Materialize(in MaterializeInput) (Materialization, error) {
 		// Every supplied record is parsed and its blobs bound before exact
 		// duplicates are coalesced. A duplicate cannot hide malformed bytes.
 		sig := s.Selected.ContentDigest
+		var sigBuilder strings.Builder
 		for _, b := range s.Blobs {
-			sig += "\x00" + b.Path + "\x00" + b.Mode + "\x00" + digestBytes(b.Content)
+			sigBuilder.WriteString("\x00" + b.Path + "\x00" + b.Mode + "\x00" + digestBytes(b.Content))
 		}
+		sig += sigBuilder.String()
 		if first, duplicate := selectedIdentity[s.Selected.Source]; duplicate {
 			firstIdentity, _ := SelectedExportIdentity(selectedBySource[first])
 			if identity != firstIdentity || sig != sourceContent[first] {

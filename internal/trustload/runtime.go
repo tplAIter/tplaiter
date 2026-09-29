@@ -260,9 +260,9 @@ func (r projectReader) Load(ctx context.Context) (trustverify.ProjectContext, er
 }
 
 func (r policyReader) Load(ctx context.Context) (trustverify.ExecutionPolicySnapshot, error) {
-	return r.runtimeReaders.LoadPolicy(ctx)
+	return r.LoadPolicy(ctx)
 }
 
 func (r bundleReader) Load(ctx context.Context) (bootstrap.Bundle, error) {
-	return r.runtimeReaders.BundleLoad(ctx)
+	return r.BundleLoad(ctx)
 }

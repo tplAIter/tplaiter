@@ -341,18 +341,6 @@ func unexplainedOurs(base, ours Document) bool {
 	return false
 }
 
-func sameLayout(base, ours, theirs Document, renames map[string]string) bool {
-	if len(base.Regions) != len(ours.Regions) || len(base.Regions) != len(theirs.Regions) || len(base.Gaps) != len(theirs.Gaps) || len(base.Gaps) != len(ours.Gaps) {
-		return false
-	}
-	for i := range base.Regions {
-		if theirs.Regions[i].ID != renamedID(base.Regions[i].ID, renames) || ours.Regions[i].ID != base.Regions[i].ID {
-			return false
-		}
-	}
-	return true
-}
-
 func renamedID(id string, renames map[string]string) string {
 	for next, old := range renames {
 		if old == id {

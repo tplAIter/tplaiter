@@ -267,7 +267,7 @@ func TestVerifyPublisherClaimEvidenceAndCancellation(t *testing.T) {
 	if _, err := v.VerifyPublisherClaim(ctx, a, x, refs); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled claim = %v", err)
 	}
-	if _, err := v.VerifyPublisherClaim(nil, a, x, refs); err == nil {
+	if _, err := v.VerifyPublisherClaim(nil, a, x, refs); err == nil { //nolint:staticcheck // deliberately exercises nil-context rejection
 		t.Fatal("nil context accepted")
 	}
 }

@@ -21,7 +21,7 @@ const (
 	TrustLegacyUnbound          ErrorCode = "TRUST_LEGACY_UNBOUND"
 )
 
-type Diagnostic struct {
+type Diagnostic struct { //nolint:errname // public diagnostic type; the name is part of the verifier API
 	code ErrorCode
 }
 

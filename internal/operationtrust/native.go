@@ -112,7 +112,7 @@ func rawDigest(raw []byte) string {
 	return "sha256:" + hex.EncodeToString(s[:])
 }
 
-func requireNativeContract(contract, manifest []byte) (*NativeContract, error) {
+func requireNativeContract(contract, manifest []byte) (*NativeContract, error) { //nolint:unparam // callers use the error only today; the parsed contract is the result
 	v, err := DecodeNativeContract(contract, manifest)
 	if err != nil {
 		return nil, fmt.Errorf("%w", ErrSourceAdapterUnsupported)

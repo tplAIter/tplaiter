@@ -85,7 +85,7 @@ func Enroll(ctx context.Context, selection LaunchSelection, factory VerifierFact
 		return err
 	}
 	committed := false
-	defer func() {
+	defer func() { //nolint:contextcheck // rollback must run even after ctx is cancelled
 		if !committed {
 			rollback(binding.conn)
 		}
@@ -294,7 +294,7 @@ func Refresh(ctx context.Context, selection LaunchSelection, factory VerifierFac
 		return nil, err
 	}
 	committed := false
-	defer func() {
+	defer func() { //nolint:contextcheck // rollback must run even after ctx is cancelled
 		if !committed {
 			rollback(binding.conn)
 		}

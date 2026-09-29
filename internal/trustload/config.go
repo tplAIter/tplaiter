@@ -86,11 +86,11 @@ func DecodeRuntimeInstall(raw []byte) (*RuntimeInstall, error) {
 		return nil, ErrConfigInvalid
 	}
 	if err := requiredObjectFields(raw, runtimeFields); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrConfigInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrConfigInvalid, err)
 	}
 	var v RuntimeInstall
 	if err := canonicaljson.DecodeStrict(raw, &v); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrConfigInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrConfigInvalid, err)
 	}
 	if err := v.Validate(); err != nil {
 		return nil, err

@@ -463,13 +463,6 @@ func TestExportPayloadSchemaOracleMatchesStrictParser(t *testing.T) {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func TestMaterializeWholeFileCopiesBlob(t *testing.T) {
 	content := []byte("x\n")
 	raw := []byte(`{"apiVersion":"tplaiter.dev/export-payload/v1","blocks":[],"exportID":"data","files":[{"contentSHA256":"sha256:73cb3858a687a8494ca3323053016282f3dad39d42cf62ca4e79dda2aac7d9ac","mode":"100644","sourcePath":"files/data.txt","targetPath":"data.txt"}],"slots":[]}`)

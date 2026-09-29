@@ -90,7 +90,7 @@ func TestRefreshJournalCrashSB06(t *testing.T) {
 			defer eventR.Close()
 			defer ackW.Close()
 			decoder := json.NewDecoder(eventR)
-			selectedOK := false
+			var selectedOK bool
 			journal := filepath.Join(fixture.loaded.Install.OSS.StorePath, storeDBName+"-journal")
 			for {
 				if err := eventR.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {

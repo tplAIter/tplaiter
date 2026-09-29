@@ -103,7 +103,7 @@ func (p *ExecutionPermit) operationDigest() string {
 // allocations, which would let two independently constructed runtimes compare
 // equal by address.
 type (
-	runtimeMarker      struct{ instance byte }
+	runtimeMarker      struct{ instance byte } //nolint:unused // non-zero size is the point; see the comment above
 	VerifiedResolution struct {
 		marker                                                         *runtimeMarker
 		snapshot                                                       *SourceSnapshot

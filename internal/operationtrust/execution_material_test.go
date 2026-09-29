@@ -10,7 +10,7 @@ import (
 )
 
 func TestExecutionMaterialZeroFails(t *testing.T) {
-	if _, e := ResolveFixedComposition(nil, nil, nil, structOperation(), structRequest()); e == nil {
+	if _, e := ResolveFixedComposition(nil, nil, nil, structOperation(), structRequest()); e == nil { //nolint:staticcheck // deliberately exercises nil-context rejection
 		t.Fatal("zero accepted")
 	}
 }

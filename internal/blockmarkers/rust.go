@@ -15,12 +15,10 @@ type rustLiteralKind struct {
 }
 
 var (
-	rustNormal  = rustLiteralKind{}
-	rustByte    = rustLiteralKind{byteDomain: true}
-	rustC       = rustLiteralKind{cDomain: true}
-	rustRaw     = rustLiteralKind{raw: true}
-	rustRawByte = rustLiteralKind{raw: true, byteDomain: true}
-	rustRawC    = rustLiteralKind{raw: true, cDomain: true}
+	rustNormal = rustLiteralKind{}
+	rustByte   = rustLiteralKind{byteDomain: true}
+	rustC      = rustLiteralKind{cDomain: true}
+	rustRaw    = rustLiteralKind{raw: true}
 )
 
 func rustComments(path string, source []byte) ([]commentSpan, error) {

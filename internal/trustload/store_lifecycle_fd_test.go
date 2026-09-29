@@ -495,12 +495,12 @@ func life05ScanFDs(t *testing.T) []int {
 	if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &limit); err != nil {
 		t.Fatal(err)
 	}
-	max := limit.Cur
-	if max == unix.RLIM_INFINITY || max > 1<<20 {
-		t.Fatalf("RLIMIT_NOFILE=%d exceeds bounded scan maximum; refusing incomplete FD proof", max)
+	maxFDs := limit.Cur
+	if maxFDs == unix.RLIM_INFINITY || maxFDs > 1<<20 {
+		t.Fatalf("RLIMIT_NOFILE=%d exceeds bounded scan maximum; refusing incomplete FD proof", maxFDs)
 	}
 	open := make([]int, 0, 16)
-	for fd := uint64(0); fd < max; fd++ {
+	for fd := uint64(0); fd < maxFDs; fd++ {
 		if _, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err == nil {
 			open = append(open, int(fd))
 		}

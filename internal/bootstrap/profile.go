@@ -64,7 +64,7 @@ func DecodeProfileBinding(raw []byte) (*ProfileBinding, error) {
 	}
 	var value ProfileBinding
 	if err := canonicaljson.DecodeStrict(raw, &value); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrProfileInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrProfileInvalid, err)
 	}
 	if err := value.Validate(); err != nil {
 		return nil, err

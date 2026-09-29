@@ -302,7 +302,7 @@ func (v *Verifier) verify(ctx context.Context, d Descriptor, b Bundle, protected
 		return nil, err
 	}
 	if err = v.threshold(ctx, e, mapAnchors(d.Anchors), d.Threshold); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrSelfRoot, err)
+		return nil, fmt.Errorf("%w: %w", ErrSelfRoot, err)
 	}
 	keys, err := v.loadKeys(ctx, e)
 	if err != nil {

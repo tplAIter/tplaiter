@@ -182,7 +182,7 @@ func Verify(d graphdoc.Document, root string, p Pack) error {
 		return err
 	}
 	if p.APIVersion != "tplaiter.dev/context-pack/v1" || p.GraphDigest != d.Digest {
-		return fmt.Errorf("contextpack: graph digest mismatch")
+		return errors.New("contextpack: graph digest mismatch")
 	}
 	byID := map[string]graphdoc.Node{}
 	for _, n := range d.Nodes {
@@ -191,7 +191,7 @@ func Verify(d graphdoc.Document, root string, p Pack) error {
 	for _, ex := range p.Sources {
 		n, ok := byID[ex.NodeID]
 		if !ok || n.Path != ex.Path {
-			return fmt.Errorf("contextpack: excerpt node mismatch")
+			return errors.New("contextpack: excerpt node mismatch")
 		}
 		current, ok := excerpt(root, n)
 		if !ok || current.Digest != ex.Digest || current.Start != ex.Start || current.End != ex.End || current.Content != ex.Content {

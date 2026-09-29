@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
+	"os/exec" //nolint:depguard // the MCP transport owns process-group lifecycle for the held child
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -83,7 +83,9 @@ func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout 
 	if err != nil {
 		return execx.Result{ExitCode: -1}, errTransportUnavailable
 	}
-	cmd := exec.Command(child, argv...)
+	// Cancellation is handled below by killing the whole process group, which
+	// exec.CommandContext (single-process kill) cannot do.
+	cmd := exec.Command(child, argv...) //nolint:noctx // fixed held-stage path; argv is built by the server, never a shell
 	cmd.Dir = cwd
 	cmd.Env = s.childEnv
 	cmd.Stdin = nil
@@ -102,11 +104,11 @@ func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout 
 	case waitErr = <-done:
 	case <-ctx.Done():
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		waitErr = <-done
+		<-done
 		return execx.Result{ExitCode: -1}, errTransportTimeout
 	case <-overflow:
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		waitErr = <-done
+		<-done
 		return execx.Result{ExitCode: -1}, errOutputLimit
 	}
 	if stdout.overflow || stderr.overflow {
@@ -115,7 +117,8 @@ func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout 
 	result := execx.Result{Stdout: string(stdout.b), Stderr: string(stderr.b), ExitCode: 0}
 	if waitErr != nil {
 		result.ExitCode = -1
-		if x, ok := waitErr.(*exec.ExitError); ok {
+		x := &exec.ExitError{}
+		if errors.As(waitErr, &x) {
 			result.ExitCode = x.ExitCode()
 		}
 		return result, &execx.ExitError{ExitCode: result.ExitCode}

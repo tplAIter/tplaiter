@@ -3,6 +3,7 @@ package exports
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -57,7 +58,7 @@ func ResolveModifiers(base RuleSet, modifiers []Modifier) (Composition, error) {
 	retired := map[string]Tombstone{}
 	for _, t := range base.Tombstones {
 		if t.ID == "" || retired[t.ID].ID != "" {
-			return Composition{}, fmt.Errorf("RULE_TOMBSTONE: invalid prior tombstone")
+			return Composition{}, errors.New("RULE_TOMBSTONE: invalid prior tombstone")
 		}
 		retired[t.ID] = cloneTombstone(t)
 	}
@@ -759,14 +760,6 @@ func cloneTombstones(in []Tombstone) []Tombstone {
 	out := make([]Tombstone, len(in))
 	for i := range in {
 		out[i] = cloneTombstone(in[i])
-	}
-	return out
-}
-
-func cloneOperations(in []Operation) []Operation {
-	out := make([]Operation, len(in))
-	for i := range in {
-		out[i] = cloneOperation(in[i])
 	}
 	return out
 }

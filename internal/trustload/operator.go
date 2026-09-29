@@ -21,11 +21,11 @@ func DecodeOperatorPinRecord(raw []byte) (*OperatorPinRecord, error) {
 		return nil, ErrConfigInvalid
 	}
 	if err := requiredObjectFields(raw, operatorFields); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrConfigInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrConfigInvalid, err)
 	}
 	var v OperatorPinRecord
 	if err := canonicaljson.DecodeStrict(raw, &v); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrConfigInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrConfigInvalid, err)
 	}
 	if v.APIVersion != OperatorPinRecordAPIVersion || v.Method != "operator-pinned" || !digest(v.DescriptorSHA256) {
 		return nil, ErrConfigInvalid

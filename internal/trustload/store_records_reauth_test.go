@@ -98,7 +98,6 @@ func testStoreRecordsAcceptedRows(t *testing.T) {
 		}},
 	}
 	for _, column := range []string{"installationID", "descriptorSHA256", "provisioningSHA256", "initialStateSHA256"} {
-		column := column
 		cases = append(cases, recordsMutation{"installation-" + column, "open", ErrPinMismatch, func(c *sql.Conn) error {
 			value := "wrong"
 			if column == "descriptorSHA256" || column == "provisioningSHA256" || column == "initialStateSHA256" {
@@ -160,7 +159,6 @@ func testStoreRecordsAcceptedRows(t *testing.T) {
 		}},
 	)
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := newBootstrapFixture(t)
 			if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {

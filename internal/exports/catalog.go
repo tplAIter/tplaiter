@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -61,7 +62,7 @@ type Selection struct {
 func ParseCatalog(raw []byte) (Catalog, error) {
 	var v Catalog
 	if len(raw) > maxCatalogWireBytes {
-		return v, fmt.Errorf("exports: catalog byte limit")
+		return v, errors.New("exports: catalog byte limit")
 	}
 	if err := decodeClosed(raw, []string{"apiVersion", "provider", "source", "contractDigest", "exports"}, &v); err != nil {
 		return v, err
@@ -92,7 +93,7 @@ func decodeClosed(raw []byte, fields []string, dst any) error {
 		return err
 	}
 	if len(m) != len(fields) {
-		return fmt.Errorf("exports: unknown or missing field")
+		return errors.New("exports: unknown or missing field")
 	}
 	for _, f := range fields {
 		if _, ok := m[f]; !ok {
@@ -104,7 +105,7 @@ func decodeClosed(raw []byte, fields []string, dst any) error {
 
 func (c Catalog) Validate() error {
 	if c.APIVersion != CatalogAPIVersion || !exportTokenRE.MatchString(c.Provider) || !exportDigestRE.MatchString(c.Source) || !exportDigestRE.MatchString(c.ContractDigest) || c.Exports == nil || len(c.Exports) > 4096 {
-		return fmt.Errorf("exports: invalid catalog")
+		return errors.New("exports: invalid catalog")
 	}
 	seen := map[string]bool{}
 	for _, e := range c.Exports {
@@ -117,7 +118,7 @@ func (c Catalog) Validate() error {
 		seen[e.ID] = true
 	}
 	if !sort.SliceIsSorted(c.Exports, func(i, j int) bool { return eKey(c.Exports[i]) < eKey(c.Exports[j]) }) {
-		return fmt.Errorf("exports: exports must be sorted")
+		return errors.New("exports: exports must be sorted")
 	}
 	return nil
 }
@@ -132,7 +133,7 @@ func (e ExportEntry) Validate() error {
 	prev := ""
 	for _, r := range e.Requires {
 		if !selectorRE.MatchString(r.Selector) || len(r.Selector) > maxWireStringBytes || !exportDigestRE.MatchString(r.ContractDigest) || r.CompatibleRange == "" || !utf8.ValidString(r.CompatibleRange) || utf8.RuneCountInString(r.CompatibleRange) > maxRangeRunes || r.Selector <= prev {
-			return fmt.Errorf("exports: invalid requirements")
+			return errors.New("exports: invalid requirements")
 		}
 		prev = r.Selector
 	}
@@ -141,19 +142,19 @@ func (e ExportEntry) Validate() error {
 
 func (s Selection) Validate() error {
 	if s.APIVersion != SelectionAPIVersion || !selectorRE.MatchString(s.Selector) || s.Bindings == nil {
-		return fmt.Errorf("exports: invalid selection")
+		return errors.New("exports: invalid selection")
 	}
 	return validateParams(s.Bindings)
 }
 
 func validateParams(ps []ScalarParameter) error {
 	if len(ps) > 256 {
-		return fmt.Errorf("exports: parameter limit")
+		return errors.New("exports: parameter limit")
 	}
 	prev := ""
 	for _, p := range ps {
 		if !exportAliasRE.MatchString(p.Name) || p.Name <= prev || !scalar(p.Value) {
-			return fmt.Errorf("exports: invalid parameters")
+			return errors.New("exports: invalid parameters")
 		}
 		prev = p.Name
 	}

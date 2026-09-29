@@ -263,8 +263,8 @@ func PlanRoots(roots []Root) (Plan, error) {
 	}
 	for i := range roots {
 		for j := i + 1; j < len(roots); j++ {
-			if rootsOverlap(roots[i].SourceRoot, roots[j].SourceRoot) || rootsOverlap(roots[i].DestinationRoot, roots[j].DestinationRoot) || rootsOverlap(roots[i].SourceRoot, roots[j].DestinationRoot) || rootsOverlap(roots[i].DestinationRoot, roots[j].SourceRoot) {
-				return Plan{}, fmt.Errorf("naming: overlapping root ledgers %s and %s", roots[i].Kind, roots[j].Kind)
+			if rootsOverlap(roots[i].SourceRoot, roots[j].SourceRoot) || rootsOverlap(roots[i].DestinationRoot, roots[j].DestinationRoot) || rootsOverlap(roots[i].SourceRoot, roots[j].DestinationRoot) || rootsOverlap(roots[i].DestinationRoot, roots[j].SourceRoot) { //nolint:gosec // false positive: i < j < len(roots)
+				return Plan{}, fmt.Errorf("naming: overlapping root ledgers %s and %s", roots[i].Kind, roots[j].Kind) //nolint:gosec // false positive: i < j < len(roots)
 			}
 		}
 	}
@@ -433,7 +433,7 @@ func decodeLegacyYAML(b []byte, out any) error {
 		return err
 	}
 	var extra any
-	if err := d.Decode(&extra); err != io.EOF {
+	if err := d.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err == nil {
 			return errors.New("multiple legacy YAML documents")
 		}
@@ -640,7 +640,7 @@ func capture(source string) ([]Entry, error) {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("naming: unsupported file: %s", rel)
 		}
-		b, x := os.ReadFile(path)
+		b, x := os.ReadFile(path) //nolint:gosec // walk over the caller-selected project tree; non-regular entries are rejected above
 		if x != nil {
 			return x
 		}
@@ -1238,7 +1238,7 @@ func verifyStage(stage string, root Root, p Plan) error {
 			return fmt.Errorf("unexpected stage entry %s", rel)
 		}
 		delete(expected, rel)
-		b, err := os.ReadFile(path)
+		b, err := os.ReadFile(path) //nolint:gosec // walk over the caller-selected project tree; non-regular entries are rejected above
 		if err != nil {
 			return err
 		}
@@ -1309,7 +1309,7 @@ func syncTree(root string) error {
 		if i.IsDir() {
 			return nil
 		}
-		f, e := os.Open(path)
+		f, e := os.Open(path) //nolint:gosec // walk over the caller-selected project tree; directories are skipped above
 		if e != nil {
 			return e
 		}

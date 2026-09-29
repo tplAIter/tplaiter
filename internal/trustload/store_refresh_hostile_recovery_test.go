@@ -148,8 +148,7 @@ func TestRefreshHostileRecoveryCorruptJournalSB06(t *testing.T) {
 	journalSynced, journalRootSynced := false, false
 	var selected hostileRecoveryJournalEvent
 	var trace []hostileRecoveryJournalEvent
-	selectedOK := false
-	for !selectedOK {
+	for {
 		if err := eventR.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
 			t.Fatal(err)
 		}
@@ -167,7 +166,6 @@ func TestRefreshHostileRecoveryCorruptJournalSB06(t *testing.T) {
 		}
 		if journalRootSynced && event.Kind == storeFileMain && event.Op == storeTraceWrite && event.Result == 0 && event.Completed > 0 {
 			selected = event
-			selectedOK = true
 			break
 		}
 		if _, err := ackW.Write([]byte{1}); err != nil {
@@ -292,7 +290,7 @@ func TestRefreshHostileRecoveryChild(t *testing.T) {
 		if (trace.Kind != storeFileJournal && trace.Kind != storeFileMain && trace.Kind != storeTraceKindRoot) || (trace.Op != storeTraceOpen && trace.Op != storeTraceWrite && trace.Op != storeTraceFileSync && trace.Op != storeTraceRootSync) {
 			return
 		}
-		if err := json.NewEncoder(event).Encode(hostileRecoveryJournalEvent{Seq: trace.Seq, Op: trace.Op, Kind: trace.Kind, Offset: trace.Offset, Requested: trace.Requested, Completed: trace.Completed, Result: trace.Result}); err != nil {
+		if err := json.NewEncoder(event).Encode(hostileRecoveryJournalEvent(trace)); err != nil {
 			os.Exit(2)
 		}
 		var reply [1]byte

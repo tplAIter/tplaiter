@@ -95,11 +95,7 @@ func (s RootSubject) trustSubject() trustverify.Subject {
 }
 
 func (s RootSubject) dependency() DependencySubject {
-	return DependencySubject{s.Origin, s.TemplatePath, s.RequestedRef, s.Commit, s.TreeSHA256, s.ContractSHA256, s.StatementCAS, s.SignatureCAS, s.KeyFingerprint, s.CheckpointCAS, s.InclusionProofCAS}
-}
-
-func (s DependencySubject) trustSubject() trustverify.Subject {
-	return trustverify.Subject{Origin: s.Origin, TemplatePath: s.TemplatePath, RequestedRef: s.RequestedRef, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256}
+	return DependencySubject(s)
 }
 
 func DecodeRootTemplateLock(raw []byte) (*RootTemplateLock, error) {

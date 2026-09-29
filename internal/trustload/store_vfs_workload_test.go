@@ -41,7 +41,7 @@ func TestStoreVFSWorkloadWORK01AndWORK02(t *testing.T) {
 		t.Skip("unsupported platform")
 	}
 	t.Run("WORK01-commit-constrained-64MiB", func(t *testing.T) {
-		old, want := newWorkloadFixture(t, false)
+		old, _ := newWorkloadFixture(t, false)
 		mem := workloadMemoryStart()
 		ctx := context.Background()
 		if err := configureWorkloadConnection(ctx, old.binding); err != nil {
@@ -78,7 +78,7 @@ func TestStoreVFSWorkloadWORK01AndWORK02(t *testing.T) {
 		if err := workloadClose(old); err != nil {
 			t.Fatal(err)
 		}
-		want = workloadCommittedTuple()
+		want := workloadCommittedTuple()
 		checkWorkloadReopen(t, old.root, want, true, "head-commit", 2, "1,2,3,4")
 		workloadMemoryFinish(&mem)
 		t.Logf("WORK01 memory native_rss_baseline=%d peak=%d delta=%d bytes go_heap_baseline=%d peak=%d delta=%d bytes cache_kib=64 blobs=%d aggregate=%d", mem.NativeRSSBaseline, mem.NativeRSSPeak, mem.NativeRSSDelta, mem.HeapBaseline, mem.HeapPeak, mem.HeapDelta, workloadBlobSize, 4*workloadBlobSize)
@@ -235,16 +235,16 @@ func configureWorkloadConnection(ctx context.Context, binding *sqlBinding) error
 	var cache int
 	var journal, syncMode string
 	if err := binding.conn.QueryRowContext(ctx, "PRAGMA temp_store").Scan(&temp); err != nil || temp != "2" {
-		return fmt.Errorf("temp_store readback=%q err=%v", temp, err)
+		return fmt.Errorf("temp_store readback=%q err=%w", temp, err)
 	}
 	if err := binding.conn.QueryRowContext(ctx, "PRAGMA cache_size").Scan(&cache); err != nil || cache != -64 {
-		return fmt.Errorf("cache_size readback=%d err=%v", cache, err)
+		return fmt.Errorf("cache_size readback=%d err=%w", cache, err)
 	}
 	if err := binding.conn.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&journal); err != nil || journal != "delete" {
-		return fmt.Errorf("journal_mode readback=%q err=%v", journal, err)
+		return fmt.Errorf("journal_mode readback=%q err=%w", journal, err)
 	}
 	if err := binding.conn.QueryRowContext(ctx, "PRAGMA synchronous").Scan(&syncMode); err != nil || syncMode != "2" {
-		return fmt.Errorf("synchronous readback=%q err=%v", syncMode, err)
+		return fmt.Errorf("synchronous readback=%q err=%w", syncMode, err)
 	}
 	return nil
 }

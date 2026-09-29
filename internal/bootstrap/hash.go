@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
@@ -46,7 +47,7 @@ func (e Envelope) VerifyPayloadSHA256() error {
 		return x
 	}
 	if d != e.PayloadSHA256 {
-		return fmt.Errorf("bootstrap: envelope payload digest mismatch")
+		return errors.New("bootstrap: envelope payload digest mismatch")
 	}
 	return nil
 }
@@ -70,14 +71,14 @@ func (r Receipt) VerifyDigest() error {
 		return e
 	}
 	if d != r.ReceiptDigest {
-		return fmt.Errorf("bootstrap: receipt digest mismatch")
+		return errors.New("bootstrap: receipt digest mismatch")
 	}
 	return nil
 }
 
 func rawDigest(v string) ([]byte, error) {
 	if !validDigest(v) {
-		return nil, fmt.Errorf("bootstrap: invalid digest")
+		return nil, errors.New("bootstrap: invalid digest")
 	}
 	return hex.DecodeString(v[7:])
 }

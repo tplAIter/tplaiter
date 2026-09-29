@@ -455,26 +455,6 @@ func validateEvidence(evidence map[string][]byte, refs []string) error {
 	return nil
 }
 
-func insertEvidence(ctx context.Context, tx *sql.Tx, evidence map[string][]byte) error {
-	for ref, raw := range evidence {
-		if len(raw) > maxCASBlobBytes || rawSHA256(raw) != ref {
-			return ErrConfigInvalid
-		}
-		var existing []byte
-		err := tx.QueryRowContext(ctx, `SELECT bytes FROM blobs WHERE digest=?`, ref).Scan(&existing)
-		if errors.Is(err, sql.ErrNoRows) {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO blobs(digest,bytes) VALUES(?,?)`, ref, raw); err != nil {
-				return ErrProvenanceUnavailable
-			}
-			continue
-		}
-		if err != nil || !bytes.Equal(existing, raw) {
-			return ErrProvenanceUnavailable
-		}
-	}
-	return nil
-}
-
 func markerBytes(marker storeMarker) ([]byte, error) {
 	raw, err := json.Marshal(marker)
 	if err != nil {

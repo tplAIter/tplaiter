@@ -137,7 +137,7 @@ func MigratedProjectRoot(projectRoot string) (bool, error) {
 		return false, fmt.Errorf("naming: read project migration receipt: %w", err)
 	}
 	if _, err := receiptPlan(receipt); err != nil {
-		return false, nil
+		return false, nil //nolint:nilerr // an unusable receipt means "not migrated", not a failure
 	}
 	var r Root
 	found := false
@@ -171,7 +171,7 @@ func MigratedProjectRoot(projectRoot string) (bool, error) {
 	}
 	digest, err := digestBytes("tplaiter.dev/naming-source/v1", entries)
 	if err != nil || digest != r.SourceDigest {
-		return false, nil
+		return false, nil //nolint:nilerr // a digest mismatch means "not migrated", not a failure
 	}
 	// Bind the receipt to the deterministic transformed after-image, not to a
 	// mutable working marker. New CLI writers legitimately update settings and
@@ -183,7 +183,7 @@ func MigratedProjectRoot(projectRoot string) (bool, error) {
 	}
 	modernDigest, err := digestBytes("tplaiter.dev/naming-source/v1", modernEntries)
 	if err != nil || modernDigest != r.DestinationDigest {
-		return false, nil
+		return false, nil //nolint:nilerr // a digest mismatch means "not migrated", not a failure
 	}
 	return true, nil
 }

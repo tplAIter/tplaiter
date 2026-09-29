@@ -56,37 +56,37 @@ func TestTypeScriptReportRejectsWireAndBindingAttacks(t *testing.T) {
 		}
 	}
 	for _, c := range []TypeScriptComment{{"line", 0, 42}, {"line", 1, 41}, {"line", 0, 40}, {"line", 0, 41}} {
-		copy := valid
-		copy.Comments = []TypeScriptComment{c}
-		if _, err := ValidateTypeScriptReport(copy, valid.ProviderSHA256, content); err == nil {
+		cloned := valid
+		cloned.Comments = []TypeScriptComment{c}
+		if _, err := ValidateTypeScriptReport(cloned, valid.ProviderSHA256, content); err == nil {
 			t.Errorf("accepted bad range %#v", c)
 		}
 	}
-	copy := valid
-	copy.InputSHA256 = tsDigest([]byte("other"))
-	if _, err := ValidateTypeScriptReport(copy, valid.ProviderSHA256, content); err == nil {
+	cloned := valid
+	cloned.InputSHA256 = tsDigest([]byte("other"))
+	if _, err := ValidateTypeScriptReport(cloned, valid.ProviderSHA256, content); err == nil {
 		t.Fatal("accepted forged input digest")
 	}
-	copy = valid
-	copy.ProviderSHA256 = tsDigest([]byte("other"))
-	if _, err := ValidateTypeScriptReport(copy, valid.ProviderSHA256, content); err == nil {
+	cloned = valid
+	cloned.ProviderSHA256 = tsDigest([]byte("other"))
+	if _, err := ValidateTypeScriptReport(cloned, valid.ProviderSHA256, content); err == nil {
 		t.Fatal("accepted forged provider digest")
 	}
 	for _, path := range []string{"/tmp/a.ts", "a/../b.ts", "a\\b.ts", strings.Repeat("a", 1022) + ".ts", strings.Repeat("a", 4094) + ".ts"} {
-		copy = valid
-		copy.Path = path
-		if _, err := ValidateTypeScriptReport(copy, valid.ProviderSHA256, content); err == nil {
+		cloned = valid
+		cloned.Path = path
+		if _, err := ValidateTypeScriptReport(cloned, valid.ProviderSHA256, content); err == nil {
 			t.Errorf("accepted hostile path %q", path)
 		}
 	}
-	copy = valid
-	copy.Language = "tsx"
-	if _, err := ValidateTypeScriptReport(copy, valid.ProviderSHA256, content); err == nil {
+	cloned = valid
+	cloned.Language = "tsx"
+	if _, err := ValidateTypeScriptReport(cloned, valid.ProviderSHA256, content); err == nil {
 		t.Fatal("accepted language/extension mismatch")
 	}
-	copy = valid
-	copy.Path = strings.Repeat("😀", 1024) + ".ts"
-	if _, err := ValidateTypeScriptReport(copy, valid.ProviderSHA256, content); err == nil {
+	cloned = valid
+	cloned.Path = strings.Repeat("😀", 1024) + ".ts"
+	if _, err := ValidateTypeScriptReport(cloned, valid.ProviderSHA256, content); err == nil {
 		t.Fatal("accepted non-BMP path boundary attack")
 	}
 }

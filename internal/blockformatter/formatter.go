@@ -205,7 +205,7 @@ func validatePlanFields(p *Plan, input []byte) error {
 			return ferr("FORMAT_MARKER", p.Path)
 		}
 	}
-	if input != nil && len(input) > maxOutputBytes {
+	if len(input) > maxOutputBytes {
 		return ferr("FORMAT_OUTPUT_LIMIT", p.Path)
 	}
 	return nil
@@ -216,7 +216,7 @@ func providerRE(s string) bool {
 		return false
 	}
 	for _, r := range s {
-		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("._/-", r)) {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("._/-", r) {
 			return false
 		}
 	}

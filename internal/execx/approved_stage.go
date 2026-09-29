@@ -69,7 +69,7 @@ func executeApproved(ctx context.Context, scratch string, m trustverify.StagedMa
 	}()
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(m.Request.TimeoutMillis)*time.Millisecond)
 	defer cancel()
-	cmd := exec.Command(s.toolPath, m.Request.Action.Argv[1:]...)
+	cmd := exec.Command(s.toolPath, m.Request.Action.Argv[1:]...) //nolint:gosec,noctx // tool path and argv come from the verified execution approval; runCtx cancellation kills the process group below
 	cmd.Dir = s.cwdPath
 	cmd.Env = []string{"LANG=C"}
 	inputIndex := 0
@@ -220,7 +220,7 @@ func newApprovedStage(root string, m trustverify.StagedMaterial, closeHook func(
 			return fail(e)
 		}
 		s.name = ".tplaiter-approved-" + hex.EncodeToString(n[:])
-		if e = unix.Mkdirat(s.root, s.name, 0o700); e == unix.EEXIST {
+		if e = unix.Mkdirat(s.root, s.name, 0o700); errors.Is(e, unix.EEXIST) {
 			continue
 		}
 		if e != nil {
@@ -435,7 +435,7 @@ func verifyApprovedTool(fd int, want []byte, requestDigest string) error {
 
 func approvedPathForFD(fd int) (string, error) {
 	var raw [1024]byte
-	_, _, eno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_GETPATH), uintptr(unsafe.Pointer(&raw[0])))
+	_, _, eno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_GETPATH), uintptr(unsafe.Pointer(&raw[0]))) //nolint:staticcheck // x/sys/unix has no F_GETPATH wrapper
 	if eno != 0 {
 		return "", eno
 	}

@@ -691,15 +691,16 @@ func requestWirePresence(raw []byte) error {
 	if e = json.Unmarshal(kind, &k); e != nil {
 		return e
 	}
-	if k == "none" {
+	switch k {
+	case "none":
 		if len(migration) != 1 {
 			return errors.New("none migration has members")
 		}
-	} else if k == "version-transition" {
+	case "version-transition":
 		if len(migration) != 3 || migration["from"] == nil || migration["to"] == nil || string(migration["from"]) == "null" || string(migration["to"]) == "null" {
 			return errors.New("transition migration fields")
 		}
-	} else {
+	default:
 		return errors.New("invalid migration kind")
 	}
 	return nil

@@ -3,6 +3,7 @@ package blockformatter
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -101,16 +102,17 @@ func TestD4CheckOutputsMarkerAndSyntaxGates(t *testing.T) {
 	if _, err := CheckOutputs(p, in.Input, in.Input, in.Input, bad); err == nil || materialCode(err) != "FORMAT_MARKER" {
 		t.Fatalf("marker=%v", err)
 	}
-	if _, err := CheckOutputs(p, in.Input, in.Input, in.Input, &fakeValidator{err: errSyntax{}}); err == nil || materialCode(err) != "FORMAT_SYNTAX" {
+	if _, err := CheckOutputs(p, in.Input, in.Input, in.Input, &fakeValidator{err: syntaxError{}}); err == nil || materialCode(err) != "FORMAT_SYNTAX" {
 		t.Fatalf("syntax=%v", err)
 	}
 }
 
-type errSyntax struct{}
+type syntaxError struct{}
 
-func (errSyntax) Error() string { return "syntax" }
+func (syntaxError) Error() string { return "syntax" }
 func materialCode(err error) string {
-	if e, ok := err.(*Error); ok {
+	e := &Error{}
+	if errors.As(err, &e) {
 		return e.Code
 	}
 	return err.Error()
@@ -296,7 +298,7 @@ func TestD4CheckOutputsSameInputAndFailureMatrix(t *testing.T) {
 	if _, err := CheckOutputs(p, []byte("wrong\n"), in.Input, in.Input, &fakeValidator{}); materialCode(err) != "FORMAT_PLAN" {
 		t.Fatalf("wrong input: %v", err)
 	}
-	if _, err := CheckOutputs(p, in.Input, in.Input, in.Input, &fakeValidator{err: errSyntax{}}); materialCode(err) != "FORMAT_SYNTAX" {
+	if _, err := CheckOutputs(p, in.Input, in.Input, in.Input, &fakeValidator{err: syntaxError{}}); materialCode(err) != "FORMAT_SYNTAX" {
 		t.Fatalf("syntax: %v", err)
 	}
 }
@@ -505,11 +507,11 @@ func d4CloneObject(t *testing.T, object map[string]any) map[string]any {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var copy map[string]any
-	if err := json.Unmarshal(b, &copy); err != nil {
+	var cloned map[string]any
+	if err := json.Unmarshal(b, &cloned); err != nil {
 		t.Fatal(err)
 	}
-	return copy
+	return cloned
 }
 
 func d4WireNegative(t *testing.T, schema *js.Schema, name string, object map[string]any) {
@@ -528,40 +530,6 @@ func d4WireNegative(t *testing.T, schema *js.Schema, name string, object map[str
 	if _, err := ParsePlan(raw); err == nil {
 		t.Fatalf("%s ParsePlan accepted", name)
 	}
-}
-
-func d4SetNested(t *testing.T, object map[string]any, path []string, value any) {
-	t.Helper()
-	var current any = object
-	for _, key := range path[:len(path)-1] {
-		m, ok := current.(map[string]any)
-		if !ok {
-			t.Fatalf("nested path %v is not an object", path)
-		}
-		current = m[key]
-	}
-	m, ok := current.(map[string]any)
-	if !ok {
-		t.Fatalf("nested path %v parent is not an object", path)
-	}
-	m[path[len(path)-1]] = value
-}
-
-func d4DeleteNested(t *testing.T, object map[string]any, path []string) {
-	t.Helper()
-	var current any = object
-	for _, key := range path[:len(path)-1] {
-		m, ok := current.(map[string]any)
-		if !ok {
-			t.Fatalf("nested path %v is not an object", path)
-		}
-		current = m[key]
-	}
-	m, ok := current.(map[string]any)
-	if !ok {
-		t.Fatalf("nested path %v parent is not an object", path)
-	}
-	delete(m, path[len(path)-1])
 }
 
 func d4RawDuplicate(t *testing.T, raw []byte, scope, key string) []byte {
@@ -601,9 +569,9 @@ func d4RawDuplicate(t *testing.T, raw []byte, scope, key string) []byte {
 		}
 	} else if text[valueStart] == '{' || text[valueStart] == '[' {
 		open := text[valueStart]
-		close := byte('}')
+		closeFn := byte('}')
 		if open == '[' {
-			close = ']'
+			closeFn = ']'
 		}
 		depth := 0
 		inString := false
@@ -617,7 +585,7 @@ func d4RawDuplicate(t *testing.T, raw []byte, scope, key string) []byte {
 				if !inString {
 					depth++
 				}
-			case close:
+			case closeFn:
 				if !inString {
 					depth--
 					if depth == 0 {
@@ -672,30 +640,33 @@ func TestD4SchemaClosedFieldOracleGenerated(t *testing.T) {
 			fn   func(map[string]any)
 		}{
 			{"missing", func(o map[string]any) {
-				if f.scope == "marker" {
+				switch f.scope {
+				case "marker":
 					markers := o["markers"].([]any)
 					delete(markers[0].(map[string]any), f.path[2])
-				} else if f.scope == "tool" {
+				case "tool":
 					delete(o["tool"].(map[string]any), f.path[1])
-				} else {
+				default:
 					delete(o, f.path[0])
 				}
 			}},
 			{"null", func(o map[string]any) {
-				if f.scope == "marker" {
+				switch f.scope {
+				case "marker":
 					o["markers"].([]any)[0].(map[string]any)[f.path[2]] = nil
-				} else if f.scope == "tool" {
+				case "tool":
 					o["tool"].(map[string]any)[f.path[1]] = nil
-				} else {
+				default:
 					o[f.path[0]] = nil
 				}
 			}},
 			{"wrong-type", func(o map[string]any) {
-				if f.scope == "marker" {
+				switch f.scope {
+				case "marker":
 					o["markers"].([]any)[0].(map[string]any)[f.path[2]] = f.wrong
-				} else if f.scope == "tool" {
+				case "tool":
 					o["tool"].(map[string]any)[f.path[1]] = f.wrong
-				} else {
+				default:
 					o[f.path[0]] = f.wrong
 				}
 			}},

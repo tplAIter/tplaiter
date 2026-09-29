@@ -23,7 +23,7 @@ func TestRenderInScratchMatchesExistingEngineAndCleansOwnedDirectory(t *testing.
 		t.Fatal(err)
 	}
 	src := templateFixture(t)
-	plain, err := Render(src, Input{})
+	plain, err := Render(context.Background(), src, Input{})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}

@@ -214,7 +214,7 @@ func RenderVersion(ctx context.Context, mgr *repo.Manager, res repo.Resolved, in
 		return nil, err
 	}
 	defer func() { _ = cleanup() }()
-	return renderref.Render(src, in)
+	return renderref.Render(ctx, src, in)
 }
 
 // writeUpdatedMarker raises template.version in .tplaiter/project.yaml to

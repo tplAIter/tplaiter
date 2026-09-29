@@ -235,7 +235,7 @@ func TestOrganizationAuthorityCannotUseOSSRotaion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := v.verifyRotationUnchecked(context.Background(), current, descriptor, Bundle{}); err != ErrDowngradeDenied {
+	if _, err := v.verifyRotationUnchecked(context.Background(), current, descriptor, Bundle{}); !errors.Is(err, ErrDowngradeDenied) {
 		t.Fatalf("organization rotation error = %v, want %v", err, ErrDowngradeDenied)
 	}
 }
@@ -366,7 +366,7 @@ func TestVerifyDevelopmentRejectsNilOrZeroVerifierInputs(t *testing.T) {
 			return (&Verifier{clock: v.clock}).VerifyDevelopment(context.Background(), in)
 		},
 		"nil context": func() (*DevelopmentContext, error) {
-			return v.VerifyDevelopment(nil, in)
+			return v.VerifyDevelopment(nil, in) //nolint:staticcheck // deliberately exercises nil-context rejection
 		},
 	}
 	for name, call := range cases {

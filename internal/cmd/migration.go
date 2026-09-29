@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -24,7 +25,7 @@ func newMigrationCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if apply {
 				if planPath == "" || expectedDigest == "" || len(roots) != 0 || len(relocations) != 0 {
-					return fmt.Errorf("migrate-state: --apply requires only --plan and --expected-digest")
+					return errors.New("migrate-state: --apply requires only --plan and --expected-digest")
 				}
 				b, err := os.ReadFile(planPath)
 				if err != nil {
@@ -35,7 +36,7 @@ func newMigrationCmd() *cobra.Command {
 					return err
 				}
 				if plan.Digest != expectedDigest {
-					return fmt.Errorf("migrate-state: expected digest does not match sealed plan")
+					return errors.New("migrate-state: expected digest does not match sealed plan")
 				}
 				receipt, err := naming.Apply(plan)
 				if err != nil {
@@ -44,7 +45,7 @@ func newMigrationCmd() *cobra.Command {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(receipt)
 			}
 			if len(roots) == 0 {
-				return fmt.Errorf("migrate-state: --root is required when planning")
+				return errors.New("migrate-state: --root is required when planning")
 			}
 			planRoots := make([]naming.Root, 0, len(roots))
 			for _, raw := range roots {
@@ -79,7 +80,7 @@ func newMigrationCmd() *cobra.Command {
 					break
 				}
 				if !foundHome {
-					return fmt.Errorf("migrate-state: --relocate requires a home root")
+					return errors.New("migrate-state: --relocate requires a home root")
 				}
 			}
 			plan, err := naming.PlanRoots(planRoots)

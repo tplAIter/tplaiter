@@ -224,21 +224,21 @@ func openChange(ctx context.Context, d Deps, startDir string) (*change, func(), 
 // it, and when not --dry-run and confirmed materializes the plan, writes new
 // project.yaml values, recalculates the baseline, recopies resources, and refreshes
 // the registry. Conflicts → exit code 2 ([update.ExitCodeError]).
-func applyChange(_ context.Context, d Deps, ch *change, opts Options, confirm bool) error {
+func applyChange(ctx context.Context, d Deps, ch *change, opts Options, confirm bool) error {
 	base := renderref.Input{
 		Values:  ch.oldValues,
 		Project: ch.proj.Project,
 		Runtime: ch.proj.Runtime,
 		Repo:    ch.proj.Template.Repo,
 	}
-	baseRendered, err := renderref.Render(ch.src, base)
+	baseRendered, err := renderref.Render(ctx, ch.src, base)
 	if err != nil {
 		return fmt.Errorf("settings: рендер текущих значений: %w", err)
 	}
 
 	target := base
 	target.Values = ch.resolved.Values
-	tgtRendered, err := renderref.Render(ch.src, target)
+	tgtRendered, err := renderref.Render(ctx, ch.src, target)
 	if err != nil {
 		return fmt.Errorf("settings: рендер новых значений: %w", err)
 	}

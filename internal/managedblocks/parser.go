@@ -75,6 +75,8 @@ func Parse(path string, content []byte) (Document, error) {
 			doc.ByID[r.ID] = r
 			closed[r.ID] = struct{}{}
 			open = nil
+		case markerNone:
+			// Lines without a marker only extend the current gap or region.
 		}
 	}
 	if open != nil {

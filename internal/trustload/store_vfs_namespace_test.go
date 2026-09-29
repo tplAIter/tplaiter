@@ -405,13 +405,7 @@ func TestStoreBindingReaderSetupCancellationAndCleanup(t *testing.T) {
 				}
 				defer lease.Close()
 				proof := &storeProofObserver{}
-				ctx := context.Background()
-				var cancel context.CancelFunc
-				if canceled {
-					ctx, cancel = context.WithCancel(ctx)
-				} else {
-					ctx, cancel = context.WithCancel(ctx)
-				}
+				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				ctx = context.WithValue(ctx, storeProofObserverKey{}, proof)
 				fault := storeSetupFault{phase: phase, err: errors.New("reader phase fault")}
@@ -567,9 +561,10 @@ func TestStoreNamespaceForeignPathVector(t *testing.T) {
 					before := atomic.LoadInt64(&storeContext(v.vfs).pathSyscalls)
 					got := callback.run()
 					want := int32(sqlite3.SQLITE_IOERR_DELETE)
-					if callback.id == "xAccess" {
+					switch callback.id {
+					case "xAccess":
 						want = sqlite3.SQLITE_OK
-					} else if callback.id == "xFullPathname" {
+					case "xFullPathname":
 						want = sqlite3.SQLITE_CANTOPEN
 					}
 					if got != want {

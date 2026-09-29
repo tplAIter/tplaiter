@@ -147,7 +147,7 @@ func (s *heldStage) Close() error {
 	if s.dir != nil {
 		_ = s.dir.Close()
 	}
-	if e := os.RemoveAll(s.root); err == nil {
+	if e := os.RemoveAll(s.root); err == nil { //nolint:gosec // s.root is the private stage directory created by newHeldStage
 		err = e
 	}
 	return err
@@ -216,7 +216,7 @@ func openNoFollowFile(path string) (int, error) {
 
 func pathFromFD(fd int) (string, error) {
 	var raw [1024]byte
-	_, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_GETPATH), uintptr(unsafe.Pointer(&raw[0])))
+	_, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_GETPATH), uintptr(unsafe.Pointer(&raw[0]))) //nolint:staticcheck // x/sys/unix has no F_GETPATH wrapper
 	if errno != 0 {
 		return "", errno
 	}

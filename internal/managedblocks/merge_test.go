@@ -118,6 +118,9 @@ func TestPlanFileGapMatrixG06G07G09G10G15G16G18G19G20G21G22(t *testing.T) {
 		theirs = []byte("H\n" + string(managed("b", "root", "b2\n")) + string(managed("a", "root", "a2\n")) + "Z\n")
 		baseline := matrixBaseline(t, base)
 		p, err = PlanFile(PlanInput{Path: "a.go", Base: base, Ours: ours, Theirs: theirs, Baseline: baseline})
+		if err != nil {
+			t.Fatal(err)
+		}
 		assertExactTopologyFallback(t, p, ours, baseline)
 	})
 	t.Run("G19 alias topology rollback", func(t *testing.T) {

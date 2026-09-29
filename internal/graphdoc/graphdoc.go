@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -77,7 +78,7 @@ func New() Document {
 
 func (d *Document) Canonicalize() error {
 	if d == nil {
-		return fmt.Errorf("graph: nil document")
+		return errors.New("graph: nil document")
 	}
 	if d.APIVersion == "" {
 		d.APIVersion = APIVersion
@@ -123,16 +124,16 @@ func (d *Document) Canonicalize() error {
 
 func (d *Document) validate(checkDigest bool) error {
 	if d.APIVersion != APIVersion || !validText(d.Kind) || !validText(d.Layer) || !validText(d.Status) || !validText(d.Producer) {
-		return fmt.Errorf("graph: invalid envelope")
+		return errors.New("graph: invalid envelope")
 	}
 	if d.Status != "ok" && d.Status != "partial" && d.Status != "error" {
-		return fmt.Errorf("graph: invalid status")
+		return errors.New("graph: invalid status")
 	}
 	if len(d.Diagnostics) > MaxDiagnostics {
-		return fmt.Errorf("graph: diagnostic limit exceeded")
+		return errors.New("graph: diagnostic limit exceeded")
 	}
 	if len(d.Nodes) == 0 || len(d.Nodes) > MaxNodes || len(d.Edges) > MaxEdges {
-		return fmt.Errorf("graph: node or edge limit exceeded")
+		return errors.New("graph: node or edge limit exceeded")
 	}
 	seen := map[string]bool{}
 	for _, n := range d.Nodes {
@@ -141,7 +142,7 @@ func (d *Document) validate(checkDigest bool) error {
 		}
 		seen[n.ID] = true
 		if n.Line < 0 {
-			return fmt.Errorf("graph: invalid line")
+			return errors.New("graph: invalid line")
 		}
 		if !validOptionalText(n.Language) || !validOptionalText(n.Path) || !validOptionalText(n.Name) || !validMap(n.Attributes) || !validProvenance(n.Provenance) {
 			return fmt.Errorf("graph: invalid node fields %q", n.ID)
@@ -158,12 +159,12 @@ func (d *Document) validate(checkDigest bool) error {
 		}
 		edges[k] = true
 		if !validMap(e.Attributes) || !validProvenance(e.Provenance) {
-			return fmt.Errorf("graph: invalid edge fields")
+			return errors.New("graph: invalid edge fields")
 		}
 	}
 	for _, x := range d.Diagnostics {
 		if !validText(x.Code) || !validText(x.Message) || !validOptionalText(x.Path) || x.Line < 0 || (x.Severity != "info" && x.Severity != "warning" && x.Severity != "error") {
-			return fmt.Errorf("graph: invalid diagnostic")
+			return errors.New("graph: invalid diagnostic")
 		}
 	}
 	if checkDigest {
@@ -173,7 +174,7 @@ func (d *Document) validate(checkDigest bool) error {
 		sum := sha256.Sum256(raw)
 		d.Digest = want
 		if want != "sha256:"+hex.EncodeToString(sum[:]) {
-			return fmt.Errorf("graph: digest mismatch")
+			return errors.New("graph: digest mismatch")
 		}
 	}
 	return nil
@@ -201,7 +202,7 @@ func Decode(raw []byte) (Document, error) {
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
-		return d, fmt.Errorf("graph: trailing JSON value")
+		return d, errors.New("graph: trailing JSON value")
 	}
 	if err := Verify(d); err != nil {
 		return d, err

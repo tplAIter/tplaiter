@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,7 +194,7 @@ func TestLoadRejectsIndependentProvenanceTampering(t *testing.T) {
 		if err := os.WriteFile(f.install.Descriptor.Path, []byte(`{"tampered":true}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Load(context.Background(), f.selection); err != ErrPinMismatch {
+		if _, err := Load(context.Background(), f.selection); !errors.Is(err, ErrPinMismatch) {
 			t.Fatalf("Load() error = %v, want raw pin mismatch", err)
 		}
 	})
@@ -201,7 +202,7 @@ func TestLoadRejectsIndependentProvenanceTampering(t *testing.T) {
 		f := newLoadFixture(t)
 		f.descriptor.AuthorityID = "tampered-authority"
 		f.write(t) // Re-pins raw bytes while retaining the stale domain self-hash.
-		if _, err := Load(context.Background(), f.selection); err != ErrProvenanceUnavailable {
+		if _, err := Load(context.Background(), f.selection); !errors.Is(err, ErrProvenanceUnavailable) {
 			t.Fatalf("Load() error = %v, want descriptor self-hash rejection", err)
 		}
 	})
@@ -209,7 +210,7 @@ func TestLoadRejectsIndependentProvenanceTampering(t *testing.T) {
 		f := newLoadFixture(t)
 		f.operator.DescriptorSHA256 = rawSHA256([]byte("other-descriptor"))
 		f.write(t)
-		if _, err := Load(context.Background(), f.selection); err != ErrProvenanceUnavailable {
+		if _, err := Load(context.Background(), f.selection); !errors.Is(err, ErrProvenanceUnavailable) {
 			t.Fatalf("Load() error = %v, want operator binding rejection", err)
 		}
 	})
@@ -218,7 +219,7 @@ func TestLoadRejectsIndependentProvenanceTampering(t *testing.T) {
 		f.provisioning.DescriptorSHA256 = rawSHA256([]byte("other-descriptor"))
 		f.provisioning.ProvisioningSHA256 = f.provisioning.ComputedSHA256()
 		f.write(t)
-		if _, err := Load(context.Background(), f.selection); err != ErrProvenanceUnavailable {
+		if _, err := Load(context.Background(), f.selection); !errors.Is(err, ErrProvenanceUnavailable) {
 			t.Fatalf("Load() error = %v, want provisioning descriptor binding rejection", err)
 		}
 	})
@@ -227,7 +228,7 @@ func TestLoadRejectsIndependentProvenanceTampering(t *testing.T) {
 		f.provisioning.AuthenticationEvidenceSHA256 = rawSHA256([]byte("other-operator-record"))
 		f.provisioning.ProvisioningSHA256 = f.provisioning.ComputedSHA256()
 		f.write(t)
-		if _, err := Load(context.Background(), f.selection); err != ErrProvenanceUnavailable {
+		if _, err := Load(context.Background(), f.selection); !errors.Is(err, ErrProvenanceUnavailable) {
 			t.Fatalf("Load() error = %v, want authentication binding rejection", err)
 		}
 	})
@@ -236,21 +237,21 @@ func TestLoadRejectsIndependentProvenanceTampering(t *testing.T) {
 		f.provisioning.EvidenceClass = bootstrap.EvidenceClass("candidate-asserted-production")
 		f.provisioning.ProvisioningSHA256 = f.provisioning.ComputedSHA256()
 		f.write(t)
-		if _, err := Load(context.Background(), f.selection); err != ErrProvenanceUnavailable {
+		if _, err := Load(context.Background(), f.selection); !errors.Is(err, ErrProvenanceUnavailable) {
 			t.Fatalf("Load() error = %v, want record-class rejection", err)
 		}
 	})
 	t.Run("fixed registration", func(t *testing.T) {
 		f := newLoadFixture(t)
 		f.selection.InstallationID = "other-install"
-		if _, err := Load(context.Background(), f.selection); err != ErrPinMismatch {
+		if _, err := Load(context.Background(), f.selection); !errors.Is(err, ErrPinMismatch) {
 			t.Fatalf("Load() error = %v, want fixed registration rejection", err)
 		}
 	})
 	t.Run("registered operator pin", func(t *testing.T) {
 		f := newLoadFixture(t)
 		f.selection.OperatorRecord.SHA256 = rawSHA256([]byte("other-operator-record"))
-		if _, err := Load(context.Background(), f.selection); err != ErrPinMismatch {
+		if _, err := Load(context.Background(), f.selection); !errors.Is(err, ErrPinMismatch) {
 			t.Fatalf("Load() error = %v, want operator registration rejection", err)
 		}
 	})
@@ -258,7 +259,7 @@ func TestLoadRejectsIndependentProvenanceTampering(t *testing.T) {
 		f := newLoadFixture(t)
 		f.install.MinimumProfile = bootstrap.ProfileOrganization
 		f.writeUnvalidatedInstall(t)
-		if _, err := Load(context.Background(), f.selection); err != ErrConfigInvalid {
+		if _, err := Load(context.Background(), f.selection); !errors.Is(err, ErrConfigInvalid) {
 			t.Fatalf("Load() error = %v, want minimum-profile rejection", err)
 		}
 	})

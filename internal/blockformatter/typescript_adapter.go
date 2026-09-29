@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -68,17 +69,17 @@ var (
 
 func (p TypeScriptProvider) Validate() error {
 	if p.APIVersion != TypeScriptProviderAPIVersion || p.Adapter != TypeScriptAdapterID || p.PrettierVersion != "3.9.6" || p.CompilerVersion != "6.0.3" || p.EstreeVersion != "8.65.0" || p.CommentUtilsVersion != "2.5.0" || !tsNodeVersion.MatchString(p.NodeVersion) || !tsDigest.MatchString(p.NodeBinarySHA256) || len(p.Files) != 4 {
-		return fmt.Errorf("typescript provider: invalid descriptor")
+		return errors.New("typescript provider: invalid descriptor")
 	}
 	want := []string{"adapter/typescript.cjs", "tool/plugins/estree.cjs", "tool/plugins/typescript.cjs", "tool/standalone.cjs"}
 	for i, f := range p.Files {
 		if f.Path != want[i] || !tsPath.MatchString(f.Path) || f.Mode != "100644" || !tsDigest.MatchString(f.ContentSHA256) {
-			return fmt.Errorf("typescript provider: invalid files")
+			return errors.New("typescript provider: invalid files")
 		}
 	}
 	o := p.FormatOptions
 	if o.Parser != "typescript" || o.PrintWidth != 80 || o.TabWidth != 2 || o.UseTabs || !o.Semi || o.SingleQuote || o.JSXSingleQuote || o.BracketSameLine || o.RequirePragma || o.InsertPragma || o.QuoteProps != "as-needed" || o.TrailingComma != "all" || !o.BracketSpacing || o.ArrowParens != "always" || o.EndOfLine != "lf" || o.EmbeddedLanguageFormatting != "off" || o.ProseWrap != "preserve" {
-		return fmt.Errorf("typescript provider: invalid fixed options")
+		return errors.New("typescript provider: invalid fixed options")
 	}
 	return nil
 }
@@ -96,7 +97,7 @@ func TypeScriptHelperBytes() []byte { return append([]byte(nil), typeScriptHelpe
 // scalar type substitutions before projecting into the typed descriptor.
 func DecodeTypeScriptProvider(raw []byte) (TypeScriptProvider, error) {
 	if !utf8.Valid(raw) {
-		return TypeScriptProvider{}, fmt.Errorf("typescript provider: invalid UTF-8")
+		return TypeScriptProvider{}, errors.New("typescript provider: invalid UTF-8")
 	}
 	if err := scanJSON(bytes.NewReader(raw)); err != nil {
 		return TypeScriptProvider{}, fmt.Errorf("typescript provider: invalid JSON: %w", err)
@@ -112,11 +113,11 @@ func DecodeTypeScriptProvider(raw []byte) (TypeScriptProvider, error) {
 	}
 	canonical, err := canonicalJSON(value)
 	if err != nil || !bytes.Equal(canonical, raw) {
-		return TypeScriptProvider{}, fmt.Errorf("typescript provider: descriptor is not canonical")
+		return TypeScriptProvider{}, errors.New("typescript provider: descriptor is not canonical")
 	}
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &top); err != nil {
-		return TypeScriptProvider{}, fmt.Errorf("typescript provider: descriptor must be object")
+		return TypeScriptProvider{}, errors.New("typescript provider: descriptor must be object")
 	}
 	if err := exactKeys(top, []string{"apiVersion", "adapter", "prettierVersion", "compilerVersion", "estreeVersion", "commentUtilsVersion", "nodeVersion", "nodeBinarySHA256", "files", "formatOptions"}); err != nil {
 		return TypeScriptProvider{}, err
@@ -154,7 +155,7 @@ func DecodeTypeScriptProvider(raw []byte) (TypeScriptProvider, error) {
 	}
 	var fileWire []map[string]json.RawMessage
 	if err := json.Unmarshal(rawField(top, "files"), &fileWire); err != nil || len(fileWire) != len(p.Files) {
-		return TypeScriptProvider{}, fmt.Errorf("typescript provider: invalid files")
+		return TypeScriptProvider{}, errors.New("typescript provider: invalid files")
 	}
 	for _, m := range fileWire {
 		if err := exactKeys(m, []string{"path", "mode", "contentSHA256"}); err != nil {
@@ -163,7 +164,7 @@ func DecodeTypeScriptProvider(raw []byte) (TypeScriptProvider, error) {
 	}
 	var optionsWire map[string]json.RawMessage
 	if err := json.Unmarshal(rawField(top, "formatOptions"), &optionsWire); err != nil {
-		return TypeScriptProvider{}, fmt.Errorf("typescript provider: invalid formatOptions")
+		return TypeScriptProvider{}, errors.New("typescript provider: invalid formatOptions")
 	}
 	if err := exactKeys(optionsWire, []string{"parser", "printWidth", "tabWidth", "useTabs", "semi", "singleQuote", "quoteProps", "jsxSingleQuote", "trailingComma", "bracketSpacing", "bracketSameLine", "arrowParens", "endOfLine", "embeddedLanguageFormatting", "proseWrap", "requirePragma", "insertPragma"}); err != nil {
 		return TypeScriptProvider{}, err
@@ -192,7 +193,7 @@ func exactKeys(m map[string]json.RawMessage, want []string) error {
 		set[k] = true
 	}
 	if len(m) != len(want) {
-		return fmt.Errorf("typescript provider: unknown or missing fields")
+		return errors.New("typescript provider: unknown or missing fields")
 	}
 	for k := range m {
 		if !set[k] {
@@ -205,7 +206,7 @@ func exactKeys(m map[string]json.RawMessage, want []string) error {
 func requireEOF(dec *json.Decoder) error {
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
-		return fmt.Errorf("typescript provider: trailing JSON")
+		return errors.New("typescript provider: trailing JSON")
 	}
 	return nil
 }
@@ -235,7 +236,7 @@ func scanValue(d *json.Decoder) error {
 				}
 				key, ok := kt.(string)
 				if !ok || seen[key] {
-					return fmt.Errorf("duplicate/non-string object key")
+					return errors.New("duplicate/non-string object key")
 				}
 				seen[key] = true
 				if err := scanValue(d); err != nil {
@@ -262,18 +263,18 @@ func canonicalJSON(v any) ([]byte, error) { return json.Marshal(v) }
 // ValidateTypeScriptRequest applies the helper's closed language/path contract.
 func ValidateTypeScriptRequest(language, logicalPath string) error {
 	if language != "typescript" && language != "tsx" {
-		return fmt.Errorf("typescript provider: unsupported language")
+		return errors.New("typescript provider: unsupported language")
 	}
 	if !utf8.ValidString(logicalPath) || len([]byte(logicalPath)) > 4096 || utf8.RuneCountInString(logicalPath) > 1024 {
-		return fmt.Errorf("typescript provider: logical path exceeds bounds")
+		return errors.New("typescript provider: logical path exceeds bounds")
 	}
 	if logicalPath == "" || strings.HasPrefix(logicalPath, "/") || strings.ContainsAny(logicalPath, "\\\\:\x00\r\n\t") {
-		return fmt.Errorf("typescript provider: invalid logical path")
+		return errors.New("typescript provider: invalid logical path")
 	}
 	parts := strings.Split(logicalPath, "/")
 	for _, part := range parts {
 		if part == "" || part == "." || part == ".." || !regexp.MustCompile(`^[A-Za-z0-9._-]+$`).MatchString(part) {
-			return fmt.Errorf("typescript provider: invalid logical path")
+			return errors.New("typescript provider: invalid logical path")
 		}
 	}
 	exts := ".ts"
@@ -283,7 +284,7 @@ func ValidateTypeScriptRequest(language, logicalPath string) error {
 		exts = logicalPath[len(logicalPath)-4:]
 	}
 	if !strings.HasSuffix(logicalPath, exts) {
-		return fmt.Errorf("typescript provider: language/path mismatch")
+		return errors.New("typescript provider: language/path mismatch")
 	}
 	return nil
 }

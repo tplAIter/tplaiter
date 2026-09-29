@@ -104,7 +104,7 @@ func newBootstrapFixture(t *testing.T) bootstrapFixture {
 		// registration with the fixed semantic initial-state pin before loading it.
 		load.install.OSS.InitialStateSHA256 = state.StateSHA256
 		load.writeInstall(t)
-		loaded, err = Load(context.Background(), load.selection)
+		_, err = Load(context.Background(), load.selection)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -446,7 +446,7 @@ func TestRecoverPendingEnrollmentOnly(t *testing.T) {
 	if err := Enroll(context.Background(), fixture.selection, failing, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err == nil {
 		t.Fatal("injected enrollment failure accepted")
 	}
-	if _, err := OpenReadOnly(context.Background(), fixture.selection); err != ErrPending {
+	if _, err := OpenReadOnly(context.Background(), fixture.selection); !errors.Is(err, ErrPending) {
 		t.Fatalf("ordinary pending read = %v", err)
 	}
 	if err := RecoverState(context.Background(), fixture.selection, fixture.factory); err != nil {

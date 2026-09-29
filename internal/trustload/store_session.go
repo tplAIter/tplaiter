@@ -59,7 +59,7 @@ func (c *fixedConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	conn, err := (&sqlite.Driver{}).Open(c.dsn)
 	if err != nil {
 		c.opened = false
-		return nil, fmt.Errorf("%w: %v", ErrProvenanceUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", ErrProvenanceUnavailable, err)
 	}
 	if c.proof != nil {
 		c.proof.resource("physical", 1)
@@ -162,7 +162,7 @@ const (
 	storeTraceKindRoot int64 = 3
 )
 
-func (o *storeProofObserver) traceEvent(op, kind, offset, requested, completed, result int64) {
+func (o *storeProofObserver) traceEvent(op, kind, offset, requested, completed, result int64) { //nolint:unparam // trace records keep a fixed column layout
 	if o == nil {
 		return
 	}
@@ -805,5 +805,3 @@ func (s *storeSession) Close() error {
 	}
 	return nil
 }
-
-var errStoreAdapterUnavailable = errors.New("trustload: secure store adapter unavailable")

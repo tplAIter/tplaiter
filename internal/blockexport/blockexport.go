@@ -4,6 +4,7 @@ package blockexport
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -148,8 +149,8 @@ func normalizeWire(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	var extra yaml.Node
-	if err := d.Decode(&extra); err != io.EOF {
-		return nil, fmt.Errorf("block export: multiple YAML documents are not permitted")
+	if err := d.Decode(&extra); !errors.Is(err, io.EOF) {
+		return nil, errors.New("block export: multiple YAML documents are not permitted")
 	}
 	if err := validateYAMLNode(&n); err != nil {
 		return nil, err
@@ -170,25 +171,25 @@ func yamlJSONCheck(data []byte) (any, error) {
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
-		return nil, fmt.Errorf("block export: multiple JSON documents")
+		return nil, errors.New("block export: multiple JSON documents")
 	}
 	return v, nil
 }
 
 func validateYAMLNode(n *yaml.Node) error {
 	if n.Anchor != "" || n.Kind == yaml.AliasNode {
-		return fmt.Errorf("block export: YAML anchors and aliases are forbidden")
+		return errors.New("block export: YAML anchors and aliases are forbidden")
 	}
 	if n.Kind == yaml.DocumentNode {
 		if len(n.Content) != 1 {
-			return fmt.Errorf("block export: invalid YAML document")
+			return errors.New("block export: invalid YAML document")
 		}
 		return validateYAMLNode(n.Content[0])
 	}
 	switch n.Kind {
 	case yaml.MappingNode:
 		if n.Tag != "!!map" {
-			return fmt.Errorf("block export: unsupported YAML map tag")
+			return errors.New("block export: unsupported YAML map tag")
 		}
 		seen := map[string]bool{}
 		for i := 0; i < len(n.Content); i += 2 {
@@ -197,10 +198,10 @@ func validateYAMLNode(n *yaml.Node) error {
 				return err
 			}
 			if k.Kind != yaml.ScalarNode || k.Tag != "!!str" || k.Value == "<<" {
-				return fmt.Errorf("block export: invalid YAML key")
+				return errors.New("block export: invalid YAML key")
 			}
 			if seen[k.Value] {
-				return fmt.Errorf("block export: duplicate YAML key")
+				return errors.New("block export: duplicate YAML key")
 			}
 			seen[k.Value] = true
 			if err := validateYAMLNode(v); err != nil {
@@ -209,7 +210,7 @@ func validateYAMLNode(n *yaml.Node) error {
 		}
 	case yaml.SequenceNode:
 		if n.Tag != "!!seq" {
-			return fmt.Errorf("block export: unsupported YAML sequence tag")
+			return errors.New("block export: unsupported YAML sequence tag")
 		}
 		for _, c := range n.Content {
 			if err := validateYAMLNode(c); err != nil {
@@ -261,14 +262,14 @@ func yamlNodeValue(n *yaml.Node) (any, error) {
 				return nil, e
 			}
 			if i < MinOrder || i > MaxOrder {
-				return nil, fmt.Errorf("block export: integer order out of safe range")
+				return nil, errors.New("block export: integer order out of safe range")
 			}
 			return i, nil
 		default:
 			return n.Value, nil
 		}
 	}
-	return nil, fmt.Errorf("block export: unsupported YAML node")
+	return nil, errors.New("block export: unsupported YAML node")
 }
 
 func validateWire(data []byte) error {
@@ -278,7 +279,7 @@ func validateWire(data []byte) error {
 	}
 	top, ok := v.(map[string]any)
 	if !ok {
-		return fmt.Errorf("block export: document must be object")
+		return errors.New("block export: document must be object")
 	}
 	req := []string{"apiVersion", "kind", "metadata", "compatibility", "mergeStrategy", "formatter", "targets"}
 	for _, k := range req {
@@ -290,7 +291,7 @@ func validateWire(data []byte) error {
 		return err
 	}
 	if !str(top["apiVersion"]) || !str(top["kind"]) || !str(top["mergeStrategy"]) {
-		return fmt.Errorf("block export: invalid envelope types")
+		return errors.New("block export: invalid envelope types")
 	}
 	if err := validateMetadata(top["metadata"]); err != nil {
 		return err
@@ -303,22 +304,22 @@ func validateWire(data []byte) error {
 	}
 	targets, ok := top["targets"].([]any)
 	if !ok || len(targets) < 1 || len(targets) > MaxTargets {
-		return fmt.Errorf("block export: invalid targets")
+		return errors.New("block export: invalid targets")
 	}
 	for _, x := range targets {
 		m, ok := x.(map[string]any)
 		if !ok {
-			return fmt.Errorf("block export: target must object")
+			return errors.New("block export: target must object")
 		}
 		if err := obj(m, "path", "blocks"); err != nil {
 			return err
 		}
 		if !str(m["path"]) {
-			return fmt.Errorf("block export: path type")
+			return errors.New("block export: path type")
 		}
 		bs, ok := m["blocks"].([]any)
 		if !ok || len(bs) < 1 || len(bs) > MaxBlocksPerTarget {
-			return fmt.Errorf("block export: blocks type/bounds")
+			return errors.New("block export: blocks type/bounds")
 		}
 		for _, y := range bs {
 			if err := validateBlockWire(y); err != nil {
@@ -345,13 +346,13 @@ func str(v any) bool { _, ok := v.(string); return ok }
 func validateMetadata(v any) error {
 	m, ok := v.(map[string]any)
 	if !ok {
-		return fmt.Errorf("block export: metadata type")
+		return errors.New("block export: metadata type")
 	}
 	if err := obj(m, "id", "version"); err != nil {
 		return err
 	}
 	if !str(m["id"]) || !str(m["version"]) {
-		return fmt.Errorf("block export: metadata field type")
+		return errors.New("block export: metadata field type")
 	}
 	return nil
 }
@@ -359,13 +360,13 @@ func validateMetadata(v any) error {
 func validateCompat(v any) error {
 	m, ok := v.(map[string]any)
 	if !ok {
-		return fmt.Errorf("block export: compatibility type")
+		return errors.New("block export: compatibility type")
 	}
 	if err := obj(m, "tplater", "markerSchema"); err != nil {
 		return err
 	}
 	if !str(m["tplater"]) || !str(m["markerSchema"]) {
-		return fmt.Errorf("block export: compatibility field type")
+		return errors.New("block export: compatibility field type")
 	}
 	return nil
 }
@@ -373,13 +374,13 @@ func validateCompat(v any) error {
 func validateFormatter(v any) error {
 	m, ok := v.(map[string]any)
 	if !ok {
-		return fmt.Errorf("block export: formatter type")
+		return errors.New("block export: formatter type")
 	}
 	if err := obj(m, "adapter", "optionsDigest"); err != nil {
 		return err
 	}
 	if !str(m["adapter"]) || !str(m["optionsDigest"]) {
-		return fmt.Errorf("block export: formatter field type")
+		return errors.New("block export: formatter field type")
 	}
 	return nil
 }
@@ -387,45 +388,45 @@ func validateFormatter(v any) error {
 func validateBlockWire(v any) error {
 	m, ok := v.(map[string]any)
 	if !ok {
-		return fmt.Errorf("block export: block type")
+		return errors.New("block export: block type")
 	}
 	if err := obj(m, "id", "provider", "layout", "body", "order", "anchor", "replaces"); err != nil {
 		return err
 	}
 	for _, k := range []string{"id", "provider", "layout", "body"} {
 		if !str(m[k]) {
-			return fmt.Errorf("block export: block field type")
+			return errors.New("block export: block field type")
 		}
 	}
 	n, ok := m["order"].(json.Number)
 	if !ok {
 		if _, yes := m["order"].(int64); !yes {
-			return fmt.Errorf("block export: order type")
+			return errors.New("block export: order type")
 		}
 	} else {
 		i, e := strconv.ParseInt(n.String(), 10, 64)
 		if e != nil || i < MinOrder || i > MaxOrder || strings.ContainsAny(n.String(), ".eE") {
-			return fmt.Errorf("block export: order type")
+			return errors.New("block export: order type")
 		}
 	}
 	if a, exists := m["anchor"]; exists {
 		am, ok := a.(map[string]any)
 		if !ok || len(am) != 1 {
-			return fmt.Errorf("block export: anchor shape")
+			return errors.New("block export: anchor shape")
 		}
 		if err := obj(am, "before", "after"); err != nil {
 			return err
 		}
 		for _, x := range am {
 			if !str(x) {
-				return fmt.Errorf("block export: anchor type")
+				return errors.New("block export: anchor type")
 			}
 		}
 	}
 	if r, exists := m["replaces"]; exists {
 		rs, ok := r.([]any)
 		if !ok || len(rs) != 1 || !str(rs[0]) {
-			return fmt.Errorf("block export: replacements shape")
+			return errors.New("block export: replacements shape")
 		}
 	}
 	return nil
@@ -433,25 +434,25 @@ func validateBlockWire(v any) error {
 
 func Validate(e BlockExport) error {
 	if e.APIVersion != APIVersion || e.Kind != Kind {
-		return fmt.Errorf("block export: invalid apiVersion/kind")
+		return errors.New("block export: invalid apiVersion/kind")
 	}
 	if !idRE.MatchString(e.Metadata.ID) || !strictSemver(e.Metadata.Version) {
-		return fmt.Errorf("block export: invalid metadata")
+		return errors.New("block export: invalid metadata")
 	}
 	if strings.TrimSpace(e.Compatibility.Tplater) == "" || e.Compatibility.MarkerSchema != MarkerSchema {
-		return fmt.Errorf("block export: invalid compatibility")
+		return errors.New("block export: invalid compatibility")
 	}
 	if e.MergeStrategy != MergeStrategy || strings.TrimSpace(e.Formatter.Adapter) == "" || !digestRE.MatchString(e.Formatter.OptionsDigest) {
-		return fmt.Errorf("block export: invalid formatter")
+		return errors.New("block export: invalid formatter")
 	}
 	if len(e.Targets) < 1 || len(e.Targets) > MaxTargets {
-		return fmt.Errorf("block export: invalid targets")
+		return errors.New("block export: invalid targets")
 	}
 	seen := map[string]bool{}
 	total := 0
 	for _, t := range e.Targets {
 		if seen[t.Path] {
-			return fmt.Errorf("block export: duplicate target")
+			return errors.New("block export: duplicate target")
 		}
 		seen[t.Path] = true
 		if err := validateTarget(t); err != nil {
@@ -459,7 +460,7 @@ func Validate(e BlockExport) error {
 		}
 		total += len(t.Blocks)
 		if total > MaxBlocks {
-			return fmt.Errorf("block export: too many blocks")
+			return errors.New("block export: too many blocks")
 		}
 	}
 	return nil
@@ -479,13 +480,13 @@ func validateTarget(t Target) error {
 		}
 		seen[b.ID] = true
 		if (b.Anchor.Present && b.Anchor.Before == "" && b.Anchor.After == "") || (b.Anchor.Before != "" && b.Anchor.After != "") || (b.Anchor.Before != "" && !idRE.MatchString(b.Anchor.Before)) || (b.Anchor.After != "" && !idRE.MatchString(b.Anchor.After)) {
-			return fmt.Errorf("block export: invalid anchor")
+			return errors.New("block export: invalid anchor")
 		}
 		if b.Anchor.Before == b.ID || b.Anchor.After == b.ID {
-			return fmt.Errorf("block export: self anchor")
+			return errors.New("block export: self anchor")
 		}
 		if len(b.Replaces) > 1 || (len(b.Replaces) == 1 && (!idRE.MatchString(b.Replaces[0]) || b.Replaces[0] == b.ID)) {
-			return fmt.Errorf("block export: invalid replacement")
+			return errors.New("block export: invalid replacement")
 		}
 	}
 	return nil
@@ -531,7 +532,7 @@ type ResolvedTarget struct {
 
 func Resolve(in []BlockExport) ([]ResolvedTarget, error) {
 	if len(in) == 0 {
-		return nil, fmt.Errorf("block export: no exports")
+		return nil, errors.New("block export: no exports")
 	}
 	files := map[string][]Block{}
 	strategy, marker, adapter, digest := "", "", "", ""
@@ -542,7 +543,7 @@ func Resolve(in []BlockExport) ([]ResolvedTarget, error) {
 		if strategy == "" {
 			strategy, marker, adapter, digest = e.MergeStrategy, e.Compatibility.MarkerSchema, e.Formatter.Adapter, e.Formatter.OptionsDigest
 		} else if e.MergeStrategy != strategy || e.Compatibility.MarkerSchema != marker || e.Formatter.Adapter != adapter || e.Formatter.OptionsDigest != digest {
-			return nil, fmt.Errorf("TPL-E-EXPORT-COLLISION-001: producer contract mismatch")
+			return nil, errors.New("TPL-E-EXPORT-COLLISION-001: producer contract mismatch")
 		}
 		for _, t := range e.Targets {
 			files[t.Path] = append(files[t.Path], t.Blocks...)
@@ -587,16 +588,16 @@ func validateReplacements(b []Block) error {
 		}
 		r := x.Replaces[0]
 		if ids[r] {
-			return fmt.Errorf("TPL-E-EXPORT-COLLISION-001: replacement alias emitted")
+			return errors.New("TPL-E-EXPORT-COLLISION-001: replacement alias emitted")
 		}
 		if old[r] != "" && old[r] != x.ID {
-			return fmt.Errorf("TPL-E-EXPORT-COLLISION-001: ambiguous replacement")
+			return errors.New("TPL-E-EXPORT-COLLISION-001: ambiguous replacement")
 		}
 		old[r] = x.ID
 	}
 	for a := range old {
 		if _, ok := old[old[a]]; ok {
-			return fmt.Errorf("TPL-E-EXPORT-COLLISION-001: replacement chain")
+			return errors.New("TPL-E-EXPORT-COLLISION-001: replacement chain")
 		}
 	}
 	return nil
@@ -614,10 +615,10 @@ func order(in []Block) ([]Block, error) {
 	for _, b := range in {
 		if b.Anchor.After != "" {
 			if _, ok := by[b.Anchor.After]; !ok {
-				return nil, fmt.Errorf("TPL-E-BLOCK-ORDER-001: unknown anchor")
+				return nil, errors.New("TPL-E-BLOCK-ORDER-001: unknown anchor")
 			}
 			if incoming[b.ID] || outgoing[b.Anchor.After] {
-				return nil, fmt.Errorf("TPL-E-BLOCK-ORDER-001: overlapping anchor relation")
+				return nil, errors.New("TPL-E-BLOCK-ORDER-001: overlapping anchor relation")
 			}
 			next[b.Anchor.After] = append(next[b.Anchor.After], b.ID)
 			incoming[b.ID] = true
@@ -626,10 +627,10 @@ func order(in []Block) ([]Block, error) {
 		}
 		if b.Anchor.Before != "" {
 			if _, ok := by[b.Anchor.Before]; !ok {
-				return nil, fmt.Errorf("TPL-E-BLOCK-ORDER-001: unknown anchor")
+				return nil, errors.New("TPL-E-BLOCK-ORDER-001: unknown anchor")
 			}
 			if incoming[b.Anchor.Before] || outgoing[b.ID] {
-				return nil, fmt.Errorf("TPL-E-BLOCK-ORDER-001: overlapping anchor relation")
+				return nil, errors.New("TPL-E-BLOCK-ORDER-001: overlapping anchor relation")
 			}
 			next[b.ID] = append(next[b.ID], b.Anchor.Before)
 			incoming[b.Anchor.Before] = true
@@ -664,7 +665,7 @@ func order(in []Block) ([]Block, error) {
 		}
 	}
 	if len(out) != len(in) {
-		return nil, fmt.Errorf("TPL-E-BLOCK-ORDER-001: anchor cycle")
+		return nil, errors.New("TPL-E-BLOCK-ORDER-001: anchor cycle")
 	}
 	return out, nil
 }
