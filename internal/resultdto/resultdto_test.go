@@ -307,13 +307,13 @@ func TestCanonicalDeepCopiesDetailsAndFullyOrdersDiagnostics(t *testing.T) {
 	}
 }
 
-type typedErr struct{}
+type typedError struct{}
 
-func (typedErr) Error() string      { return "anything" }
-func (typedErr) ExitCode() ExitCode { return ExitTrust }
+func (typedError) Error() string      { return "anything" }
+func (typedError) ExitCode() ExitCode { return ExitTrust }
 
 func TestClassifyUsesTypedError(t *testing.T) {
-	if got := Classify(typedErr{}); got != ExitTrust {
+	if got := Classify(typedError{}); got != ExitTrust {
 		t.Fatalf("got %d", got)
 	}
 	if got := Classify(errors.New("trust denied")); got != ExitInternal {
@@ -322,7 +322,7 @@ func TestClassifyUsesTypedError(t *testing.T) {
 	if got := Classify(nil); got != ExitSuccess {
 		t.Fatalf("nil: %d", got)
 	}
-	if got := Classify(fmtWrap(typedErr{})); got != ExitTrust {
+	if got := Classify(fmtWrap(typedError{})); got != ExitTrust {
 		t.Fatalf("wrapped typed error: %d", got)
 	}
 	for input, want := range map[int]int{0: 0, 1: 10, 8: 10, 10: 10, 42: 42, 130: 130} {

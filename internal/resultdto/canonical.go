@@ -3,6 +3,7 @@ package resultdto
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 )
@@ -112,7 +113,7 @@ func canonicalJSON(raw json.RawMessage) (json.RawMessage, error) {
 		return nil, err
 	}
 	if _, ok := value.(map[string]any); !ok {
-		return nil, fmt.Errorf("data must be a JSON object")
+		return nil, errors.New("data must be a JSON object")
 	}
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)

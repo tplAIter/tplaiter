@@ -62,9 +62,9 @@ func (Exec) Run(ctx context.Context, name string, args []string, opts Options) (
 	if group {
 		// The group is cancelled explicitly by RunGroup, which exec.CommandContext
 		// (single-process kill) cannot do.
-		cmd = exec.Command(name, args...) //nolint:noctx // cancellation is handled by RunGroup
+		cmd = exec.Command(name, args...) //nolint:noctx,gosec // cancellation is handled by RunGroup; Runner executes the command its caller selected, by design
 	} else {
-		cmd = exec.CommandContext(ctx, name, args...)
+		cmd = exec.CommandContext(ctx, name, args...) //nolint:gosec // Runner executes the command its caller selected, by design
 		cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 		cmd.WaitDelay = grace
 	}

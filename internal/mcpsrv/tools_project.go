@@ -2,10 +2,11 @@ package mcpsrv
 
 import (
 	"context"
-	"encoding/json"
 	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 )
 
 // ── project (new / run / stats / update / doctor / ai) ─────────────────────
@@ -63,12 +64,14 @@ func (s *Server) addProjectTools() {
 		mcp.WithNumber("port", mcp.Description("Project port (.Runtime.Port); 0 — don't set")),
 		mcp.WithBoolean("dryRun", mcp.Description("Prepare a plan without changing files"), mcp.DefaultBool(false)),
 		mcp.WithString("sourceInput", mcp.Description("Path to the closed JSON source selection")),
+		outputSchema(resultdto.OperationProjectNew),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a projectNewArgs) (*mcp.CallToolResult, error) {
-		cwd, err := resolveWorkDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		cwd, failure := s.workDir(resultdto.OperationProjectNew, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		return s.exec(ctx, cwd, argvProjectNew(a.Ref, a.Name, a.Set, a.Defaults, a.NoHooks, a.NoDepsCheck, a.NoEnvSetup, a.Yes, a.Port, strconv.FormatBool(a.DryRun), a.SourceInput), longTimeout), nil
+		argv := argvProjectNew(a.Ref, a.Name, a.Set, a.Defaults, a.NoHooks, a.NoDepsCheck, a.NoEnvSetup, a.Yes, a.Port, strconv.FormatBool(a.DryRun), a.SourceInput)
+		return s.callStructured(ctx, resultdto.OperationProjectNew, cwd, argv, longCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
@@ -78,43 +81,50 @@ func (s *Server) addProjectTools() {
 		mcp.WithString("command", mcp.Required(), mcp.Description("Manifest command name")),
 		mcp.WithArray("args", mcp.Description("Additional arguments passed to the command after --"),
 			mcp.Items(map[string]any{"type": "string"})),
+		outputSchema(resultdto.OperationProjectRun),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a runArgs) (*mcp.CallToolResult, error) {
-		cwd, err := resolveWorkDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		cwd, failure := s.workDir(resultdto.OperationProjectRun, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		// Building/testing with a clean Go cache easily exceeds 120 seconds, so
-		// manifest commands receive the same longer timeout as new/update.
-		return s.exec(ctx, cwd, argvRun(a.Command, a.Args), longTimeout), nil
+		// Building/testing with a clean Go cache easily exceeds the short
+		// deadline, so manifest commands receive the same longer timeout as
+		// new/update.
+		return s.callStructured(ctx, resultdto.OperationProjectRun, cwd, argvRun(a.Command, a.Args), longCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
 		"update",
-		mcp.WithDescription("Update project (dir) to a new template version using 3-way merge. Conflicts produce markers and non-zero return code (isError)."),
+		mcp.WithDescription("Update project (dir) to a new template version using 3-way merge. Conflicts produce markers and a non-zero exit (isError). operation is update.check with check=true, update.plan with dryRun=true, otherwise update.apply."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithString("to", mcp.Description("Target template version; empty — latest stable tag")),
 		mcp.WithBoolean("dryRun", mcp.Description("Show plan without modifying files"), mcp.DefaultBool(false)),
 		mcp.WithBoolean("check", mcp.Description("Check tree for conflict markers (exit code 1 if found)"), mcp.DefaultBool(false)),
 		mcp.WithString("sourceInput", mcp.Description("Path to the closed JSON source selection")),
+		// The operation depends on the flags, so the schema is the union of
+		// the update operations; the envelope itself names the operation.
+		mcp.WithRawOutputSchema(updateOutputSchema()),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, error) {
-		cwd, err := resolveWorkDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		op := updateOperation(a.DryRun, a.Check)
+		cwd, failure := s.workDir(op, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		return s.exec(ctx, cwd, argvUpdate(a.To, a.DryRun, a.Check, a.SourceInput), longTimeout), nil
+		return s.callStructured(ctx, op, cwd, argvUpdate(a.To, a.DryRun, a.Check, a.SourceInput), longCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
 		"stats",
-		mcp.WithDescription("Report of project (dir) drift from template in machine-readable JSON (drift-score, file statuses, updateability classes)."),
+		mcp.WithDescription("Report of project (dir) drift from template (drift-score, file statuses, updateability classes) in data.report."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithReadOnlyHintAnnotation(true),
+		outputSchema(resultdto.OperationProjectStats),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a dirArgs) (*mcp.CallToolResult, error) {
-		cwd, err := resolveWorkDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		cwd, failure := s.workDir(resultdto.OperationProjectStats, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		return s.handleStats(ctx, cwd), nil
+		return s.callStructured(ctx, resultdto.OperationProjectStats, cwd, argvStats(), shortCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
@@ -122,42 +132,25 @@ func (s *Server) addProjectTools() {
 		mcp.WithDescription("Check environment and tools of the active template. dir is optional (default is server's cwd)."),
 		mcp.WithString("dir", mcp.Description("Project directory (optional)")),
 		mcp.WithReadOnlyHintAnnotation(true),
+		outputSchema(resultdto.OperationDoctorCheck),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a doctorArgs) (*mcp.CallToolResult, error) {
-		cwd, err := resolveWorkDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		cwd, failure := s.workDir(resultdto.OperationDoctorCheck, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		return s.exec(ctx, cwd, argvDoctor(), defaultTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationDoctorCheck, cwd, argvDoctor(), shortCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
 		"ai_gen",
 		mcp.WithDescription("Generate AI artifacts (CLAUDE.md, .cursor/**, AGENTS.md, GEMINI.md) to project root (dir)."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
+		outputSchema(resultdto.OperationAIGen),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a dirArgs) (*mcp.CallToolResult, error) {
-		cwd, err := resolveWorkDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		cwd, failure := s.workDir(resultdto.OperationAIGen, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		return s.exec(ctx, cwd, argvAIGen(), defaultTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationAIGen, cwd, argvAIGen(), shortCall), nil
 	}))
-}
-
-// handleStats executes `stats --json` and returns parsed (for validation) and
-// reformatted JSON. If stdout cannot be parsed as JSON, it is returned as is.
-func (s *Server) handleStats(ctx context.Context, cwd string) *mcp.CallToolResult {
-	res, runErr := s.runCLI(ctx, cwd, argvStats(), defaultTimeout)
-	if failed(res, runErr) {
-		return mcp.NewToolResultError(formatFailure(res, runErr))
-	}
-
-	var parsed any
-	if err := json.Unmarshal([]byte(res.Stdout), &parsed); err != nil {
-		return mcp.NewToolResultText(res.Stdout)
-	}
-	pretty, err := json.MarshalIndent(parsed, "", "  ")
-	if err != nil {
-		return mcp.NewToolResultText(res.Stdout)
-	}
-	return mcp.NewToolResultText(string(pretty))
 }

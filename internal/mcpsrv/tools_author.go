@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 )
 
 // ── template-author tools (lint / init-template) ─────────────────────────────
@@ -26,12 +28,13 @@ func (s *Server) addTemplateAuthorTools() {
 		mcp.WithString("path", mcp.Required(), mcp.Description("Template repository root")),
 		mcp.WithString("combo", mcp.Description("Filter by combination name (exact match)")),
 		mcp.WithReadOnlyHintAnnotation(true),
+		outputSchema(resultdto.OperationTemplateLint),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a lintTemplateArgs) (*mcp.CallToolResult, error) {
-		path, err := resolveWorkDir(a.Path)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		path, failure := s.workDir(resultdto.OperationTemplateLint, "path", a.Path)
+		if failure != nil {
+			return failure, nil
 		}
-		return s.exec(ctx, "", argvLintTemplate(path, a.Combo), longTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationTemplateLint, "", argvLintTemplate(path, a.Combo), longCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
@@ -40,11 +43,12 @@ func (s *Server) addTemplateAuthorTools() {
 		mcp.WithString("name", mcp.Required(), mcp.Description("Name of new template")),
 		mcp.WithString("dir", mcp.Description("Target repository directory (created; default ./<name>)")),
 		mcp.WithBoolean("multi", mcp.Description("Multi-repository (repo.manifest.yaml + template in subdirectory)"), mcp.DefaultBool(false)),
+		outputSchema(resultdto.OperationTemplateInit),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a initTemplateArgs) (*mcp.CallToolResult, error) {
-		dir, err := resolveTargetDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		dir, failure := s.targetDir(resultdto.OperationTemplateInit, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		return s.exec(ctx, "", argvInitTemplate(a.Name, dir, a.Multi), longTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationTemplateInit, "", argvInitTemplate(a.Name, dir, a.Multi), longCall), nil
 	}))
 }

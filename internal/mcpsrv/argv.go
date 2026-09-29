@@ -177,9 +177,8 @@ func argvUpdate(to string, dryRun, check bool, extra ...string) []string {
 	return argv
 }
 
-// argvStats always adds --json: the result is parsed and returned as structured
-// JSON (see handleStats in tools.go).
-func argvStats() []string { return []string{"stats", "--json"} }
+// argvStats builds argv for `stats`; the structured-call path adds --json.
+func argvStats() []string { return []string{"stats"} }
 
 // argvGen builds argv for `tplater gen <kind> <name>`. params serialize as dynamic
 // generator flags: {"fields":"name:string"} becomes `--fields name:string`.

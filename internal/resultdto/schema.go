@@ -3,6 +3,7 @@ package resultdto
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 )
@@ -15,13 +16,13 @@ const SchemaID = "https://tplaiter.dev/schema/result.v1.schema.json"
 // from the operation registry, so the file in schema/ cannot drift from the
 // Go contract (TestSchemaFileMatchesGenerator).
 func GenerateSchema() ([]byte, error) {
-	root := baseSchema()
+	root := baseSchema(false)
 	root["$id"] = SchemaID
 	ops := Operations()
 	operations := make([]any, 0, len(ops))
 	kinds := make([]any, 0, len(ops))
 	var globals, projects []any
-	var allOf []any
+	allOf := make([]any, 0, len(ops)+2)
 	for _, op := range ops {
 		spec := operationRegistry[op]
 		operations = append(operations, string(op))
@@ -68,31 +69,72 @@ func GenerateSchema() ([]byte, error) {
 // schema object; nil means any object). MCP tools declare it as their
 // outputSchema.
 func OperationSchema(op Operation, dataSchema json.RawMessage) ([]byte, error) {
-	spec, ok := operationRegistry[op]
-	if !ok {
-		return nil, fmt.Errorf("unsupported result operation %q", op)
+	return OperationsSchema([]Operation{op}, dataSchema)
+}
+
+// OperationsSchema is [OperationSchema] for a tool whose operation depends
+// on its arguments (for example `update` → update.plan, update.apply or
+// update.check). All operations share one data schema.
+func OperationsSchema(ops []Operation, dataSchema json.RawMessage) ([]byte, error) {
+	if len(ops) == 0 {
+		return nil, errors.New("at least one operation is required")
 	}
-	root := baseSchema()
+	root := baseSchema(true)
 	props := root["properties"].(map[string]any)
-	props["operation"] = map[string]any{"const": string(op)}
-	props["kind"] = map[string]any{"const": spec.kind}
-	switch spec.scope {
-	case ScopeGlobal:
+	var allOf, projectOps []any
+	allGlobal := true
+	for _, op := range ops {
+		spec, ok := operationRegistry[op]
+		if !ok {
+			return nil, fmt.Errorf("unsupported result operation %q", op)
+		}
+		if spec.scope != ScopeGlobal {
+			allGlobal = false
+		}
+		if spec.scope == ScopeProject {
+			projectOps = append(projectOps, string(op))
+		}
+	}
+	if len(ops) == 1 {
+		op := ops[0]
+		props["operation"] = map[string]any{"const": string(op)}
+		props["kind"] = map[string]any{"const": operationRegistry[op].kind}
+	} else {
+		var names, kinds []any
+		for _, op := range ops {
+			spec := operationRegistry[op]
+			names = append(names, string(op))
+			kinds = append(kinds, spec.kind)
+			allOf = append(allOf, map[string]any{
+				"if":   map[string]any{"properties": map[string]any{"operation": map[string]any{"const": string(op)}}, "required": []any{"operation"}},
+				"then": map[string]any{"properties": map[string]any{"kind": map[string]any{"const": spec.kind}}},
+			})
+		}
+		props["operation"] = map[string]any{"enum": names}
+		props["kind"] = map[string]any{"enum": sortedUnique(kinds)}
+	}
+	if allGlobal {
 		props["project"] = map[string]any{"type": "null"}
-	case ScopeProject:
-		root["allOf"] = []any{map[string]any{
+	}
+	if len(projectOps) > 0 {
+		allOf = append(allOf, map[string]any{
 			"if": map[string]any{
-				"properties": map[string]any{"status": map[string]any{"enum": []any{string(StatusOK), string(StatusChanges), string(StatusConflicted)}}},
-				"required":   []any{"status"},
+				"properties": map[string]any{
+					"operation": map[string]any{"enum": projectOps},
+					"status":    map[string]any{"enum": []any{string(StatusOK), string(StatusChanges), string(StatusConflicted)}},
+				},
+				"required": []any{"operation", "status"},
 			},
 			"then": map[string]any{"properties": map[string]any{"project": map[string]any{"$ref": "#/$defs/project"}}},
-		}}
-	case ScopeOptional:
+		})
+	}
+	if len(allOf) > 0 {
+		root["allOf"] = allOf
 	}
 	if len(dataSchema) > 0 {
 		var data map[string]any
 		if err := json.Unmarshal(dataSchema, &data); err != nil || data == nil {
-			return nil, fmt.Errorf("data schema for %q must be a JSON object", op)
+			return nil, fmt.Errorf("data schema for %v must be a JSON object", ops)
 		}
 		// Nested $defs are hoisted so that the tool schema stays a single
 		// self-contained document.
@@ -100,7 +142,7 @@ func OperationSchema(op Operation, dataSchema json.RawMessage) ([]byte, error) {
 			rootDefs := root["$defs"].(map[string]any)
 			for name, def := range defs {
 				if _, clash := rootDefs[name]; clash {
-					return nil, fmt.Errorf("data schema for %q redefines $defs/%s", op, name)
+					return nil, fmt.Errorf("data schema for %v redefines $defs/%s", ops, name)
 				}
 				rootDefs[name] = def
 			}
@@ -113,7 +155,15 @@ func OperationSchema(op Operation, dataSchema json.RawMessage) ([]byte, error) {
 	return encodeSchema(root)
 }
 
-func baseSchema() map[string]any {
+// baseSchema returns the envelope schema. The compact form, used for MCP
+// tool outputSchemas that agents read on every tools/list, keeps the
+// structure (required keys, types, enums, the project rule) and drops the
+// string-format rules; [Result.Validate] enforces those on both sides of the
+// transport, and the published schema file carries them in full.
+func baseSchema(compact bool) map[string]any {
+	if compact {
+		return compactBaseSchema()
+	}
 	relativePath := map[string]any{
 		"type": "string", "minLength": 1,
 		"pattern": `^[^/\\]+(/[^/\\]+)*$`,
@@ -228,4 +278,36 @@ func encodeSchema(v any) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func compactBaseSchema() map[string]any {
+	str := map[string]any{"type": "string"}
+	count := map[string]any{"type": "integer", "minimum": 0}
+	object := func(required []any, props map[string]any) map[string]any {
+		return map[string]any{"type": "object", "required": required, "properties": props}
+	}
+	return map[string]any{
+		"type": "object",
+		"$defs": map[string]any{
+			"project": object([]any{"id", "root"}, map[string]any{"id": str, "root": str}),
+		},
+		"required": []any{"apiVersion", "kind", "operation", "status", "project", "transactionId", "summary", "changes", "diagnostics", "artifacts", "meta"},
+		"properties": map[string]any{
+			"apiVersion":    map[string]any{"const": APIVersion},
+			"status":        map[string]any{"enum": []any{"ok", "changes", "conflicted", "blocked", "failed", "not-applicable"}},
+			"transactionId": map[string]any{"type": []any{"string", "null"}},
+			"project":       map[string]any{"anyOf": []any{map[string]any{"type": "null"}, map[string]any{"$ref": "#/$defs/project"}}},
+			"summary":       object([]any{"filesChanged", "blocksChanged", "conflicts"}, map[string]any{"filesChanged": count, "blocksChanged": count, "conflicts": count}),
+			"changes": map[string]any{"type": "array", "items": object([]any{"path", "action"}, map[string]any{
+				"path": str, "blockId": str, "provider": str, "action": str,
+			})},
+			"diagnostics": map[string]any{"type": "array", "items": object([]any{"code", "severity", "message", "details"}, map[string]any{
+				"code": str, "severity": map[string]any{"enum": []any{"error", "warning", "info"}}, "message": str,
+				"path": str, "blockId": str, "hint": str, "details": map[string]any{"type": "object"},
+			})},
+			"artifacts": map[string]any{"type": "array", "items": object([]any{"name", "path", "sha256"}, map[string]any{"name": str, "path": str, "sha256": str})},
+			"meta":      object([]any{"tplaiterVersion", "schemaVersion"}, map[string]any{"tplaiterVersion": str, "schemaVersion": map[string]any{"const": SchemaVersion}}),
+			"data":      map[string]any{"type": "object"},
+		},
+	}
 }

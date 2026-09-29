@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 // process group), records the grandchild PID in $TPLAITER_TEST_PIDFILE and
 // blocks until it is signalled.
 func spawnGrandchildHelper() int {
-	grandchild := exec.Command("/bin/sh", "-c", "sleep 300") //nolint:noctx // fixture process, killed through its group
+	grandchild := exec.Command("/bin/sh", "-c", "sleep 300")
 	if err := grandchild.Start(); err != nil {
 		return 98
 	}
@@ -66,7 +66,7 @@ func ignoreTermHelper() {
 
 func helperCommand(t *testing.T, mode string, env ...string) *exec.Cmd {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run=^$") //nolint:noctx // lifecycle is under test
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
 	cmd.Env = append(os.Environ(), append([]string{helperEnv + "=" + mode}, env...)...)
 	return cmd
 }
@@ -182,7 +182,7 @@ func TestRunGroupEscalatesToSIGKILLAfterGrace(t *testing.T) {
 }
 
 func TestRunGroupSIGTERMWithinGraceIsNotKilled(t *testing.T) {
-	cmd := exec.Command("/bin/sh", "-c", "sleep 30") //nolint:noctx // lifecycle is under test
+	cmd := exec.Command("/bin/sh", "-c", "sleep 30")
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	res, err := RunGroup(ctx, cmd, GroupOptions{Grace: 10 * time.Second})
@@ -195,7 +195,7 @@ func TestRunGroupSIGTERMWithinGraceIsNotKilled(t *testing.T) {
 }
 
 func TestRunGroupAbortStopsLikeCancel(t *testing.T) {
-	cmd := exec.Command("/bin/sh", "-c", "sleep 30") //nolint:noctx // lifecycle is under test
+	cmd := exec.Command("/bin/sh", "-c", "sleep 30")
 	abort := make(chan struct{})
 	close(abort)
 	res, err := RunGroup(context.Background(), cmd, GroupOptions{Grace: time.Second, Abort: abort})
@@ -205,7 +205,7 @@ func TestRunGroupAbortStopsLikeCancel(t *testing.T) {
 }
 
 func TestRunGroupNaturalExitIsUnchanged(t *testing.T) {
-	cmd := exec.Command("/bin/sh", "-c", "exit 3") //nolint:noctx // lifecycle is under test
+	cmd := exec.Command("/bin/sh", "-c", "exit 3")
 	res, err := RunGroup(context.Background(), cmd, GroupOptions{})
 	var exitErr *exec.ExitError
 	if res.Stopped != StopNone || !errors.As(err, &exitErr) || exitErr.ExitCode() != 3 {

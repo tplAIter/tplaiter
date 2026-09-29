@@ -171,10 +171,13 @@ type AIGenData struct {
 	SkippedProtected []string `json:"skippedProtected"`
 }
 
-// ProjectRunData is the data of project.run.
+// ProjectRunData is the data of project.run. With a command it reports the
+// child's exit status; without one (`run --json`) it lists the manifest
+// commands instead.
 type ProjectRunData struct {
-	Command       string `json:"command"`
-	ChildExitCode int    `json:"childExitCode"`
+	Command       string            `json:"command,omitempty"`
+	ChildExitCode int               `json:"childExitCode"`
+	Commands      []TemplateCommand `json:"commands,omitempty"`
 }
 
 // EnvSetupData is the data of env.setup.
