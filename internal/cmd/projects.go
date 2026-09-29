@@ -18,7 +18,7 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(newProjectsCmd())
+	registerCommand(newProjectsCmd)
 }
 
 // projectSyncSkip — top-level commands for which project registry sync is

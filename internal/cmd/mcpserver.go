@@ -13,7 +13,7 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(newMCPServerCmd())
+	registerCommand(newMCPServerCmd)
 }
 
 // newMCPServerCmd creates `tplaiter mcp-server`: exposes tplaiter commands as

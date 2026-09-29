@@ -29,7 +29,7 @@ import (
 const forcedWorkflowGroup = "workflow"
 
 func init() {
-	rootCmd.AddCommand(newWorkspaceCmd())
+	registerCommand(newWorkspaceCmd)
 }
 
 // newWorkspaceCmd — `tplater workspace`, grouping CLI functions tied to

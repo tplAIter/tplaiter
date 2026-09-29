@@ -12,7 +12,7 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(newStatsCmd())
+	registerCommand(newStatsCmd)
 }
 
 // newStatsCmd creates `tplater stats`: a drift report comparing the generated

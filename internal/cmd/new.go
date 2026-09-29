@@ -18,7 +18,7 @@ import (
 var newRunner execx.Runner = execx.Exec{}
 
 func init() {
-	rootCmd.AddCommand(newNewCmd())
+	registerCommand(newNewCmd)
 }
 
 // newNewCmd creates `tplater new <ref> <project-name>`: the main project
@@ -44,8 +44,9 @@ func newNewCmd() *cobra.Command {
 	)
 
 	c := &cobra.Command{
-		Use:   "new <ref> <project-name>",
-		Short: "Создать проект из шаблона",
+		Use:         "new <ref> <project-name>",
+		Annotations: prerunAnnotations(prerunTrustOwned),
+		Short:       "Создать проект из шаблона",
 		Long: "Разворачивает шаблон (ссылка <ref> — `repo/name@version` или короткая `name`, " +
 			") в новый проект <project-name>: опрашивает настройки (), " +
 			"рендерит дерево, копирует ресурсы окружения/генераторов/ai-config в .tplaiter/, " +

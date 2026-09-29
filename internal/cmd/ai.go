@@ -19,7 +19,7 @@ import (
 var aiTargetsFlag []string
 
 func init() {
-	rootCmd.AddCommand(newAICmd())
+	registerCommand(newAICmd)
 }
 
 // newAICmd creates the `tplater ai` command: generate/list/validate the
@@ -64,9 +64,13 @@ func loadAIContext() (tpl *manifest.Template, values settings.Values, root strin
 // newAIGenCmd creates `tplater ai gen`.
 func newAIGenCmd() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "gen",
-		Short: "Сгенерировать AI-артефакты в корень проекта",
-		Args:  cobra.NoArgs,
+		Use: "gen",
+		// Preserved from the former name-based switch, which matched every command
+		// named "gen": `ai gen` is refused as a legacy action. Revisit with trusted
+		// action execution (U13).
+		Annotations: prerunAnnotations(prerunLegacyAction),
+		Short:       "Сгенерировать AI-артефакты в корень проекта",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, values, root, src, err := loadAIContext()
 			if err != nil {

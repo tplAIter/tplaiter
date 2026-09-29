@@ -56,18 +56,15 @@ func commandInvocation(ctx context.Context) (invocation, error) {
 
 // newTrustRootCommand is the explicit per-invocation composition seam. The
 // installed launcher supplies this value; command flags can never replace its
-// selection, project key, or clock.
+// selection, project key, or clock. It builds the same command tree as rootCmd
+// from the registered command factories, so the seam cannot drift from the
+// production CLI.
 func newTrustRootCommand(in invocation) *cobra.Command {
-	root := &cobra.Command{
-		Use:               "tplaiter",
-		SilenceUsage:      true,
-		SilenceErrors:     true,
-		PersistentPreRunE: rootPreRun,
-		Version:           resolveVersion(),
+	root := newRootCommand()
+	for _, factory := range commandFactories {
+		root.AddCommand(factory())
 	}
-	root.SetVersionTemplate("{{.Version}}\n")
 	root.SetContext(withInvocation(context.Background(), in))
-	root.AddCommand(newNewCmd(), newUpdateCmd(), newTrustCmd(), newVersionCmd(), newDoctorCmd(), newRunCmd(), newEnvCmd(), newGenCmd())
 	return root
 }
 
@@ -112,44 +109,62 @@ var verbose bool
 // command; see rootCmd.RunE and [rootPreRun].
 var upgradeFlag bool
 
-// rootCmd — root tplaiter command.
-var rootCmd = &cobra.Command{
-	Use:   "tplaiter",
-	Short: "Менеджер репозиториев шаблонов",
-	Long: "tplaiter — менеджер репозиториев шаблонов: устанавливает, " +
-		"обновляет и отслеживает дрейф сгенерированных из шаблонов проектов.\n\n" +
-		"См. README.md и docs/ в репозитории tplaiter для деталей архитектуры.",
-	SilenceUsage:  true,
-	SilenceErrors: true,
-	// PersistentPreRunE — composition of the first-run greeting (SPEC-05 §4) and
-	// update suggestion check (SPEC-05 §2); see [rootPreRun].
-	PersistentPreRunE: rootPreRun,
-	// RunE — present only so `tplaiter --upgrade` works as an alias for
-	// `tplaiter self-upgrade` without declaring --upgrade as a persistent flag on
-	// every subcommand. Without --upgrade, bare `tplaiter` behavior is unchanged
-	// (it prints help as before; see [rootPreRun] on preserving this behavior when
-	// RunE was added).
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if !upgradeFlag {
-			return cmd.Help()
-		}
-		return runSelfUpgrade(cmd, args)
-	},
+// rootCmd — root tplaiter command. Subcommands attach themselves through
+// [registerCommand] from their own file's init().
+var rootCmd = newRootCommand()
+
+// commandFactories lists every top-level command constructor in registration
+// order. [registerCommand] appends to it; [newTrustRootCommand] replays it to
+// build an independent tree for one invocation.
+var commandFactories []func() *cobra.Command
+
+// registerCommand adds a top-level command to rootCmd and records its
+// constructor for per-invocation roots. Call it from init() in the file that
+// defines the command; root.go is not edited to add commands.
+func registerCommand(factory func() *cobra.Command) {
+	commandFactories = append(commandFactories, factory)
+	rootCmd.AddCommand(factory())
+}
+
+// newRootCommand constructs the root command without subcommands.
+func newRootCommand() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "tplaiter",
+		Short: "Менеджер репозиториев шаблонов",
+		Long: "tplaiter — менеджер репозиториев шаблонов: устанавливает, " +
+			"обновляет и отслеживает дрейф сгенерированных из шаблонов проектов.\n\n" +
+			"См. README.md и docs/ в репозитории tplaiter для деталей архитектуры.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		// PersistentPreRunE — composition of the first-run greeting (SPEC-05 §4) and
+		// update suggestion check (SPEC-05 §2); see [rootPreRun].
+		PersistentPreRunE: rootPreRun,
+		// RunE — present only so `tplaiter --upgrade` works as an alias for
+		// `tplaiter self-upgrade` without declaring --upgrade as a persistent flag on
+		// every subcommand. Without --upgrade, bare `tplaiter` behavior is unchanged
+		// (it prints help as before; see [rootPreRun] on preserving this behavior when
+		// RunE was added).
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !upgradeFlag {
+				return cmd.Help()
+			}
+			return runSelfUpgrade(cmd, args)
+		},
+	}
+	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "подробный вывод")
+	root.Flags().BoolVar(&upgradeFlag, "upgrade", false, "самообновление (алиас `tplaiter self-upgrade`)")
+	root.Version = resolveVersion()
+	root.SetVersionTemplate("{{.Version}}\n")
+	return root
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "подробный вывод")
-	rootCmd.Flags().BoolVar(&upgradeFlag, "upgrade", false, "самообновление (алиас `tplaiter self-upgrade`)")
-
-	rootCmd.Version = resolveVersion()
-	rootCmd.SetVersionTemplate("{{.Version}}\n")
-
-	rootCmd.AddCommand(newVersionCmd())
-	rootCmd.AddCommand(newDoctorCmd())
-	rootCmd.AddCommand(newSelfUpgradeCmd())
-	rootCmd.AddCommand(newInitShellCmd())
-	rootCmd.AddCommand(newMigrationCmd())
-	rootCmd.AddCommand(newTrustCmd())
+	registerCommand(newVersionCmd)
+	registerCommand(newDoctorCmd)
+	registerCommand(newSelfUpgradeCmd)
+	registerCommand(newInitShellCmd)
+	registerCommand(newMigrationCmd)
+	registerCommand(newTrustCmd)
 }
 
 // rootPreRun — the root command's single PersistentPreRunE: first
@@ -171,26 +186,16 @@ func rootPreRun(cmd *cobra.Command, args []string) error {
 	// This classification precedes every legacy root hook.  A command that
 	// could execute manifest-derived input must not initialize process state,
 	// inspect HOME, or synchronize a project before it has fixed material.
-	if legacyActionCommand(cmd, args) {
+	switch classifyPrerun(cmd, args) {
+	case prerunLegacyAction:
 		return actionUnavailable()
-	}
-	if descriptiveCommand(cmd, args) {
+	case prerunReadonly, prerunTrustOwned:
+		// Readonly commands only describe state. Trust-owned commands (new,
+		// update, trust *, migrate-state) own their complete per-invocation
+		// composition: first-run, update suggestion and project sync must not
+		// run before the fixed trust runtime or sealed plan has been selected.
 		return nil
-	}
-	// Naming migration is explicitly rooted by its sealed plan. It must not
-	// create/discover a process home or synchronize a registry while planning
-	// or applying an unrelated synthetic/isolated state transaction.
-	if cmd.Name() == "migrate-state" {
-		return nil
-	}
-	// T5 new/update owns its complete per-invocation composition. In
-	// particular, first-run, update suggestion and project sync must not run
-	// before the fixed trust runtime has been selected.
-	if cmd.Name() == "new" || cmd.Name() == "update" {
-		return nil
-	}
-	if cmd.Name() == "trust" || (cmd.Parent() != nil && cmd.Parent().Name() == "trust") {
-		return nil
+	case prerunStateful:
 	}
 	// !cmd.HasParent() instead of `cmd == rootCmd` — otherwise the closure would
 	// create a package initialization cycle (rootCmd contains PersistentPreRunE:
@@ -207,36 +212,6 @@ func rootPreRun(cmd *cobra.Command, args []string) error {
 	suggestUpdatePreRun(cmd, args)
 	projectSyncPreRun(cmd, args)
 	return nil
-}
-
-func descriptiveCommand(cmd *cobra.Command, args []string) bool {
-	if cmd == nil {
-		return false
-	}
-	if cmd.Name() == "doctor" || cmd.Name() == "version" {
-		return true
-	}
-	if cmd.Name() == "run" && len(args) == 0 {
-		return true
-	}
-	return cmd.Name() == "list" && cmd.Parent() != nil && (cmd.Parent().Name() == "gen" || cmd.Parent().Name() == "env")
-}
-
-// legacyActionCommand distinguishes action ingress from the descriptive
-// list/help routes.  It intentionally does not infer authority from flags,
-// the manifest, cwd, or process state.
-func legacyActionCommand(cmd *cobra.Command, args []string) bool {
-	if cmd == nil {
-		return false
-	}
-	switch cmd.Name() {
-	case "run":
-		return len(args) != 0
-	case "gen", "batch", "setup":
-		return true
-	default:
-		return false
-	}
 }
 
 // Execute runs the root command.

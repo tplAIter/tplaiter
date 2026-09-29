@@ -10,8 +10,8 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(newInitTemplateCmd())
-	rootCmd.AddCommand(newLintTemplateCmd())
+	registerCommand(newInitTemplateCmd)
+	registerCommand(newLintTemplateCmd)
 }
 
 // newInitTemplateCmd — `tplaiter init-template <name>`: per owner requirement

@@ -26,7 +26,7 @@ var envRunner execx.Runner = execx.Exec{}
 var envAutoYes bool
 
 func init() {
-	rootCmd.AddCommand(newEnvCmd())
+	registerCommand(newEnvCmd)
 }
 
 // newEnvCmd creates `tplater env` (SPEC-03 §4): the single entry point for
@@ -48,9 +48,10 @@ func newEnvCmd() *cobra.Command {
 // newEnvListCmd creates `tplater env list`.
 func newEnvListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "Показать плейбуки окружения манифеста шаблона",
-		Args:  cobra.NoArgs,
+		Use:         "list",
+		Annotations: prerunAnnotations(prerunReadonly),
+		Short:       "Показать плейбуки окружения манифеста шаблона",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			tpl, proj, _, err := loadRunContext()
 			if err != nil {
@@ -65,9 +66,10 @@ func newEnvListCmd() *cobra.Command {
 // SPEC-03 §4).
 func newEnvSetupCmd() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "setup [name]",
-		Short: "Запустить плейбук окружения (по умолчанию \"setup\")",
-		Args:  cobra.MaximumNArgs(1),
+		Use:         "setup [name]",
+		Annotations: prerunAnnotations(prerunLegacyAction),
+		Short:       "Запустить плейбук окружения (по умолчанию \"setup\")",
+		Args:        cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Cobra rejects this before root hooks; retain the same guard for a
 			// directly constructed setup command.

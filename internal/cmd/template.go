@@ -26,7 +26,7 @@ import (
 const templateManifestFileName = "template.manifest.yaml"
 
 func init() {
-	rootCmd.AddCommand(newTemplateCmd())
+	registerCommand(newTemplateCmd)
 }
 
 // newTemplateCmd creates `tplater template`: the catalog of templates from
