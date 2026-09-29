@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/new-transaction/v1",
+  "title": "tplaiter global new-transaction journal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "transactionId", "phase", "target", "registry", "commitRecordSHA256", "hooks"],
+  "properties": {
+    "apiVersion": {"const": "tplaiter.dev/new-transaction/v1"},
+    "kind": {"const": "NewTransaction"},
+    "transactionId": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "phase": {"enum": ["prepared", "committing", "committed", "hooks_running", "hooks_failed", "complete", "aborted"]},
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pathDigest", "beforeCAS", "afterCAS"],
+      "properties": {
+        "pathDigest": {"$ref": "#/$defs/digest"},
+        "beforeCAS": {"$ref": "#/$defs/cas"},
+        "afterCAS": {"$ref": "#/$defs/cas"}
+      }
+    },
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["beforeCAS", "afterCAS"],
+      "properties": {
+        "beforeCAS": {"$ref": "#/$defs/cas"},
+        "afterCAS": {"$ref": "#/$defs/cas"}
+      }
+    },
+    "commitRecordSHA256": {"$ref": "#/$defs/cas"},
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "completedDigests"],
+      "properties": {
+        "status": {"enum": ["pending", "complete", "failed"]},
+        "completedDigests": {"type": "array", "items": {"$ref": "#/$defs/digest"}}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "cas": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

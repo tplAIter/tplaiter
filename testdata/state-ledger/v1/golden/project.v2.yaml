@@ -1,0 +1,27 @@
+apiVersion: tplaiter.dev/project/v2
+kind: Project
+id: 123e4567-e89b-12d3-a456-426614174000
+template:
+    repo: example
+    name: service
+    requestedRef: refs/tags/v1
+    resolvedCommit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+project:
+    domain: ""
+    module: example.test/fixture
+    name: fixture
+    slug: fixture
+    system: ""
+answers: {}
+runtime:
+    port: 8080
+state:
+    rootLock: .tplaiter/root-template.lock.json
+    dependencyLock: .tplaiter/template.lock.json
+    baseline: .tplaiter/baseline.json
+    ownership: .tplaiter/ownership.json
+    resources: .tplaiter/resources.lock.json
+    aiManaged: .tplaiter/ai-managed.json
+    generatorTargets: .tplaiter/generator-targets.lock.json
+    managedBlocks: .tplaiter/managed-blocks.json
+    migrations: .tplaiter/migrations.json

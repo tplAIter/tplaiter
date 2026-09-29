@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/new-lock/v1",
+  "title": "tplaiter global new-transaction lock holder (audit metadata only)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "holder", "transactionID", "pid", "acquiredAt"],
+  "properties": {
+    "apiVersion": {"const": "tplaiter.dev/new-lock/v1"},
+    "holder": {"type": "string", "minLength": 1},
+    "transactionID": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "pid": {"type": "integer", "minimum": 1},
+    "acquiredAt": {"type": "string", "format": "date-time"}
+  }
+}

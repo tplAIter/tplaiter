@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/project/v2",
+  "title": "tplaiter project marker (project/v2)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "id", "template", "project", "answers", "state"],
+  "properties": {
+    "apiVersion": {"const": "tplaiter.dev/project/v2"},
+    "kind": {"const": "Project"},
+    "id": {"type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"},
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "name", "requestedRef", "resolvedCommit"],
+      "properties": {
+        "repo": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "requestedRef": {"type": "string", "minLength": 1},
+        "resolvedCommit": {"type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"}
+      }
+    },
+    "project": {"type": "object"},
+    "answers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["value", "source"],
+        "properties": {
+          "value": {},
+          "source": {"enum": ["legacy", "user", "default", "migration"]}
+        }
+      }
+    },
+    "runtime": {"type": "object"},
+    "ownership": {"type": "object"},
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rootLock", "dependencyLock", "baseline", "ownership", "resources", "aiManaged", "generatorTargets", "managedBlocks", "migrations"],
+      "properties": {
+        "rootLock": {"const": ".tplaiter/root-template.lock.json"},
+        "dependencyLock": {"const": ".tplaiter/template.lock.json"},
+        "baseline": {"const": ".tplaiter/baseline.json"},
+        "ownership": {"const": ".tplaiter/ownership.json"},
+        "resources": {"const": ".tplaiter/resources.lock.json"},
+        "aiManaged": {"const": ".tplaiter/ai-managed.json"},
+        "generatorTargets": {"const": ".tplaiter/generator-targets.lock.json"},
+        "managedBlocks": {"const": ".tplaiter/managed-blocks.json"},
+        "migrations": {"const": ".tplaiter/migrations.json"}
+      }
+    }
+  }
+}
