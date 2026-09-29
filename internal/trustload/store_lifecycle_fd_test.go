@@ -31,9 +31,6 @@ func TestStoreLifecycleLIFE05IsolatedChildResourceLedger(t *testing.T) {
 		life05Child(t, os.Getenv("TPLAITER_LIFE05_PHASE"))
 		return
 	}
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	phases := append([]string{""}, life05FailurePhases()...)
 	phases = append(phases, "terminal-live-file", "terminal-post-native-close", "terminal-physical-close", "terminal-vfs-unregister")
 	for _, phase := range phases {
@@ -156,6 +153,7 @@ func life05Child(t *testing.T, phase string) {
 		t.Fatal("missing report pipe")
 	}
 	defer reportFile.Close()
+	warmRuntimeDescriptors(t)
 	report := life05Report{Phase: phase}
 	writeReport := func() {
 		if err := json.NewEncoder(reportFile).Encode(report); err != nil {
@@ -594,4 +592,25 @@ func sameFDSet(left, right []int) bool {
 		}
 	}
 	return true
+}
+
+// warmRuntimeDescriptors initializes the Go runtime network poller
+// before a descriptor-number-sensitive check (an FD baseline scan or a
+// deliberate numeric-reuse probe). On Linux the poller lazily creates an epoll
+// descriptor and a wake-up eventfd the first time any file is opened; those
+// runtime-owned descriptors would otherwise appear as leaked adapter
+// descriptors in the exact FD ledger. A pollable pipe forces the one-time
+// initialization; the pipe itself is closed again before the baseline.
+func warmRuntimeDescriptors(t *testing.T) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
 }

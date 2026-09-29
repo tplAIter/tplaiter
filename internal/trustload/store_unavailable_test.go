@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || linux
 
 package trustload
 
@@ -20,9 +20,6 @@ import (
 // It deliberately does not make a no-write claim for later fsync or rename
 // failures, because those occur after an enrollment artifact may exist.
 func TestStoreUnavailableSB08(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	t.Run("open-read-only", testUnavailableOpenReadOnly)
 	t.Run("enroll", testUnavailableEnroll)
 	t.Run("refresh", testUnavailableRefresh)
@@ -35,7 +32,7 @@ func testUnavailableOpenReadOnly(t *testing.T) {
 	before := unavailableSnapshotTree(t, root)
 	check := forceUnavailablePreflight(t)
 	store, err := OpenReadOnly(context.Background(), fixture.selection)
-	if store != nil || !errors.Is(err, ErrAnchorMissing) {
+	if store != nil || !errors.Is(err, ErrStoreFilesystemUnsupported) || !errors.Is(err, ErrProvenanceUnavailable) {
 		if store != nil {
 			_ = store.Close()
 		}
@@ -56,7 +53,7 @@ func testUnavailableEnroll(t *testing.T) {
 	before := unavailableSnapshotTree(t, parent)
 	check := forceUnavailablePreflight(t)
 	err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence)
-	if !errors.Is(err, ErrProvenanceUnavailable) {
+	if !errors.Is(err, ErrStoreFilesystemUnsupported) {
 		t.Fatalf("Enroll err=%v", err)
 	}
 	assertSafeUnavailableError(t, err)
@@ -74,7 +71,7 @@ func testUnavailableRefresh(t *testing.T) {
 	before := unavailableSnapshotTree(t, root)
 	check := forceUnavailablePreflight(t)
 	authority, err := Refresh(context.Background(), fixture.selection, fixture.factory, next, evidence)
-	if authority != nil || !errors.Is(err, ErrAnchorMissing) {
+	if authority != nil || !errors.Is(err, ErrStoreFilesystemUnsupported) {
 		t.Fatalf("Refresh authority=%v err=%v", authority, err)
 	}
 	assertSafeUnavailableError(t, err)
@@ -88,7 +85,7 @@ func testUnavailableRecoverState(t *testing.T) {
 	before := unavailableSnapshotTree(t, root)
 	check := forceUnavailablePreflight(t)
 	err := RecoverState(context.Background(), fixture.selection, fixture.factory)
-	if !errors.Is(err, ErrProvenanceUnavailable) {
+	if !errors.Is(err, ErrStoreFilesystemUnsupported) {
 		t.Fatalf("RecoverState err=%v", err)
 	}
 	assertSafeUnavailableError(t, err)

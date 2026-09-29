@@ -40,9 +40,6 @@ func TestStoreEnrollCrashSB05(t *testing.T) {
 		runEnrollCrashChild(t)
 		return
 	}
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, cut := range enrollCrashPhases {
 		t.Run(cut, func(t *testing.T) { runEnrollCrashCut(t, cut) })
 	}

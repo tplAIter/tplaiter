@@ -152,9 +152,6 @@ func TestStoreRecoveryBorrowCloseCannotWinDuringCapabilityCapture(t *testing.T) 
 }
 
 func TestStoreRecoveryBorrowTerminalRetainsActualVFSAndRoot(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -386,9 +383,6 @@ func waitRecoveryCloseRequest(t *testing.T, lease *rootLease) {
 
 func newRecoveryLeaseForTest(t *testing.T) (*rootLease, string, *storeProofObserver) {
 	t.Helper()
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

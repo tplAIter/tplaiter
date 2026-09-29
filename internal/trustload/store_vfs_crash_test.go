@@ -40,9 +40,6 @@ type crashFixture struct {
 var crashSeedRows = []struct{ id, seed int }{{1, 11}, {2, 12}}
 
 func TestStoreVFSCrash00DiscoveryCommitAndRollback(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	t.Run("commit", func(t *testing.T) {
 		f, old := newCrashFixture(t)
 		ctx := context.Background()
@@ -175,9 +172,6 @@ func TestStoreVFSCrash00TraceSchema(t *testing.T) {
 // emit the same native seed trace. The frozen expected trace is not generated
 // or changed by this test.
 func TestStoreVFSCrash00DeterministicSeedRepeat(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	var traces []string
 	for run := 0; run < 2; run++ {
 		f, _ := newCrashFixture(t)
@@ -223,9 +217,6 @@ func TestStoreVFSCrash01SIGKILL(t *testing.T) {
 		runCrash01Child(t)
 		return
 	}
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	wantTrace := frozenCrash01CommitTrace()
 	if len(wantTrace) != 48 {
 		t.Fatalf("frozen trace length=%d want=48", len(wantTrace))
@@ -238,9 +229,6 @@ func TestStoreVFSCrash01SIGKILL(t *testing.T) {
 }
 
 func TestStoreColdJournalInspectionBounds(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	cases := []struct {
 		name       string
 		size       int64
@@ -319,9 +307,6 @@ func TestStoreColdJournalInspectionBounds(t *testing.T) {
 // test deliberately validates only engine maintenance; application authority
 // remains outside this helper.
 func TestStoreColdJournalRecoveryUsesFixedHealth(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -390,9 +375,6 @@ func TestStoreColdJournalRecoveryUsesFixedHealth(t *testing.T) {
 }
 
 func TestStoreColdJournalInspectionRejectsUnsafeSidecars(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	baseRoot, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

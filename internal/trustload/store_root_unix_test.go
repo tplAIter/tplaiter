@@ -14,9 +14,6 @@ import (
 )
 
 func TestRootLeaseDirectoryLocks(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -98,9 +95,6 @@ func TestRootLeaseChild(t *testing.T) {
 }
 
 func TestRootLeaseCrossProcessPermutationsAndDeath(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -163,9 +157,6 @@ func TestRootLeaseCrossProcessPermutationsAndDeath(t *testing.T) {
 }
 
 func TestRootLeaseRejectsSymlinkLeaf(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -192,9 +183,6 @@ func TestRootLeaseRejectsSymlinkLeaf(t *testing.T) {
 }
 
 func TestRootLeaseRejectsReplacedLocator(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -220,9 +208,6 @@ func TestRootLeaseRejectsReplacedLocator(t *testing.T) {
 }
 
 func TestRootLeaseRejectsSubstitutedMarkers(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

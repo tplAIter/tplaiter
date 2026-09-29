@@ -15,9 +15,6 @@ import (
 )
 
 func TestRefreshSB07PostCommitNoAuthority(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, tc := range []struct {
 		name     string
 		arm      func(t *testing.T, fixture bootstrapFixture, cancel context.CancelFunc, observer *storeProofObserver) VerifierFactory

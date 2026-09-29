@@ -514,9 +514,6 @@ func TestRootOperationCompletedCapabilityRejectsActualNumericFDReuse(t *testing.
 		markerFDReuseChild(t)
 		return
 	}
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestRootOperationCompletedCapabilityRejectsActualNumericFDReuse$")
 	cmd.Env = append(os.Environ(), "TPLAITER_MARKER_FD_REUSE_CHILD=1")
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -579,6 +576,10 @@ func markerCloseTerminalChild(t *testing.T) {
 }
 
 func markerFDReuseChild(t *testing.T) {
+	// Initialize the runtime poller first: on Linux its lazily created epoll
+	// descriptor would otherwise take the lowest free number, the closed root
+	// fd this test expects the next os.Open to reuse.
+	warmRuntimeDescriptors(t)
 	lease, root, _ := newRecoveryLeaseForTest(t)
 	oldFD := lease.fd
 	op, err := lease.beginStoreRootOperation(context.Background(), storeRecover)
@@ -618,9 +619,6 @@ func markerFDReuseChild(t *testing.T) {
 
 func newMarkerEnrollLease(t *testing.T) (*rootLease, string) {
 	t.Helper()
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

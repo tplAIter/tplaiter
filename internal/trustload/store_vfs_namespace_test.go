@@ -46,9 +46,6 @@ func TestStoreNamespaceNS004ReadOnlyStartupSidecars(t *testing.T) {
 		_, _ = io.Copy(io.Discard, release)
 		return
 	}
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -283,9 +280,6 @@ func ns004AssertReaderRejectsSidecar(t *testing.T, root, sidecar string, want []
 }
 
 func TestStoreBindingModeLeaseMatrix(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, tc := range []struct {
 		leaseMode   storeMode
 		requestMode storeMode
@@ -370,9 +364,6 @@ func TestStoreBindingModeLeaseMatrix(t *testing.T) {
 }
 
 func TestStoreBindingReaderSetupCancellationAndCleanup(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	phases := []string{"exec:PRAGMA temp_store=MEMORY", "exec:PRAGMA mmap_size=0", "exec:PRAGMA trusted_schema=OFF", "exec:PRAGMA query_only=ON", "query:PRAGMA temp_store", "query:PRAGMA mmap_size", "query:PRAGMA trusted_schema", "query:PRAGMA query_only"}
 	for _, phase := range phases {
 		for _, canceled := range []bool{true, false} {
@@ -432,9 +423,6 @@ func TestStoreBindingReaderSetupCancellationAndCleanup(t *testing.T) {
 }
 
 func TestStoreNamespaceForeignPathVector(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -583,9 +571,6 @@ func TestStoreNamespaceForeignPathVector(t *testing.T) {
 }
 
 func TestStoreNamespaceClosedFlagMatrix(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -670,9 +655,6 @@ func TestStoreNamespaceClosedFlagMatrix(t *testing.T) {
 }
 
 func TestStoreNamespaceForeignRetainedConnectionSQL(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -734,9 +716,6 @@ func TestStoreNamespaceForeignRetainedConnectionSQL(t *testing.T) {
 }
 
 func TestStoreNamespaceHostileLeafMatrix(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, tc := range []struct {
 		name  string
 		setup func(string) error
@@ -796,9 +775,6 @@ func TestStoreNamespaceHostileLeafMatrix(t *testing.T) {
 }
 
 func TestStoreNamespaceReadOnlyNonmutationAndSidecars(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -924,9 +900,6 @@ func TestStoreNamespaceReadOnlyNonmutationAndSidecars(t *testing.T) {
 }
 
 func TestStoreNamespaceReadOnlyDirectCallbackMatrix(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -1050,9 +1023,6 @@ func TestStoreNamespaceReadOnlyDirectCallbackMatrix(t *testing.T) {
 }
 
 func TestStoreNamespaceNS001HostileLeafEverySeam(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	classes := []struct {
 		id   string
 		make func(string, string) error
@@ -1357,9 +1327,6 @@ func nsAssertTreeUnchanged(t *testing.T, root string, before map[string]nsEntryS
 }
 
 func TestStoreNamespaceNS001PostSuccessSubstitution(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, tc := range []struct {
 		name string
 		leaf string
@@ -1493,9 +1460,6 @@ func nsReplaceLeaf(root, leaf string) error {
 }
 
 func TestStoreNamespaceNS001PostSuccessOpenSubstitution(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, tc := range []struct {
 		name, leaf, virtual string
 		flags               int32

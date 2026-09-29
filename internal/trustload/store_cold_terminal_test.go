@@ -22,9 +22,6 @@ import (
 // cancellation and Close.  The helper must still issue the sync, absence and
 // owned-FD teardown steps, but may not publish a successful recovery.
 func TestStoreColdTerminalC04PostUnlinkCancellationAndClose(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	root := newColdRecoveryRoot(t, 0, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -82,9 +79,6 @@ func TestStoreColdTerminalC04PostUnlinkCancellationAndClose(t *testing.T) {
 // is returned only after the real syscall/teardown attempt; it cannot invent
 // a healthy database, journal identity, or successful unlink.
 func TestStoreColdTerminalC05TerminalOwners(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	t.Run("preFD-close", func(t *testing.T) {
 		root := newColdRecoveryRoot(t, 0, 0)
 		original := storeRecoveryClose

@@ -16,9 +16,6 @@ import (
 )
 
 func TestStoreBindingSetupFaultMatrix(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	phases := []string{"exec:PRAGMA temp_store=MEMORY", "exec:PRAGMA mmap_size=0", "exec:PRAGMA trusted_schema=OFF", "exec:PRAGMA journal_mode=DELETE", "exec:PRAGMA synchronous=FULL", "query:PRAGMA temp_store", "query:PRAGMA mmap_size", "query:PRAGMA trusted_schema", "query:PRAGMA query_only", "query:PRAGMA journal_mode", "query:PRAGMA synchronous"}
 	for _, phase := range phases {
 		t.Run(phase, func(t *testing.T) {
@@ -80,9 +77,6 @@ func TestStoreBindingSetupFaultMatrix(t *testing.T) {
 // the Go callback names.  Its function types match the generated SQLite VFS
 // dispatcher at cached lib/sqlite.go:27952 and :34636.
 func TestStoreVFSGeneratedCallbackDispatch(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -158,9 +152,6 @@ func TestStoreVFSGeneratedCallbackDispatch(t *testing.T) {
 }
 
 func TestStoreVFSGeneratedCallbackRemainingSlots(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -283,9 +274,6 @@ func TestStoreVFSGeneratedCallbackRemainingSlots(t *testing.T) {
 }
 
 func TestStoreVFSObservedSQLiteTransactionCallbacks(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -336,9 +324,6 @@ func TestStoreVFSObservedSQLiteTransactionCallbacks(t *testing.T) {
 }
 
 func TestStoreBindingSetupCancellationAndCleanup(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	phases := []string{"exec:PRAGMA temp_store=MEMORY", "exec:PRAGMA mmap_size=0", "exec:PRAGMA trusted_schema=OFF", "exec:PRAGMA journal_mode=DELETE", "exec:PRAGMA synchronous=FULL", "query:PRAGMA temp_store", "query:PRAGMA mmap_size", "query:PRAGMA trusted_schema", "query:PRAGMA query_only", "query:PRAGMA journal_mode", "query:PRAGMA synchronous"}
 	for _, phase := range phases {
 		t.Run(phase, func(t *testing.T) {
@@ -372,9 +357,6 @@ func TestStoreBindingSetupCancellationAndCleanup(t *testing.T) {
 }
 
 func TestStoreBindingFixedConnectionPolicy(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -410,9 +392,6 @@ func TestStoreBindingFixedConnectionPolicy(t *testing.T) {
 }
 
 func TestStoreBindingLeaseModesAndCancellation(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
