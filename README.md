@@ -91,3 +91,7 @@ docker run --rm -v "$PWD":/src -v "$(go env GOMODCACHE)":/go/pkg/mod:ro -w /src 
 The `tests/` e2e module still fails with `TRUST_ANCHOR_MISSING` until the OSS installation registration lands, so `make verify` and `make verify-linux` are not green yet.
 
 MCP tools are registered per domain in `internal/mcpsrv/tools_<domain>.go` and listed once in `toolRegistrars`; `internal/mcpsrv/testdata/tools.golden.txt` pins the tool names. CLI commands register through `registerCommand` in their own file and declare their pre-run class (`readonly`, `trust-owned`, `legacy-action` or the default `stateful`) with a cobra annotation; see `internal/cmd/prerun_class.go`.
+
+## Template discovery
+
+A template repository may hold a root template plus nested templates (the provider shape); `repo add`, `template list`, `lint-template` and `init-template` share one recursive, symlink-confined discovery with typed errors (`TPL-E-REPO-PATH-ESCAPE`, `TPL-E-REPO-DUP-NAME`, `TPL-E-REPO-DUP-PATH`). See [template discovery](./docs/template-discovery.md); `schema/repository.manifest.schema.json` describes `repo.manifest.yaml`.

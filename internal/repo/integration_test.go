@@ -11,6 +11,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/auth"
 	"github.com/tplAIter/tplaiter/internal/execx"
+	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
@@ -320,5 +321,81 @@ func assertCheckout(ctx context.Context, t *testing.T, m *Manager, alias, ref, t
 	}
 	if string(data) != wantContent {
 		t.Errorf("%s = %q, want %q", wantFile, string(data), wantContent)
+	}
+}
+
+func TestIntegration_RootAndNestedTemplatesAreIndexed(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+
+	origin := initOrigin(t)
+	writeFile(t, filepath.Join(origin, templateManifestName), `apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata: {name: provider-base, version: 1.0.0}
+engine: {type: gotemplate, root: files}
+`)
+	nested := filepath.Join(origin, "bootstrap", "template-repository", "templates", "service")
+	writeFile(t, filepath.Join(nested, templateManifestName), `apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata: {name: service, version: 1.0.0}
+engine: {type: gotemplate, root: files}
+`)
+	writeFile(t, filepath.Join(nested, "files", "service.txt"), "nested service\n")
+	commitAll(t, origin, "provider and service")
+	runGit(t, origin, "tag", "v1.0.0")
+	runGit(t, origin, "tag", "service/v1.0.0")
+
+	m := newIntegrationManager(t)
+	if err := m.Add(ctx, AddOptions{Alias: "provider", URL: fileURL(origin)}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	infos, err := m.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(infos) != 1 || infos[0].Templates != 2 {
+		t.Fatalf("List = %+v, want root and nested template", infos)
+	}
+	root, err := m.ResolveRef("provider/provider-base")
+	if err != nil {
+		t.Fatalf("ResolveRef root: %v", err)
+	}
+	if root.Entry.Path != "." || root.GitRef != "v1.0.0" {
+		t.Errorf("resolved root = %+v", root)
+	}
+	resolved, err := m.ResolveRef("provider/service@v1.0.0")
+	if err != nil {
+		t.Fatalf("ResolveRef nested service: %v", err)
+	}
+	if resolved.Entry.Path != "bootstrap/template-repository/templates/service" || resolved.GitRef != "service/v1.0.0" {
+		t.Errorf("resolved nested = %+v", resolved)
+	}
+	assertCheckout(ctx, t, m, "provider", "service/v1.0.0", resolved.Entry.Path, "files/service.txt", "nested service\n")
+}
+
+func TestIntegration_DuplicateTemplateIdentityRejected(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+
+	origin := initOrigin(t)
+	for _, rel := range []string{templateManifestName, filepath.Join("templates", "service", templateManifestName)} {
+		writeFile(t, filepath.Join(origin, rel), `apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata: {name: service, version: 1.0.0}
+engine: {type: gotemplate, root: files}
+`)
+	}
+	commitAll(t, origin, "ambiguous identities")
+
+	m := newIntegrationManager(t)
+	err := m.Add(ctx, AddOptions{Alias: "provider", URL: fileURL(origin)})
+	if err == nil {
+		t.Fatal("Add must reject duplicate template identity")
+	}
+	if !strings.Contains(err.Error(), manifest.CodeRepoDupName) || !strings.Contains(err.Error(), "templates/service") {
+		t.Errorf("duplicate error = %v", err)
+	}
+	if infos, _ := m.List(); len(infos) != 0 {
+		t.Errorf("ambiguous repository was registered: %+v", infos)
 	}
 }

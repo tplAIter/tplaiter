@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"text/template"
 
 	"gopkg.in/yaml.v3"
@@ -14,6 +13,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/aiconfig"
 	"github.com/tplAIter/tplaiter/internal/engine"
 	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/repo"
 	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
@@ -36,8 +36,10 @@ var lintProject = manifest.ProjectInfo{
 
 // LintOptions — parameters for one [Lint] invocation.
 type LintOptions struct {
-	// Path — template-repository root (single), or repository with
-	// repo.manifest.yaml/template subdirectories (multi). Empty → ".".
+	// Path — template-repository root. Templates are discovered with the same
+	// rules as repository indexing (see repo.DiscoverTemplatePaths): the
+	// repo.manifest.yaml roots, or the root template plus nested templates.
+	// Empty → ".".
 	Path string
 	// ComboName — exact combination-name filter; empty means all.
 	ComboName string
@@ -83,11 +85,12 @@ func Lint(opts LintOptions) (*LintResult, error) {
 	}
 	if len(templates) == 0 {
 		return nil, fmt.Errorf("inittemplate: template manifests not found in %q "+
-			"(expected %s at root, %s, or a subdirectory with %s)",
+			"(expected %s at root, %s, or a nested directory with %s)",
 			root, templateManifestFileName, repoManifestFileName, templateManifestFileName)
 	}
 
 	res := &LintResult{}
+	res.checkDuplicateNames(templates)
 	for _, tmpl := range templates {
 		res.lintOne(tmpl, opts.ComboName)
 	}
@@ -300,51 +303,46 @@ func loadAIConfig(root string, tpl *manifest.Template) (*aiconfig.Source, error)
 	return src, nil
 }
 
-// discoverTemplates finds repository templates: multi (repo.manifest.yaml with
-// paths), single (template.manifest.yaml at root), or first-level subdirectories
-// containing template.manifest.yaml.
+// discoverTemplates uses the same confined, recursive declared-root discovery
+// as repository indexing ([repo.DiscoverTemplatePaths]): a provider root
+// template and nested templates (for example templates/service) are all
+// linted, and path escapes are rejected with the same typed errors. The root
+// template keeps the directory base name as its display name; nested
+// templates are named by their repository-relative path.
 func discoverTemplates(root string) ([]discovered, error) {
-	if _, err := os.Stat(filepath.Join(root, repoManifestFileName)); err == nil {
-		return discoverMulti(root)
-	}
-	if _, err := os.Stat(filepath.Join(root, templateManifestFileName)); err == nil {
-		return []discovered{{name: filepath.Base(mustAbs(root)), root: root}}, nil
-	}
-	return scanSubdirs(root)
-}
-
-// discoverMulti reads repo.manifest.yaml and expands its templates[].path.
-func discoverMulti(root string) ([]discovered, error) {
-	repo, err := manifest.LoadRepository(filepath.Join(root, repoManifestFileName))
+	paths, err := repo.DiscoverTemplatePaths(root)
 	if err != nil {
-		return nil, fmt.Errorf("inittemplate: %s: %w", repoManifestFileName, err)
+		return nil, fmt.Errorf("inittemplate: template discovery: %w", err)
 	}
-	out := make([]discovered, 0, len(repo.Templates))
-	for _, ref := range repo.Templates {
-		p := filepath.FromSlash(ref.Path)
-		out = append(out, discovered{name: ref.Path, root: filepath.Join(root, p)})
+	out := make([]discovered, 0, len(paths))
+	for _, rel := range paths {
+		name := rel
+		if rel == "." {
+			name = filepath.Base(mustAbs(root))
+		}
+		out = append(out, discovered{name: name, root: filepath.Join(root, filepath.FromSlash(rel))})
 	}
 	return out, nil
 }
 
-// scanSubdirs searches first-level subdirectories for template.manifest.yaml.
-func scanSubdirs(root string) ([]discovered, error) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil, fmt.Errorf("inittemplate: reading %q: %w", root, err)
-	}
-	var out []discovered
-	for _, e := range entries {
-		if !e.IsDir() {
+// checkDuplicateNames fails the lint when two discovered templates declare
+// the same metadata.name: repository indexing would reject the repository
+// with the same typed error (TPL-E-REPO-DUP-NAME). Templates whose manifest
+// does not load are reported by lintOne and ignored here.
+func (res *LintResult) checkDuplicateNames(templates []discovered) {
+	byName := make(map[string]string, len(templates))
+	for _, d := range templates {
+		tpl, err := manifest.LoadTemplate(filepath.Join(d.root, templateManifestFileName))
+		if err != nil || tpl.Metadata.Name == "" {
 			continue
 		}
-		sub := filepath.Join(root, e.Name())
-		if _, err := os.Stat(filepath.Join(sub, templateManifestFileName)); err == nil {
-			out = append(out, discovered{name: e.Name(), root: sub})
+		if prior, dup := byName[tpl.Metadata.Name]; dup {
+			res.fail(d.name, "discovery", manifest.NewRepositoryError(manifest.CodeRepoDupName, d.name,
+				fmt.Sprintf("template name %q is declared by both %q and %q", tpl.Metadata.Name, prior, d.name)))
+			continue
 		}
+		byName[tpl.Metadata.Name] = d.name
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
-	return out, nil
 }
 
 func mustAbs(p string) string {

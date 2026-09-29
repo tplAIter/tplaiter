@@ -39,3 +39,13 @@ minimal templates — `alpha/` (toggle setting) and `beta/`
 (string setting) — sufficient to exercise template selection in the
 repository without re-testing the engine itself (that is done by
 single-basic).
+
+## nested-provider/
+
+Provider-shaped repository without `repo.manifest.yaml`: a root template
+(`provider-base`) plus nested templates discovered recursively —
+`bootstrap/template-repository/templates/service` (`service`, the
+template-base bootstrap shape) and `templates/worker` (`worker`). Used by
+repository discovery tests (`internal/repo`, `internal/inittemplate`, and the
+`tests/` e2e `TestNestedTemplates`). The root template keeps un-namespaced
+tags (`v0.1.0`); nested templates use namespaced tags (`service/v0.1.0`).

@@ -1,0 +1,9 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: worker
+  version: 0.1.0
+  description: "Nested worker template."
+engine:
+  type: gotemplate
+  root: files

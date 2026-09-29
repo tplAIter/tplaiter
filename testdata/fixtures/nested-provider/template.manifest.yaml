@@ -1,0 +1,13 @@
+# nested-provider — neutral fixture mirroring a provider repository: a root
+# template plus nested templates (bootstrap/template-repository/templates/service
+# and templates/worker). Used by repository discovery tests (U05) and by later
+# lifecycle/composition fixtures. Not a real project.
+apiVersion: tplater.dev/v1alpha1
+kind: Template
+metadata:
+  name: provider-base
+  version: 0.1.0
+  description: "Root provider template of the nested-provider fixture."
+engine:
+  type: gotemplate
+  root: files
