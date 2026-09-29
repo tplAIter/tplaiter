@@ -1,0 +1,14 @@
+{
+  "apiVersion": "tplaiter.dev/result/v1",
+  "kind": "UpdatePlan",
+  "operation": "update.plan",
+  "status": "changes",
+  "project": {"id": "project-1", "root": "/work/project-1"},
+  "transactionId": null,
+  "summary": {"filesChanged": 1, "blocksChanged": 1, "conflicts": 0},
+  "changes": [{"path": "internal/service/service.go", "blockId": "service", "action": "merge"}],
+  "diagnostics": [],
+  "artifacts": [],
+  "meta": {"tplaiterVersion": "v0.1.0-preview.1", "schemaVersion": 1},
+  "data": {"conflictMarkers": [], "dryRun": true, "to": "v1.2.0"}
+}
