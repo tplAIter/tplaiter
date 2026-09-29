@@ -25,9 +25,9 @@ The core question was a chicken-and-egg problem. The registration digest must be
    - It discards the anchor private key, and the placeholder publisher key when one is used. **No private key is ever written to disk.** A unit test feeds deterministic entropy and scans every generated file for the seeds and private keys in raw, base64 and hex form.
    - It prints `REGISTRATION_PATH` and `REGISTRATION_SHA256`.
 2. `make build` links the binary with exactly those two `-X` pins.
-3. `tplaiter trust provision` is the **first-run provisioning**. It enrolls the trust store from the pinned initial state and bundle only; nothing else is read. It is idempotent. Until it has run, trust-gated commands fail with `TRUST_NOT_PROVISIONED` and a hint.
+3. `tplaiter trust provision` is the **first-run provisioning**. It enrolls the trust store from the pinned initial state and bundle only; nothing else is read. It is idempotent. Until it has run, `trust inspect` and `mcp-server` fail with `TRUST_NOT_PROVISIONED` and a hint; `new` and `update` currently report `TRUST_ANCHOR_MISSING` from runtime composition.
 
-The chicken-and-egg problem disappears because the registration never depends on the binary: every per-install value is generated before linking, and the binary only carries the resulting digest. Re-running `make install` reuses a valid installation, so upgrades keep the enrolled store. `TRUST_ROTATE=1` generates a new installation and requires a fresh `trust provision`.
+The chicken-and-egg problem disappears because the registration never depends on the binary: every per-install value is generated before linking, and the binary only carries the resulting digest. Re-running `make install` reuses a valid installation, so upgrades keep the enrolled store. Reuse never drops requested publishers: when `TRUST_PUBLISHERS` differs from the publisher set the installation trusts, generation fails with `ErrPublishersChanged` and asks for `TRUST_ROTATE=1`. `TRUST_ROTATE=1` generates a new installation and requires a fresh `trust provision`.
 
 Resulting properties:
 

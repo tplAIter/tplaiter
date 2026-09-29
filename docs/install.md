@@ -42,7 +42,7 @@ Variables:
 
 `DESTDIR` staging is refused unless both registration pins are given, because a generated registration records absolute paths that must be valid at run time.
 
-Re-running `make install` keeps a valid existing installation and its enrolled store, so an upgrade does not need provisioning again. When the documents under `TRUST_ROOT` do not form a valid installation, `make install` stops and asks for `TRUST_ROTATE=1`.
+Re-running `make install` keeps a valid existing installation and its enrolled store, so an upgrade does not need provisioning again. When the documents under `TRUST_ROOT` do not form a valid installation, `make install` stops and asks for `TRUST_ROTATE=1`. It also stops when `TRUST_PUBLISHERS` names a publisher set that differs from the one the existing installation trusts (a different key, issuer, source origin, template path or object root); it never silently drops the requested publishers. An identical publisher set, or no `TRUST_PUBLISHERS` at all, keeps the installation as it is.
 
 ## Provision (first run)
 
@@ -50,11 +50,13 @@ Re-running `make install` keeps a valid existing installation and its enrolled s
 tplaiter trust provision
 ```
 
-This enrolls the trust store from the initial state and bundle pinned by the installation. It reads no other input. It is idempotent: a second run prints `trust store already provisioned`. Until it has run, trust-gated commands fail with:
+This enrolls the trust store from the initial state and bundle pinned by the installation. It reads no other input. It is idempotent: a second run prints `trust store already provisioned`. Until it has run, `trust inspect` and `mcp-server` fail with:
 
 ```
 error: TRUST_NOT_PROVISIONED: run 'tplaiter trust provision' once after installation
 ```
+
+The other trust-gated commands (`new`, `update`) do not run this check yet and report the store-level error `TRUST_ANCHOR_MISSING` instead.
 
 ## Inspect
 
