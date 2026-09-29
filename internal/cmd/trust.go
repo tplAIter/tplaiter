@@ -23,11 +23,33 @@ func newTrustCmd() *cobra.Command {
 	return root
 }
 
+// trustInspection is the `trust inspect --json` document: the stable
+// trust-profile binding fields at the top level (unchanged for existing
+// consumers) plus the installation the binding was loaded from.
+type trustInspection struct {
+	bootstrap.ProfileBinding
+	Installation trustInstallation `json:"installation"`
+}
+
+type trustInstallation struct {
+	InstallationID string `json:"installationID"`
+	// RegistrationSHA256 is the linker-pinned registration digest; it is
+	// empty for an in-process invocation that was not launched from an
+	// installed registration.
+	RegistrationSHA256  string `json:"registrationSHA256,omitempty"`
+	RuntimeConfigSHA256 string `json:"runtimeConfigSHA256"`
+	Store               string `json:"store"`
+}
+
 func newTrustInspectCmd() *cobra.Command {
 	var asJSON bool
 	c := &cobra.Command{
 		Use: "inspect", Args: cobra.NoArgs,
+		Short: "Verify the installed trust profile and print its binding",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := requireProvisioned(cmd.Context()); err != nil {
+				return err
+			}
 			runtime, err := composeRuntime(cmd.Context())
 			if err != nil {
 				return err
@@ -35,25 +57,48 @@ func newTrustInspectCmd() *cobra.Command {
 			defer runtime.Close()
 			binding := runtime.TrustRuntime().Binding()
 			if asJSON {
+				in, err := commandInvocation(cmd.Context())
+				if err != nil {
+					return err
+				}
+				report := trustInspection{ProfileBinding: binding, Installation: trustInstallation{
+					InstallationID:      in.Selection.InstallationID,
+					RuntimeConfigSHA256: in.Selection.RuntimeConfig.SHA256,
+					Store:               "provisioned",
+				}}
+				if _, injected := cmd.Context().Value(invocationKey{}).(invocation); !injected {
+					report.Installation.RegistrationSHA256 = installedRegistrationSHA256
+				}
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetEscapeHTML(false)
-				return enc.Encode(binding)
+				return enc.Encode(report)
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "trust authority verified")
 			return nil
 		},
 	}
-	c.Flags().BoolVar(&asJSON, "json", false, "print the stable trust-profile binding")
+	c.Flags().BoolVar(&asJSON, "json", false, "print the stable trust-profile binding and installation")
 	return c
 }
 
 func newTrustProvisionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "provision", Args: cobra.NoArgs,
+		Short: "Enroll the trust store from the installation's pinned initial state (idempotent)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := commandInvocation(cmd.Context())
 			if err != nil {
 				return err
+			}
+			if storeProvisioned(cmd.Context(), in) == nil {
+				// An existing store is only accepted when it opens as the
+				// verified runtime of this installation; anything else keeps
+				// the typed failure (use `trust recover-state`).
+				if runtime, openErr := composeRuntime(cmd.Context()); openErr == nil {
+					_ = runtime.Close()
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), "trust store already provisioned")
+					return nil
+				}
 			}
 			loaded, err := trustload.Load(cmd.Context(), in.Selection)
 			if err != nil || loaded.Install.OSS == nil {
@@ -75,7 +120,11 @@ func newTrustProvisionCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return trustload.Enroll(cmd.Context(), in.Selection, factory, state, bundle, evidence)
+			if err := trustload.Enroll(cmd.Context(), in.Selection, factory, state, bundle, evidence); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "trust store provisioned")
+			return nil
 		},
 	}
 }
@@ -84,6 +133,7 @@ func newTrustRefreshCmd() *cobra.Command {
 	var bundleInput string
 	cmd := &cobra.Command{
 		Use: "refresh", Args: cobra.NoArgs,
+		Short: "Apply a newer sealed bootstrap bundle to the trust store",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if bundleInput == "" {
 				return trustload.ErrProvenanceUnavailable
@@ -119,6 +169,7 @@ func newTrustRefreshCmd() *cobra.Command {
 func newTrustRecoverCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "recover-state", Args: cobra.NoArgs,
+		Short: "Recover the trust store after an interrupted update",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := commandInvocation(cmd.Context())
 			if err != nil {

@@ -50,8 +50,8 @@ func TestLifecycle(t *testing.T) {
 
 	// 4. new: --set overrides feature_x/variant, while --defaults takes the
 	// rest (the nested verbose toggle under variant=advanced) from manifest defaults.
-	mustRun(
-		t, home, "", "new", "example/demo-svc", "My Service",
+	skipAtLiveLifecycle(
+		t, home, "new", "example/demo-svc", "My Service",
 		"--dir", projDir,
 		"--module", "example.com/my-service",
 		"--set", "feature_x=true",

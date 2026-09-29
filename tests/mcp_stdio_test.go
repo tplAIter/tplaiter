@@ -26,15 +26,17 @@ import (
 // JSON-RPC, exactly like an agent client does, against the tplaiter binary
 // built by TestMain and an offline fixture template repository.
 //
-// Server under test. The production entry point `tplaiter mcp-server`
-// requires an installed trust registration (U02); until that fixture exists
-// the suite runs the same tool registry through the stdio harness
-// (internal/mcpsrv/cmd/stdioharness), which executes the same tplaiter binary
-// with the same sanitized child environment, process-group cancellation and
-// output bounds, but without the installed held-stage image. The unprovisioned
-// `tplaiter mcp-server` is asserted to fail closed with TRUST_ANCHOR_MISSING.
-// Set TPLAITER_E2E_MCP_COMMAND to a space-separated command (for example an
-// installed binary with its trust state) to run the whole suite against it.
+// Server under test. By default the suite runs the production entry point
+// `tplaiter mcp-server` of the binary built and provisioned by TestMain
+// exactly like `make install` (ADR-005), so it covers the installed launch:
+// the linker-pinned registration, the held-stage child image, the sanitized
+// child environment, process-group cancellation and output bounds. Only the
+// timeout/cancel test needs short limits, which production does not expose as
+// flags; it runs the same tool registry through the stdio harness
+// (internal/mcpsrv/cmd/stdioharness). A build without the installed
+// registration is asserted to fail closed with TRUST_ANCHOR_MISSING.
+// Set TPLAITER_E2E_MCP_COMMAND to a space-separated command to run the suite
+// against another provisioned server.
 //
 // Pending tools. testdata/mcp/pending_tools.txt lists the tools whose success
 // path lands in a later work package (trust registration, live lifecycle,
@@ -309,11 +311,36 @@ func serverEnv(home string) []string {
 	}
 }
 
-func serverCommand(harness string, extra ...string) []string {
+// installedServer is the default server under test: the installed binary's
+// `mcp-server`, or TPLAITER_E2E_MCP_COMMAND when set.
+func installedServer(t *testing.T) []string {
+	t.Helper()
 	if custom := strings.TrimSpace(os.Getenv("TPLAITER_E2E_MCP_COMMAND")); custom != "" {
 		return strings.Fields(custom)
 	}
+	requireProvisionedTrust(t)
+	return []string{binPath, "mcp-server"}
+}
+
+// harnessServer runs the stdio harness with explicit transport limits.
+func harnessServer(harness string, extra ...string) []string {
 	return append([]string{harness, "-exe", binPath, "-version", buildVersion}, extra...)
+}
+
+// buildUnregisteredBinary builds the root module without the installed
+// registration pins, like a plain `go build`: such a binary has no trust
+// anchor and must never serve.
+func buildUnregisteredBinary(t *testing.T) string {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "tplaiter-unregistered")
+	ldflags := "-X github.com/tplAIter/tplaiter/internal/cmd.version=" + buildVersion
+	cmd := exec.Command("go", "build", "-trimpath", "-ldflags", ldflags, "-o", out, ".")
+	cmd.Dir = ".."
+	cmd.Env = append(os.Environ(), "GOWORK=off", "CGO_ENABLED=0")
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build unregistered binary: %v\n%s", err, b)
+	}
+	return out
 }
 
 // writeStaticProject writes a generated-project fixture (marker plus manifest
@@ -341,7 +368,7 @@ func writeStaticProject(t *testing.T, manifestPath string) string {
 
 func TestMCPStdioUnprovisionedServerFailsClosed(t *testing.T) {
 	home := newHome(t)
-	cmd := exec.Command(binPath, "mcp-server")
+	cmd := exec.Command(buildUnregisteredBinary(t), "mcp-server")
 	cmd.Env = serverEnv(home)
 	cmd.Stdin = strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}` + "\n")
 	var stdout, stderr bytes.Buffer
@@ -360,7 +387,7 @@ func TestMCPStdioUnprovisionedServerFailsClosed(t *testing.T) {
 // against the golden schemas, resources, and one tools/call for every tool.
 func TestMCPStdioContract(t *testing.T) {
 	requireGit(t)
-	harness := buildHarness(t)
+	server := installedServer(t)
 	home := newHome(t)
 	// The static project pins v0.1.0, which the fixture origin must carry as a
 	// tag for stats to render the baseline.
@@ -368,7 +395,7 @@ func TestMCPStdioContract(t *testing.T) {
 	project := writeStaticProject(t, filepath.Join(origin, "template.manifest.yaml"))
 	workdir := t.TempDir()
 
-	c := startMCP(t, serverEnv(home), serverCommand(harness)...)
+	c := startMCP(t, serverEnv(home), server...)
 	initResult := c.initialize()
 	if info, _ := initResult["serverInfo"].(map[string]any); info["name"] != "tplaiter" {
 		t.Fatalf("initialize serverInfo=%v", initResult["serverInfo"])
@@ -607,15 +634,12 @@ func requireNoProcess(t *testing.T, token string) {
 // the child, its git grandchildren and their network connection are gone.
 func TestMCPStdioTimeoutVersusCancel(t *testing.T) {
 	requireGit(t)
-	if os.Getenv("TPLAITER_E2E_MCP_COMMAND") != "" {
-		t.Skip("limits are harness flags; the custom server keeps production limits")
-	}
 	harness := buildHarness(t)
 	git := newHangingGitServer(t)
 
 	t.Run("timeout", func(t *testing.T) {
 		home := newHome(t)
-		c := startMCP(t, serverEnv(home), serverCommand(harness, "-timeout", "2s", "-grace", "500ms")...)
+		c := startMCP(t, serverEnv(home), harnessServer(harness, "-timeout", "2s", "-grace", "500ms")...)
 		c.initialize()
 		token := fmt.Sprintf("tplaiter-timeout-%d", time.Now().UnixNano())
 		start := time.Now()
@@ -637,7 +661,7 @@ func TestMCPStdioTimeoutVersusCancel(t *testing.T) {
 
 	t.Run("cancel", func(t *testing.T) {
 		home := newHome(t)
-		c := startMCP(t, serverEnv(home), serverCommand(harness, "-timeout", "5m", "-grace", "500ms")...)
+		c := startMCP(t, serverEnv(home), harnessServer(harness, "-timeout", "5m", "-grace", "500ms")...)
 		c.initialize()
 		token := fmt.Sprintf("tplaiter-cancel-%d", time.Now().UnixNano())
 		before := git.seen.Load()
@@ -674,7 +698,7 @@ func TestMCPStdioTimeoutVersusCancel(t *testing.T) {
 // larger than the bound.
 func TestMCPStdioOutputLimit(t *testing.T) {
 	requireGit(t)
-	harness := buildHarness(t)
+	server := installedServer(t)
 	home := newHome(t)
 	src := filepath.Join(t.TempDir(), "huge")
 	copyTree(t, filepath.Join(fixturesDir(t), "single-basic"), src)
@@ -689,7 +713,7 @@ func TestMCPStdioOutputLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	origin := initGitOrigin(t, src, "v1.0.0")
-	c := startMCP(t, serverEnv(home), serverCommand(harness)...)
+	c := startMCP(t, serverEnv(home), server...)
 	c.initialize()
 	res := c.callTool("repo_add", map[string]any{"alias": "huge", "url": "file://" + origin})
 	if _, status, codes := requireEnvelope(t, "repo_add", res); status != "ok" {

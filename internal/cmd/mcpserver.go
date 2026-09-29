@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -47,7 +48,6 @@ func newMCPServerCmd() *cobra.Command {
 			if err != nil {
 				return errors.New("MCP_UNAVAILABLE")
 			}
-
 			if printConfig != "" {
 				snippet, err := mcpsrv.PrintConfig(printConfig, exe)
 				if err != nil {
@@ -56,9 +56,22 @@ func newMCPServerCmd() *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), snippet)
 				return nil
 			}
+			// Client config snippets above keep the launch path (for example a
+			// stable package-manager shim). The held stage, however, opens
+			// every path component without following symlinks, so resolve the
+			// launch path before staging: installs reached through a symlinked
+			// directory (macOS /var, /tmp, package-manager shims) would
+			// otherwise report MCP_UNAVAILABLE. The stage still copies and
+			// digests the resolved file itself.
+			if resolved, resolveErr := filepath.EvalSymlinks(exe); resolveErr == nil {
+				exe = resolved
+			}
 
 			in, err := installedInvocation(cmd.Context())
 			if err != nil {
+				return err
+			}
+			if err := storeProvisioned(cmd.Context(), in); err != nil {
 				return err
 			}
 			runtime, err := trustload.OpenRuntime(cmd.Context(), trustload.RuntimeOptions{Selection: in.Selection, ProjectKey: in.ProjectKey, Clock: in.Clock})

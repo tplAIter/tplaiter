@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -277,4 +278,37 @@ func mustReadFile(t *testing.T, path string) string {
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// requireProvisionedTrust skips a trust-dependent test when first-run
+// provisioning was unavailable on this platform (see buildInstalledBinary).
+// On darwin and Linux provisioning is mandatory, so this never skips there.
+func requireProvisionedTrust(t *testing.T) {
+	t.Helper()
+	if provisionErr != "" {
+		t.Skip("trust store unavailable on " + runtime.GOOS + " (Windows deferred, tp-6v4): " + provisionErr)
+	}
+}
+
+// liveLifecycleDenial is the typed refusal the published core returns for
+// new/update/settings until the live lifecycle is restored.
+const liveLifecycleDenial = "TRUST_LIFECYCLE_UNAVAILABLE"
+
+// skipAtLiveLifecycle runs a live-lifecycle step (new, update, settings set)
+// and ends the scenario there with a tracked skip marker. It first proves that
+// the installed trust launch itself works: the step must fail with exactly the
+// lifecycle denial, never with a trust-anchor or provisioning error. Once the
+// step succeeds, the test fails so that U07 removes the marker.
+func skipAtLiveLifecycle(t *testing.T, home string, args ...string) {
+	t.Helper()
+	requireProvisionedTrust(t)
+	res := run(t, home, "", args...)
+	out := res.Stdout + res.Stderr
+	if res.ExitCode == 0 {
+		t.Fatalf("tplaiter %v now succeeds: remove the U07 skip marker and restore the scenario assertions", args)
+	}
+	if !strings.Contains(out, liveLifecycleDenial) {
+		t.Fatalf("tplaiter %v: expected the %s denial (installed trust must load), got exit=%d\n%s", args, liveLifecycleDenial, res.ExitCode, out)
+	}
+	t.Skipf("requires U07 live lifecycle: tp-i9g.5.3 (tplaiter %s is %s)", args[0], liveLifecycleDenial)
 }

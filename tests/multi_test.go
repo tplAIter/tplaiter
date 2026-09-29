@@ -53,7 +53,7 @@ func TestMultiRepoAmbiguous(t *testing.T) {
 	// Full multi pipeline: `new` from the beta template (a unique, unambiguous
 	// name) successfully creates a project.
 	projDir := filepath.Join(t.TempDir(), "beta-proj")
-	mustRun(t, home, "", "new", "multi1/beta", "Beta Project", "--dir", projDir, "--defaults")
+	skipAtLiveLifecycle(t, home, "new", "multi1/beta", "Beta Project", "--dir", projDir, "--defaults")
 	if !exists(filepath.Join(projDir, ".tplaiter", "project.yaml")) {
 		t.Error("new multi1/beta: project marker is missing")
 	}

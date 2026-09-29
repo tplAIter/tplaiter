@@ -21,6 +21,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
+	"github.com/tplAIter/tplaiter/internal/ossinstall"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
@@ -45,7 +46,7 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	registrationPath := filepath.Join(root, "registration.json")
-	registration := installedRegistration{
+	registration := ossinstall.Registration{
 		APIVersion: "tplaiter.dev/installed-launch-registration/v1",
 		Profile:    f.selection.Profile, RuntimeConfig: f.selection.RuntimeConfig,
 		OperatorRecord: f.selection.OperatorRecord, InstallationID: f.selection.InstallationID,
