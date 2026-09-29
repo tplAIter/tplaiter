@@ -1,15 +1,15 @@
-# Оставшаяся работа
+# Remaining work
 
-Обзор незавершённых работ по tplAIter. Актуальные статусы и зависимости ведутся в Beads; приведённые идентификаторы — ссылки на локальный трекер, а не номера GitHub Issues. Этот список не означает возобновления работ.
+An overview of unfinished tplAIter work. Current status and dependencies are tracked in Beads; the identifiers below refer to the local tracker, not to GitHub Issues. This list does not mean that work has resumed.
 
-| Статус | Работа | Задачи Beads |
+| Status | Work | Beads issues |
 | --- | --- | --- |
-| ☑ | Перевести обычные комментарии в исходниках core и шаблонах; строки выполнения и значения testdata не входят в перевод. | `tp-i9g.30.4` |
-| ☐ | Завершить проверку доверенного запуска CLI/MCP и негативных сценариев. | `tp-i9g.4` |
-| ☐ | Доработать состояние проектов, восстановление и команды жизненного цикла. | `tp-i9g.5–6` |
-| ☐ | Завершить CLI/MCP и пакетную генерацию. | `tp-i9g.7` |
-| ☐ | Завершить композицию, модификаторы и интеграцию форматтеров Go/Rust/Node. | `tp-i9g.8` |
-| ☐ | Завершить Base/Go/Rust; реализовать React и Next-модификатор. | `tp-i9g.9–13` |
-| ☐ | Расширить поиск, документацию и получение контекста поверх готового графа. | `tp-i9g.14` |
-| ☐ | Подготовить дистрибуцию, внутренние overlays и fleet-автоматизацию. | `tp-i9g.15–17` |
-| ☐ | Провести общую регрессию и окончательную приёмку программы. | `tp-i9g.20`, `tp-i9g.22` |
+| ☑ | Translate ordinary comments in the core sources and templates; runtime strings and testdata values are out of scope. | `tp-i9g.30.4` |
+| ☐ | Finish verification of the trusted CLI/MCP launch and its negative scenarios. | `tp-i9g.4` |
+| ☐ | Complete project state, recovery and the lifecycle commands. | `tp-i9g.5–6` |
+| ☐ | Complete the CLI/MCP surface and batch generation. | `tp-i9g.7` |
+| ☐ | Complete composition, modifiers and the Go/Rust/Node formatter integration. | `tp-i9g.8` |
+| ☐ | Complete Base/Go/Rust; implement React and the Next modifier. | `tp-i9g.9–13` |
+| ☐ | Extend search, documentation and context retrieval on top of the finished graph. | `tp-i9g.14` |
+| ☐ | Prepare distribution, internal overlays and fleet automation. | `tp-i9g.15–17` |
+| ☐ | Run the overall regression and the final program acceptance. | `tp-i9g.20`, `tp-i9g.22` |
