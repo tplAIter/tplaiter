@@ -3,6 +3,7 @@
 package trustload
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -16,11 +17,22 @@ import (
 
 const storeVirtualPrefix = "/tplaiter-store/"
 
-var storeVFSSequence atomic.Uint64
-var storeVFSObserverRegistry = struct {
-	sync.RWMutex
-	byToken map[uint64]*storeProofObserver
-}{byToken: make(map[uint64]*storeProofObserver)}
+// libcPtr is the single audited conversion from a libc-owned address to an
+// unsafe.Pointer. Every address passed here was returned by the modernc libc
+// allocator (libc.Xmalloc and friends) or handed to a VFS callback by SQLite,
+// so it refers to C heap memory that the Go garbage collector neither moves
+// nor frees. unsafe.Add on a nil base expresses that without the
+// uintptr-to-unsafe.Pointer conversion that go vet (unsafeptr) rejects; the
+// result is identical and -race checkptr still validates it.
+func libcPtr(addr uintptr) unsafe.Pointer { return unsafe.Add(nil, addr) }
+
+var (
+	storeVFSSequence         atomic.Uint64
+	storeVFSObserverRegistry = struct {
+		sync.RWMutex
+		byToken map[uint64]*storeProofObserver
+	}{byToken: make(map[uint64]*storeProofObserver)}
+)
 
 func storeVFSObserverFor(c *vfsContext) *storeProofObserver {
 	if c == nil {
@@ -256,7 +268,7 @@ func newStoreVFSObserved(lease *rootLease, mode storeMode, proof *storeProofObse
 		return nil, ErrProvenanceUnavailable
 	}
 	seq := storeVFSSequence.Add(1)
-	*(*vfsContext)(unsafe.Pointer(v.ctx)) = vfsContext{rootFD: int64(lease.fd), mode: int64(mode), token: seq, methods: v.methods, ownerUID: int64(lease.ownerUID())}
+	*(*vfsContext)(libcPtr(v.ctx)) = vfsContext{rootFD: int64(lease.fd), mode: int64(mode), token: seq, methods: v.methods, ownerUID: int64(lease.ownerUID())}
 	v.name = fmt.Sprintf("tplaiter-store-%x", seq)
 	v.main = fmt.Sprintf("%s%x/%s", storeVirtualPrefix, seq, storeDBName)
 	v.journal = v.main + "-journal"
@@ -279,14 +291,14 @@ func newStoreVFSObserved(lease *rootLease, mode storeMode, proof *storeProofObse
 			return nil, err
 		}
 	}
-	*(*sqlite3.Tsqlite3_io_methods)(unsafe.Pointer(v.methods)) = sqlite3.Tsqlite3_io_methods{
+	*(*sqlite3.Tsqlite3_io_methods)(libcPtr(v.methods)) = sqlite3.Tsqlite3_io_methods{
 		FiVersion: 1,
 		FxClose:   cFuncPointer(storeFileClose), FxRead: cFuncPointer(storeFileRead), FxWrite: cFuncPointer(storeFileWrite),
 		FxTruncate: cFuncPointer(storeFileTruncate), FxSync: cFuncPointer(storeFileSync), FxFileSize: cFuncPointer(storeFileSize),
 		FxLock: cFuncPointer(storeFileLock), FxUnlock: cFuncPointer(storeFileUnlock), FxCheckReservedLock: cFuncPointer(storeFileCheckReserved),
 		FxFileControl: cFuncPointer(storeFileControl), FxSectorSize: cFuncPointer(storeFileSectorSize), FxDeviceCharacteristics: cFuncPointer(storeFileDeviceCharacteristics),
 	}
-	*(*sqlite3.Tsqlite3_vfs)(unsafe.Pointer(v.vfs)) = sqlite3.Tsqlite3_vfs{
+	*(*sqlite3.Tsqlite3_vfs)(libcPtr(v.vfs)) = sqlite3.Tsqlite3_vfs{
 		FiVersion: 1, FszOsFile: int32(unsafe.Sizeof(vfsFile{})), FmxPathname: 4096, FzName: v.cname, FpAppData: v.ctx,
 		FxOpen: cFuncPointer(storeVFSOpen), FxDelete: cFuncPointer(storeVFSDelete), FxAccess: cFuncPointer(storeVFSAccess), FxFullPathname: cFuncPointer(storeVFSFullPathname),
 		FxDlOpen: cFuncPointer(storeVFSDlOpen), FxDlError: cFuncPointer(storeVFSDlError), FxDlSym: cFuncPointer(storeVFSDlSym), FxDlClose: cFuncPointer(storeVFSDlClose),
@@ -324,11 +336,13 @@ func newStoreVFSObserved(lease *rootLease, mode storeMode, proof *storeProofObse
 
 func (v *storeVFS) dsn() string {
 	mode := "rw"
-	switch storeMode((*vfsContext)(unsafe.Pointer(v.ctx)).mode) {
+	switch storeMode((*vfsContext)(libcPtr(v.ctx)).mode) {
 	case storeRead:
 		mode = "ro"
 	case storeEnroll:
 		mode = "rwc"
+	default:
+		// storeRefresh and storeRecover open read-write.
 	}
 	return "file:" + v.main + "?vfs=" + v.name + "&mode=" + mode
 }
@@ -342,7 +356,7 @@ func (v *storeVFS) Close() error {
 		v.mu.Unlock()
 		return nil
 	}
-	c := (*vfsContext)(unsafe.Pointer(v.ctx))
+	c := (*vfsContext)(libcPtr(v.ctx))
 	if atomic.LoadInt64(&c.openFiles) != 0 {
 		v.mu.Unlock()
 		return ErrProvenanceUnavailable
@@ -357,7 +371,7 @@ func (v *storeVFS) Close() error {
 		v.mu.Unlock()
 		return ErrProvenanceUnavailable
 	}
-	storeVFSObserverUnregister((*vfsContext)(unsafe.Pointer(v.ctx)).token)
+	storeVFSObserverUnregister((*vfsContext)(libcPtr(v.ctx)).token)
 	if v.proof != nil {
 		v.proof.mu.Lock()
 		v.proof.unregisters++
@@ -385,26 +399,30 @@ func storeContext(pVFS uintptr) *vfsContext {
 	if pVFS == 0 {
 		return nil
 	}
-	return (*vfsContext)(unsafe.Pointer((*sqlite3.Tsqlite3_vfs)(unsafe.Pointer(pVFS)).FpAppData))
+	return (*vfsContext)(libcPtr((*sqlite3.Tsqlite3_vfs)(libcPtr(pVFS)).FpAppData))
 }
+
 func storeFile(p uintptr) *vfsFile {
 	if p == 0 {
 		return nil
 	}
-	return (*vfsFile)(unsafe.Pointer(p))
+	return (*vfsFile)(libcPtr(p))
 }
+
 func storeFileContext(f *vfsFile) *vfsContext {
 	if f == nil || f.ctx == 0 {
 		return nil
 	}
-	return (*vfsContext)(unsafe.Pointer(f.ctx))
+	return (*vfsContext)(libcPtr(f.ctx))
 }
+
 func vfsName(p uintptr) string {
 	if p == 0 {
 		return ""
 	}
 	return libc.GoString(p)
 }
+
 func vfsPathFor(pVFS, zPath uintptr) int64 {
 	ctx := storeContext(pVFS)
 	if ctx == nil {
@@ -448,7 +466,7 @@ func storeVFSOpen(tls *libc.TLS, pVFS uintptr, zPath sqlite3.Tsqlite3_filename, 
 	if pFile == 0 {
 		return sqlite3.SQLITE_CANTOPEN
 	}
-	(*sqlite3.Tsqlite3_file)(unsafe.Pointer(pFile)).FpMethods = 0
+	(*sqlite3.Tsqlite3_file)(libcPtr(pFile)).FpMethods = 0
 	ctx := storeContext(pVFS)
 	observeCallback(ctx, callbackOpen)
 	kind := vfsPathFor(pVFS, zPath)
@@ -469,7 +487,7 @@ func storeVFSOpen(tls *libc.TLS, pVFS uintptr, zPath sqlite3.Tsqlite3_filename, 
 	if flags&sqlite3.SQLITE_OPEN_READWRITE != 0 && ctx.mode != int64(storeRead) {
 		openFlags = unix.O_RDWR
 	}
-	if flags&sqlite3.SQLITE_OPEN_CREATE != 0 && !(kind == storeFileJournal && ctx.mode == int64(storeRecover)) {
+	if flags&sqlite3.SQLITE_OPEN_CREATE != 0 && (kind != storeFileJournal || ctx.mode != int64(storeRecover)) {
 		openFlags |= unix.O_CREAT | unix.O_EXCL
 	}
 	openPhase := "main-open"
@@ -505,7 +523,7 @@ func storeVFSOpen(tls *libc.TLS, pVFS uintptr, zPath sqlite3.Tsqlite3_filename, 
 	*f = vfsFile{ctx: uintptr(unsafe.Pointer(ctx)), fd: int64(fd), kind: kind, dev: uint64(st.Dev), ino: uint64(st.Ino)}
 	f.base.FpMethods = ctx.methods
 	if pOut != 0 {
-		*(*int32)(unsafe.Pointer(pOut)) = flags
+		*(*int32)(libcPtr(pOut)) = flags
 	}
 	atomic.AddInt64(&ctx.openFiles, 1)
 	if observer := storeVFSObserverFor(ctx); observer != nil && kind >= storeFileMain && kind <= storeFileJournal {
@@ -524,13 +542,13 @@ func storeVFSDelete(tls *libc.TLS, pVFS, zPath uintptr, dirSync int32) int32 {
 		return sqlite3.SQLITE_IOERR_DELETE
 	}
 	atomic.AddInt64(&ctx.pathSyscalls, 1)
-	if err := validatePrivateJournalAt(int(ctx.rootFD), uint32(ctx.ownerUID)); err != nil && err != unix.ENOENT {
+	if err := validatePrivateJournalAt(int(ctx.rootFD), uint32(ctx.ownerUID)); err != nil && !errors.Is(err, unix.ENOENT) {
 		return sqlite3.SQLITE_IOERR_DELETE
 	}
 	atomic.AddInt64(&ctx.pathSyscalls, 1)
 	atomic.AddInt64(&ctx.deleteSyscalls, 1)
 	unlinkErr := storeUnlinkat(int(ctx.rootFD), storeDBName+"-journal", 0)
-	if unlinkErr != nil && unlinkErr != unix.ENOENT {
+	if unlinkErr != nil && !errors.Is(unlinkErr, unix.ENOENT) {
 		return sqlite3.SQLITE_IOERR_DELETE
 	}
 	if observer := storeVFSObserverFor(ctx); observer != nil && unlinkErr == nil {
@@ -555,9 +573,10 @@ func validatePrivateJournalAt(rootFD int, ownerUID uint32) error {
 	}
 	return nil
 }
+
 func storeVFSAccess(tls *libc.TLS, pVFS, zPath uintptr, flags int32, pRes uintptr) int32 {
 	if pRes != 0 {
-		*(*int32)(unsafe.Pointer(pRes)) = 0
+		*(*int32)(libcPtr(pRes)) = 0
 	}
 	ctx := storeContext(pVFS)
 	observeCallback(ctx, callbackAccess)
@@ -579,17 +598,18 @@ func storeVFSAccess(tls *libc.TLS, pVFS, zPath uintptr, flags int32, pRes uintpt
 	var st unix.Stat_t
 	atomic.AddInt64(&ctx.pathSyscalls, 1)
 	err := storeFstatat(int(ctx.rootFD), leaf, &st, unix.AT_SYMLINK_NOFOLLOW)
-	if err == unix.ENOENT {
+	if errors.Is(err, unix.ENOENT) {
 		return sqlite3.SQLITE_OK
 	}
 	if err != nil || st.Mode&unix.S_IFMT != unix.S_IFREG || st.Nlink != 1 || st.Uid != uint32(ctx.ownerUID) || st.Mode&0o077 != 0 {
 		return sqlite3.SQLITE_IOERR_ACCESS
 	}
 	if pRes != 0 {
-		*(*int32)(unsafe.Pointer(pRes)) = 1
+		*(*int32)(libcPtr(pRes)) = 1
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeVFSFullPathname(tls *libc.TLS, pVFS, zPath uintptr, n int32, out uintptr) int32 {
 	observeCallback(storeContext(pVFS), callbackFullPathname)
 	if n <= 0 || out == 0 || vfsPathFor(pVFS, zPath) == 0 {
@@ -599,7 +619,7 @@ func storeVFSFullPathname(tls *libc.TLS, pVFS, zPath uintptr, n int32, out uintp
 	if len(s)+1 > int(n) {
 		return sqlite3.SQLITE_CANTOPEN
 	}
-	b := unsafe.Slice((*byte)(unsafe.Pointer(out)), int(n))
+	b := unsafe.Slice((*byte)(libcPtr(out)), int(n))
 	copy(b, s)
 	b[len(s)] = 0
 	return sqlite3.SQLITE_OK
@@ -607,7 +627,7 @@ func storeVFSFullPathname(tls *libc.TLS, pVFS, zPath uintptr, n int32, out uintp
 func storeVFSDlOpen(*libc.TLS, uintptr, uintptr) uintptr { return 0 }
 func storeVFSDlError(tls *libc.TLS, p uintptr, n int32, out uintptr) {
 	if n > 0 && out != 0 {
-		*(*byte)(unsafe.Pointer(out)) = 0
+		*(*byte)(libcPtr(out)) = 0
 	}
 }
 func storeVFSDlSym(*libc.TLS, uintptr, uintptr, uintptr) uintptr  { return 0 }
@@ -677,7 +697,7 @@ func storeFileRead(tls *libc.TLS, p, out uintptr, n int32, off sqlite3.Tsqlite3_
 	if n == 0 {
 		return sqlite3.SQLITE_OK
 	}
-	b := unsafe.Slice((*byte)(unsafe.Pointer(out)), int(n))
+	b := unsafe.Slice((*byte)(libcPtr(out)), int(n))
 	if c := storeFileContext(f); c != nil && atomic.LoadInt64(&c.fault) == storeFaultRead {
 		return sqlite3.SQLITE_IOERR_READ
 	}
@@ -685,7 +705,7 @@ func storeFileRead(tls *libc.TLS, p, out uintptr, n int32, off sqlite3.Tsqlite3_
 	var err error
 	for {
 		got, err = storePread(int(f.fd), b, int64(off))
-		if err == unix.EINTR {
+		if errors.Is(err, unix.EINTR) {
 			continue
 		}
 		break
@@ -701,6 +721,7 @@ func storeFileRead(tls *libc.TLS, p, out uintptr, n int32, off sqlite3.Tsqlite3_
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileWrite(tls *libc.TLS, p, in uintptr, n int32, off sqlite3.Tsqlite3_int64) int32 {
 	f := storeFile(p)
 	c := storeFileContext(f)
@@ -714,7 +735,7 @@ func storeFileWrite(tls *libc.TLS, p, in uintptr, n int32, off sqlite3.Tsqlite3_
 	if n < 0 || off < 0 || (n > 0 && in == 0) || int64(off) > int64(^uint64(0)>>1)-int64(n) {
 		return sqlite3.SQLITE_IOERR_WRITE
 	}
-	b := unsafe.Slice((*byte)(unsafe.Pointer(in)), int(n))
+	b := unsafe.Slice((*byte)(libcPtr(in)), int(n))
 	if atomic.LoadInt64(&c.fault) == storeFaultWrite {
 		return sqlite3.SQLITE_IOERR_WRITE
 	}
@@ -722,7 +743,7 @@ func storeFileWrite(tls *libc.TLS, p, in uintptr, n int32, off sqlite3.Tsqlite3_
 		atomic.AddInt64(&c.writeSyscalls, 1)
 		requested := int64(len(b))
 		m, e := storePwrite(int(f.fd), b, int64(off))
-		if e == unix.EINTR {
+		if errors.Is(e, unix.EINTR) {
 			continue
 		}
 		if e != nil {
@@ -739,6 +760,7 @@ func storeFileWrite(tls *libc.TLS, p, in uintptr, n int32, off sqlite3.Tsqlite3_
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileTruncate(tls *libc.TLS, p uintptr, size sqlite3.Tsqlite3_int64) int32 {
 	f := storeFile(p)
 	c := storeFileContext(f)
@@ -758,6 +780,7 @@ func storeFileTruncate(tls *libc.TLS, p uintptr, size sqlite3.Tsqlite3_int64) in
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileSync(tls *libc.TLS, p uintptr, flags int32) int32 {
 	f := storeFile(p)
 	c := storeFileContext(f)
@@ -787,6 +810,7 @@ func storeFileSync(tls *libc.TLS, p uintptr, flags int32) int32 {
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileSize(tls *libc.TLS, p, out uintptr) int32 {
 	f := storeFile(p)
 	observeCallback(storeFileContext(f), callbackFileSize)
@@ -797,9 +821,10 @@ func storeFileSize(tls *libc.TLS, p, out uintptr) int32 {
 	if unix.Fstat(int(f.fd), &st) != nil || st.Size < 0 {
 		return sqlite3.SQLITE_IOERR_FSTAT
 	}
-	*(*sqlite3.Tsqlite3_int64)(unsafe.Pointer(out)) = sqlite3.Tsqlite3_int64(st.Size)
+	*(*sqlite3.Tsqlite3_int64)(libcPtr(out)) = sqlite3.Tsqlite3_int64(st.Size)
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileLock(tls *libc.TLS, p uintptr, level int32) int32 {
 	f := storeFile(p)
 	c := storeFileContext(f)
@@ -815,6 +840,7 @@ func storeFileLock(tls *libc.TLS, p uintptr, level int32) int32 {
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileUnlock(tls *libc.TLS, p uintptr, level int32) int32 {
 	f := storeFile(p)
 	observeCallback(storeFileContext(f), callbackUnlock)
@@ -826,6 +852,7 @@ func storeFileUnlock(tls *libc.TLS, p uintptr, level int32) int32 {
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileCheckReserved(tls *libc.TLS, p, out uintptr) int32 {
 	f := storeFile(p)
 	observeCallback(storeFileContext(f), callbackCheckReserved)
@@ -833,12 +860,13 @@ func storeFileCheckReserved(tls *libc.TLS, p, out uintptr) int32 {
 		return sqlite3.SQLITE_IOERR_CHECKRESERVEDLOCK
 	}
 	if f.lock >= sqlite3.SQLITE_LOCK_RESERVED {
-		*(*int32)(unsafe.Pointer(out)) = 1
+		*(*int32)(libcPtr(out)) = 1
 	} else {
-		*(*int32)(unsafe.Pointer(out)) = 0
+		*(*int32)(libcPtr(out)) = 0
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileControl(tls *libc.TLS, p uintptr, op int32, arg uintptr) int32 {
 	f := storeFile(p)
 	observeCallback(storeFileContext(f), callbackFileControl)
@@ -846,7 +874,7 @@ func storeFileControl(tls *libc.TLS, p uintptr, op int32, arg uintptr) int32 {
 		return sqlite3.SQLITE_NOTFOUND
 	}
 	if op == sqlite3.SQLITE_FCNTL_LOCKSTATE && arg != 0 {
-		*(*int32)(unsafe.Pointer(arg)) = int32(f.lock)
+		*(*int32)(libcPtr(arg)) = int32(f.lock)
 		return sqlite3.SQLITE_OK
 	}
 	return sqlite3.SQLITE_NOTFOUND

@@ -15,11 +15,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -545,48 +543,6 @@ func observeCrash01Journal(t *testing.T, root string) crash01JournalObservation 
 	return obs
 }
 
-func observeCrash01Recovery(t *testing.T, root string, before crash01JournalObservation) crash01RecoveryObservation {
-	t.Helper()
-	obs := crash01RecoveryObservation{BeforeJournal: before}
-	proof := &storeProofObserver{}
-	ctx := context.WithValue(context.Background(), storeProofObserverKey{}, proof)
-	lease, err := openRootLease(ctx, root, storeRecover)
-	if err != nil {
-		obs.OpenErr = err.Error()
-		obs.AfterJournal = observeCrash01Journal(t, root)
-		return obs
-	}
-	binding, err := openSQLBinding(ctx, lease, storeRecover)
-	if err != nil {
-		obs.OpenErr = err.Error()
-		_ = lease.Close()
-		obs.AfterJournal = observeCrash01Journal(t, root)
-		return obs
-	}
-	if err := binding.conn.QueryRowContext(ctx, "PRAGMA journal_mode=DELETE").Scan(&obs.JournalMode); err != nil {
-		obs.QueryErr = err.Error()
-	}
-	if err := binding.conn.QueryRowContext(ctx, "SELECT count(*) FROM crash_blobs").Scan(&obs.Count); err != nil {
-		obs.QueryErr = err.Error()
-	}
-	if err := binding.conn.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&obs.Integrity); err != nil {
-		if obs.QueryErr == "" {
-			obs.QueryErr = err.Error()
-		}
-	}
-	if binding.vfs != nil && binding.vfs.ctx != 0 {
-		vc := (*vfsContext)(unsafe.Pointer(binding.vfs.ctx))
-		for i := range obs.CallbackCounts {
-			obs.CallbackCounts[i] = atomic.LoadInt64(&vc.callbackCounts[i])
-		}
-	}
-	obs.Trace = proof.traceSnapshot()
-	_ = binding.Close()
-	_ = lease.Close()
-	obs.AfterJournal = observeCrash01Journal(t, root)
-	return obs
-}
-
 func runCrash01Child(t *testing.T) {
 	eventFD := os.NewFile(uintptr(3), "crash01-events")
 	ackFD := os.NewFile(uintptr(4), "crash01-acks")
@@ -638,7 +594,7 @@ func runCrash01Child(t *testing.T) {
 	observer.traceHook = gate
 	observer.traceReset()
 	if err := writeCrash01Record(eventFD, crash01WireRecord{Ordinal: 0}); err != nil {
-		os.Exit(2)
+		os.Exit(2) //nolint:gocritic // crash child: exit immediately, deferred cleanup must not run
 	}
 	var ack [1]byte
 	if _, err := io.ReadFull(ackFD, ack[:]); err != nil || ack[0] != 1 {
@@ -770,18 +726,54 @@ func assertCrashTupleEqual(t *testing.T, got, want crashTuple, label string) {
 
 func frozenCrash01CommitTrace() []storeTraceEvent {
 	return []storeTraceEvent{
-		{1, 1, 2, 0, 2054, 0, 0}, {2, 2, 2, 0, 4096, 4096, 0}, {3, 2, 2, 4096, 4, 4, 0}, {4, 2, 2, 4100, 4096, 4096, 0},
-		{5, 2, 2, 8196, 4, 4, 0}, {6, 2, 2, 8200, 4, 4, 0}, {7, 2, 2, 8204, 4096, 4096, 0}, {8, 2, 2, 12300, 4, 4, 0},
-		{9, 2, 2, 12304, 4, 4, 0}, {10, 2, 2, 12308, 4096, 4096, 0}, {11, 2, 2, 16404, 4, 4, 0}, {12, 2, 2, 16408, 4, 4, 0},
-		{13, 2, 2, 16412, 4096, 4096, 0}, {14, 2, 2, 20508, 4, 4, 0}, {15, 3, 2, 0, 0, 0, 0}, {16, 4, 3, 0, 0, 0, 0},
-		{17, 2, 2, 0, 12, 12, 0}, {18, 3, 2, 0, 0, 0, 0}, {19, 4, 3, 0, 0, 0, 0}, {20, 2, 2, 24576, 4096, 4096, 0},
-		{21, 2, 1, 28672, 4096, 4096, 0}, {22, 2, 1, 32768, 4096, 4096, 0}, {23, 2, 2, 28672, 4, 4, 0}, {24, 2, 2, 28676, 4096, 4096, 0},
-		{25, 2, 2, 32772, 4, 4, 0}, {26, 3, 2, 0, 0, 0, 0}, {27, 4, 3, 0, 0, 0, 0}, {28, 2, 2, 24576, 12, 12, 0},
-		{29, 3, 2, 0, 0, 0, 0}, {30, 4, 3, 0, 0, 0, 0}, {31, 2, 1, 0, 4096, 4096, 0}, {32, 2, 1, 4096, 4096, 4096, 0},
-		{33, 2, 1, 8192, 4096, 4096, 0}, {34, 2, 1, 12288, 4096, 4096, 0}, {35, 2, 1, 16384, 4096, 4096, 0}, {36, 2, 1, 36864, 4096, 4096, 0},
-		{37, 2, 1, 40960, 4096, 4096, 0}, {38, 2, 1, 45056, 4096, 4096, 0}, {39, 2, 1, 49152, 4096, 4096, 0}, {40, 2, 1, 53248, 4096, 4096, 0},
-		{41, 2, 1, 57344, 4096, 4096, 0}, {42, 2, 1, 61440, 4096, 4096, 0}, {43, 2, 1, 65536, 4096, 4096, 0}, {44, 3, 1, 0, 0, 0, 0},
-		{45, 6, 2, 0, 0, 0, 0}, {46, 4, 3, 0, 0, 0, 0}, {47, 7, 3, 0, 0, 0, 0}, {48, 8, 3, 0, 0, 0, 0},
+		{1, 1, 2, 0, 2054, 0, 0},
+		{2, 2, 2, 0, 4096, 4096, 0},
+		{3, 2, 2, 4096, 4, 4, 0},
+		{4, 2, 2, 4100, 4096, 4096, 0},
+		{5, 2, 2, 8196, 4, 4, 0},
+		{6, 2, 2, 8200, 4, 4, 0},
+		{7, 2, 2, 8204, 4096, 4096, 0},
+		{8, 2, 2, 12300, 4, 4, 0},
+		{9, 2, 2, 12304, 4, 4, 0},
+		{10, 2, 2, 12308, 4096, 4096, 0},
+		{11, 2, 2, 16404, 4, 4, 0},
+		{12, 2, 2, 16408, 4, 4, 0},
+		{13, 2, 2, 16412, 4096, 4096, 0},
+		{14, 2, 2, 20508, 4, 4, 0},
+		{15, 3, 2, 0, 0, 0, 0},
+		{16, 4, 3, 0, 0, 0, 0},
+		{17, 2, 2, 0, 12, 12, 0},
+		{18, 3, 2, 0, 0, 0, 0},
+		{19, 4, 3, 0, 0, 0, 0},
+		{20, 2, 2, 24576, 4096, 4096, 0},
+		{21, 2, 1, 28672, 4096, 4096, 0},
+		{22, 2, 1, 32768, 4096, 4096, 0},
+		{23, 2, 2, 28672, 4, 4, 0},
+		{24, 2, 2, 28676, 4096, 4096, 0},
+		{25, 2, 2, 32772, 4, 4, 0},
+		{26, 3, 2, 0, 0, 0, 0},
+		{27, 4, 3, 0, 0, 0, 0},
+		{28, 2, 2, 24576, 12, 12, 0},
+		{29, 3, 2, 0, 0, 0, 0},
+		{30, 4, 3, 0, 0, 0, 0},
+		{31, 2, 1, 0, 4096, 4096, 0},
+		{32, 2, 1, 4096, 4096, 4096, 0},
+		{33, 2, 1, 8192, 4096, 4096, 0},
+		{34, 2, 1, 12288, 4096, 4096, 0},
+		{35, 2, 1, 16384, 4096, 4096, 0},
+		{36, 2, 1, 36864, 4096, 4096, 0},
+		{37, 2, 1, 40960, 4096, 4096, 0},
+		{38, 2, 1, 45056, 4096, 4096, 0},
+		{39, 2, 1, 49152, 4096, 4096, 0},
+		{40, 2, 1, 53248, 4096, 4096, 0},
+		{41, 2, 1, 57344, 4096, 4096, 0},
+		{42, 2, 1, 61440, 4096, 4096, 0},
+		{43, 2, 1, 65536, 4096, 4096, 0},
+		{44, 3, 1, 0, 0, 0, 0},
+		{45, 6, 2, 0, 0, 0, 0},
+		{46, 4, 3, 0, 0, 0, 0},
+		{47, 7, 3, 0, 0, 0, 0},
+		{48, 8, 3, 0, 0, 0, 0},
 	}
 }
 
@@ -908,10 +900,10 @@ func runCrash01Cut(t *testing.T, cut int, wantTrace []storeTraceEvent) {
 	t.Logf("CRASH01 cut=%d recovery-diagnostic=%s", cut, encodedRecovery)
 	got := loadCrashTuple(t, root)
 	old := oldCrashTuple()
-	new := newCrashTuple()
+	next := newCrashTuple()
 	if cut >= len(wantTrace)-2 {
-		assertCrashTupleEqual(t, got, new, "post-control")
-	} else if !crashTupleEqual(got, old) && !crashTupleEqual(got, new) {
+		assertCrashTupleEqual(t, got, next, "post-control")
+	} else if !crashTupleEqual(got, old) && !crashTupleEqual(got, next) {
 		t.Fatalf("cut %d produced mixed tuple: got=%+v", cut, got)
 	}
 }
@@ -1113,7 +1105,7 @@ func assertCrashTrace(t *testing.T, trace []storeTraceEvent, committed bool) {
 
 func validateCrashTraceSchema(trace []storeTraceEvent) error {
 	if len(trace) == 0 {
-		return fmt.Errorf("empty trace")
+		return errors.New("empty trace")
 	}
 	commitControls, closeControls := 0, 0
 	commitIndex, closeIndex := -1, -1
@@ -1175,7 +1167,7 @@ func validateCrashTraceSchema(trace []storeTraceEvent) error {
 		return fmt.Errorf("controls commit=%d close=%d", commitControls, closeControls)
 	}
 	if closeIndex <= commitIndex {
-		return fmt.Errorf("close control does not follow commit/rollback control")
+		return errors.New("close control does not follow commit/rollback control")
 	}
 	for i, event := range trace {
 		if event.Op < storeTraceCommitControl && i > commitIndex {
@@ -1216,7 +1208,7 @@ func rollbackDiscoveryIDs(trace []storeTraceEvent) []string {
 		case storeTraceCloseControl:
 			ids = append(ids, fmt.Sprintf("after-ordinary-close-seq%d", event.Seq))
 		default:
-			ids = append(ids, fmt.Sprintf("rollback-observed-%s", nativeCrashID(event)))
+			ids = append(ids, "rollback-observed-"+nativeCrashID(event))
 		}
 	}
 	return ids

@@ -5,12 +5,12 @@ package trustverify
 import (
 	"bytes"
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // git object IDs are SHA-1 by format, not a security choice
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -29,8 +29,10 @@ const (
 	maxPathRunes        = 1024
 )
 
-type SourceOrigin string
-type ObjectID string
+type (
+	SourceOrigin string
+	ObjectID     string
+)
 
 type GitObject struct {
 	Kind string
@@ -81,12 +83,14 @@ func (s *SourceSnapshot) Entries() []SourceEntry {
 	r := append([]SourceEntry(nil), s.entries...)
 	return r
 }
+
 func (s *SourceSnapshot) ContractBytes() []byte {
 	if s == nil {
 		return nil
 	}
 	return append([]byte(nil), s.contract...)
 }
+
 func (s *SourceSnapshot) Blob(path string) ([]byte, bool) {
 	if s == nil {
 		return nil, false
@@ -110,6 +114,7 @@ func VerifyDevelopmentSource(ctx context.Context, reader GitObjectReader, subjec
 func VerifySourceWithLimits(ctx context.Context, reader GitObjectReader, subject Subject, limits SourceLimits) (*SourceSnapshot, error) {
 	return verifySourceWithLimits(ctx, reader, subject, limits, false)
 }
+
 func verifySourceWithLimits(ctx context.Context, reader GitObjectReader, subject Subject, limits SourceLimits, mutableRequestedRef bool) (*SourceSnapshot, error) {
 	if reader == nil || ctx == nil {
 		return nil, errors.New("trustverify: nil reader or context")
@@ -125,7 +130,7 @@ func verifySourceWithLimits(ctx context.Context, reader GitObjectReader, subject
 		return nil, err
 	}
 	reads := 0
-	read := func(id string, max int) (GitObject, error) {
+	read := func(id string, limit int) (GitObject, error) {
 		if err := ctx.Err(); err != nil {
 			return GitObject{}, err
 		}
@@ -140,7 +145,7 @@ func verifySourceWithLimits(ctx context.Context, reader GitObjectReader, subject
 		if err := ctx.Err(); err != nil {
 			return GitObject{}, err
 		}
-		if len(o.Data) > max {
+		if len(o.Data) > limit {
 			return GitObject{}, errors.New("trustverify: object size limit exceeded")
 		}
 		if o.Kind == "" {
@@ -317,7 +322,7 @@ func parseTree(data []byte, width int) ([]treeRecord, error) {
 	return out, nil
 }
 
-func walk(ctx context.Context, read func(string, int) (GitObject, error), data []byte, _ string, parts []string, prefix string, depth, width int, lim SourceLimits, entries *[]SourceEntry, blobs map[string][]byte, total *int64) (bool, error) {
+func walk(ctx context.Context, read func(string, int) (GitObject, error), data []byte, _ string, parts []string, prefix string, depth, width int, lim SourceLimits, entries *[]SourceEntry, blobs map[string][]byte, total *int64) (bool, error) { //nolint:unparam // ctx is kept for cancellation parity with the other source readers
 	if depth > lim.MaxDepth {
 		return false, errors.New("trustverify: depth limit exceeded")
 	}
@@ -393,7 +398,7 @@ func walk(ctx context.Context, read func(string, int) (GitObject, error), data [
 	return true, nil
 }
 
-func readBlob(read func(string, int) (GitObject, error), r treeRecord, path string, width int, entries *[]SourceEntry, blobs map[string][]byte, total *int64, lim SourceLimits) error {
+func readBlob(read func(string, int) (GitObject, error), r treeRecord, path string, width int, entries *[]SourceEntry, blobs map[string][]byte, total *int64, lim SourceLimits) error { //nolint:unparam // width mirrors walk; blobs are addressed by the recorded object ID
 	o, e := read(r.oid, maxBlobObject)
 	if e != nil {
 		return e
@@ -418,10 +423,10 @@ func checkOID(width int, id, kind string, data []byte) bool {
 	if !checkHex(id, width) {
 		return false
 	}
-	p := []byte(kind + " " + fmt.Sprint(len(data)) + "\x00")
+	p := []byte(kind + " " + strconv.Itoa(len(data)) + "\x00")
 	var got []byte
 	if width == 20 {
-		h := sha1.Sum(append(p, data...))
+		h := sha1.Sum(append(p, data...)) //nolint:gosec // git SHA-1 object ID
 		got = h[:]
 	} else {
 		h := sha256.Sum256(append(p, data...))
@@ -429,6 +434,7 @@ func checkOID(width int, id, kind string, data []byte) bool {
 	}
 	return hex.EncodeToString(got) == id
 }
+
 func checkHex(s string, n int) bool {
 	if len(s) != n*2 {
 		return false
@@ -436,7 +442,9 @@ func checkHex(s string, n int) bool {
 	_, e := hex.DecodeString(s)
 	return e == nil
 }
+
 func byteDigest(b []byte) string { h := sha256.Sum256(b); return "sha256:" + hex.EncodeToString(h[:]) }
+
 func domainDigest(domain string, v any) (string, error) {
 	b, e := canonicaljson.Canonical(v)
 	if e != nil {
@@ -445,6 +453,7 @@ func domainDigest(domain string, v any) (string, error) {
 	h := sha256.Sum256(append(append([]byte(domain), 0), b...))
 	return "sha256:" + hex.EncodeToString(h[:]), nil
 }
+
 func cloneBlobs(in map[string][]byte) map[string][]byte {
 	out := make(map[string][]byte, len(in))
 	for k, v := range in {
@@ -452,6 +461,7 @@ func cloneBlobs(in map[string][]byte) map[string][]byte {
 	}
 	return out
 }
+
 func errOr(msg string, e error) error {
 	if e != nil {
 		return e

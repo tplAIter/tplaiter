@@ -191,7 +191,7 @@ func coldTerminalExpectRetained(t *testing.T, root string, lease *rootLease, wan
 	}
 	first := lease.Close()
 	second := lease.Close()
-	if first == nil || second == nil || first != second {
+	if first == nil || second == nil || !errors.Is(first, second) {
 		t.Fatalf("repeated terminal Close first=%v second=%v", first, second)
 	}
 	if _, err := unix.FcntlInt(uintptr(rootFD), unix.F_GETFD, 0); err != nil {

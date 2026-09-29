@@ -1,0 +1,191 @@
+# golangci-lint configuration (schema v2) for the root module.
+# A strict linter set plus gofumpt and goimports as formatters.
+# Requires golangci-lint v2 (CI pins v2.6.0; local v2.13.2 is compatible).
+version: "2"
+
+run:
+  timeout: 15m
+  tests: true
+
+linters:
+  # standard = errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - asasalint # passing []any to a variadic any
+    - asciicheck # non-ASCII identifiers
+    - bidichk # dangerous Unicode bidi sequences
+    - bodyclose # unclosed resp.Body
+    - contextcheck # context propagation
+    - copyloopvar # loop variable copies (Go 1.22+)
+    - depguard # forbidden dependencies
+    - dupword # repeated words ("the the")
+    - durationcheck # multiplying two time.Duration values
+    - errname # error naming (Err..., ...Error)
+    - errorlint # wrapped errors (%w, errors.As/Is)
+    - exhaustive # exhaustive enum switches
+    - gocheckcompilerdirectives # valid //go: directives
+    - gocritic # assorted diagnostics
+    - gosec # security checks
+    - loggercheck # slog key/value pairs
+    - makezero # make([]T, len) followed by append
+    - misspell # spelling in comments
+    - nakedret # naked returns in long functions
+    - nilerr # returning nil with a non-nil error
+    - noctx # HTTP requests without a context
+    - nolintlint # well-formed //nolint directives
+    - perfsprint # fmt.Sprintf where strconv suffices
+    - prealloc # slice preallocation in loops
+    - predeclared # shadowing predeclared identifiers
+    - reassign # reassigning package variables
+    - revive # extended style rules
+    - rowserrcheck # sql.Rows.Err()
+    - sqlclosecheck # closing sql.Rows/Stmt
+    - unconvert # redundant conversions
+    - unparam # unused parameters
+    - usestdlibvars # stdlib constants (http.StatusOK and so on)
+    - wastedassign # wasted assignments
+    - whitespace # extra blank lines
+
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: io/ioutil
+              desc: deprecated; use io and os.
+            - pkg: github.com/pkg/errors
+              desc: use the standard errors package and fmt.Errorf with %w.
+            - pkg: github.com/Masterminds/sprig
+              desc: the engine keeps its own minimal text/template funcmap.
+        execx:
+          # internal/execx is the only layer allowed to use os/exec directly;
+          # everything else goes through execx.Runner so process launches stay
+          # mockable in unit tests.
+          files:
+            - "!**/internal/execx/**"
+          deny:
+            - pkg: os/exec
+              desc: use internal/execx.Runner instead of os/exec so the code stays unit-testable.
+    gocritic:
+      disabled-checks:
+        # Style-only rewrites; multi-condition chains and single-case type
+        # switches read better as written in this codebase.
+        - ifElseChain
+        - singleCaseSwitch
+    exhaustive:
+      default-signifies-exhaustive: true
+      # Kind enums from reflect and yaml.v3 are dispatched by category;
+      # listing every kind would add noise, not safety.
+      ignore-enum-types: "^reflect\\.Kind$|^gopkg\\.in/yaml\\.v3\\.Kind$"
+    nakedret:
+      max-func-lines: 30
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: var-declaration
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Tests get less strict checks.
+      - path: _test\.go
+        linters:
+          - dupl
+          - gosec
+          - noctx
+          - prealloc
+          # Test helpers are parameterized for readability of the call sites.
+          - unparam
+      # The trust store proofs deliberately control SQLite Rows/Close ordering
+      # (quiescence, crash and close-error tests) and check Rows.Err and Close
+      # errors explicitly where production needs them.
+      - path: internal/trustload/
+        linters:
+          - rowserrcheck
+          - sqlclosecheck
+      # internal/testfixture is test-only support (never linked into the CLI):
+      # it builds literal source trees, git SHA-1 object IDs and helper
+      # binaries, so preallocation and gosec hints are noise there.
+      - path: internal/testfixture/
+        linters:
+          - prealloc
+          - gosec
+          - noctx
+      # doc.go stubs need no style checks.
+      - path: doc\.go
+        linters:
+          - revive
+      # Tests that re-execute the test binary (crash, fork and subprocess
+      # proofs) legitimately use os/exec; the execx rule targets production.
+      - path: _test\.go
+        linters:
+          - depguard
+        text: "list 'execx'"
+      # DORMANT LIFECYCLE CODE. These bodies are intentionally unreachable
+      # while live new/update/settings (U07) and trusted action execution
+      # for gen/run/env setup/hooks/doctor probes (U13) are disabled behind
+      # typed TRUST_*_UNAVAILABLE refusals. The code is kept so those work
+      # packages can restore it; delete each entry when its code is live again.
+      - path: internal/(newcmd/newcmd|newcmd/newcmd_test|newcmd/trust_test|update/(update|plan|report_print|e2e_test)|settingscmd/e2e_test)\.go
+        linters:
+          - unused
+          - unparam
+      - path: internal/(cmd/(doctor|env|gen|run|update)|deps/(check|install)|envsetup/(run|run_test)|gen/(build|batch|gen))\.go
+        linters:
+          - unused
+          - unparam
+      - path: internal/(cmd/(doctor|env|gen|run|update)|deps/(check|install)|envsetup/(run|run_test)|gen/(build|batch|gen))\.go
+        linters:
+          - ineffassign
+          - staticcheck
+          - wastedassign
+        text: "ineffectual assignment|SA4006|SA4010|never used afterwards"
+      # Syscall and libc boundary code converts between kernel/libc integer
+      # widths (int32 fds, uint32 modes, uint64 inode fields) whose ranges are
+      # fixed by the ABI. gosec G115 cannot see those invariants.
+      - path: internal/(trustload/(store_root_unix|store_vfs_unix|objects_unix)|renderref/scratch_unix)\.go
+        linters:
+          - gosec
+        text: G115
+      # G703 taint analysis on the held-stage cleanup is reported
+      # nondeterministically; s.root is the private stage directory created
+      # by newHeldStage, never caller input.
+      - path: internal/mcpsrv/child_stage_darwin\.go
+        linters:
+          - gosec
+        text: G703
+      # Stat_t and related kernel structs use different integer widths on
+      # darwin and linux (for example Dev is int32 on darwin and uint64 on
+      # linux), so a conversion that is redundant on one GOOS is required on
+      # the other.
+      - path: internal/(trustload/.*|renderref/scratch_unix)\.go
+        linters:
+          - unconvert
+
+formatters:
+  enable:
+    - gofumpt # stricter superset of gofmt
+    - goimports # import grouping and order
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/tplAIter/tplaiter

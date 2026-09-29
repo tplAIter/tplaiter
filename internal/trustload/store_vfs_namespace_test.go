@@ -291,9 +291,18 @@ func TestStoreBindingModeLeaseMatrix(t *testing.T) {
 		requestMode storeMode
 		deny        bool
 	}{
-		{storeRead, storeRead, false}, {storeRead, storeEnroll, true}, {storeRead, storeRefresh, true}, {storeRead, storeRecover, true},
-		{storeEnroll, storeRead, false}, {storeEnroll, storeEnroll, false}, {storeEnroll, storeRefresh, false}, {storeEnroll, storeRecover, false},
-		{storeRead, 0, true}, {storeRead, storeMode(99), true}, {storeEnroll, 0, true}, {storeEnroll, storeMode(99), true},
+		{storeRead, storeRead, false},
+		{storeRead, storeEnroll, true},
+		{storeRead, storeRefresh, true},
+		{storeRead, storeRecover, true},
+		{storeEnroll, storeRead, false},
+		{storeEnroll, storeEnroll, false},
+		{storeEnroll, storeRefresh, false},
+		{storeEnroll, storeRecover, false},
+		{storeRead, 0, true},
+		{storeRead, storeMode(99), true},
+		{storeEnroll, 0, true},
+		{storeEnroll, storeMode(99), true},
 	} {
 		t.Run(fmt.Sprintf("lease-%d-request-%d", tc.leaseMode, tc.requestMode), func(t *testing.T) {
 			base, err := filepath.EvalSymlinks(t.TempDir())
@@ -396,13 +405,7 @@ func TestStoreBindingReaderSetupCancellationAndCleanup(t *testing.T) {
 				}
 				defer lease.Close()
 				proof := &storeProofObserver{}
-				ctx := context.Background()
-				var cancel context.CancelFunc
-				if canceled {
-					ctx, cancel = context.WithCancel(ctx)
-				} else {
-					ctx, cancel = context.WithCancel(ctx)
-				}
+				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				ctx = context.WithValue(ctx, storeProofObserverKey{}, proof)
 				fault := storeSetupFault{phase: phase, err: errors.New("reader phase fault")}
@@ -490,11 +493,11 @@ func TestStoreNamespaceForeignPathVector(t *testing.T) {
 				defer libc.Xfree(v.tls, pfile)
 				pOut := libc.Xmalloc(v.tls, types.Size_t(4))
 				defer libc.Xfree(v.tls, pOut)
-				*(*int32)(unsafe.Pointer(pOut)) = -1
+				*(*int32)(libcPtr(pOut)) = -1
 				before := atomic.LoadInt64(&storeContext(v.vfs).pathSyscalls)
 				got := storeVFSOpen(v.tls, v.vfs, 0, pfile, sqlite3.SQLITE_OPEN_TEMP_DB|sqlite3.SQLITE_OPEN_READWRITE|sqlite3.SQLITE_OPEN_CREATE|sqlite3.SQLITE_OPEN_DELETEONCLOSE, pOut)
-				if got != sqlite3.SQLITE_CANTOPEN || (*sqlite3.Tsqlite3_file)(unsafe.Pointer(pfile)).FpMethods != 0 || *(*int32)(unsafe.Pointer(pOut)) != -1 {
-					t.Fatalf("null xOpen got=%d methods=%d out=%d", got, (*sqlite3.Tsqlite3_file)(unsafe.Pointer(pfile)).FpMethods, *(*int32)(unsafe.Pointer(pOut)))
+				if got != sqlite3.SQLITE_CANTOPEN || (*sqlite3.Tsqlite3_file)(libcPtr(pfile)).FpMethods != 0 || *(*int32)(libcPtr(pOut)) != -1 {
+					t.Fatalf("null xOpen got=%d methods=%d out=%d", got, (*sqlite3.Tsqlite3_file)(libcPtr(pfile)).FpMethods, *(*int32)(libcPtr(pOut)))
 				}
 				if after := atomic.LoadInt64(&storeContext(v.vfs).pathSyscalls); after != before {
 					t.Fatalf("null xOpen path syscalls=%d", after-before)
@@ -517,11 +520,11 @@ func TestStoreNamespaceForeignPathVector(t *testing.T) {
 					defer libc.Xfree(v.tls, pfile)
 					pOut := libc.Xmalloc(v.tls, types.Size_t(4))
 					defer libc.Xfree(v.tls, pOut)
-					*(*int32)(unsafe.Pointer(pOut)) = -1
+					*(*int32)(libcPtr(pOut)) = -1
 					before := atomic.LoadInt64(&storeContext(v.vfs).pathSyscalls)
 					got := storeVFSOpen(v.tls, v.vfs, name, pfile, mode.flags, pOut)
-					if got != sqlite3.SQLITE_CANTOPEN || (*sqlite3.Tsqlite3_file)(unsafe.Pointer(pfile)).FpMethods != 0 || *(*int32)(unsafe.Pointer(pOut)) != -1 {
-						t.Fatalf("xOpen got=%d methods=%d out=%d", got, (*sqlite3.Tsqlite3_file)(unsafe.Pointer(pfile)).FpMethods, *(*int32)(unsafe.Pointer(pOut)))
+					if got != sqlite3.SQLITE_CANTOPEN || (*sqlite3.Tsqlite3_file)(libcPtr(pfile)).FpMethods != 0 || *(*int32)(libcPtr(pOut)) != -1 {
+						t.Fatalf("xOpen got=%d methods=%d out=%d", got, (*sqlite3.Tsqlite3_file)(libcPtr(pfile)).FpMethods, *(*int32)(libcPtr(pOut)))
 					}
 					if after := atomic.LoadInt64(&storeContext(v.vfs).pathSyscalls); after != before {
 						t.Fatalf("xOpen path syscalls=%d", after-before)
@@ -535,10 +538,10 @@ func TestStoreNamespaceForeignPathVector(t *testing.T) {
 				{"xAccess", func() int32 {
 					res := libc.Xmalloc(v.tls, types.Size_t(4))
 					defer libc.Xfree(v.tls, res)
-					*(*int32)(unsafe.Pointer(res)) = 1
+					*(*int32)(libcPtr(res)) = 1
 					got := storeVFSAccess(v.tls, v.vfs, name, sqlite3.SQLITE_ACCESS_EXISTS, res)
-					if *(*int32)(unsafe.Pointer(res)) != 0 {
-						t.Errorf("xAccess result=%d", *(*int32)(unsafe.Pointer(res)))
+					if *(*int32)(libcPtr(res)) != 0 {
+						t.Errorf("xAccess result=%d", *(*int32)(libcPtr(res)))
 					}
 					return got
 				}},
@@ -546,9 +549,9 @@ func TestStoreNamespaceForeignPathVector(t *testing.T) {
 				{"xFullPathname", func() int32 {
 					out := libc.Xmalloc(v.tls, types.Size_t(128))
 					defer libc.Xfree(v.tls, out)
-					*(*byte)(unsafe.Pointer(out)) = 0xA5
+					*(*byte)(libcPtr(out)) = 0xA5
 					got := storeVFSFullPathname(v.tls, v.vfs, name, 128, out)
-					if *(*byte)(unsafe.Pointer(out)) != 0xA5 {
+					if *(*byte)(libcPtr(out)) != 0xA5 {
 						t.Errorf("xFullPathname modified output")
 					}
 					return got
@@ -558,9 +561,10 @@ func TestStoreNamespaceForeignPathVector(t *testing.T) {
 					before := atomic.LoadInt64(&storeContext(v.vfs).pathSyscalls)
 					got := callback.run()
 					want := int32(sqlite3.SQLITE_IOERR_DELETE)
-					if callback.id == "xAccess" {
+					switch callback.id {
+					case "xAccess":
 						want = sqlite3.SQLITE_OK
-					} else if callback.id == "xFullPathname" {
+					case "xFullPathname":
 						want = sqlite3.SQLITE_CANTOPEN
 					}
 					if got != want {
@@ -639,12 +643,12 @@ func TestStoreNamespaceClosedFlagMatrix(t *testing.T) {
 				t.Fatal("out flags allocation")
 			}
 			defer libc.Xfree(v.tls, pOut)
-			*(*int32)(unsafe.Pointer(pOut)) = -1
+			*(*int32)(libcPtr(pOut)) = -1
 			before := atomic.LoadInt64(&storeContext(v.vfs).pathSyscalls)
 			got := storeVFSOpen(v.tls, v.vfs, name, pfile, tc.flags, pOut)
 			if tc.ok {
-				if got != sqlite3.SQLITE_OK || *(*int32)(unsafe.Pointer(pOut)) != tc.flags {
-					t.Fatalf("accepted flags got=%d out=%#x want=%#x", got, *(*int32)(unsafe.Pointer(pOut)), tc.flags)
+				if got != sqlite3.SQLITE_OK || *(*int32)(libcPtr(pOut)) != tc.flags {
+					t.Fatalf("accepted flags got=%d out=%#x want=%#x", got, *(*int32)(libcPtr(pOut)), tc.flags)
 				}
 				actual, err := unix.FcntlInt(uintptr(storeFile(pfile).fd), unix.F_GETFL, 0)
 				if err != nil || actual&unix.O_ACCMODE != tc.wantMode {
@@ -654,8 +658,8 @@ func TestStoreNamespaceClosedFlagMatrix(t *testing.T) {
 					t.Fatalf("close=%d", got)
 				}
 			} else {
-				if got != sqlite3.SQLITE_CANTOPEN || (*sqlite3.Tsqlite3_file)(unsafe.Pointer(pfile)).FpMethods != 0 || *(*int32)(unsafe.Pointer(pOut)) != -1 {
-					t.Fatalf("denied flags got=%d methods=%d out=%d", got, (*sqlite3.Tsqlite3_file)(unsafe.Pointer(pfile)).FpMethods, *(*int32)(unsafe.Pointer(pOut)))
+				if got != sqlite3.SQLITE_CANTOPEN || (*sqlite3.Tsqlite3_file)(libcPtr(pfile)).FpMethods != 0 || *(*int32)(libcPtr(pOut)) != -1 {
+					t.Fatalf("denied flags got=%d methods=%d out=%d", got, (*sqlite3.Tsqlite3_file)(libcPtr(pfile)).FpMethods, *(*int32)(libcPtr(pOut)))
 				}
 				if after := atomic.LoadInt64(&storeContext(v.vfs).pathSyscalls); after != before {
 					t.Fatalf("denied flags path syscalls=%d", after-before)
@@ -959,7 +963,7 @@ func TestStoreNamespaceReadOnlyDirectCallbackMatrix(t *testing.T) {
 		t.Fatal("input allocation")
 	}
 	defer libc.Xfree(v.tls, input)
-	*(*byte)(unsafe.Pointer(input)) = 0xFF
+	*(*byte)(libcPtr(input)) = 0xFF
 	for _, tc := range []struct {
 		name string
 		run  func() int32
@@ -1013,7 +1017,7 @@ func TestStoreNamespaceReadOnlyDirectCallbackMatrix(t *testing.T) {
 		if got := storeVFSOpen(v.tls, v.vfs, journal, p, sqlite3.SQLITE_OPEN_MAIN_JOURNAL|sqlite3.SQLITE_OPEN_READWRITE, 0); got != sqlite3.SQLITE_CANTOPEN {
 			t.Fatalf("journal xOpen=%d", got)
 		}
-		if atomic.LoadInt64(&c.pathSyscalls) != before || (*sqlite3.Tsqlite3_file)(unsafe.Pointer(p)).FpMethods != 0 {
+		if atomic.LoadInt64(&c.pathSyscalls) != before || (*sqlite3.Tsqlite3_file)(libcPtr(p)).FpMethods != 0 {
 			t.Fatalf("journal xOpen entered path operations or populated methods")
 		}
 	})
@@ -1027,7 +1031,7 @@ func TestStoreNamespaceReadOnlyDirectCallbackMatrix(t *testing.T) {
 		if got := storeVFSOpen(v.tls, v.vfs, name, p, sqlite3.SQLITE_OPEN_MAIN_DB|sqlite3.SQLITE_OPEN_READWRITE|sqlite3.SQLITE_OPEN_CREATE, 0); got != sqlite3.SQLITE_CANTOPEN {
 			t.Fatalf("writable xOpen=%d", got)
 		}
-		if atomic.LoadInt64(&c.pathSyscalls) != before || (*sqlite3.Tsqlite3_file)(unsafe.Pointer(p)).FpMethods != 0 {
+		if atomic.LoadInt64(&c.pathSyscalls) != before || (*sqlite3.Tsqlite3_file)(libcPtr(p)).FpMethods != 0 {
 			t.Fatalf("writable xOpen entered path operations or populated methods")
 		}
 	})
@@ -1099,7 +1103,7 @@ func TestStoreNamespaceNS001HostileLeafEverySeam(t *testing.T) {
 			if got := storeVFSOpen(v.tls, v.vfs, n, p, sqlite3.SQLITE_OPEN_MAIN_DB|sqlite3.SQLITE_OPEN_READWRITE, 0); got != sqlite3.SQLITE_CANTOPEN {
 				t.Fatalf("xOpen=%d", got)
 			}
-			if (*sqlite3.Tsqlite3_file)(unsafe.Pointer(p)).FpMethods != 0 {
+			if (*sqlite3.Tsqlite3_file)(libcPtr(p)).FpMethods != 0 {
 				t.Fatal("pMethods populated on denial")
 			}
 		}},
@@ -1128,7 +1132,7 @@ func TestStoreNamespaceNS001HostileLeafEverySeam(t *testing.T) {
 			if got := storeVFSOpen(v.tls, v.vfs, n, p, sqlite3.SQLITE_OPEN_MAIN_JOURNAL|sqlite3.SQLITE_OPEN_READWRITE, 0); got != sqlite3.SQLITE_CANTOPEN {
 				t.Fatalf("journal xOpen=%d", got)
 			}
-			if (*sqlite3.Tsqlite3_file)(unsafe.Pointer(p)).FpMethods != 0 {
+			if (*sqlite3.Tsqlite3_file)(libcPtr(p)).FpMethods != 0 {
 				t.Fatal("journal pMethods populated on denial")
 			}
 		}},
@@ -1376,8 +1380,8 @@ func TestStoreNamespaceNS001PostSuccessSubstitution(t *testing.T) {
 			defer libc.Xfree(v.tls, n)
 			r := libc.Xmalloc(v.tls, 4)
 			defer libc.Xfree(v.tls, r)
-			if got := storeVFSAccess(v.tls, v.vfs, n, sqlite3.SQLITE_ACCESS_EXISTS, r); got != sqlite3.SQLITE_OK || *(*int32)(unsafe.Pointer(r)) != 1 {
-				t.Fatalf("initial access=%d/%d", got, *(*int32)(unsafe.Pointer(r)))
+			if got := storeVFSAccess(v.tls, v.vfs, n, sqlite3.SQLITE_ACCESS_EXISTS, r); got != sqlite3.SQLITE_OK || *(*int32)(libcPtr(r)) != 1 {
+				t.Fatalf("initial access=%d/%d", got, *(*int32)(libcPtr(r)))
 			}
 			if e := nsReplaceLeaf(root, storeDBName); e != nil {
 				t.Fatal(e)
@@ -1401,8 +1405,8 @@ func TestStoreNamespaceNS001PostSuccessSubstitution(t *testing.T) {
 			defer libc.Xfree(v.tls, n)
 			r := libc.Xmalloc(v.tls, 4)
 			defer libc.Xfree(v.tls, r)
-			if got := storeVFSAccess(v.tls, v.vfs, n, sqlite3.SQLITE_ACCESS_EXISTS, r); got != sqlite3.SQLITE_OK || *(*int32)(unsafe.Pointer(r)) != 1 {
-				t.Fatalf("initial access=%d/%d", got, *(*int32)(unsafe.Pointer(r)))
+			if got := storeVFSAccess(v.tls, v.vfs, n, sqlite3.SQLITE_ACCESS_EXISTS, r); got != sqlite3.SQLITE_OK || *(*int32)(libcPtr(r)) != 1 {
+				t.Fatalf("initial access=%d/%d", got, *(*int32)(libcPtr(r)))
 			}
 			if e := nsReplaceLeaf(root, storeDBName+"-journal"); e != nil {
 				t.Fatal(e)
@@ -1548,7 +1552,7 @@ func TestStoreNamespaceNS001PostSuccessOpenSubstitution(t *testing.T) {
 			if got := storeVFSOpen(v.tls, v.vfs, n, p, tc.flags, 0); got != sqlite3.SQLITE_CANTOPEN {
 				t.Fatalf("replacement open=%d", got)
 			}
-			if (*sqlite3.Tsqlite3_file)(unsafe.Pointer(p)).FpMethods != 0 {
+			if (*sqlite3.Tsqlite3_file)(libcPtr(p)).FpMethods != 0 {
 				t.Fatal("replacement pMethods populated")
 			}
 			if fdsAfter := nsFDCount(); fdsBefore >= 0 && fdsAfter != fdsBefore {

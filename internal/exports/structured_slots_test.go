@@ -1,6 +1,7 @@
 package exports
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -96,7 +97,8 @@ func materialErrorCode(err error) string {
 	if err == nil {
 		return ""
 	}
-	if e, ok := err.(*MaterialError); ok {
+	e := &MaterialError{}
+	if errors.As(err, &e) {
 		return e.Code
 	}
 	return err.Error()

@@ -215,11 +215,13 @@ type StagedMaterialReader interface {
 	Stage(context.Context, ExecutionRequest) (StagedMaterial, error)
 }
 
-var principalRE = regexp.MustCompile(`^principal:[a-z0-9][a-z0-9._-]{0,127}$`)
-var policyKeyRE = regexp.MustCompile(`^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$`)
-var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-var commitRE = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
-var envRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var (
+	principalRE = regexp.MustCompile(`^principal:[a-z0-9][a-z0-9._-]{0,127}$`)
+	policyKeyRE = regexp.MustCompile(`^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$`)
+	digestRE    = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	commitRE    = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+	envRE       = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+)
 
 func DecodeExecutionPolicy(raw []byte) (*ExecutionPolicy, error) {
 	if err := strictObject(raw, []string{"apiVersion", "policyId", "profile", "minimumProfile", "validity", "principals", "issuerPrincipals", "sourceRules", "approvers", "allowInvocationHuman", "maxTimeoutMillis", "policySHA256"}); err != nil {
@@ -237,6 +239,7 @@ func DecodeExecutionPolicy(raw []byte) (*ExecutionPolicy, error) {
 	}
 	return &p, nil
 }
+
 func DecodeExecutionRequest(raw []byte) (*ExecutionRequest, error) {
 	if err := strictObject(raw, []string{"apiVersion", "profileBindingSHA256", "operationInputsSHA256", "projectID", "scope", "provider", "action", "tool", "workingDirectoryScope", "environmentPolicySHA256", "timeoutMillis", "migration", "requestSHA256"}); err != nil {
 		return nil, requestErr(err)
@@ -253,6 +256,7 @@ func DecodeExecutionRequest(raw []byte) (*ExecutionRequest, error) {
 	}
 	return &r, nil
 }
+
 func DecodeExecutionApproval(raw []byte) (*ExecutionApproval, error) {
 	if err := strictObject(raw, []string{"apiVersion", "kind", "requestSHA256", "profileBindingSHA256", "operationInputsSHA256", "projectID", "scope", "approverID", "identityClass", "executionPolicySHA256", "validity", "keyFingerprint", "grantSHA256", "signatureCAS"}); err != nil {
 		return nil, approvalErr(err)
@@ -277,6 +281,7 @@ func (p ExecutionPolicy) ComputePolicySHA256() (string, error) {
 	}
 	return approvalDigest(ExecutionPolicyAPIVersion, policyDigestWire(p))
 }
+
 func (p ExecutionPolicy) VerifyPolicySHA256() error {
 	d, e := p.ComputePolicySHA256()
 	if e != nil || d != p.PolicySHA256 {
@@ -284,6 +289,7 @@ func (p ExecutionPolicy) VerifyPolicySHA256() error {
 	}
 	return nil
 }
+
 func (r ExecutionRequest) ComputeRequestSHA256() (string, error) {
 	r.RequestSHA256 = ""
 	if err := validateRequestBody(&r); err != nil {
@@ -291,6 +297,7 @@ func (r ExecutionRequest) ComputeRequestSHA256() (string, error) {
 	}
 	return approvalDigest(ExecutionRequestAPIVersion, requestDigestWire(r))
 }
+
 func (r ExecutionRequest) VerifyRequestSHA256() error {
 	d, e := r.ComputeRequestSHA256()
 	if e != nil || d != r.RequestSHA256 {
@@ -298,6 +305,7 @@ func (r ExecutionRequest) VerifyRequestSHA256() error {
 	}
 	return nil
 }
+
 func (a ExecutionApproval) ComputeGrantSHA256() (string, error) {
 	a.GrantSHA256 = ""
 	a.SignatureCAS = ""
@@ -306,6 +314,7 @@ func (a ExecutionApproval) ComputeGrantSHA256() (string, error) {
 	}
 	return approvalDigest(ExecutionApprovalAPIVersion, approvalDigestWire(a))
 }
+
 func (a ExecutionApproval) VerifyGrantSHA256() error {
 	d, e := a.ComputeGrantSHA256()
 	if e != nil || d != a.GrantSHA256 {
@@ -331,6 +340,7 @@ func ComputeContentClosureSHA256(entries []ContentEntry) (string, error) {
 		Entries    []ContentEntry `json:"entries"`
 	}{"tplaiter.dev/execution-content/v1", entries})
 }
+
 func ComputeToolOptionsSHA256(options []string) (string, error) {
 	if len(options) > 256 {
 		return "", errors.New("trustverify: options limit")
@@ -345,6 +355,7 @@ func ComputeToolOptionsSHA256(options []string) (string, error) {
 		Options    []string `json:"options"`
 	}{"tplaiter.dev/tool-options/v1", options})
 }
+
 func ComputeEnvironmentPolicySHA256(e EnvironmentPolicy) (string, error) {
 	if e.APIVersion != "tplaiter.dev/execution-environment/v1" || e.Inherit || len(e.Variables) > 1024 || len(e.Capabilities) != 0 {
 		return "", errors.New("trustverify: invalid environment policy")
@@ -358,6 +369,7 @@ func ComputeEnvironmentPolicySHA256(e EnvironmentPolicy) (string, error) {
 	}
 	return approvalDigest(e.APIVersion, e)
 }
+
 func ComputeOperationInputsSHA256(o OperationInputs) (string, error) {
 	if o.APIVersion != "tplaiter.dev/operation-inputs/v1" || !validDigest(o.ProfileBindingSHA256) || !token(o.ProjectID) || !scope(o.Scope) || !validDigest(o.PreimageSHA256) || !validDigest(o.AnswersSHA256) || len(o.Subjects) > 1024 || len(o.Actions) > 4096 {
 		return "", errors.New("trustverify: invalid operation inputs")
@@ -461,6 +473,7 @@ func validatePolicy(p *ExecutionPolicy) error {
 	}
 	return p.VerifyPolicySHA256()
 }
+
 func validatePolicyBody(p *ExecutionPolicy) error {
 	if p == nil || p.APIVersion != ExecutionPolicyAPIVersion || !token(p.PolicyID) || !profile(p.Profile) || !profile(p.MinimumProfile) || p.MaxTimeoutMillis < 1 || p.MaxTimeoutMillis > 3600000 {
 		return errors.New("invalid policy")
@@ -533,12 +546,14 @@ func validatePolicyBody(p *ExecutionPolicy) error {
 	}
 	return nil
 }
+
 func validateRequest(r *ExecutionRequest) error {
 	if err := validateRequestBody(r); err != nil {
 		return err
 	}
 	return r.VerifyRequestSHA256()
 }
+
 func validateRequestBody(r *ExecutionRequest) error {
 	if r == nil || r.APIVersion != ExecutionRequestAPIVersion || !validDigest(r.ProfileBindingSHA256) || !validDigest(r.OperationInputsSHA256) || !token(r.ProjectID) || !scope(r.Scope) || !provider(r.Provider) || !action(r.Action) || !tool(r.Tool) || r.Action.Argv[0] != r.Tool.ID || !cwd(r.WorkingDirectoryScope) || !validDigest(r.EnvironmentPolicySHA256) || r.TimeoutMillis < 1 || r.TimeoutMillis > 3600000 || !migration(r.Migration) {
 		return errors.New("invalid request")
@@ -552,12 +567,14 @@ func validateRequestBody(r *ExecutionRequest) error {
 	}
 	return nil
 }
+
 func validateApproval(a *ExecutionApproval) error {
 	if err := validateApprovalBody(a); err != nil {
 		return err
 	}
 	return a.VerifyGrantSHA256()
 }
+
 func validateApprovalBody(a *ExecutionApproval) error {
 	if a == nil || a.APIVersion != ExecutionApprovalAPIVersion || a.Kind != "persistent-signed" || !validDigest(a.RequestSHA256) || !validDigest(a.ProfileBindingSHA256) || !validDigest(a.OperationInputsSHA256) || !token(a.ProjectID) || !scope(a.Scope) || !token(a.ApproverID) || !identityClass(a.IdentityClass) || !validDigest(a.ExecutionPolicySHA256) || !validDigest(a.KeyFingerprint) {
 		return errors.New("invalid approval")
@@ -585,6 +602,7 @@ func strictObject(raw []byte, fields []string) error {
 	}
 	return nil
 }
+
 func objectFields(raw []byte, fields []string) (map[string]json.RawMessage, error) {
 	var m map[string]json.RawMessage
 	if e := json.Unmarshal(raw, &m); e != nil {
@@ -598,6 +616,7 @@ func objectFields(raw []byte, fields []string) (map[string]json.RawMessage, erro
 	}
 	return m, nil
 }
+
 func arrayFields(raw json.RawMessage, fields []string) error {
 	var a []json.RawMessage
 	if e := json.Unmarshal(raw, &a); e != nil {
@@ -610,6 +629,7 @@ func arrayFields(raw json.RawMessage, fields []string) error {
 	}
 	return nil
 }
+
 func policyWirePresence(raw []byte) error {
 	m, e := objectFields(raw, []string{"validity", "principals", "issuerPrincipals", "sourceRules", "approvers"})
 	if e != nil {
@@ -645,6 +665,7 @@ func policyWirePresence(raw []byte) error {
 	}
 	return nil
 }
+
 func requestWirePresence(raw []byte) error {
 	m, e := objectFields(raw, []string{"provider", "action", "tool", "workingDirectoryScope", "migration"})
 	if e != nil {
@@ -670,19 +691,21 @@ func requestWirePresence(raw []byte) error {
 	if e = json.Unmarshal(kind, &k); e != nil {
 		return e
 	}
-	if k == "none" {
+	switch k {
+	case "none":
 		if len(migration) != 1 {
 			return errors.New("none migration has members")
 		}
-	} else if k == "version-transition" {
+	case "version-transition":
 		if len(migration) != 3 || migration["from"] == nil || migration["to"] == nil || string(migration["from"]) == "null" || string(migration["to"]) == "null" {
 			return errors.New("transition migration fields")
 		}
-	} else {
+	default:
 		return errors.New("invalid migration kind")
 	}
 	return nil
 }
+
 func approvalWirePresence(raw []byte) error {
 	m, e := objectFields(raw, []string{"validity"})
 	if e != nil {
@@ -691,6 +714,7 @@ func approvalWirePresence(raw []byte) error {
 	_, e = objectFields(m["validity"], []string{"notBefore", "notAfter"})
 	return e
 }
+
 func approvalDigest(domain string, v any) (string, error) {
 	b, e := canonicaljson.Canonical(v)
 	if e != nil {
@@ -699,6 +723,7 @@ func approvalDigest(domain string, v any) (string, error) {
 	h := sha256.Sum256(append(append([]byte(domain), 0), b...))
 	return "sha256:" + hex.EncodeToString(h[:]), nil
 }
+
 func policyDigestWire(p ExecutionPolicy) any {
 	return struct {
 		APIVersion           string            `json:"apiVersion"`
@@ -714,6 +739,7 @@ func policyDigestWire(p ExecutionPolicy) any {
 		MaxTimeoutMillis     int64             `json:"maxTimeoutMillis"`
 	}{p.APIVersion, p.PolicyID, p.Profile, p.MinimumProfile, p.Validity, p.Principals, p.IssuerPrincipals, p.SourceRules, p.Approvers, p.AllowInvocationHuman, p.MaxTimeoutMillis}
 }
+
 func requestDigestWire(r ExecutionRequest) any {
 	return struct {
 		APIVersion              string                `json:"apiVersion"`
@@ -730,6 +756,7 @@ func requestDigestWire(r ExecutionRequest) any {
 		Migration               Migration             `json:"migration"`
 	}{r.APIVersion, r.ProfileBindingSHA256, r.OperationInputsSHA256, r.ProjectID, r.Scope, r.Provider, r.Action, r.Tool, r.WorkingDirectoryScope, r.EnvironmentPolicySHA256, r.TimeoutMillis, r.Migration}
 }
+
 func approvalDigestWire(a ExecutionApproval) any {
 	return struct {
 		APIVersion            string   `json:"apiVersion"`
@@ -757,6 +784,7 @@ func decodeExecutionPolicyPublicKey(s string) (ed25519.PublicKey, error) {
 	}
 	return ed25519.PublicKey(b), nil
 }
+
 func parseValidity(v Validity) (time.Time, time.Time, error) {
 	a, e := time.Parse(time.RFC3339, v.NotBefore)
 	if e != nil || a.UTC().Format(time.RFC3339) != v.NotBefore {
@@ -768,6 +796,7 @@ func parseValidity(v Validity) (time.Time, time.Time, error) {
 	}
 	return a, b, nil
 }
+
 func validAt(v Validity, n time.Time) error {
 	a, b, e := parseValidity(v)
 	if e != nil || n.Before(a) || !n.Before(b) {
@@ -782,6 +811,7 @@ func digestBytes(s string) ([]byte, error) {
 	}
 	return hex.DecodeString(s[7:])
 }
+
 func token(s string) bool {
 	if s == "" || utf8.RuneCountInString(s) > 256 || !utf8.ValidString(s) {
 		return false
@@ -793,6 +823,7 @@ func token(s string) bool {
 	}
 	return true
 }
+
 func safePath(s string) bool {
 	if s == "." {
 		return true
@@ -821,6 +852,7 @@ func scope(s string) bool {
 	}
 	return false
 }
+
 func actionKind(s string) bool {
 	switch s {
 	case "hook", "command", "shell", "ansible", "codegen", "formatter", "tool-install", "migration":
@@ -828,9 +860,11 @@ func actionKind(s string) bool {
 	}
 	return false
 }
+
 func provider(p Provider) bool {
 	return token(p.Origin) && safePath(p.TemplatePath) && commitRE.MatchString(p.Commit) && validDigest(p.TreeSHA256) && validDigest(p.ContractSHA256)
 }
+
 func action(a Action) bool {
 	if !token(a.ID) || !actionKind(a.Kind) || (a.Phase != "before" && a.Phase != "after" && a.Phase != "standalone") || !validDigest(a.ContentClosureSHA256) || len(a.Argv) < 1 || len(a.Argv) > 256 || a.Argv[0] == "" {
 		return false
@@ -847,18 +881,22 @@ func action(a Action) bool {
 	}
 	return total <= 64<<10
 }
+
 func tool(t Tool) bool {
 	return token(t.ID) && token(t.Version) && validDigest(t.BinarySHA256) && validDigest(t.OptionsSHA256)
 }
+
 func cwd(c WorkingDirectoryScope) bool {
 	return (c.Root == "project" || c.Root == "provider") && safePath(c.Path)
 }
+
 func migration(m Migration) bool {
 	if m.Kind == "none" {
 		return m.From == "" && m.To == ""
 	}
 	return m.Kind == "version-transition" && token(m.From) && token(m.To) && m.From != m.To
 }
+
 func hasScope(a Approver, r *ExecutionRequest) bool {
 	for _, s := range a.Scopes {
 		if s.ProjectID == r.ProjectID && s.OperationScope == r.Scope && s.ActionKind == r.Action.Kind && s.Origin == r.Provider.Origin && s.TemplatePath == r.Provider.TemplatePath {
@@ -867,11 +905,16 @@ func hasScope(a Approver, r *ExecutionRequest) bool {
 	}
 	return false
 }
-func policyErr(e error) error   { return fmt.Errorf("trustverify: execution policy invalid: %w", e) }
-func requestErr(e error) error  { return fmt.Errorf("trustverify: execution request invalid: %w", e) }
+
+func policyErr(e error) error { return fmt.Errorf("trustverify: execution policy invalid: %w", e) }
+
+func requestErr(e error) error { return fmt.Errorf("trustverify: execution request invalid: %w", e) }
+
 func approvalErr(e error) error { return fmt.Errorf("trustverify: execution approval invalid: %w", e) }
 
 // Keep sort imported as an explicit compile-time guard that callers cannot rely
 // on map iteration for policy ordering; validation above compares wire ordering.
-var _ = sort.Strings
-var _ = envRE
+var (
+	_ = sort.Strings
+	_ = envRE
+)

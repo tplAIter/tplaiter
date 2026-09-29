@@ -227,7 +227,6 @@ func TestGraphFactAndCycleBoundaries(t *testing.T) {
 }
 
 func TestGraphFinalConstraintsCheckEveryModifier(t *testing.T) {
-
 	b, _ := os.ReadFile(filepath.Join("..", "..", "testdata", "modifier", "next.synthetic.json"))
 	first, err := Parse(b)
 	if err != nil {

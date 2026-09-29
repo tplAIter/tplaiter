@@ -214,7 +214,7 @@ func rejectSymlinks(root string) error {
 		return err
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("template root must not be a symlink")
+		return errors.New("template root must not be a symlink")
 	}
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {

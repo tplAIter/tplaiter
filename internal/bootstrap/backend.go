@@ -5,8 +5,10 @@ import (
 	"errors"
 )
 
-var ErrProtectionUnavailable = errors.New("bootstrap: TRUST_PROTECTION_UNAVAILABLE")
-var ErrPending = errors.New("bootstrap: TRUST_PENDING")
+var (
+	ErrProtectionUnavailable = errors.New("bootstrap: TRUST_PROTECTION_UNAVAILABLE")
+	ErrPending               = errors.New("bootstrap: TRUST_PENDING")
+)
 
 // ProtectedReader is read-only. Production platform adapters are intentionally supplied by a later packet.
 type ProtectedReader interface {
@@ -27,6 +29,7 @@ func (s ProtectedSnapshot) copy() ProtectedSnapshot {
 	s.Receipt = append([]byte(nil), s.Receipt...)
 	return s
 }
+
 func protectedSnapshot(ctx context.Context, b ProtectedReader) (ProtectedSnapshot, error) {
 	if b == nil {
 		return ProtectedSnapshot{}, ErrProtectionUnavailable

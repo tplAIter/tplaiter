@@ -220,7 +220,7 @@ func renderReference(ctx context.Context, mgr *repo.Manager, proj *manifest.Proj
 	}
 	defer func() { _ = cleanup() }()
 
-	rendered, err := renderref.Render(src, in)
+	rendered, err := renderref.Render(ctx, src, in)
 	if err != nil {
 		return reference{}, fmt.Errorf("upgrade: рендер эталона: %w", err)
 	}

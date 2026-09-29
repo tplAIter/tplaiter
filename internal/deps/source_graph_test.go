@@ -2,6 +2,7 @@ package deps
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -134,8 +135,15 @@ func TestDecodePinnedSourceRejectsRawNonIntegerScalarLexemes(t *testing.T) {
 		lexeme string
 		valid  bool
 	}{
-		{"0", true}, {"-1", true}, {"9007199254740991", true}, {"-9007199254740991", true},
-		{"1.0", false}, {"1e0", false}, {"-0", false}, {"9007199254740992", false}, {"-9007199254740992", false},
+		{"0", true},
+		{"-1", true},
+		{"9007199254740991", true},
+		{"-9007199254740991", true},
+		{"1.0", false},
+		{"1e0", false},
+		{"-0", false},
+		{"9007199254740992", false},
+		{"-9007199254740992", false},
 	} {
 		t.Run(tc.lexeme, func(t *testing.T) {
 			candidate := []byte(strings.Replace(string(raw), `"value":0`, `"value":`+tc.lexeme, 1))
@@ -325,7 +333,8 @@ func TestSourceGraphNodeEdgeAndDepthLimits(t *testing.T) {
 
 func errorsAs(err error, target **Error) bool {
 	for err != nil {
-		if e, ok := err.(*Error); ok {
+		e := &Error{}
+		if errors.As(err, &e) {
 			*target = e
 			return true
 		}
@@ -338,4 +347,26 @@ func errorsAs(err error, target **Error) bool {
 	}
 	return false
 }
+
 func hasCode(err error, code string) bool { var e *Error; return errorsAs(err, &e) && e.Code == code }
+
+func TestValidAliasAndProviderIDRejectNonASCIIRunes(t *testing.T) {
+	// U+0141 truncates to 'A' when converted with byte(rune); it must still be
+	// rejected, as must any other non-ASCII rune.
+	for _, v := range []string{"a\u0141", "a\u00e9", "a\u0430"} {
+		if validAlias(v) {
+			t.Fatalf("validAlias(%q) accepted a non-ASCII rune", v)
+		}
+		if validProviderID(v) {
+			t.Fatalf("validProviderID(%q) accepted a non-ASCII rune", v)
+		}
+	}
+	for _, v := range []string{"a", "a-b_c9"} {
+		if !validAlias(v) || !validProviderID(v) {
+			t.Fatalf("valid ASCII identifier %q rejected", v)
+		}
+	}
+	if !validProviderID("example.test") {
+		t.Fatal("provider ID with a dot rejected")
+	}
+}

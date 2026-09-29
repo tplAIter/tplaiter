@@ -42,10 +42,12 @@ func NewFSReader(root string) (*FSReader, error) {
 	}
 	return &FSReader{root: pinned}, nil
 }
+
 func Digest(blob []byte) string {
 	sum := sha256.Sum256(blob)
 	return digestPrefix + hex.EncodeToString(sum[:])
 }
+
 func (r *FSReader) Read(ctx context.Context, digest string) ([]byte, error) {
 	if r == nil {
 		return nil, errors.New("evidencecas: nil reader")
@@ -74,6 +76,7 @@ func (r *FSReader) Read(ctx context.Context, digest string) ([]byte, error) {
 	}
 	return blob, nil
 }
+
 func (r *FSReader) Close() error {
 	if r == nil {
 		return nil
@@ -91,6 +94,7 @@ func (r *FSReader) Close() error {
 	r.root = nil
 	return err
 }
+
 func parseDigest(digest string) (string, error) {
 	if !strings.HasPrefix(digest, digestPrefix) || len(digest) != len(digestPrefix)+sha256.Size*2 {
 		return "", fmt.Errorf("evidencecas: invalid digest %q", digest)

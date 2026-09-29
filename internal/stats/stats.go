@@ -122,7 +122,7 @@ func renderVersion(ctx context.Context, mgr *repo.Manager, res repo.Resolved, in
 		return nil, err
 	}
 	defer func() { _ = cleanup() }()
-	return renderref.Render(src, in)
+	return renderref.Render(ctx, src, in)
 }
 
 // historicalChurn collects reference paths changed by the template among the
@@ -145,7 +145,7 @@ func historicalChurn(ctx context.Context, mgr *repo.Manager, ref repo.Resolved, 
 		if err != nil {
 			continue
 		}
-		res, rerr := renderref.Render(src, in)
+		res, rerr := renderref.Render(ctx, src, in)
 		_ = cleanup()
 		if rerr != nil {
 			continue

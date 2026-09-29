@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -25,9 +26,11 @@ const (
 	maxRangeRunes         = 1024
 )
 
-var exportAliasRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,127}$`)
-var exportTokenRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
-var exportDigestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+var (
+	exportAliasRE  = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,127}$`)
+	exportTokenRE  = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
+	exportDigestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+)
 
 type ScalarParameter struct {
 	Name  string          `json:"name"`
@@ -59,7 +62,7 @@ type Selection struct {
 func ParseCatalog(raw []byte) (Catalog, error) {
 	var v Catalog
 	if len(raw) > maxCatalogWireBytes {
-		return v, fmt.Errorf("exports: catalog byte limit")
+		return v, errors.New("exports: catalog byte limit")
 	}
 	if err := decodeClosed(raw, []string{"apiVersion", "provider", "source", "contractDigest", "exports"}, &v); err != nil {
 		return v, err
@@ -69,6 +72,7 @@ func ParseCatalog(raw []byte) (Catalog, error) {
 	}
 	return v, nil
 }
+
 func ParseSelection(raw []byte) (Selection, error) {
 	var v Selection
 	if err := decodeClosed(raw, []string{"apiVersion", "selector", "bindings"}, &v); err != nil {
@@ -79,6 +83,7 @@ func ParseSelection(raw []byte) (Selection, error) {
 	}
 	return v, nil
 }
+
 func decodeClosed(raw []byte, fields []string, dst any) error {
 	if _, err := canonicaljson.Canonicalize(raw); err != nil {
 		return err
@@ -88,7 +93,7 @@ func decodeClosed(raw []byte, fields []string, dst any) error {
 		return err
 	}
 	if len(m) != len(fields) {
-		return fmt.Errorf("exports: unknown or missing field")
+		return errors.New("exports: unknown or missing field")
 	}
 	for _, f := range fields {
 		if _, ok := m[f]; !ok {
@@ -97,9 +102,10 @@ func decodeClosed(raw []byte, fields []string, dst any) error {
 	}
 	return canonicaljson.DecodeStrict(raw, dst)
 }
+
 func (c Catalog) Validate() error {
 	if c.APIVersion != CatalogAPIVersion || !exportTokenRE.MatchString(c.Provider) || !exportDigestRE.MatchString(c.Source) || !exportDigestRE.MatchString(c.ContractDigest) || c.Exports == nil || len(c.Exports) > 4096 {
-		return fmt.Errorf("exports: invalid catalog")
+		return errors.New("exports: invalid catalog")
 	}
 	seen := map[string]bool{}
 	for _, e := range c.Exports {
@@ -112,10 +118,11 @@ func (c Catalog) Validate() error {
 		seen[e.ID] = true
 	}
 	if !sort.SliceIsSorted(c.Exports, func(i, j int) bool { return eKey(c.Exports[i]) < eKey(c.Exports[j]) }) {
-		return fmt.Errorf("exports: exports must be sorted")
+		return errors.New("exports: exports must be sorted")
 	}
 	return nil
 }
+
 func (e ExportEntry) Validate() error {
 	if !exportTokenRE.MatchString(e.ID) || !exportAliasRE.MatchString(e.Name) || len(e.Version) == 0 || len(e.Version) > maxExportVersionBytes || !strictSemver(e.Version) || !domainRankOK(e.Domain) || !exportDigestRE.MatchString(e.ContentDigest) || !exportDigestRE.MatchString(e.ToolDigest) || e.Requires == nil || len(e.Requires) > maxExportRequires || e.Parameters == nil {
 		return fmt.Errorf("exports: invalid entry %s", e.ID)
@@ -126,37 +133,42 @@ func (e ExportEntry) Validate() error {
 	prev := ""
 	for _, r := range e.Requires {
 		if !selectorRE.MatchString(r.Selector) || len(r.Selector) > maxWireStringBytes || !exportDigestRE.MatchString(r.ContractDigest) || r.CompatibleRange == "" || !utf8.ValidString(r.CompatibleRange) || utf8.RuneCountInString(r.CompatibleRange) > maxRangeRunes || r.Selector <= prev {
-			return fmt.Errorf("exports: invalid requirements")
+			return errors.New("exports: invalid requirements")
 		}
 		prev = r.Selector
 	}
 	return nil
 }
+
 func (s Selection) Validate() error {
 	if s.APIVersion != SelectionAPIVersion || !selectorRE.MatchString(s.Selector) || s.Bindings == nil {
-		return fmt.Errorf("exports: invalid selection")
+		return errors.New("exports: invalid selection")
 	}
 	return validateParams(s.Bindings)
 }
+
 func validateParams(ps []ScalarParameter) error {
 	if len(ps) > 256 {
-		return fmt.Errorf("exports: parameter limit")
+		return errors.New("exports: parameter limit")
 	}
 	prev := ""
 	for _, p := range ps {
 		if !exportAliasRE.MatchString(p.Name) || p.Name <= prev || !scalar(p.Value) {
-			return fmt.Errorf("exports: invalid parameters")
+			return errors.New("exports: invalid parameters")
 		}
 		prev = p.Name
 	}
 	return nil
 }
+
 func scalar(raw json.RawMessage) bool {
 	return deps.ValidateScalarParameter(raw) == nil
 }
+
 func eKey(e ExportEntry) string {
 	return fmt.Sprintf("%03d", domainRank(e.Domain)) + "\x00" + e.Name + "\x00" + e.ID
 }
+
 func domainRankOK(s string) bool {
 	switch s {
 	case "block", "skill", "approach", "package":
@@ -164,6 +176,7 @@ func domainRankOK(s string) bool {
 	}
 	return false
 }
+
 func domainRank(s string) int {
 	switch s {
 	case "block":
@@ -176,6 +189,7 @@ func domainRank(s string) int {
 		return 3
 	}
 }
+
 func parameterDigest(ps []ScalarParameter) (string, error) {
 	b, err := canonicaljson.Canonical(ps)
 	if err != nil {
@@ -221,6 +235,7 @@ func domainDigest(domain string, v any) (string, error) {
 	}
 	return hashDomain(domain, b), nil
 }
+
 func hashDomain(domain string, b []byte) string {
 	h := sha256.New()
 	h.Write([]byte(domain))

@@ -106,6 +106,7 @@ func runtimeKey(label string) ed25519.PrivateKey {
 	h := sha256.Sum256([]byte(label))
 	return ed25519.NewKeyFromSeed(h[:])
 }
+
 func runtimeRawDigest(t *testing.T, d string) []byte {
 	t.Helper()
 	b, e := hex.DecodeString(d[len("sha256:"):])
@@ -353,6 +354,7 @@ func (s *mutationStore) Read(ctx context.Context, d string) ([]byte, error) {
 	}
 	return b, err
 }
+
 func TestRuntimeRejectsPostProofFreshBindingMutation(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -1302,6 +1304,7 @@ func copyStaged(m StagedMaterial) StagedMaterial {
 	m.Environment.Variables = append([]EnvironmentVariable(nil), m.Environment.Variables...)
 	return m
 }
+
 func rebuildStaged(t *testing.T, m *StagedMaterial) {
 	t.Helper()
 	var err error
@@ -1404,11 +1407,11 @@ func TestPublicPermitCapabilitiesExpiryCancellationAndFreshGrantReads(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := r.VerifySubject(context.Background(), f.subject, f.refs)
+	_, err = r.VerifySubject(context.Background(), f.subject, f.refs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	op, req, stage := permitInputs(t, r.Binding(), f.subject, f.project.ProjectID)
+	op, req, _ := permitInputs(t, r.Binding(), f.subject, f.project.ProjectID)
 	var p ExecutionPolicy
 	if err = json.Unmarshal(f.policy.PolicyJSON, &p); err != nil {
 		t.Fatal(err)
@@ -1439,7 +1442,7 @@ func TestPublicPermitCapabilitiesExpiryCancellationAndFreshGrantReads(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err = r.VerifySubject(context.Background(), f.subject, f.refs)
+	res, err := r.VerifySubject(context.Background(), f.subject, f.refs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1458,7 +1461,7 @@ func TestPublicPermitCapabilitiesExpiryCancellationAndFreshGrantReads(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	op, req, stage = permitInputs(t, r.Binding(), f.subject, f.project.ProjectID)
+	op, req, stage := permitInputs(t, r.Binding(), f.subject, f.project.ProjectID)
 	if err = json.Unmarshal(f.policy.PolicyJSON, &p); err != nil {
 		t.Fatal(err)
 	}
@@ -1543,7 +1546,7 @@ func TestHumanExpiryAndDevelopmentNilAuthorizeAreSafe(t *testing.T) {
 		t.Fatal("expired human approval accepted")
 	}
 	var reconstructed HumanApproval
-	if err := json.Unmarshal([]byte(`{}`), &reconstructed); err != nil {
+	if err := json.Unmarshal([]byte(`{}`), &reconstructed); err != nil { //nolint:staticcheck // proves the opaque type cannot be reconstructed from JSON
 		t.Fatal(err)
 	}
 	if _, err = r.AuthorizeHuman(context.Background(), res, op, req, &reconstructed); err == nil {

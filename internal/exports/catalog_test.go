@@ -70,8 +70,15 @@ func TestCatalogAndSelectionRejectRawNonIntegerScalarLexemes(t *testing.T) {
 		lexeme string
 		valid  bool
 	}{
-		{"0", true}, {"-1", true}, {"9007199254740991", true}, {"-9007199254740991", true},
-		{"1.0", false}, {"1e0", false}, {"-0", false}, {"9007199254740992", false}, {"-9007199254740992", false},
+		{"0", true},
+		{"-1", true},
+		{"9007199254740991", true},
+		{"-9007199254740991", true},
+		{"1.0", false},
+		{"1e0", false},
+		{"-0", false},
+		{"9007199254740992", false},
+		{"-9007199254740992", false},
 	} {
 		t.Run(tc.lexeme, func(t *testing.T) {
 			catalogCandidate := []byte(strings.Replace(string(catalogRaw), `"value":0`, `"value":`+tc.lexeme, 1))

@@ -249,16 +249,20 @@ func (r runtimeReaders) Read(ctx context.Context, ref string) ([]byte, error) {
 	return append([]byte(nil), raw...), nil
 }
 
-type projectReader struct{ runtimeReaders }
-type policyReader struct{ runtimeReaders }
-type bundleReader struct{ runtimeReaders }
+type (
+	projectReader struct{ runtimeReaders }
+	policyReader  struct{ runtimeReaders }
+	bundleReader  struct{ runtimeReaders }
+)
 
 func (r projectReader) Load(ctx context.Context) (trustverify.ProjectContext, error) {
 	return r.runtimeReaders.Load(ctx)
 }
+
 func (r policyReader) Load(ctx context.Context) (trustverify.ExecutionPolicySnapshot, error) {
-	return r.runtimeReaders.LoadPolicy(ctx)
+	return r.LoadPolicy(ctx)
 }
+
 func (r bundleReader) Load(ctx context.Context) (bootstrap.Bundle, error) {
-	return r.runtimeReaders.BundleLoad(ctx)
+	return r.BundleLoad(ctx)
 }

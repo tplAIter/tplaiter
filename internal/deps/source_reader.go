@@ -38,18 +38,21 @@ func (s *VerifiedSource) Subject() trustverify.Subject {
 	}
 	return s.subject
 }
+
 func (s *VerifiedSource) Entries() []trustverify.SourceEntry {
 	if s == nil {
 		return nil
 	}
 	return append([]trustverify.SourceEntry(nil), s.entries...)
 }
+
 func (s *VerifiedSource) ContractBytes() []byte {
 	if s == nil {
 		return nil
 	}
 	return append([]byte(nil), s.contract...)
 }
+
 func (s *VerifiedSource) Blob(name string) ([]byte, bool) {
 	if s == nil {
 		return nil, false

@@ -35,7 +35,7 @@ type Options struct {
 	// DryRun computes the plan and report without changing anything (`--dry-run`).
 	DryRun bool
 	// Check only scans the work tree for conflict markers
-    // (`--check`); exits 1 when a marker is found.
+	// (`--check`); exits 1 when a marker is found.
 	Check bool
 	// All updates all registry projects with status ok (`--all`).
 	All bool
@@ -214,7 +214,7 @@ func RenderVersion(ctx context.Context, mgr *repo.Manager, res repo.Resolved, in
 		return nil, err
 	}
 	defer func() { _ = cleanup() }()
-	return renderref.Render(src, in)
+	return renderref.Render(ctx, src, in)
 }
 
 // writeUpdatedMarker raises template.version in .tplaiter/project.yaml to

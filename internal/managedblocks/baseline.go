@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"regexp"
@@ -16,7 +17,6 @@ import (
 	"github.com/tplAIter/tplaiter/internal/provenance"
 )
 
-var baselineDigestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 var baselineProviderRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._/-]{0,127}$`)
 
 func BuildBaseline(files map[string][]byte, providers []ProviderSource, prior *Baseline) (Baseline, error) {
@@ -86,6 +86,7 @@ func (b Baseline) Clone() Baseline {
 	}
 	return out
 }
+
 func cloneFileBaseline(f FileBaseline) FileBaseline {
 	out := FileBaseline{Skeleton: SkeletonBaseline{Body: f.Skeleton.Body, BodySHA256: f.Skeleton.BodySHA256}, Blocks: make(map[string]BlockBaseline, len(f.Blocks))}
 	for id, v := range f.Blocks {
@@ -103,7 +104,7 @@ func cloneFileBaseline(f FileBaseline) FileBaseline {
 
 func (b Baseline) Validate() error {
 	if b.Schema != SchemaVersion || b.Files == nil {
-		return fmt.Errorf("managed blocks: invalid baseline schema or files")
+		return errors.New("managed blocks: invalid baseline schema or files")
 	}
 	for p, f := range b.Files {
 		if err := validatePath(p); err != nil {
@@ -128,6 +129,7 @@ func (b Baseline) Validate() error {
 	}
 	return nil
 }
+
 func validBlockState(block BlockBaseline) bool {
 	if block.State == StatePresent {
 		return block.Tombstone == nil
@@ -143,12 +145,14 @@ func validBlockState(block BlockBaseline) bool {
 	}
 	return (block.State == StateLocalDeleted && block.Tombstone.Side == TombstoneLocal) || (block.State == StateUpstreamDeletedLocalRetained && block.Tombstone.Side == TombstoneUpstream)
 }
+
 func validateSkeleton(s SkeletonBaseline) error {
 	if !utf8.ValidString(s.Body) || strings.IndexByte(s.Body, 0) >= 0 || s.BodySHA256 != bodyDigest([]byte(s.Body)) {
-		return fmt.Errorf("invalid skeleton")
+		return errors.New("invalid skeleton")
 	}
 	return nil
 }
+
 func validSource(s provenance.RootSubject) bool {
 	return s.Validate() == nil
 }
@@ -176,14 +180,16 @@ func ParseBaseline(data []byte) (Baseline, error) {
 	}
 	var extra any
 	if err := dec.Decode(&extra); err == nil {
-		return Baseline{}, fmt.Errorf("managed blocks: multiple JSON values")
+		return Baseline{}, errors.New("managed blocks: multiple JSON values")
 	}
 	if err := b.Validate(); err != nil {
 		return Baseline{}, err
 	}
 	return b, nil
 }
+
 func bodyDigest(b []byte) string { h := sha256.Sum256(b); return "sha256:" + hex.EncodeToString(h[:]) }
+
 func validatePath(p string) error {
 	if p == "" || path.IsAbs(p) || strings.Contains(p, "\\") || strings.ContainsRune(p, 0) || strings.Contains(p, ":") {
 		return fmt.Errorf("managed blocks: invalid path %q", p)

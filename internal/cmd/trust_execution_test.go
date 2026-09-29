@@ -21,6 +21,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
+	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
@@ -28,6 +29,7 @@ import (
 // This exercises the installed-loader path with raw Git objects, signed
 // publisher/transparency evidence, an enrolled store and a persistent permit.
 func TestApprovedRunnerExecutesSignedNativeSnapshotMaterial(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	p := newT6BPrepared(t, "normal")
 	defer p.runtime.Close()
 	t.Setenv("T6B_EXEC_CANARY", "must-not-reach-approved-process")
@@ -114,6 +116,7 @@ func t6BAssertEmptyScratch(t *testing.T, scratch string) {
 }
 
 func TestApprovedRunnerRejectsClosedZeroForeignAndMismatchedMaterialBeforeStage(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	t.Run("closed-runtime", func(t *testing.T) {
 		p := newT6BPrepared(t, "normal")
 		if err := p.runtime.Close(); err != nil {
@@ -164,6 +167,7 @@ func TestApprovedRunnerRejectsClosedZeroForeignAndMismatchedMaterialBeforeStage(
 }
 
 func TestSignedSnapshotConventionRejectsBeforeStage(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	variants := []string{"absent", "extra", "nested", "alias", "tool-mode", "stdin-mode", "dir-mode", "symlink", "missing-tool", "missing-stdin", "oversize-tool", "oversize-stdin"}
 	for _, variant := range variants {
 		t.Run(variant, func(t *testing.T) {
@@ -187,6 +191,7 @@ func TestSignedSnapshotConventionRejectsBeforeStage(t *testing.T) {
 }
 
 func TestSignedMaterialDriftRejectsBeforeStage(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	p := newT6BPrepared(t, "normal")
 	defer p.runtime.Close()
 	for _, tc := range []struct {
@@ -343,6 +348,7 @@ func t6BRebind(t *testing.T, operation *trustverify.OperationInputs, request *tr
 }
 
 func TestApprovedRunnerNoReceiptOnFailureTimeoutCancelOrOverflow(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	for _, mode := range []string{"fail", "overflow", "hang", "cancel"} {
 		t.Run(mode, func(t *testing.T) {
 			toolMode := mode
@@ -488,7 +494,7 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 	if err := os.WriteFile(src, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("/opt/homebrew/bin/go", "build", "-trimpath", "-o", out, src)
+	cmd := exec.Command(testfixture.GoBinary(t), "build", "-trimpath", "-o", out, src)
 	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "GOOS=darwin", "GOARCH=arm64", "PATH=/usr/bin:/bin"}
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("helper build: %v", err)
@@ -517,6 +523,7 @@ func t6BTempDir(t *testing.T) string {
 	}
 	return resolved
 }
+
 func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant string) trustverify.Subject {
 	t.Helper()
 	manifest := []byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata:\n  name: t6b\n  version: 1.0.0\n  description: fixture\nengine:\n  type: gotemplate\n  root: files\nsettings:\n  - group: label\n    title: Label\n    type: string\n    default: ok\n")
@@ -576,7 +583,8 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 			t.Fatal(err)
 		}
 	}
-	entries := append(execEntries, trustverify.SourceEntry{Path: "files", Kind: "directory", Mode: "40000"}, trustverify.SourceEntry{Path: "files/hello.txt.tmpl", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest([]byte("hello\n"))}, trustverify.SourceEntry{Path: "template.contract.json", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(contract)}, trustverify.SourceEntry{Path: "template.manifest.yaml", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(manifest)})
+	entries := execEntries
+	entries = append(entries, trustverify.SourceEntry{Path: "files", Kind: "directory", Mode: "40000"}, trustverify.SourceEntry{Path: "files/hello.txt.tmpl", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest([]byte("hello\n"))}, trustverify.SourceEntry{Path: "template.contract.json", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(contract)}, trustverify.SourceEntry{Path: "template.manifest.yaml", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(manifest)})
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 	treeDigest, err := bootstrap.DomainDigest("tplaiter.dev/source-content-tree/v1", struct {
 		APIVersion string                    `json:"apiVersion"`
@@ -595,6 +603,7 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 	}
 	return trustverify.Subject{Origin: "https://example.test/source", TemplatePath: ".", RequestedRef: commit, Commit: commit, TreeSHA256: treeDigest, ContractSHA256: contractDigest}
 }
+
 func (f *t6BFixture) executionInputs(t *testing.T, b bootstrap.ProfileBinding, project string, timeout int64) (trustverify.OperationInputs, trustverify.ExecutionRequest) {
 	t.Helper()
 	bd, err := bootstrap.DomainDigest(bootstrap.ProfileBindingAPIVersion, b)
@@ -630,6 +639,7 @@ func (f *t6BFixture) executionInputs(t *testing.T, b bootstrap.ProfileBinding, p
 	}
 	return op, r
 }
+
 func (f *t6BFixture) persistentApproval(t *testing.T, r trustverify.ExecutionRequest) trustverify.ApprovalRefs {
 	t.Helper()
 	a := trustverify.ExecutionApproval{APIVersion: trustverify.ExecutionApprovalAPIVersion, Kind: "persistent-signed", RequestSHA256: r.RequestSHA256, ProfileBindingSHA256: r.ProfileBindingSHA256, OperationInputsSHA256: r.OperationInputsSHA256, ProjectID: r.ProjectID, Scope: r.Scope, ApproverID: f.policy.Approvers[0].ID, IdentityClass: f.policy.Approvers[0].IdentityClass, ExecutionPolicySHA256: f.policy.PolicySHA256, Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, KeyFingerprint: f.policy.Approvers[0].KeyFingerprint}
@@ -659,6 +669,7 @@ func t6BTree(add func(string, []byte) string, entries []t6BTreeEntry) string {
 	}
 	return add("tree", raw)
 }
+
 func t6BItoa(v int) string {
 	if v == 0 {
 		return "0"
@@ -672,6 +683,7 @@ func t6BItoa(v int) string {
 	}
 	return string(b[i:])
 }
+
 func t6BJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, e := json.Marshal(v)
@@ -680,9 +692,11 @@ func t6BJSON(t *testing.T, v any) []byte {
 	}
 	return b
 }
+
 func t6BPin(path string, raw []byte) trustload.FilePin {
 	return trustload.FilePin{Path: path, SHA256: evidencecas.Digest(raw)}
 }
+
 func t6BWriteCAS(t *testing.T, root, digest string, raw []byte) {
 	t.Helper()
 	x := strings.TrimPrefix(digest, "sha256:")
@@ -694,6 +708,7 @@ func t6BWriteCAS(t *testing.T, root, digest string, raw []byte) {
 		t.Fatal(e)
 	}
 }
+
 func t6BPublisherEvidence(t *testing.T, store map[string][]byte, key ed25519.PrivateKey, s trustverify.Subject) trustverify.EvidenceRefs {
 	t.Helper()
 	put := func(b []byte) string { d := evidencecas.Digest(b); store[d] = append([]byte(nil), b...); return d }
@@ -706,6 +721,7 @@ func t6BPublisherEvidence(t *testing.T, store map[string][]byte, key ed25519.Pri
 	hash, _ := hex.DecodeString(d[7:])
 	return trustverify.EvidenceRefs{Format: bootstrap.PublisherStatementAPIVersion, StatementCAS: put(raw), SignatureCAS: put([]byte(bootstrap.EncodeSignature(ed25519.Sign(key, hash)))), KeyFingerprint: bootstrap.Fingerprint(key.Public().(ed25519.PublicKey))}
 }
+
 func TestTrustExecutionUnavailable(t *testing.T) {
 	if trustExecutionUnavailable() == nil {
 		t.Fatal("available")

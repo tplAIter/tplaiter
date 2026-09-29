@@ -15,12 +15,10 @@ type rustLiteralKind struct {
 }
 
 var (
-	rustNormal  = rustLiteralKind{}
-	rustByte    = rustLiteralKind{byteDomain: true}
-	rustC       = rustLiteralKind{cDomain: true}
-	rustRaw     = rustLiteralKind{raw: true}
-	rustRawByte = rustLiteralKind{raw: true, byteDomain: true}
-	rustRawC    = rustLiteralKind{raw: true, cDomain: true}
+	rustNormal = rustLiteralKind{}
+	rustByte   = rustLiteralKind{byteDomain: true}
+	rustC      = rustLiteralKind{cDomain: true}
+	rustRaw    = rustLiteralKind{raw: true}
 )
 
 func rustComments(path string, source []byte) ([]commentSpan, error) {
@@ -405,9 +403,11 @@ func rustIdentStart(r rune) bool { return r == '_' || unicode.IsLetter(r) }
 func rustIdentContinue(r rune) bool {
 	return rustIdentStart(r) || unicode.IsDigit(r)
 }
+
 func rustHex(b byte) bool {
 	return b >= '0' && b <= '9' || b >= 'a' && b <= 'f' || b >= 'A' && b <= 'F'
 }
+
 func rustHexValue(b byte) int {
 	switch {
 	case b >= '0' && b <= '9':

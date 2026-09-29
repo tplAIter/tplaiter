@@ -105,10 +105,12 @@ func readerPut(s map[string][]byte, b []byte) string {
 	s[d] = append([]byte(nil), b...)
 	return d
 }
+
 func readerKey(label string) ed25519.PrivateKey {
 	h := sha256.Sum256([]byte(label))
 	return ed25519.NewKeyFromSeed(h[:])
 }
+
 func readerRawDigest(t *testing.T, d string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(d[len("sha256:"):])
@@ -125,6 +127,7 @@ func readerOID(kind string, data []byte) string {
 	h := sha1.Sum(p)
 	return hex.EncodeToString(h[:])
 }
+
 func readerItoa(n int) string {
 	if n == 0 {
 		return "0"
@@ -168,6 +171,7 @@ func readerSourceFixture() (trustverify.GitObjectReader, trustverify.Subject) {
 	}{"tplaiter.dev/source-contract/v1", "template.contract.json", readerDigest(contract)})
 	return objects, trustverify.Subject{Origin: "https://example.test/source", TemplatePath: ".", RequestedRef: commit, Commit: commit, TreeSHA256: treeDigest, ContractSHA256: contractDigest}
 }
+
 func readerFramed(domain string, v any) (string, error) {
 	b, err := canonicaljson.Canonical(v)
 	if err != nil {

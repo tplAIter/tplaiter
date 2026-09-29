@@ -53,11 +53,13 @@ type SourceGraphInput struct {
 	Root              *PinnedSource
 	DependencyClosure *SourceDependencyClosure
 }
-type SourceDependencyClosure struct{ Pins []PinnedSource }
-type SourceGraphResult struct {
-	Graph         SourceGraph
-	ClosureStatus SourceClosureStatus
-}
+type (
+	SourceDependencyClosure struct{ Pins []PinnedSource }
+	SourceGraphResult       struct {
+		Graph         SourceGraph
+		ClosureStatus SourceClosureStatus
+	}
+)
 
 // Parameter is a scalar input retained in the immutable source identity.
 // Value is raw only at the wire boundary; Validate canonicalizes and checks it.
@@ -676,27 +678,34 @@ func validateOrigin(origin string) error {
 	}
 	return nil
 }
+
 func validTemplatePath(v string) bool {
 	return v == "." || (!strings.HasPrefix(v, "/") && !strings.Contains(v, "\\") && path.Clean(v) == v && !strings.HasPrefix(v, "../") && v != "..")
 }
-func validToken(v string) bool { return v != "" && !strings.ContainsAny(v, "\x00/\\?&# \r\n\t") }
+
 func validAlias(v string) bool {
 	if len(v) == 0 || len(v) > 128 || !isASCIIAlpha(v[0]) {
 		return false
 	}
-	for _, r := range v[1:] {
-		if !(isASCIIAlpha(byte(r)) || r >= '0' && r <= '9' || r == '_' || r == '-') {
+	// Iterate bytes, not runes: every byte of a multi-byte UTF-8 sequence is
+	// >= 0x80 and therefore rejected, whereas byte(rune) would truncate a
+	// non-ASCII rune such as U+0141 to an ASCII letter.
+	for i := 1; i < len(v); i++ {
+		r := v[i]
+		if !isASCIIAlpha(r) && (r < '0' || r > '9') && r != '_' && r != '-' {
 			return false
 		}
 	}
 	return true
 }
+
 func validProviderID(v string) bool {
 	if len(v) == 0 || len(v) > 128 || !isASCIIAlpha(v[0]) {
 		return false
 	}
-	for _, r := range v[1:] {
-		if !(isASCIIAlpha(byte(r)) || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.') {
+	for i := 1; i < len(v); i++ {
+		r := v[i]
+		if !isASCIIAlpha(r) && (r < '0' || r > '9') && r != '_' && r != '-' && r != '.' {
 			return false
 		}
 	}
@@ -706,12 +715,13 @@ func isASCIIAlpha(v byte) bool { return v >= 'A' && v <= 'Z' || v >= 'a' && v <=
 func validDigest(v string) bool {
 	return strings.HasPrefix(v, "sha256:") && isLowerHex(v[len("sha256:"):], 64)
 }
+
 func isLowerHex(v string, n int) bool {
 	if len(v) != n {
 		return false
 	}
 	for _, r := range v {
-		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
 			return false
 		}
 	}

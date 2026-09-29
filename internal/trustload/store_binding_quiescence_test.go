@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
-	"unsafe"
 )
 
 // TestStoreBindingCloseWaitsForActualSQLiteRows proves the production lifetime
@@ -60,7 +59,7 @@ func TestStoreBindingCloseWaitsForActualSQLiteRows(t *testing.T) {
 		t.Fatalf("actual SQLite row value=%d err=%v", value, err)
 	}
 
-	c := (*vfsContext)(unsafe.Pointer(binding.vfs.ctx))
+	c := (*vfsContext)(libcPtr(binding.vfs.ctx))
 	if atomic.LoadInt64(&c.callbackCounts[callbackRead]) == 0 {
 		_ = rows.Close()
 		_ = binding.Close()

@@ -19,6 +19,9 @@ import (
 // fixed external inputs are reloaded after a Store is opened, while persisted
 // rows are read only through the exclusive root/binding capability.
 func TestStoreRecordsReauthSB09(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	t.Run("external-pins", testStoreRecordsExternalPins)
 	t.Run("accepted-records", testStoreRecordsAcceptedRows)
 }
@@ -98,7 +101,6 @@ func testStoreRecordsAcceptedRows(t *testing.T) {
 		}},
 	}
 	for _, column := range []string{"installationID", "descriptorSHA256", "provisioningSHA256", "initialStateSHA256"} {
-		column := column
 		cases = append(cases, recordsMutation{"installation-" + column, "open", ErrPinMismatch, func(c *sql.Conn) error {
 			value := "wrong"
 			if column == "descriptorSHA256" || column == "provisioningSHA256" || column == "initialStateSHA256" {
@@ -108,7 +110,8 @@ func testStoreRecordsAcceptedRows(t *testing.T) {
 			return err
 		}})
 	}
-	cases = append(cases,
+	cases = append(
+		cases,
 		recordsMutation{"missing-accepted", "load", ErrProvenanceUnavailable, func(c *sql.Conn) error {
 			_, err := c.ExecContext(context.Background(), `DELETE FROM accepted WHERE singleton=1`)
 			return err
@@ -159,7 +162,6 @@ func testStoreRecordsAcceptedRows(t *testing.T) {
 		}},
 	)
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := newBootstrapFixture(t)
 			if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {

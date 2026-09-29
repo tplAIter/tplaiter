@@ -62,11 +62,11 @@ func TestMigrationPreservesBytesAndIsIdempotent(t *testing.T) {
 	parent := t.TempDir()
 	old, newRoot := filepath.Join(parent, "old"), filepath.Join(parent, "new")
 	writeLegacyHome(t, old)
-	if err := os.MkdirAll(filepath.Join(old, "state"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(old, "state"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	want := []byte("legacy\x00evidence\n")
-	if err := os.WriteFile(filepath.Join(old, "state", "ledger.bin"), want, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(old, "state", "ledger.bin"), want, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	p, err := PlanHome(old, newRoot)
@@ -106,7 +106,7 @@ func TestMigrationRejectsTamperedPlanAndUnsafeInputs(t *testing.T) {
 	parent := t.TempDir()
 	old := filepath.Join(parent, "old")
 	writeLegacyHome(t, old)
-	if err := os.WriteFile(filepath.Join(old, "x"), []byte("x"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(old, "x"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	p, err := PlanHome(old, filepath.Join(parent, "new"))
@@ -680,7 +680,7 @@ func TestRecoverPreflightsReceiptAndSourceBeforeSealing(t *testing.T) {
 			}
 		}},
 		{"malformed stage receipt", func(t *testing.T, _ Plan, _ []Root, journal string) {
-			if err := os.WriteFile(filepath.Join(filepath.Dir(journal), "stage", "migration.receipt.json"), []byte("{"), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(filepath.Dir(journal), "stage", "migration.receipt.json"), []byte("{"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -694,7 +694,7 @@ func TestRecoverPreflightsReceiptAndSourceBeforeSealing(t *testing.T) {
 			}
 		}},
 		{"stale source", func(t *testing.T, _ Plan, roots []Root, _ string) {
-			if err := os.WriteFile(filepath.Join(roots[0].SourceRoot, "state.yaml"), []byte("version: 2\n"), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(roots[0].SourceRoot, "state.yaml"), []byte("version: 2\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -704,7 +704,7 @@ func TestRecoverPreflightsReceiptAndSourceBeforeSealing(t *testing.T) {
 				t.Fatal(err)
 			}
 			writeLegacyHome(t, roots[0].SourceRoot)
-			if err := os.WriteFile(filepath.Join(roots[0].SourceRoot, "state.yaml"), []byte("version: 2\n"), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(roots[0].SourceRoot, "state.yaml"), []byte("version: 2\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}},

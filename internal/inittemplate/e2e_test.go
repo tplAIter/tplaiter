@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/tplAIter/tplaiter/internal/auth"
 	"github.com/tplAIter/tplaiter/internal/engine"
 	"github.com/tplAIter/tplaiter/internal/execx"
@@ -19,7 +21,6 @@ import (
 	"github.com/tplAIter/tplaiter/internal/repo"
 	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/state"
-	"gopkg.in/yaml.v3"
 )
 
 // TestE2E_InitTemplateToNewProject runs the full requirement-2 path:

@@ -44,13 +44,15 @@ type PendingFormat struct {
 	requests []trustverify.ExecutionRequest
 	used     bool
 }
-type PreparedValidation struct{}
-type RuntimeResult struct {
-	adapter          *RuntimeAdapter
-	plan             Plan
-	input, formatted []byte
-	pending          *PendingFormat
-}
+type (
+	PreparedValidation struct{}
+	RuntimeResult      struct {
+		adapter          *RuntimeAdapter
+		plan             Plan
+		input, formatted []byte
+		pending          *PendingFormat
+	}
+)
 
 func NewRuntimeAdapter(runtime *trustload.Runtime) (*RuntimeAdapter, error) {
 	if runtime == nil || runtime.TrustRuntime() == nil {
@@ -205,6 +207,7 @@ func (p *PendingFormat) ValidationActions() []trustverify.ActionMaterial { retur
 func (a *RuntimeAdapter) BindValidation(context.Context, *PendingFormat, trustverify.OperationInputs) (*PreparedValidation, error) {
 	return nil, ErrRuntimeUnavailable
 }
+
 func (a *RuntimeAdapter) Finish(ctx context.Context, pending *PendingFormat, validation *PreparedValidation, refs []trustverify.ApprovalRefs) (*RuntimeResult, error) {
 	if a == nil || a.runtime == nil || a.runtime.TrustRuntime() != a.stable || pending == nil || pending.used || validation != nil || len(refs) != 0 || ctx == nil || ctx.Err() != nil || len(pending.outputs) != 2 {
 		return nil, ErrRuntimeUnavailable
@@ -217,6 +220,7 @@ func (a *RuntimeAdapter) Finish(ctx context.Context, pending *PendingFormat, val
 	}
 	return &RuntimeResult{adapter: a, plan: clonePlan(pending.prepared.selection.plan), input: append([]byte(nil), pending.prepared.selection.input...), formatted: append([]byte(nil), check.Formatted...), pending: pending}, nil
 }
+
 func (r *RuntimeResult) FormattedFor(runtime *trustload.Runtime, plan Plan, input []byte) ([]byte, error) {
 	if r == nil || runtime == nil || r.adapter == nil || r.adapter.runtime != runtime || runtime.TrustRuntime() != r.adapter.stable || !reflect.DeepEqual(r.plan, plan) || !bytes.Equal(r.input, input) {
 		return nil, ErrRuntimeUnavailable
@@ -229,9 +233,11 @@ type markerValidator struct{}
 func (markerValidator) Validate(language, path string, content []byte) ([]Marker, error) {
 	return blockmarkers.Validate(blockmarkers.Language(language), path, content)
 }
+
 func operationtrustEnvironment() trustverify.EnvironmentPolicy {
 	return trustverify.EnvironmentPolicy{APIVersion: "tplaiter.dev/execution-environment/v1", Variables: []trustverify.EnvironmentVariable{{Name: "LANG", Value: "C"}}, Capabilities: []string{}}
 }
+
 func reservedRuntimeFormatPath(path string) bool {
 	folded := strings.ToLower(path)
 	return folded == "formatter" || strings.HasPrefix(folded, "formatter/") || folded == "native-tool" || folded == ".tplaiter-execution" || strings.HasPrefix(folded, ".tplaiter-execution/")
@@ -241,6 +247,7 @@ func providerFromResolution(r *trustverify.VerifiedResolution) trustverify.Provi
 	s := r.Subject()
 	return trustverify.Provider{Origin: s.Origin, TemplatePath: s.TemplatePath, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256}
 }
+
 func containsProvider(xs []trustverify.Provider, want trustverify.Provider) bool {
 	for _, x := range xs {
 		if x == want {
@@ -249,6 +256,7 @@ func containsProvider(xs []trustverify.Provider, want trustverify.Provider) bool
 	}
 	return false
 }
+
 func uniqueProviders(xs []trustverify.Provider) bool {
 	seen := make(map[trustverify.Provider]struct{}, len(xs))
 	for _, x := range xs {
@@ -259,6 +267,7 @@ func uniqueProviders(xs []trustverify.Provider) bool {
 	}
 	return true
 }
+
 func uniqueActionIDs(xs []trustverify.ActionMaterial) bool {
 	seen := make(map[string]struct{}, len(xs))
 	for _, x := range xs {
@@ -272,6 +281,7 @@ func uniqueActionIDs(xs []trustverify.ActionMaterial) bool {
 	}
 	return true
 }
+
 func cloneActions(xs []trustverify.ActionMaterial) []trustverify.ActionMaterial {
 	out := append([]trustverify.ActionMaterial(nil), xs...)
 	for i := range out {
@@ -279,11 +289,13 @@ func cloneActions(xs []trustverify.ActionMaterial) []trustverify.ActionMaterial 
 	}
 	return out
 }
+
 func cloneOperation(o trustverify.OperationInputs) trustverify.OperationInputs {
 	o.Subjects = append([]trustverify.Provider(nil), o.Subjects...)
 	o.Actions = cloneActions(o.Actions)
 	return o
 }
+
 func cloneRequests(xs []trustverify.ExecutionRequest) []trustverify.ExecutionRequest {
 	out := append([]trustverify.ExecutionRequest(nil), xs...)
 	for i := range out {
@@ -291,6 +303,7 @@ func cloneRequests(xs []trustverify.ExecutionRequest) []trustverify.ExecutionReq
 	}
 	return out
 }
+
 func makeRequest(op trustverify.OperationInputs, digest string, a trustverify.ActionMaterial) (trustverify.ExecutionRequest, error) {
 	r := trustverify.ExecutionRequest{APIVersion: trustverify.ExecutionRequestAPIVersion, ProfileBindingSHA256: op.ProfileBindingSHA256, OperationInputsSHA256: digest, ProjectID: op.ProjectID, Scope: op.Scope, Provider: a.Provider, Action: a.Action, Tool: a.Tool, WorkingDirectoryScope: a.WorkingDirectoryScope, EnvironmentPolicySHA256: a.EnvironmentPolicySHA256, TimeoutMillis: a.TimeoutMillis, Migration: a.Migration}
 	d, e := r.ComputeRequestSHA256()

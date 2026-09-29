@@ -3,6 +3,7 @@ package exports
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"regexp"
 	"sort"
@@ -218,7 +219,8 @@ func PlanJSONSlots(current FileState, owned []OwnedPreimage, mutations []JSONSlo
 	if current.Present {
 		doc, err = parseSlotDocument(current.Content)
 		if err != nil {
-			if me, ok := err.(*MaterialError); ok {
+			me := &MaterialError{}
+			if errors.As(err, &me) {
 				me.Path = current.Path
 			}
 			return FileImage{}, nil, err

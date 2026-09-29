@@ -16,7 +16,7 @@ import (
 func graph(t *testing.T, root string) graphdoc.Document {
 	t.Helper()
 	body := []byte("package sample\nfunc Picked() {}\n")
-	if err := os.WriteFile(filepath.Join(root, "sample.go"), body, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "sample.go"), body, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(body)
@@ -28,6 +28,7 @@ func graph(t *testing.T, root string) graphdoc.Document {
 	}
 	return d
 }
+
 func TestBuildHardSerializedLimitAndOmissions(t *testing.T) {
 	d := graph(t, t.TempDir())
 	p, err := Build(d, Request{MaxBytes: 32768, IncludeSource: true})
@@ -57,6 +58,7 @@ func TestBuildHardSerializedLimitAndOmissions(t *testing.T) {
 		t.Fatal("expected constrained pack omissions")
 	}
 }
+
 func TestVerifyBindsGraphAndRejectsSourceDrift(t *testing.T) {
 	root := t.TempDir()
 	d := graph(t, root)
@@ -73,7 +75,7 @@ func TestVerifyBindsGraphAndRejectsSourceDrift(t *testing.T) {
 	if err := Verify(d, root, p); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "sample.go"), []byte(strings.Repeat("x", 20)), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "sample.go"), []byte(strings.Repeat("x", 20)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := Verify(d, root, p); err == nil {

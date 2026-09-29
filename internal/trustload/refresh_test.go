@@ -3,9 +3,8 @@ package trustload
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -141,7 +140,6 @@ func TestRefreshSB06ActualInterruptCuts(t *testing.T) {
 			defer eventR.Close()
 			defer ackW.Close()
 			decoder := json.NewDecoder(eventR)
-			var got []string
 			for _, want := range []string{"begin", "write", "commit-before", "commit"} {
 				if err := eventR.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
 					killAndReap()
@@ -152,7 +150,6 @@ func TestRefreshSB06ActualInterruptCuts(t *testing.T) {
 					killAndReap()
 					t.Fatalf("cut %s event: %v", phase, err)
 				}
-				got = append(got, stage)
 				if stage != want {
 					killAndReap()
 					t.Fatalf("cut %s phase=%q want=%q", phase, stage, want)
@@ -188,31 +185,6 @@ func TestRefreshSB06ActualInterruptCuts(t *testing.T) {
 			assertRefreshSB06RecoveredHead(t, fixture, old, nextHead, allowed)
 		})
 	}
-}
-
-func snapshotRefreshSB06Journal(t *testing.T, fixture bootstrapFixture) map[string]any {
-	t.Helper()
-	result := map[string]any{}
-	root := fixture.loaded.Install.OSS.StorePath
-	for _, suffix := range []string{"-journal", "-wal", "-shm"} {
-		path := filepath.Join(root, storeDBName+suffix)
-		raw, err := os.ReadFile(path)
-		if os.IsNotExist(err) {
-			result[suffix] = map[string]any{"present": false}
-			continue
-		}
-		if err != nil {
-			t.Fatalf("snapshot %s: %v", suffix, err)
-		}
-		digest := sha256.Sum256(raw)
-		result[suffix] = map[string]any{"present": true, "size": len(raw), "sha256": "sha256:" + hex.EncodeToString(digest[:]), "firstByte": func() any {
-			if len(raw) == 0 {
-				return nil
-			}
-			return raw[0]
-		}()}
-	}
-	return result
 }
 
 func refreshSB06Factory(reader evidencecas.Reader) (*bootstrap.Verifier, error) {
@@ -378,6 +350,9 @@ func refreshSB06HeadsEqual(a, b refreshSB06Head) bool {
 }
 
 func TestEnrollSB05BoundarySequence(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	old := storeEnrollmentPhaseHook
 	defer func() { storeEnrollmentPhaseHook = old }()
@@ -402,6 +377,9 @@ func TestEnrollSB05BoundarySequence(t *testing.T) {
 // proposal, commits it, and a fresh Store/LoadExternal/VerifyOSS view sees a
 // complete retained head. Unsupported WAL/SHM evidence remains fail closed.
 func TestRefreshSB06ActualPreparedPath(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)
@@ -434,9 +412,12 @@ func TestRefreshSB06ActualPreparedPath(t *testing.T) {
 }
 
 func TestOrdinaryReaderNeverInitializesOrRecovers(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	root := fixture.loaded.Install.OSS.StorePath
-	if _, err := OpenReadOnly(context.Background(), fixture.selection); err != ErrAnchorMissing {
+	if _, err := OpenReadOnly(context.Background(), fixture.selection); !errors.Is(err, ErrAnchorMissing) {
 		t.Fatalf("missing store read = %v", err)
 	}
 	if _, err := os.Stat(root); !os.IsNotExist(err) {
@@ -449,7 +430,7 @@ func TestOrdinaryReaderNeverInitializesOrRecovers(t *testing.T) {
 	if err := os.WriteFile(journal, []byte("pending"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := OpenReadOnly(context.Background(), fixture.selection); err != ErrPending {
+	if _, err := OpenReadOnly(context.Background(), fixture.selection); !errors.Is(err, ErrPending) {
 		t.Fatalf("hot journal read = %v", err)
 	}
 	if err := os.Remove(journal); err != nil {
@@ -463,6 +444,9 @@ func TestOrdinaryReaderNeverInitializesOrRecovers(t *testing.T) {
 }
 
 func TestConcurrentRefreshHasOneCASWinner(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)

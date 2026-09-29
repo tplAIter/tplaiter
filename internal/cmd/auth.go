@@ -26,7 +26,7 @@ var authRunner execx.Runner = execx.Exec{}
 const dateLayout = "2006-01-02"
 
 func init() {
-	rootCmd.AddCommand(newAuthCmd())
+	registerCommand(newAuthCmd)
 }
 
 func newAuthCmd() *cobra.Command {

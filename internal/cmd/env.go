@@ -26,7 +26,7 @@ var envRunner execx.Runner = execx.Exec{}
 var envAutoYes bool
 
 func init() {
-	rootCmd.AddCommand(newEnvCmd())
+	registerCommand(newEnvCmd)
 }
 
 // newEnvCmd creates `tplater env` (SPEC-03 §4): the single entry point for
@@ -48,6 +48,8 @@ func newEnvCmd() *cobra.Command {
 // newEnvListCmd creates `tplater env list`.
 func newEnvListCmd() *cobra.Command {
 	return &cobra.Command{
+		Annotations: prerunAnnotations(prerunReadonly),
+
 		Use:   "list",
 		Short: "Показать плейбуки окружения манифеста шаблона",
 		Args:  cobra.NoArgs,
@@ -65,6 +67,8 @@ func newEnvListCmd() *cobra.Command {
 // SPEC-03 §4).
 func newEnvSetupCmd() *cobra.Command {
 	c := &cobra.Command{
+		Annotations: prerunAnnotations(prerunLegacyAction),
+
 		Use:   "setup [name]",
 		Short: "Запустить плейбук окружения (по умолчанию \"setup\")",
 		Args:  cobra.MaximumNArgs(1),

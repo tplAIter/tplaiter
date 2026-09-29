@@ -302,10 +302,3 @@ func TestRustGlobalNULFailsBeforeLiteralRecognition(t *testing.T) {
 		t.Fatalf("NUL accepted: markers=%#v err=%v", markers, err)
 	}
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

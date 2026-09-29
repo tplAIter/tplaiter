@@ -62,6 +62,7 @@ type memoryEvidence map[string][]byte
 func (m memoryEvidence) Read(_ context.Context, digest string) ([]byte, error) {
 	return append([]byte(nil), m[digest]...), nil
 }
+
 func put(m memoryEvidence, value any) string {
 	raw, _ := json.Marshal(value)
 	d := evidencecas.Digest(raw)
@@ -105,6 +106,7 @@ func TestVerifyOSSUsesExternalAnchor(t *testing.T) {
 		t.Fatal("not OSS")
 	}
 }
+
 func mustRaw(t *testing.T, value string) []byte {
 	t.Helper()
 	v, err := rawDigest(value)
@@ -233,7 +235,7 @@ func TestOrganizationAuthorityCannotUseOSSRotaion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := v.verifyRotationUnchecked(context.Background(), current, descriptor, Bundle{}); err != ErrDowngradeDenied {
+	if _, err := v.verifyRotationUnchecked(context.Background(), current, descriptor, Bundle{}); !errors.Is(err, ErrDowngradeDenied) {
 		t.Fatalf("organization rotation error = %v, want %v", err, ErrDowngradeDenied)
 	}
 }
@@ -364,7 +366,7 @@ func TestVerifyDevelopmentRejectsNilOrZeroVerifierInputs(t *testing.T) {
 			return (&Verifier{clock: v.clock}).VerifyDevelopment(context.Background(), in)
 		},
 		"nil context": func() (*DevelopmentContext, error) {
-			return v.VerifyDevelopment(nil, in)
+			return v.VerifyDevelopment(nil, in) //nolint:staticcheck // deliberately exercises nil-context rejection
 		},
 	}
 	for name, call := range cases {

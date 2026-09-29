@@ -12,6 +12,7 @@ func tsProvider() TypeScriptProvider {
 	d := "sha256:" + strings.Repeat("0", 64)
 	return TypeScriptProvider{APIVersion: TypeScriptProviderAPIVersion, Adapter: TypeScriptAdapterID, PrettierVersion: "3.9.6", CompilerVersion: "6.0.3", EstreeVersion: "8.65.0", CommentUtilsVersion: "2.5.0", NodeVersion: "26.9.0", NodeBinarySHA256: d, Files: []TypeScriptProviderFile{{"adapter/typescript.cjs", "100644", d}, {"tool/plugins/estree.cjs", "100644", d}, {"tool/plugins/typescript.cjs", "100644", d}, {"tool/standalone.cjs", "100644", d}}, FormatOptions: TypeScriptFormatOptions{Parser: "typescript", PrintWidth: 80, TabWidth: 2, Semi: true, QuoteProps: "as-needed", TrailingComma: "all", BracketSpacing: true, ArrowParens: "always", EndOfLine: "lf", EmbeddedLanguageFormatting: "off", ProseWrap: "preserve"}}
 }
+
 func TestTypeScriptProviderFixedDescriptor(t *testing.T) {
 	p := tsProvider()
 	if err := p.Validate(); err != nil {
@@ -22,6 +23,7 @@ func TestTypeScriptProviderFixedDescriptor(t *testing.T) {
 		t.Fatal("accepted caller path")
 	}
 }
+
 func TestTypeScriptHelperIsFixedAndNotRunner(t *testing.T) {
 	s := string(TypeScriptHelperBytes())
 	for _, want := range []string{"standalone.cjs", "typescript.cjs", "estree.cjs", "validate", "format"} {

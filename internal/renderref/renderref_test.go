@@ -23,7 +23,7 @@ func TestRenderInScratchMatchesExistingEngineAndCleansOwnedDirectory(t *testing.
 		t.Fatal(err)
 	}
 	src := templateFixture(t)
-	plain, err := Render(src, Input{})
+	plain, err := Render(context.Background(), src, Input{})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestRenderInScratchDiscardsBoundedOutputAndCleansUp(t *testing.T) {
 			if err := os.WriteFile(sentinel, []byte(sentinelData), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			ctx, cancel := testContext(t)
 			defer cancel()
 			src := boundedFixture(tc.count, tc.bytes)
 			if tc.name == "byte limit" {
@@ -151,4 +151,17 @@ func boundedFixtureWithSizes(sizes ...int) fs.FS {
 		files[fmt.Sprintf("files/f%04d.txt.tmpl", i)] = &fstest.MapFile{Data: data}
 	}
 	return files
+}
+
+// testContext bounds a render by the test binary's own deadline (go test
+// -timeout) rather than a fixed wall-clock budget, so the limit tests assert
+// the entry/byte bound and not how fast a loaded machine renders 4097 files.
+// A small margin leaves time to report the failure before the binary panics.
+func testContext(t *testing.T) (context.Context, context.CancelFunc) {
+	t.Helper()
+	deadline, ok := t.Deadline()
+	if !ok {
+		return context.WithCancel(context.Background())
+	}
+	return context.WithDeadline(context.Background(), deadline.Add(-10*time.Second))
 }

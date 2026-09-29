@@ -16,26 +16,31 @@ import (
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
-const PlanAPIVersion = "tplaiter.dev/formatter-plan/v1"
-const maxPlanBytes = 1 << 20
-const maxOutputBytes = 16 << 20
+const (
+	PlanAPIVersion = "tplaiter.dev/formatter-plan/v1"
+	maxPlanBytes   = 1 << 20
+	maxOutputBytes = 16 << 20
+)
 
-type Marker = blockmarkers.Marker
-type PlanTool = trustverify.Tool
-type Plan struct {
-	APIVersion       string   `json:"apiVersion"`
-	Path             string   `json:"path"`
-	Language         string   `json:"language"`
-	Adapter          string   `json:"adapter"`
-	Tool             PlanTool `json:"tool"`
-	Options          []string `json:"options"`
-	InputSHA256      string   `json:"inputSHA256"`
-	InputMode        string   `json:"inputMode"`
-	Markers          []Marker `json:"markers"`
-	TimeoutMillis    int64    `json:"timeoutMillis"`
-	OutputLimitBytes int64    `json:"outputLimitBytes"`
-	PlanSHA256       string   `json:"planSHA256"`
-}
+type (
+	Marker   = blockmarkers.Marker
+	PlanTool = trustverify.Tool
+	Plan     struct {
+		APIVersion       string   `json:"apiVersion"`
+		Path             string   `json:"path"`
+		Language         string   `json:"language"`
+		Adapter          string   `json:"adapter"`
+		Tool             PlanTool `json:"tool"`
+		Options          []string `json:"options"`
+		InputSHA256      string   `json:"inputSHA256"`
+		InputMode        string   `json:"inputMode"`
+		Markers          []Marker `json:"markers"`
+		TimeoutMillis    int64    `json:"timeoutMillis"`
+		OutputLimitBytes int64    `json:"outputLimitBytes"`
+		PlanSHA256       string   `json:"planSHA256"`
+	}
+)
+
 type PlanInput struct {
 	Path, Language, Adapter         string
 	Tool                            PlanTool
@@ -91,8 +96,10 @@ func (e *Error) Error() string {
 }
 func ferr(code, path string) error { return &Error{Code: code, Path: path} }
 
-var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-var tokenRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]{0,127}$`)
+var (
+	digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	tokenRE  = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]{0,127}$`)
+)
 
 func digest(b []byte) string { h := sha256.Sum256(b); return "sha256:" + hex.EncodeToString(h[:]) }
 func domainDigest(v any) (string, error) {
@@ -198,7 +205,7 @@ func validatePlanFields(p *Plan, input []byte) error {
 			return ferr("FORMAT_MARKER", p.Path)
 		}
 	}
-	if input != nil && len(input) > maxOutputBytes {
+	if len(input) > maxOutputBytes {
 		return ferr("FORMAT_OUTPUT_LIMIT", p.Path)
 	}
 	return nil
@@ -209,12 +216,13 @@ func providerRE(s string) bool {
 		return false
 	}
 	for _, r := range s {
-		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("._/-", r)) {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("._/-", r) {
 			return false
 		}
 	}
 	return true
 }
+
 func adapterAllowed(language, adapter string, options []string) bool {
 	switch {
 	case language == "go" && adapter == "gofmt-stdin-v1":
@@ -226,6 +234,7 @@ func adapterAllowed(language, adapter string, options []string) bool {
 	}
 	return false
 }
+
 func adapterToolID(adapter, toolID string) bool {
 	switch adapter {
 	case "gofmt-stdin-v1":
@@ -238,6 +247,7 @@ func adapterToolID(adapter, toolID string) bool {
 		return false
 	}
 }
+
 func same(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -249,6 +259,7 @@ func same(a, b []string) bool {
 	}
 	return true
 }
+
 func safePath(s string) bool {
 	return exports.ValidatePortablePath(s) == nil
 }
@@ -280,6 +291,7 @@ func CheckOutputs(plan Plan, input, first, second []byte, validator MarkerValida
 	}
 	return Check{PlanSHA256: plan.PlanSHA256, InputSHA256: plan.InputSHA256, FirstOutputSHA256: digest(first), SecondOutputSHA256: digest(second), Formatted: append([]byte(nil), first...)}, nil
 }
+
 func markersEqual(a, b []Marker) bool {
 	if len(a) != len(b) {
 		return false

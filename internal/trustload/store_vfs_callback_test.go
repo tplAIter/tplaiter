@@ -109,7 +109,7 @@ func TestStoreVFSGeneratedCallbackDispatch(t *testing.T) {
 		t.Fatal("malloc")
 	}
 	defer libc.Xfree(tls, out)
-	vfs := (*sqlite3.Tsqlite3_vfs)(unsafe.Pointer(v.vfs))
+	vfs := (*sqlite3.Tsqlite3_vfs)(libcPtr(v.vfs))
 	full := *(*func(*libc.TLS, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{vfs.FxFullPathname}))
 	if got := full(tls, v.vfs, name, 4096, out); got != sqlite3.SQLITE_OK || libc.GoString(out) != v.main {
 		t.Fatalf("full=%d path=%q", got, libc.GoString(out))
@@ -135,7 +135,7 @@ func TestStoreVFSGeneratedCallbackDispatch(t *testing.T) {
 	}
 	dlErr := *(*func(*libc.TLS, uintptr, int32, uintptr))(unsafe.Pointer(&struct{ p uintptr }{vfs.FxDlError}))
 	dlErr(tls, v.vfs, 1, out)
-	if *(*byte)(unsafe.Pointer(out)) != 0 {
+	if *(*byte)(libcPtr(out)) != 0 {
 		t.Fatal("dlerror not nul")
 	}
 	random := *(*func(*libc.TLS, uintptr, int32, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{vfs.FxRandomness}))
@@ -146,7 +146,7 @@ func TestStoreVFSGeneratedCallbackDispatch(t *testing.T) {
 	if sleep(tls, v.vfs, 7) != 7 {
 		t.Fatal("sleep result")
 	}
-	methods := (*sqlite3.Tsqlite3_io_methods)(unsafe.Pointer((*sqlite3.Tsqlite3_file)(unsafe.Pointer(file)).FpMethods))
+	methods := (*sqlite3.Tsqlite3_io_methods)(libcPtr((*sqlite3.Tsqlite3_file)(libcPtr(file)).FpMethods))
 	size := *(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{methods.FxFileSize}))
 	if size(tls, file, out) != sqlite3.SQLITE_OK {
 		t.Fatal("filesize")
@@ -201,13 +201,13 @@ func TestStoreVFSGeneratedCallbackRemainingSlots(t *testing.T) {
 		t.Fatal("malloc file")
 	}
 	defer libc.Xfree(tls, file)
-	vfs := (*sqlite3.Tsqlite3_vfs)(unsafe.Pointer(v.vfs))
+	vfs := (*sqlite3.Tsqlite3_vfs)(libcPtr(v.vfs))
 	open := *(*func(*libc.TLS, uintptr, sqlite3.Tsqlite3_filename, uintptr, int32, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{vfs.FxOpen}))
 	if got := open(tls, v.vfs, name, file, sqlite3.SQLITE_OPEN_MAIN_DB|sqlite3.SQLITE_OPEN_READWRITE|sqlite3.SQLITE_OPEN_CREATE, 0); got != sqlite3.SQLITE_OK {
 		t.Fatalf("open=%d", got)
 	}
-	methods := (*sqlite3.Tsqlite3_io_methods)(unsafe.Pointer((*sqlite3.Tsqlite3_file)(unsafe.Pointer(file)).FpMethods))
-	close := *(*func(*libc.TLS, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{methods.FxClose}))
+	methods := (*sqlite3.Tsqlite3_io_methods)(libcPtr((*sqlite3.Tsqlite3_file)(libcPtr(file)).FpMethods))
+	closeFn := *(*func(*libc.TLS, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{methods.FxClose}))
 	read := *(*func(*libc.TLS, uintptr, uintptr, int32, sqlite3.Tsqlite3_int64) int32)(unsafe.Pointer(&struct{ p uintptr }{methods.FxRead}))
 	write := *(*func(*libc.TLS, uintptr, uintptr, int32, sqlite3.Tsqlite3_int64) int32)(unsafe.Pointer(&struct{ p uintptr }{methods.FxWrite}))
 	truncate := *(*func(*libc.TLS, uintptr, sqlite3.Tsqlite3_int64) int32)(unsafe.Pointer(&struct{ p uintptr }{methods.FxTruncate}))
@@ -217,19 +217,19 @@ func TestStoreVFSGeneratedCallbackRemainingSlots(t *testing.T) {
 	reserved := *(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{methods.FxCheckReservedLock}))
 	sector := *(*func(*libc.TLS, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{methods.FxSectorSize}))
 	device := *(*func(*libc.TLS, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{methods.FxDeviceCharacteristics}))
-	delete := *(*func(*libc.TLS, uintptr, uintptr, int32) int32)(unsafe.Pointer(&struct{ p uintptr }{vfs.FxDelete}))
+	deleteFn := *(*func(*libc.TLS, uintptr, uintptr, int32) int32)(unsafe.Pointer(&struct{ p uintptr }{vfs.FxDelete}))
 	access := *(*func(*libc.TLS, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{vfs.FxAccess}))
 	dlClose := *(*func(*libc.TLS, uintptr, uintptr))(unsafe.Pointer(&struct{ p uintptr }{vfs.FxDlClose}))
 	currentTime := *(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{vfs.FxCurrentTime}))
 	lastError := *(*func(*libc.TLS, uintptr, int32, uintptr) int32)(unsafe.Pointer(&struct{ p uintptr }{vfs.FxGetLastError}))
 
-	if got := access(tls, v.vfs, name, sqlite3.SQLITE_ACCESS_EXISTS, out); got != sqlite3.SQLITE_OK || *(*int32)(unsafe.Pointer(out)) != 1 {
-		t.Fatalf("access main got=%d result=%d", got, *(*int32)(unsafe.Pointer(out)))
+	if got := access(tls, v.vfs, name, sqlite3.SQLITE_ACCESS_EXISTS, out); got != sqlite3.SQLITE_OK || *(*int32)(libcPtr(out)) != 1 {
+		t.Fatalf("access main got=%d result=%d", got, *(*int32)(libcPtr(out)))
 	}
-	if got := access(tls, v.vfs, foreign, sqlite3.SQLITE_ACCESS_EXISTS, out); got != sqlite3.SQLITE_OK || *(*int32)(unsafe.Pointer(out)) != 0 {
-		t.Fatalf("access foreign got=%d result=%d", got, *(*int32)(unsafe.Pointer(out)))
+	if got := access(tls, v.vfs, foreign, sqlite3.SQLITE_ACCESS_EXISTS, out); got != sqlite3.SQLITE_OK || *(*int32)(libcPtr(out)) != 0 {
+		t.Fatalf("access foreign got=%d result=%d", got, *(*int32)(libcPtr(out)))
 	}
-	if got := delete(tls, v.vfs, journal, 1); got != sqlite3.SQLITE_OK {
+	if got := deleteFn(tls, v.vfs, journal, 1); got != sqlite3.SQLITE_OK {
 		t.Fatalf("delete journal=%d", got)
 	}
 	dlClose(tls, v.vfs, 0)
@@ -251,14 +251,14 @@ func TestStoreVFSGeneratedCallbackRemainingSlots(t *testing.T) {
 	if got := lock(tls, file, sqlite3.SQLITE_LOCK_RESERVED); got != sqlite3.SQLITE_OK {
 		t.Fatalf("reserved lock=%d", got)
 	}
-	if got := reserved(tls, file, out); got != sqlite3.SQLITE_OK || *(*int32)(unsafe.Pointer(out)) != 1 {
-		t.Fatalf("reserved check got=%d result=%d", got, *(*int32)(unsafe.Pointer(out)))
+	if got := reserved(tls, file, out); got != sqlite3.SQLITE_OK || *(*int32)(libcPtr(out)) != 1 {
+		t.Fatalf("reserved check got=%d result=%d", got, *(*int32)(libcPtr(out)))
 	}
 	if got := unlock(tls, file, sqlite3.SQLITE_LOCK_NONE); got != sqlite3.SQLITE_OK {
 		t.Fatalf("unlock=%d", got)
 	}
-	if got := reserved(tls, file, out); got != sqlite3.SQLITE_OK || *(*int32)(unsafe.Pointer(out)) != 0 {
-		t.Fatalf("reserved after unlock got=%d result=%d", got, *(*int32)(unsafe.Pointer(out)))
+	if got := reserved(tls, file, out); got != sqlite3.SQLITE_OK || *(*int32)(libcPtr(out)) != 0 {
+		t.Fatalf("reserved after unlock got=%d result=%d", got, *(*int32)(libcPtr(out)))
 	}
 	if got := write(tls, file, name, 0, 0); got != sqlite3.SQLITE_OK {
 		t.Fatalf("zero write=%d", got)
@@ -273,11 +273,11 @@ func TestStoreVFSGeneratedCallbackRemainingSlots(t *testing.T) {
 		t.Fatalf("empty read=%d", got)
 	}
 	for i := 0; i < 4; i++ {
-		if *(*byte)(unsafe.Pointer(out + uintptr(i))) != 0 {
+		if *(*byte)(libcPtr(out + uintptr(i))) != 0 {
 			t.Fatalf("short read byte %d not zero", i)
 		}
 	}
-	if got := close(tls, file); got != sqlite3.SQLITE_OK {
+	if got := closeFn(tls, file); got != sqlite3.SQLITE_OK {
 		t.Fatalf("close=%d", got)
 	}
 }
@@ -304,13 +304,21 @@ func TestStoreVFSObservedSQLiteTransactionCallbacks(t *testing.T) {
 	if _, err := binding.conn.ExecContext(ctx, "CREATE TABLE proof(v INTEGER); INSERT INTO proof VALUES (7)"); err != nil {
 		t.Fatal(err)
 	}
-	c := (*vfsContext)(unsafe.Pointer(binding.vfs.ctx))
+	c := (*vfsContext)(libcPtr(binding.vfs.ctx))
 	for _, tc := range []struct {
 		name string
 		kind int
 	}{
-		{"open", callbackOpen}, {"read", callbackRead}, {"write", callbackWrite}, {"sync", callbackSync},
-		{"delete", callbackDelete}, {"lock", callbackLock}, {"unlock", callbackUnlock}, {"filesize", callbackFileSize}, {"control", callbackFileControl}, {"close", callbackClose},
+		{"open", callbackOpen},
+		{"read", callbackRead},
+		{"write", callbackWrite},
+		{"sync", callbackSync},
+		{"delete", callbackDelete},
+		{"lock", callbackLock},
+		{"unlock", callbackUnlock},
+		{"filesize", callbackFileSize},
+		{"control", callbackFileControl},
+		{"close", callbackClose},
 	} {
 		if got := atomic.LoadInt64(&c.callbackCounts[tc.kind]); got == 0 {
 			t.Errorf("transaction did not invoke %s callback", tc.name)

@@ -413,7 +413,8 @@ func (s *Store) Read(ctx context.Context, ref string) ([]byte, error) {
 
 func bundleFromStored(ctx context.Context, reader interface {
 	Read(context.Context, string) ([]byte, error)
-}, stored StoredBundle) (bootstrap.Bundle, error) {
+}, stored StoredBundle,
+) (bootstrap.Bundle, error) {
 	envelope, err := reader.Read(ctx, stored.EnvelopeCAS)
 	if err != nil {
 		return bootstrap.Bundle{}, ErrProvenanceUnavailable
@@ -448,26 +449,6 @@ func validateEvidence(evidence map[string][]byte, refs []string) error {
 	}
 	for _, ref := range refs {
 		if _, ok := evidence[ref]; !ok {
-			return ErrProvenanceUnavailable
-		}
-	}
-	return nil
-}
-
-func insertEvidence(ctx context.Context, tx *sql.Tx, evidence map[string][]byte) error {
-	for ref, raw := range evidence {
-		if len(raw) > maxCASBlobBytes || rawSHA256(raw) != ref {
-			return ErrConfigInvalid
-		}
-		var existing []byte
-		err := tx.QueryRowContext(ctx, `SELECT bytes FROM blobs WHERE digest=?`, ref).Scan(&existing)
-		if errors.Is(err, sql.ErrNoRows) {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO blobs(digest,bytes) VALUES(?,?)`, ref, raw); err != nil {
-				return ErrProvenanceUnavailable
-			}
-			continue
-		}
-		if err != nil || !bytes.Equal(existing, raw) {
 			return ErrProvenanceUnavailable
 		}
 	}
@@ -510,6 +491,7 @@ func beginImmediate(ctx context.Context, conn *sql.Conn) error {
 	}
 	return nil
 }
+
 func rollback(conn *sql.Conn) {
 	if conn != nil {
 		_, _ = conn.ExecContext(context.Background(), "ROLLBACK")

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,7 +13,7 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(newMCPServerCmd())
+	registerCommand(newMCPServerCmd)
 }
 
 // newMCPServerCmd creates `tplaiter mcp-server`: exposes tplaiter commands as
@@ -44,7 +45,7 @@ func newMCPServerCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			exe, err := os.Executable()
 			if err != nil {
-				return fmt.Errorf("MCP_UNAVAILABLE")
+				return errors.New("MCP_UNAVAILABLE")
 			}
 
 			if printConfig != "" {
@@ -66,12 +67,12 @@ func newMCPServerCmd() *cobra.Command {
 			}
 			scratchRoot := runtime.ScratchRoot()
 			if err := runtime.Close(); err != nil {
-				return fmt.Errorf("MCP_UNAVAILABLE")
+				return errors.New("MCP_UNAVAILABLE")
 			}
 			_ = direct // Retained for CLI compatibility; the child environment is always fixed.
 			srv := mcpsrv.NewInstalled(exe, resolveVersion(), scratchRoot)
 			if srv == nil {
-				return fmt.Errorf("MCP_UNAVAILABLE")
+				return errors.New("MCP_UNAVAILABLE")
 			}
 			return srv.ServeStdio()
 		},

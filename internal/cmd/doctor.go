@@ -54,6 +54,8 @@ var doctorCriticalTools = map[string]bool{
 // newDoctorCmd creates `tplater doctor`.
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
+		Annotations: prerunAnnotations(prerunReadonly),
+
 		Use:   "doctor",
 		Short: "Проверить окружение и инструменты активного шаблона",
 		Args:  cobra.NoArgs,

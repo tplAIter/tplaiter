@@ -108,6 +108,7 @@ func symlink(t *testing.T, target string) string {
 	symlinkAt(t, link, target)
 	return link
 }
+
 func symlinkAt(t *testing.T, link, target string) {
 	t.Helper()
 	if err := os.Symlink(target, link); err != nil {

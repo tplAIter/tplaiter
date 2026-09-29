@@ -32,7 +32,7 @@ var (
 	// storeRecoveryFreshHealthFault is a test-only failure seam for the final
 	// readonly health invocation.  It can only force failure; it cannot supply
 	// SQL, a tuple, or an approval result.
-	storeRecoveryFreshHealthFault error
+	storeRecoveryFreshHealthFault error //nolint:errname // a fault-injection seam, not a sentinel error
 
 	// Marker seams are private, failure-only syscall observations for the
 	// finite adapter fault matrix. Production uses the real operations; tests
@@ -202,7 +202,7 @@ func (r *rootLease) inspectColdJournalChecked(ctx context.Context, borrow *store
 				return coldJournalEvidence{}, -1, err
 			}
 			n, readErr = storeRecoveryPread(fd, one[:], 0)
-			if readErr != unix.EINTR {
+			if !errors.Is(readErr, unix.EINTR) {
 				break
 			}
 		}
@@ -240,7 +240,7 @@ func (r *rootLease) inspectColdJournalChecked(ctx context.Context, borrow *store
 			want = remain
 		}
 		n, readErr := storeRecoveryPread(fd, buffer[:want], offset)
-		if readErr == unix.EINTR {
+		if errors.Is(readErr, unix.EINTR) {
 			continue
 		}
 		if readErr != nil || int64(n) != want {
@@ -431,7 +431,7 @@ func recoverStoreColdJournal(ctx context.Context, lease *rootLease) error {
 	absenceErr := storeRecoveryFstatat(lease.fd, storeDBName+"-journal", &absent, unix.AT_SYMLINK_NOFOLLOW)
 	closeErr := closeColdJournalFD(&postFD)
 	observeStoreRecoveryHook("after-unlink")
-	if syncErr != nil || absenceErr != unix.ENOENT || closeErr != nil || ctx.Err() != nil || borrow.check(ctx) != nil {
+	if syncErr != nil || !errors.Is(absenceErr, unix.ENOENT) || closeErr != nil || ctx.Err() != nil || borrow.check(ctx) != nil {
 		if closeErr != nil {
 			lease.retainRecoveryTerminal(borrow, nil, &postFD, true, closeErr)
 			finished = true
@@ -1094,7 +1094,7 @@ func (r *rootLease) ownerUID() uint32 {
 	return uint32(unix.Geteuid())
 }
 
-func (r *rootLease) openLeaf(name string, flags int, perm uint32) (int, error) {
+func (r *rootLease) openLeaf(name string, flags int, perm uint32) (int, error) { //nolint:unparam // flags mirror openat(2) for fault-injection seams
 	if !r.valid() || (name != storeDBName && name != storeDBName+"-journal") {
 		return -1, ErrProvenanceUnavailable
 	}
@@ -1163,20 +1163,20 @@ func markerIdentity(st *unix.Stat_t) markerSnapshot {
 	return markerSnapshot{dev: uint64(st.Dev), ino: uint64(st.Ino), mode: uint32(st.Mode), uid: st.Uid, nlink: uint64(st.Nlink), size: st.Size}
 }
 
-func (r *rootLease) validMarkerStat(st *unix.Stat_t, max int) bool {
-	return st != nil && st.Mode&unix.S_IFMT == unix.S_IFREG && st.Nlink == 1 && st.Uid == r.ownerUID() && st.Mode&0o077 == 0 && st.Size >= 0 && st.Size <= int64(max)
+func (r *rootLease) validMarkerStat(st *unix.Stat_t, limit int) bool {
+	return st != nil && st.Mode&unix.S_IFMT == unix.S_IFREG && st.Nlink == 1 && st.Uid == r.ownerUID() && st.Mode&0o077 == 0 && st.Size >= 0 && st.Size <= int64(limit)
 }
 
 func validMarkerName(name string) bool { return name == activeMarkerName || name == pendingMarkerName }
 
 // readMarker reads one fixed marker through the held root descriptor. It
 // records no authority; callers still decode and compare the returned bytes.
-func (r *rootLease) readMarker(ctx context.Context, name string, max int) ([]byte, error) {
-	raw, _, err := r.readMarkerSnapshot(ctx, name, max)
+func (r *rootLease) readMarker(ctx context.Context, name string, limit int) ([]byte, error) {
+	raw, _, err := r.readMarkerSnapshot(ctx, name, limit)
 	return raw, err
 }
 
-func (r *rootLease) readMarkerSnapshot(ctx context.Context, name string, max int) ([]byte, markerSnapshot, error) {
+func (r *rootLease) readMarkerSnapshot(ctx context.Context, name string, limit int) ([]byte, markerSnapshot, error) {
 	if r == nil || (r.mode != storeRead && r.mode != storeEnroll && r.mode != storeRefresh && r.mode != storeRecover) {
 		return nil, markerSnapshot{}, ErrProvenanceUnavailable
 	}
@@ -1190,7 +1190,7 @@ func (r *rootLease) readMarkerSnapshot(ctx context.Context, name string, max int
 			op.abort()
 		}
 	}()
-	raw, err := r.readMarkerOperation(ctx, op, name, max)
+	raw, err := r.readMarkerOperation(ctx, op, name, limit)
 	if err != nil {
 		return nil, markerSnapshot{}, err
 	}
@@ -1202,8 +1202,8 @@ func (r *rootLease) readMarkerSnapshot(ctx context.Context, name string, max int
 	return raw, snapshot, nil
 }
 
-func (r *rootLease) readMarkerOperation(ctx context.Context, op *storeRootOperation, name string, max int) ([]byte, error) {
-	if !validMarkerName(name) || max <= 0 || op.check(ctx) != nil {
+func (r *rootLease) readMarkerOperation(ctx context.Context, op *storeRootOperation, name string, limit int) ([]byte, error) {
+	if !validMarkerName(name) || limit <= 0 || op.check(ctx) != nil {
 		return nil, ErrProvenanceUnavailable
 	}
 	fd, err := storeMarkerOpenat(r.fd, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
@@ -1217,7 +1217,7 @@ func (r *rootLease) readMarkerOperation(ctx context.Context, op *storeRootOperat
 		}
 	}()
 	var before unix.Stat_t
-	if storeMarkerFstat(fd, &before) != nil || !r.validMarkerStat(&before, max) || op.check(ctx) != nil {
+	if storeMarkerFstat(fd, &before) != nil || !r.validMarkerStat(&before, limit) || op.check(ctx) != nil {
 		return nil, ErrProvenanceUnavailable
 	}
 	identity := markerIdentity(&before)
@@ -1232,7 +1232,7 @@ func (r *rootLease) readMarkerOperation(ctx context.Context, op *storeRootOperat
 			return nil, ErrProvenanceUnavailable
 		}
 		n, readErr := storeMarkerPread(fd, raw[offset:], int64(offset))
-		if readErr == unix.EINTR {
+		if errors.Is(readErr, unix.EINTR) {
 			continue
 		}
 		if readErr != nil || n <= 0 || n > len(raw)-offset {
@@ -1293,7 +1293,7 @@ func (r *rootLease) writePendingMarker(ctx context.Context, raw []byte) error {
 			return ErrProvenanceUnavailable
 		}
 		n, writeErr := storeMarkerWrite(fd, raw[offset:])
-		if writeErr == unix.EINTR {
+		if errors.Is(writeErr, unix.EINTR) {
 			continue
 		}
 		if writeErr != nil || n <= 0 || n > len(raw)-offset {
@@ -1349,7 +1349,7 @@ func (r *rootLease) activatePendingMarker(ctx context.Context, expected []byte) 
 		return ErrProvenanceUnavailable
 	}
 	var active unix.Stat_t
-	if err := storeMarkerFstatat(r.fd, activeMarkerName, &active, unix.AT_SYMLINK_NOFOLLOW); err != unix.ENOENT {
+	if err := storeMarkerFstatat(r.fd, activeMarkerName, &active, unix.AT_SYMLINK_NOFOLLOW); !errors.Is(err, unix.ENOENT) {
 		return ErrProvenanceUnavailable
 	}
 	if op.check(ctx) != nil {
@@ -1374,7 +1374,7 @@ func (r *rootLease) activatePendingMarker(ctx context.Context, expected []byte) 
 	activeErr := storeMarkerFstatat(r.fd, activeMarkerName, &observed, unix.AT_SYMLINK_NOFOLLOW)
 	var absent unix.Stat_t
 	pendingErr := storeMarkerFstatat(r.fd, pendingMarkerName, &absent, unix.AT_SYMLINK_NOFOLLOW)
-	if syncErr != nil || activeErr != nil || markerIdentity(&observed) != markerIdentity(&pending) || pendingErr != unix.ENOENT || op.check(ctx) != nil {
+	if syncErr != nil || activeErr != nil || markerIdentity(&observed) != markerIdentity(&pending) || !errors.Is(pendingErr, unix.ENOENT) || op.check(ctx) != nil {
 		return ErrProvenanceUnavailable
 	}
 	observeStoreEnrollmentPhase("final-dirsync")
@@ -1389,10 +1389,10 @@ func (r *rootLease) deleteJournal() error {
 	if r == nil || !r.mode.writable() || !r.valid() {
 		return ErrProvenanceUnavailable
 	}
-	if err := validatePrivateJournalAt(r.fd, r.ownerUID()); err != nil && err != unix.ENOENT {
+	if err := validatePrivateJournalAt(r.fd, r.ownerUID()); err != nil && !errors.Is(err, unix.ENOENT) {
 		return ErrProvenanceUnavailable
 	}
-	if err := storeUnlinkat(r.fd, storeDBName+"-journal", 0); err != nil && err != unix.ENOENT {
+	if err := storeUnlinkat(r.fd, storeDBName+"-journal", 0); err != nil && !errors.Is(err, unix.ENOENT) {
 		return ErrProvenanceUnavailable
 	}
 	if err := storeSyncDirectory(r.fd); err != nil {

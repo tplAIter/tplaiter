@@ -12,6 +12,7 @@ import (
 	"time"
 
 	js "github.com/santhosh-tekuri/jsonschema/v6"
+
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 )
@@ -24,7 +25,7 @@ func (m approvalMemoryCAS) Read(ctx context.Context, d string) ([]byte, error) {
 	}
 	b, ok := m[d]
 	if !ok {
-		return nil, errMissing{}
+		return nil, missingError{}
 	}
 	return append([]byte(nil), b...), nil
 }
@@ -169,17 +170,17 @@ func TestExecutionMaterialDomainVectors(t *testing.T) {
 }
 
 func TestDirectDTOValidationAndExactMigrationWire(t *testing.T) {
-	p, r, priv := approvalFixture(t)
+	p, _, _ := approvalFixture(t)
 	p.Principals[0].ID = "Principal:bad"
 	if _, e := p.ComputePolicySHA256(); e == nil {
 		t.Fatal("invalid direct policy hashed")
 	}
-	p, r, priv = approvalFixture(t)
+	_, r, _ := approvalFixture(t)
 	r.Action.Argv[0] = "other"
 	if _, e := r.ComputeRequestSHA256(); e == nil {
 		t.Fatal("invalid direct request hashed")
 	}
-	p, r, priv = approvalFixture(t)
+	p, r, priv := approvalFixture(t)
 	a := ExecutionApproval{APIVersion: ExecutionApprovalAPIVersion, Kind: "persistent-signed", RequestSHA256: r.RequestSHA256, ProfileBindingSHA256: r.ProfileBindingSHA256, OperationInputsSHA256: r.OperationInputsSHA256, ProjectID: r.ProjectID, Scope: r.Scope, ApproverID: p.Approvers[0].ID, IdentityClass: "operator", ExecutionPolicySHA256: p.PolicySHA256, Validity: Validity{"2030-01-01T00:00:00Z", "2031-01-01T00:00:00Z"}, KeyFingerprint: p.Approvers[0].KeyFingerprint}
 	d, _ := a.ComputeGrantSHA256()
 	a.GrantSHA256 = d
@@ -348,8 +349,8 @@ func TestPersistentApprovalCASAndScopeBoundaries(t *testing.T) {
 	for _, after := range []string{approvalDigest, a.SignatureCAS} {
 		t.Run("cancel-after-"+after[:14], func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
-			store := approvalCASFunc(func(_ context.Context, d string) ([]byte, error) {
-				b, err := base.Read(context.Background(), d)
+			store := approvalCASFunc(func(readCtx context.Context, d string) ([]byte, error) {
+				b, err := base.Read(context.WithoutCancel(readCtx), d)
 				if d == after {
 					cancel()
 				}

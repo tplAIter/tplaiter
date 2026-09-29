@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -33,14 +34,15 @@ func TestDecodeProfileBindingRequiresAllFields(t *testing.T) {
 		t.Fatal("missing zero-valued required definitionVersion accepted")
 	}
 }
+
 func TestOrganizationCannotDowngrade(t *testing.T) {
-	if RequireProfile(ProfileOrganization, ProfileOSS) != ErrDowngradeDenied {
+	if !errors.Is(RequireProfile(ProfileOrganization, ProfileOSS), ErrDowngradeDenied) {
 		t.Fatal("downgrade accepted")
 	}
 }
 
 func TestRequireProfileRejectsUnknownMinimum(t *testing.T) {
-	if RequireProfile(ProfileID("unknown"), ProfileOSS) != ErrProfileInvalid {
+	if !errors.Is(RequireProfile(ProfileID("unknown"), ProfileOSS), ErrProfileInvalid) {
 		t.Fatal("unknown minimum accepted")
 	}
 }

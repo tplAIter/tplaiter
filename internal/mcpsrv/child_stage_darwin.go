@@ -132,6 +132,7 @@ func (s *heldStage) launchPath() (string, error) {
 	}
 	return path, nil
 }
+
 func (s *heldStage) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -164,6 +165,7 @@ func stageChildExecutable(_ interface{}, source string) (string, func(), error) 
 	}
 	return p, func() { _ = s.Close() }, nil
 }
+
 func openNoFollowDir(path string) (int, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
@@ -184,6 +186,7 @@ func openNoFollowDir(path string) (int, error) {
 	}
 	return fd, nil
 }
+
 func openNoFollowFile(path string) (int, error) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
@@ -210,9 +213,10 @@ func openNoFollowFile(path string) (int, error) {
 	}
 	return fd, nil
 }
+
 func pathFromFD(fd int) (string, error) {
 	var raw [1024]byte
-	_, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_GETPATH), uintptr(unsafe.Pointer(&raw[0])))
+	_, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_GETPATH), uintptr(unsafe.Pointer(&raw[0]))) //nolint:staticcheck // x/sys/unix has no F_GETPATH wrapper
 	if errno != 0 {
 		return "", errno
 	}

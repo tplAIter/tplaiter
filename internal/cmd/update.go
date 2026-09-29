@@ -29,7 +29,7 @@ import (
 var updateRunner execx.Runner = execx.Exec{}
 
 func init() {
-	rootCmd.AddCommand(newUpdateCmd())
+	registerCommand(newUpdateCmd)
 }
 
 // newUpdateCmd creates `tplater update`: a 3-way update of the project to a new
@@ -44,6 +44,8 @@ func newUpdateCmd() *cobra.Command {
 	)
 
 	c := &cobra.Command{
+		Annotations: prerunAnnotations(prerunTrustOwned),
+
 		Use:   "update",
 		Short: "Обновить проект на новую версию шаблона (3-way merge)",
 		Long: "Обновляет сгенерированный проект на целевую версию шаблона по модели 3-way merge " +
@@ -117,7 +119,8 @@ func newUpdateCmd() *cobra.Command {
 func registeredSourceInput(ctx context.Context, runtime interface {
 	ProjectContext() trustload.ProjectContext
 	TrustRuntime() *trustverify.Runtime
-}) ([]byte, error) {
+},
+) ([]byte, error) {
 	if ctx == nil || runtime == nil || runtime.TrustRuntime() == nil {
 		return nil, errors.New("TRUST_RUNTIME_INVALID")
 	}

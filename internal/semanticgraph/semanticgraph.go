@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -33,7 +34,7 @@ func Analyze(ctx context.Context, root string, opts Options) (graphdoc.Document,
 		return graphdoc.Document{}, err
 	}
 	if !info.IsDir() {
-		return graphdoc.Document{}, fmt.Errorf("semanticgraph: root is not a directory")
+		return graphdoc.Document{}, errors.New("semanticgraph: root is not a directory")
 	}
 	d := graphdoc.New()
 	d.Producer = "tplaiter semanticgraph"
@@ -72,9 +73,9 @@ func Analyze(ctx context.Context, root string, opts Options) (graphdoc.Document,
 		}
 		files++
 		if opts.MaxFiles > 0 && files > opts.MaxFiles {
-			return fmt.Errorf("semanticgraph: file limit exceeded")
+			return errors.New("semanticgraph: file limit exceeded")
 		}
-		src, readErr := os.ReadFile(path)
+		src, readErr := os.ReadFile(path) //nolint:gosec // walk over the caller-selected source root, bounded by MaxFiles
 		if readErr != nil {
 			return readErr
 		}
@@ -85,7 +86,7 @@ func Analyze(ctx context.Context, root string, opts Options) (graphdoc.Document,
 		return d, err
 	}
 	if len(d.Nodes) == 0 {
-		return d, fmt.Errorf("semanticgraph: no supported source files")
+		return d, errors.New("semanticgraph: no supported source files")
 	}
 	if err := d.Canonicalize(); err != nil {
 		return d, err
@@ -102,6 +103,7 @@ func addFile(d *graphdoc.Document, lang, rel string, src []byte) {
 		parseRust(d, file, rel, src)
 	}
 }
+
 func parseGo(d *graphdoc.Document, file, rel string, src []byte) {
 	fs := token.NewFileSet()
 	f, err := parser.ParseFile(fs, rel, src, parser.ParseComments)
@@ -131,6 +133,7 @@ func parseGo(d *graphdoc.Document, file, rel string, src []byte) {
 		d.Edges = append(d.Edges, graphdoc.Edge{From: file, To: id, Kind: "declares", Provenance: []graphdoc.Provenance{{Source: "go/parser", Evidence: "syntax", Detected: true}}})
 	}
 }
+
 func parseRust(d *graphdoc.Document, file, rel string, src []byte) {
 	for i, line := range strings.Split(string(src), "\n") {
 		n := i + 1
@@ -160,6 +163,7 @@ func parseRust(d *graphdoc.Document, file, rel string, src []byte) {
 		}
 	}
 }
+
 func language(p string) string {
 	switch strings.ToLower(filepath.Ext(p)) {
 	case ".go":

@@ -2,6 +2,7 @@ package mcpsrv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,8 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tplAIter/tplaiter/internal/execx"
 	"golang.org/x/sys/unix"
+
+	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
 func TestInstalledTransportRejectsUnsafeExecutableAndSanitizesChildren(t *testing.T) {
@@ -110,6 +112,9 @@ func installedTestServer(t *testing.T, extraEnv ...string) *Server {
 	}
 	stage, err := newHeldStage(exe, scratch)
 	if err != nil {
+		if errors.Is(err, errTransportUnavailable) && runtime.GOOS != "darwin" {
+			t.Skip("held-stage transport is not available on " + runtime.GOOS)
+		}
 		t.Fatal(err)
 	}
 	s := New(exe, "test", nil)
@@ -157,7 +162,7 @@ func TestInstalledTransportBoundsOutputAndDiagnostics(t *testing.T) {
 	if err == nil || resultText(t, toolResult(res, err)) != "MCP_TIMEOUT" {
 		t.Fatalf("timeout category result=%+v err=%v", res, err)
 	}
-	stagePath := filepath.Join(s.stage.root, "tplaiter")
+	stagePath := filepath.Join(heldStageRoot(s.stage), "tplaiter")
 	if err := os.Chmod(stagePath, 0o400); err != nil {
 		t.Fatal(err)
 	}

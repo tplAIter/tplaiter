@@ -10,10 +10,11 @@ import (
 	"io"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -101,6 +102,7 @@ func DecodeSourceSelection(raw []byte) (*SourceSelection, error) {
 func (v SourceSelection) TrustSubject() trustverify.Subject {
 	return trustverify.Subject{Origin: v.Subject.Origin, TemplatePath: v.Subject.TemplatePath, RequestedRef: v.Subject.RequestedRef, Commit: v.Subject.Commit, TreeSHA256: v.Subject.TreeSHA256, ContractSHA256: v.Subject.ContractSHA256}
 }
+
 func (v SourceSelection) EvidenceRefs() trustverify.EvidenceRefs {
 	return trustverify.EvidenceRefs{Format: v.Evidence.Format, StatementCAS: v.Evidence.StatementCAS, SignatureCAS: v.Evidence.SignatureCAS, KeyFingerprint: v.Evidence.KeyFingerprint, CheckpointCAS: v.Evidence.CheckpointCAS, InclusionProofCAS: v.Evidence.InclusionProofCAS}
 }
@@ -110,7 +112,7 @@ func rawDigest(raw []byte) string {
 	return "sha256:" + hex.EncodeToString(s[:])
 }
 
-func requireNativeContract(contract, manifest []byte) (*NativeContract, error) {
+func requireNativeContract(contract, manifest []byte) (*NativeContract, error) { //nolint:unparam // callers use the error only today; the parsed contract is the result
 	v, err := DecodeNativeContract(contract, manifest)
 	if err != nil {
 		return nil, fmt.Errorf("%w", ErrSourceAdapterUnsupported)
@@ -143,6 +145,7 @@ func validateNativeManifest(raw []byte) error {
 	}
 	return tpl.Validate()
 }
+
 func validateYAMLNode(node *yaml.Node) error {
 	if node.Kind == yaml.AliasNode || node.Anchor != "" || node.Tag == "!!merge" {
 		return errors.New("native manifest aliases unsupported")

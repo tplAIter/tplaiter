@@ -16,7 +16,7 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(newSettingsCmd())
+	registerCommand(newSettingsCmd)
 }
 
 // newSettingsCmd creates `tplater settings`: viewing and changing project

@@ -7,8 +7,10 @@ import (
 	"unicode/utf8"
 )
 
-var beginPattern = regexp.MustCompile(`^tplater:managed-begin id=([A-Za-z][A-Za-z0-9._-]{0,127}) provider=([A-Za-z][A-Za-z0-9._/-]{0,127})$`)
-var endPattern = regexp.MustCompile(`^tplater:managed-end id=([A-Za-z][A-Za-z0-9._-]{0,127})$`)
+var (
+	beginPattern = regexp.MustCompile(`^tplater:managed-begin id=([A-Za-z][A-Za-z0-9._-]{0,127}) provider=([A-Za-z][A-Za-z0-9._/-]{0,127})$`)
+	endPattern   = regexp.MustCompile(`^tplater:managed-end id=([A-Za-z][A-Za-z0-9._-]{0,127})$`)
+)
 
 type markerKind uint8
 
@@ -73,6 +75,8 @@ func Parse(path string, content []byte) (Document, error) {
 			doc.ByID[r.ID] = r
 			closed[r.ID] = struct{}{}
 			open = nil
+		case markerNone:
+			// Lines without a marker only extend the current gap or region.
 		}
 	}
 	if open != nil {
@@ -109,6 +113,7 @@ func invalidEncodingLine(content []byte) int {
 	}
 	return 0
 }
+
 func splitSourceLines(content []byte) []sourceLine {
 	if len(content) == 0 {
 		return nil
@@ -125,6 +130,7 @@ func splitSourceLines(content []byte) []sourceLine {
 	}
 	return lines
 }
+
 func parseMarkerLine(raw []byte) (parsedMarker, bool, ErrorCode) {
 	line := strings.TrimSuffix(strings.TrimSuffix(string(raw), "\n"), "\r")
 	count := strings.Count(line, "tplater:managed-")
@@ -157,6 +163,7 @@ func parseMarkerLine(raw []byte) (parsedMarker, bool, ErrorCode) {
 	}
 	return parsedMarker{}, true, CodeMalformedMarker
 }
+
 func commentPayload(line string) (string, bool) {
 	for _, p := range []string{"//", "#", ";"} {
 		if strings.HasPrefix(line, p) {

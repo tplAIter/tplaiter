@@ -122,7 +122,7 @@ func detectChannel(exePath string, info *debug.BuildInfo, goBinDirs []string) Ch
 	// BuildInfo fallback: the path matches no known directory (the binary was
 	// moved or symlinked), but the module version is real—possible only when the
 	// binary was installed through `go install
-    // module@version` (ordinary `go build` leaves Main.Version == "(devel)").
+	// module@version` (ordinary `go build` leaves Main.Version == "(devel)").
 	if info != nil && info.Main.Path != "" && info.Main.Version != "" && info.Main.Version != "(devel)" {
 		return ChannelGoInstall
 	}

@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/tplAIter/tplaiter/internal/manifest"
-	"github.com/tplAIter/tplaiter/internal/ui"
 	"strings"
 	"testing"
+
+	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
 func TestEnsureRequiredFailsBeforeEffects(t *testing.T) {

@@ -1,6 +1,7 @@
 package exports
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -111,23 +112,23 @@ func ResolveSelection(selection Selection, sources *deps.SourceGraph, catalogs [
 		return ExportGraph{}, err
 	}
 	if sources == nil || len(sources.Nodes) == 0 || len(catalogs) > maxResolverCatalogs {
-		return ExportGraph{}, fmt.Errorf("EXPORT_SOURCE: missing or excessive source graph")
+		return ExportGraph{}, errors.New("EXPORT_SOURCE: missing or excessive source graph")
 	}
 	if err := deps.ValidateSourceGraph(sources); err != nil {
-		return ExportGraph{}, fmt.Errorf("EXPORT_SOURCE: invalid source graph")
+		return ExportGraph{}, errors.New("EXPORT_SOURCE: invalid source graph")
 	}
 	alias, domain, name := splitSelector(selection.Selector)
 	if alias == "" {
-		return ExportGraph{}, fmt.Errorf("EXPORT_SELECTOR: invalid selector")
+		return ExportGraph{}, errors.New("EXPORT_SELECTOR: invalid selector")
 	}
 	bySource := map[string]deps.SourceNode{}
 	byAlias := map[string]deps.SourceNode{}
 	for _, node := range sources.Nodes {
 		if node.Key == "" || node.Identity.ProviderID == "" || !exportDigestRE.MatchString(node.Identity.ContractDigest) || !exportDigestRE.MatchString(node.Identity.ParameterSHA256) {
-			return ExportGraph{}, fmt.Errorf("EXPORT_SOURCE: invalid graph node")
+			return ExportGraph{}, errors.New("EXPORT_SOURCE: invalid graph node")
 		}
 		if _, exists := bySource[node.Key]; exists {
-			return ExportGraph{}, fmt.Errorf("EXPORT_SOURCE: duplicate graph node")
+			return ExportGraph{}, errors.New("EXPORT_SOURCE: duplicate graph node")
 		}
 		bySource[node.Key] = node
 		for _, provenance := range node.Provenance {
@@ -144,10 +145,10 @@ func ResolveSelection(selection Selection, sources *deps.SourceGraph, catalogs [
 		}
 		node, ok := bySource[c.Source]
 		if !ok || node.Identity.ContractDigest != c.ContractDigest || node.Identity.ProviderID != c.Provider {
-			return ExportGraph{}, fmt.Errorf("EXPORT_SOURCE: catalog source or contract mismatch")
+			return ExportGraph{}, errors.New("EXPORT_SOURCE: catalog source or contract mismatch")
 		}
 		if _, ok := bySourceCatalog[c.Source]; ok {
-			return ExportGraph{}, fmt.Errorf("EXPORT_SOURCE: duplicate catalog source")
+			return ExportGraph{}, errors.New("EXPORT_SOURCE: duplicate catalog source")
 		}
 		bySourceCatalog[c.Source] = c
 	}
@@ -165,9 +166,8 @@ func ResolveSelection(selection Selection, sources *deps.SourceGraph, catalogs [
 	var visit func(string, Catalog, string, string, string, []string) (string, error)
 	visit = func(currentAlias string, cat Catalog, sel, dom, n string, chain []string) (string, error) {
 		if len(chain) >= maxExportDependencyDepth {
-			return "", fmt.Errorf("EXPORT_LIMIT: dependency depth exceeded")
+			return "", errors.New("EXPORT_LIMIT: dependency depth exceeded")
 		}
-		key := ""
 		var ent *ExportEntry
 		for i := range cat.Exports {
 			if cat.Exports[i].Domain == dom && cat.Exports[i].Name == n {
@@ -180,7 +180,7 @@ func ResolveSelection(selection Selection, sources *deps.SourceGraph, catalogs [
 		if ent == nil {
 			return "", fmt.Errorf("EXPORT_MISSING: %s", sel)
 		}
-		key = selectNodeKey(cat.Source, cat.Provider, *ent)
+		key := selectNodeKey(cat.Source, cat.Provider, *ent)
 		if visiting[key] {
 			return "", fmt.Errorf("EXPORT_CYCLE: %s", strings.Join(append(chain, currentAlias), " -> "))
 		}
@@ -206,10 +206,10 @@ func ResolveSelection(selection Selection, sources *deps.SourceGraph, catalogs [
 				return "", err
 			}
 			if req.ContractDigest != rc.ContractDigest {
-				return "", fmt.Errorf("EXPORT_FACT_MISMATCH: contract digest")
+				return "", errors.New("EXPORT_FACT_MISMATCH: contract digest")
 			}
 			if !versionMatches(required.Version, req.CompatibleRange) {
-				return "", fmt.Errorf("EXPORT_FACT_MISMATCH: version")
+				return "", errors.New("EXPORT_FACT_MISMATCH: version")
 			}
 			dep, err := visit(ra, rc, req.Selector, rd, rn, append(chain, currentAlias))
 			if err != nil {
@@ -223,7 +223,7 @@ func ResolveSelection(selection Selection, sources *deps.SourceGraph, catalogs [
 		node := bySource[cat.Source]
 		selected[key] = selectKey{catalog: cat, entry: *ent, alias: currentAlias, sourceParameterSHA256: node.Identity.ParameterSHA256, chains: [][]string{append([]string(nil), append(chain, currentAlias)...)}}
 		if len(selected) > 4096 {
-			return "", fmt.Errorf("EXPORT_LIMIT: selected export limit")
+			return "", errors.New("EXPORT_LIMIT: selected export limit")
 		}
 		return key, nil
 	}
@@ -292,7 +292,7 @@ func assignPrerequisiteDepths(items []selectKey, edges map[string]ExportEdge) er
 	var depth func(string) (int, error)
 	depth = func(k string) (int, error) {
 		if state[k] == 1 {
-			return 0, fmt.Errorf("EXPORT_CYCLE: selected export graph")
+			return 0, errors.New("EXPORT_CYCLE: selected export graph")
 		}
 		if state[k] == 2 {
 			return byKey[k].depth, nil
@@ -366,7 +366,7 @@ func orderReadySelectKeys(items []selectKey, edges map[string]ExportEdge) ([]sel
 		}
 	}
 	if len(ordered) != len(items) {
-		return nil, fmt.Errorf("EXPORT_CYCLE: selected export graph")
+		return nil, errors.New("EXPORT_CYCLE: selected export graph")
 	}
 	return ordered, nil
 }
@@ -390,6 +390,7 @@ func readySelectLess(a, b selectKey) bool {
 func selectNodeKey(source, provider string, entry ExportEntry) string {
 	return source + "\x00" + provider + "\x00" + entry.Domain + "\x00" + entry.ID
 }
+
 func cloneChains(in [][]string) [][]string {
 	out := make([][]string, len(in))
 	for i := range in {
@@ -397,6 +398,7 @@ func cloneChains(in [][]string) [][]string {
 	}
 	return out
 }
+
 func splitSelector(s string) (string, string, string) {
 	p := strings.Split(s, ".")
 	if len(p) != 3 {

@@ -9,10 +9,13 @@ import (
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 )
 
-type ProjectContext struct{ ProjectID, SubmitterPrincipalID, MinimumProfile string }
-type ProjectContextReader interface {
-	Load(context.Context) (ProjectContext, error)
-}
+type (
+	ProjectContext       struct{ ProjectID, SubmitterPrincipalID, MinimumProfile string }
+	ProjectContextReader interface {
+		Load(context.Context) (ProjectContext, error)
+	}
+)
+
 type ExecutionPolicySnapshot struct {
 	PolicyJSON           []byte
 	ExpectedPolicySHA256 string
@@ -87,6 +90,7 @@ func (p *ExecutionPermit) Summary() PermitSummary {
 	}
 	return PermitSummary{p.request.RequestSHA256, p.operationDigest(), p.expires.UTC().Format(time.RFC3339)}
 }
+
 func (p *ExecutionPermit) operationDigest() string {
 	d, err := ComputeOperationInputsSHA256(p.operation)
 	if err != nil {
@@ -98,15 +102,17 @@ func (p *ExecutionPermit) operationDigest() string {
 // A non-zero-size marker is required: Go may coalesce pointers to zero-size
 // allocations, which would let two independently constructed runtimes compare
 // equal by address.
-type runtimeMarker struct{ instance byte }
-type VerifiedResolution struct {
-	marker                                                         *runtimeMarker
-	snapshot                                                       *SourceSnapshot
-	publisherIssuer, publisherPrincipalID, publisherKeyFingerprint string
-	rule                                                           SourceRule
-	binding                                                        bootstrap.ProfileBinding
-	evidence                                                       EvidenceRefs
-}
+type (
+	runtimeMarker      struct{ instance byte } //nolint:unused // non-zero size is the point; see the comment above
+	VerifiedResolution struct {
+		marker                                                         *runtimeMarker
+		snapshot                                                       *SourceSnapshot
+		publisherIssuer, publisherPrincipalID, publisherKeyFingerprint string
+		rule                                                           SourceRule
+		binding                                                        bootstrap.ProfileBinding
+		evidence                                                       EvidenceRefs
+	}
+)
 
 // ValidFor reports whether this opaque resolution belongs to runtime's
 // unchanged constructor binding. It does not manufacture authority from a
@@ -154,12 +160,14 @@ func NewRuntime(ctx context.Context, o StableOptions) (*Runtime, error) {
 	r.binding = b
 	return r, nil
 }
+
 func (r *Runtime) Binding() bootstrap.ProfileBinding {
 	if r == nil {
 		return bootstrap.ProfileBinding{}
 	}
 	return r.binding
 }
+
 func (r *Runtime) CheckBinding(b bootstrap.ProfileBinding) error {
 	if r == nil || !r.binding.Equal(b) {
 		return diagnostic(TrustRuntimeInvalid, nil)
@@ -224,6 +232,7 @@ func (r *Runtime) load(ctx context.Context) (bootstrap.ProfileBinding, *Executio
 	}
 	return bootstrap.ProfileBinding{APIVersion: bootstrap.ProfileBindingAPIVersion, ID: bb.ID, DefinitionVersion: 1, ConfigSHA256: cfg, PolicySHA256: pol, AuthoritySHA256: bb.AuthoritySHA256, Assurance: bb.Assurance, EvidenceClass: bb.EvidenceClass}, p, a, nil
 }
+
 func (r *Runtime) VerifySubject(ctx context.Context, s Subject, refs EvidenceRefs) (*VerifiedResolution, error) {
 	if r == nil || ctx == nil || refs.Format != bootstrap.PublisherStatementAPIVersion || !validDigest(refs.StatementCAS) || !validDigest(refs.SignatureCAS) || !validDigest(refs.KeyFingerprint) || !validDigest(refs.CheckpointCAS) || !validDigest(refs.InclusionProofCAS) {
 		return nil, diagnostic(TrustSubjectInvalid, nil)
@@ -268,6 +277,7 @@ func (r *Runtime) VerifySubject(ctx context.Context, s Subject, refs EvidenceRef
 	}
 	return &VerifiedResolution{marker: r.marker, snapshot: snap, publisherIssuer: rule.Issuer, publisherPrincipalID: principal, publisherKeyFingerprint: refs.KeyFingerprint, rule: rule, binding: r.binding, evidence: refs}, nil
 }
+
 func containsPrincipal(p *ExecutionPolicy, id string) bool {
 	for _, x := range p.Principals {
 		if x.ID == id {
@@ -276,6 +286,7 @@ func containsPrincipal(p *ExecutionPolicy, id string) bool {
 	}
 	return false
 }
+
 func issuerPrincipal(p *ExecutionPolicy, issuer string) (string, bool) {
 	for _, x := range p.IssuerPrincipals {
 		if x.Issuer == issuer {
@@ -284,6 +295,7 @@ func issuerPrincipal(p *ExecutionPolicy, issuer string) (string, bool) {
 	}
 	return "", false
 }
+
 func matchingRule(p *ExecutionPolicy, s Subject) (SourceRule, bool) {
 	var match SourceRule
 	found := false
@@ -342,6 +354,7 @@ func sameAction(a, b Action) bool {
 	}
 	return true
 }
+
 func subjectProvider(s Subject) Provider {
 	return Provider{Origin: s.Origin, TemplatePath: s.TemplatePath, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256}
 }
@@ -350,6 +363,7 @@ func cloneRequest(r ExecutionRequest) ExecutionRequest {
 	r.Action.Argv = append([]string(nil), r.Action.Argv...)
 	return r
 }
+
 func cloneOperation(o OperationInputs) OperationInputs {
 	o.Subjects = append([]Provider(nil), o.Subjects...)
 	o.Actions = append([]ActionMaterial(nil), o.Actions...)
@@ -358,6 +372,7 @@ func cloneOperation(o OperationInputs) OperationInputs {
 	}
 	return o
 }
+
 func sameRequest(a, b ExecutionRequest) bool {
 	if a.RequestSHA256 == "" || a.RequestSHA256 != b.RequestSHA256 {
 		return false
@@ -591,6 +606,7 @@ func (r *Runtime) RecheckExecution(ctx context.Context, permit *ExecutionPermit,
 	}
 	return nil
 }
+
 func minimumPermits(project, policy string, requested bootstrap.ProfileID) bool {
 	if requested == bootstrap.ProfileOrganization {
 		return project == "organization" && policy == "organization"
@@ -646,18 +662,21 @@ type DevelopmentDiagnostic struct {
 func (d DevelopmentDiagnostic) ValidFor(r *DevelopmentRuntime) bool {
 	return r != nil && d.marker != nil && d.marker == r.marker && d.binding.Equal(r.binding) && d.binding.ID == bootstrap.ProfileDevelopment && d.binding.Assurance == bootstrap.DevelopmentUnverified && d.binding.EvidenceClass == bootstrap.EvidenceSimulated
 }
+
 func (r *DevelopmentResolution) Diagnostic() DevelopmentDiagnostic {
 	if r == nil {
 		return DevelopmentDiagnostic{}
 	}
 	return r.diagnostic
 }
+
 func (r *DevelopmentResolution) Subject() Subject {
 	if r == nil || r.snapshot == nil {
 		return Subject{}
 	}
 	return r.snapshot.Subject()
 }
+
 func (r *DevelopmentResolution) ValidFor(runtime *DevelopmentRuntime) bool {
 	return r != nil && runtime != nil && r.marker != nil && r.marker == runtime.marker && r.binding.Equal(runtime.binding) && r.diagnostic.ValidFor(runtime)
 }
@@ -677,12 +696,14 @@ func NewDevelopmentRuntime(ctx context.Context, o DevelopmentOptions) (*Developm
 	b := d.Binding()
 	return &DevelopmentRuntime{options: o, marker: &runtimeMarker{}, binding: b}, nil
 }
+
 func (r *DevelopmentRuntime) Binding() bootstrap.ProfileBinding {
 	if r == nil {
 		return bootstrap.ProfileBinding{}
 	}
 	return r.binding
 }
+
 func (r *DevelopmentRuntime) VerifySubject(ctx context.Context, s Subject) (*DevelopmentResolution, error) {
 	if r == nil || ctx == nil {
 		return nil, diagnostic(TrustRuntimeInvalid, nil)
@@ -861,5 +882,7 @@ func (r *DevelopmentRuntime) RecheckExecution(ctx context.Context, permit *Devel
 	return err
 }
 
-var _ = errors.New
-var _ = time.Time{}
+var (
+	_ = errors.New
+	_ = time.Time{}
+)

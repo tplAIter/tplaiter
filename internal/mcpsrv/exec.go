@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
+	"os/exec" //nolint:depguard // the MCP transport owns process-group lifecycle for the held child
 	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
 	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
@@ -82,7 +83,9 @@ func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout 
 	if err != nil {
 		return execx.Result{ExitCode: -1}, errTransportUnavailable
 	}
-	cmd := exec.Command(child, argv...)
+	// Cancellation is handled below by killing the whole process group, which
+	// exec.CommandContext (single-process kill) cannot do.
+	cmd := exec.Command(child, argv...) //nolint:noctx // fixed held-stage path; argv is built by the server, never a shell
 	cmd.Dir = cwd
 	cmd.Env = s.childEnv
 	cmd.Stdin = nil
@@ -101,11 +104,11 @@ func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout 
 	case waitErr = <-done:
 	case <-ctx.Done():
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		waitErr = <-done
+		<-done
 		return execx.Result{ExitCode: -1}, errTransportTimeout
 	case <-overflow:
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		waitErr = <-done
+		<-done
 		return execx.Result{ExitCode: -1}, errOutputLimit
 	}
 	if stdout.overflow || stderr.overflow {
@@ -114,7 +117,8 @@ func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout 
 	result := execx.Result{Stdout: string(stdout.b), Stderr: string(stderr.b), ExitCode: 0}
 	if waitErr != nil {
 		result.ExitCode = -1
-		if x, ok := waitErr.(*exec.ExitError); ok {
+		x := &exec.ExitError{}
+		if errors.As(waitErr, &x) {
 			result.ExitCode = x.ExitCode()
 		}
 		return result, &execx.ExitError{ExitCode: result.ExitCode}
@@ -177,6 +181,7 @@ func knownCLIError(stderr string) string {
 	}
 	return ""
 }
+
 func resolveWorkDir(dir string) (string, error) {
 	if dir == "" {
 		return "", nil
@@ -191,6 +196,7 @@ func resolveWorkDir(dir string) (string, error) {
 	}
 	return abs, nil
 }
+
 func resolveTargetDir(dir string) (string, error) {
 	if dir == "" {
 		return "", nil
@@ -205,6 +211,7 @@ func resolveTargetDir(dir string) (string, error) {
 	}
 	return abs, nil
 }
+
 func capturedChildEnvironment() []string {
 	env := []string{"PATH=/usr/bin:/bin", "LANG=C", "LC_ALL=C", "TERM=dumb", "NO_COLOR=1"}
 	for _, key := range []string{"HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "TPLAITER_HOME", "TMPDIR"} {
@@ -214,6 +221,7 @@ func capturedChildEnvironment() []string {
 	}
 	return env
 }
+
 func validLocation(v string) bool {
 	return len([]byte(v)) > 0 && len([]byte(v)) <= 4096 && filepath.IsAbs(v) && filepath.Clean(v) == v && v != "/" && !strings.ContainsAny(v, "\x00\n\r")
 }

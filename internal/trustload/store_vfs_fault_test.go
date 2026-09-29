@@ -75,7 +75,7 @@ func TestStoreVFSIO01ReadFaultMatrix(t *testing.T) {
 			}
 			defer libc.Xfree(v.tls, buf)
 			for i := 0; i < 4; i++ {
-				*(*byte)(unsafe.Pointer(buf + uintptr(i))) = 0xcc
+				*(*byte)(libcPtr(buf + uintptr(i))) = 0xcc
 			}
 			got := storeFileRead(v.tls, p, buf, 4, 0)
 			if got != tc.want {
@@ -84,7 +84,7 @@ func TestStoreVFSIO01ReadFaultMatrix(t *testing.T) {
 			if calls != tc.calls {
 				t.Fatalf("pread calls=%d want=%d", calls, tc.calls)
 			}
-			out := unsafe.Slice((*byte)(unsafe.Pointer(buf)), 4)
+			out := unsafe.Slice((*byte)(libcPtr(buf)), 4)
 			if tc.check != nil {
 				tc.check(t, out)
 			}
@@ -121,14 +121,14 @@ func TestStoreVFSIO01ReadFaultMatrix(t *testing.T) {
 			t.Fatal("buffer allocation")
 		}
 		defer libc.Xfree(v.tls, buf)
-		*(*byte)(unsafe.Pointer(buf)) = 0xa5
+		*(*byte)(libcPtr(buf)) = 0xa5
 		calls := 0
 		old := storePread
 		storePread = func(int, []byte, int64) (int, error) { calls++; return 0, nil }
 		got := storeFileRead(v.tls, p, buf, 0, 0)
 		storePread = old
-		if got != sqlite3.SQLITE_OK || calls != 0 || *(*byte)(unsafe.Pointer(buf)) != 0xa5 {
-			t.Fatalf("zero-length read=%d calls=%d sentinel=%#x", got, calls, *(*byte)(unsafe.Pointer(buf)))
+		if got != sqlite3.SQLITE_OK || calls != 0 || *(*byte)(libcPtr(buf)) != 0xa5 {
+			t.Fatalf("zero-length read=%d calls=%d sentinel=%#x", got, calls, *(*byte)(libcPtr(buf)))
 		}
 	}
 }
@@ -193,7 +193,7 @@ func TestStoreVFSIO02WriteFaultMatrix(t *testing.T) {
 				t.Fatal("input allocation")
 			}
 			defer libc.Xfree(v.tls, in)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(in)), 4), []byte{0, 1, 2, 3})
+			copy(unsafe.Slice((*byte)(libcPtr(in)), 4), []byte{0, 1, 2, 3})
 			if got := storeFileWrite(v.tls, p, in, 4, 7); got != tc.want {
 				t.Fatalf("write=%d want=%d", got, tc.want)
 			}
@@ -258,7 +258,7 @@ func TestStoreVFSIO02WriteRangesAndImpossibleCounts(t *testing.T) {
 				t.Fatal("input allocation")
 			}
 			defer libc.Xfree(v.tls, in)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(in)), 4), []byte{0, 1, 2, 3})
+			copy(unsafe.Slice((*byte)(libcPtr(in)), 4), []byte{0, 1, 2, 3})
 			type writeCall struct {
 				off   int64
 				bytes []byte

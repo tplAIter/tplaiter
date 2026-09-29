@@ -29,7 +29,7 @@ import (
 const forcedWorkflowGroup = "workflow"
 
 func init() {
-	rootCmd.AddCommand(newWorkspaceCmd())
+	registerCommand(newWorkspaceCmd)
 }
 
 // newWorkspaceCmd — `tplater workspace`, grouping CLI functions tied to
@@ -260,7 +260,7 @@ func isUnknownForcedGroupError(err error, group string) bool {
 
 // serviceTemplateHasGroup reports whether the service template manifest at ref
 // (repoAlias/templateName, the same format passed to newcmd.Options.Ref)
-// declares settings group group. The caller (RunE in
+// declares the settings group named by group. The caller (RunE in
 // newWorkspaceAddServiceCmd) uses this to decide whether to force
 // --set workflow=true: service templates need not declare the group, and its
 // absence must not fail the command.
@@ -295,7 +295,7 @@ func serviceTemplateHasGroup(cmd *cobra.Command, mgr *repo.Manager, ref, group s
 		if isUnknownForcedGroupError(err, group) {
 			return false, nil
 		}
-		// Group group exists but is incompatible with value "true" (for example,
+		// The group exists but is incompatible with value "true" (for example,
 		// select/int rather than toggle). This is a real conflict with the
 		// manifest, not a missing group, and best-effort logic must not hide it.
 		return false, fmt.Errorf("группа %q объявлена в манифесте шаблона, но несовместима с форсируемым значением true: %w", group, err)

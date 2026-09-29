@@ -3,6 +3,7 @@ package exports
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -12,8 +13,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"gopkg.in/yaml.v3"
+
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 )
 
 func normalizeDocument(data []byte) ([]byte, error) {
@@ -28,7 +30,7 @@ func normalizeDocument(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("modifier: YAML decode: %w", err)
 	}
 	if node.Kind == 0 {
-		return nil, fmt.Errorf("modifier: empty document")
+		return nil, errors.New("modifier: empty document")
 	}
 	var extra yaml.Node
 	if err := dec.Decode(&extra); err != nil {
@@ -36,7 +38,7 @@ func normalizeDocument(data []byte) ([]byte, error) {
 			return nil, fmt.Errorf("modifier: YAML multiple documents: %w", err)
 		}
 	} else {
-		return nil, fmt.Errorf("modifier: YAML multiple documents")
+		return nil, errors.New("modifier: YAML multiple documents")
 	}
 	if err := validateYAMLNode(&node, true); err != nil {
 		return nil, err
@@ -51,17 +53,17 @@ func normalizeDocument(data []byte) ([]byte, error) {
 // validateYAMLNode applies the syntax policy to every AST node before conversion.
 func validateYAMLNode(n *yaml.Node, document bool) error {
 	if n == nil || n.Anchor != "" || n.Kind == yaml.AliasNode {
-		return fmt.Errorf("modifier: YAML anchors and aliases rejected")
+		return errors.New("modifier: YAML anchors and aliases rejected")
 	}
 	switch n.Kind {
 	case yaml.DocumentNode:
 		if !document || n.Tag != "" || len(n.Content) != 1 {
-			return fmt.Errorf("modifier: invalid YAML document")
+			return errors.New("modifier: invalid YAML document")
 		}
 		return validateYAMLNode(n.Content[0], false)
 	case yaml.MappingNode:
 		if n.Tag != "!!map" || len(n.Content)%2 != 0 {
-			return fmt.Errorf("modifier: unsupported YAML mapping")
+			return errors.New("modifier: unsupported YAML mapping")
 		}
 		seen := map[string]bool{}
 		for i := 0; i < len(n.Content); i += 2 {
@@ -70,7 +72,7 @@ func validateYAMLNode(n *yaml.Node, document bool) error {
 				return err
 			}
 			if k.Kind != yaml.ScalarNode || k.Tag != "!!str" || k.Value == "<<" || seen[k.Value] {
-				return fmt.Errorf("modifier: YAML merge, duplicate, or non-string key rejected")
+				return errors.New("modifier: YAML merge, duplicate, or non-string key rejected")
 			}
 			seen[k.Value] = true
 			if err := validateYAMLNode(v, false); err != nil {
@@ -79,7 +81,7 @@ func validateYAMLNode(n *yaml.Node, document bool) error {
 		}
 	case yaml.SequenceNode:
 		if n.Tag != "!!seq" {
-			return fmt.Errorf("modifier: unsupported YAML sequence")
+			return errors.New("modifier: unsupported YAML sequence")
 		}
 		for _, c := range n.Content {
 			if err := validateYAMLNode(c, false); err != nil {
@@ -91,7 +93,7 @@ func validateYAMLNode(n *yaml.Node, document bool) error {
 			return fmt.Errorf("modifier: unsupported YAML scalar tag %q", n.Tag)
 		}
 	default:
-		return fmt.Errorf("modifier: unsupported YAML node")
+		return errors.New("modifier: unsupported YAML node")
 	}
 	return nil
 }
@@ -144,7 +146,7 @@ func yamlValue(n *yaml.Node) (any, error) {
 			return nil, fmt.Errorf("modifier: unsupported YAML scalar tag %q", n.Tag)
 		}
 	default:
-		return nil, fmt.Errorf("modifier: unsupported YAML node")
+		return nil, errors.New("modifier: unsupported YAML node")
 	}
 }
 
@@ -159,7 +161,7 @@ func strictSemver(v string) bool {
 				return false
 			}
 			for _, r := range p {
-				if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-') {
+				if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' {
 					return false
 				}
 			}
@@ -180,7 +182,7 @@ func strictSemver(v string) bool {
 				return false
 			}
 			for _, r := range p {
-				if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-') {
+				if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' {
 					return false
 				}
 			}
@@ -188,6 +190,7 @@ func strictSemver(v string) bool {
 	}
 	return true
 }
+
 func allDigits(s string) bool {
 	if s == "" {
 		return false
@@ -208,7 +211,7 @@ func validateRequiredShape(data []byte) error {
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
-		return fmt.Errorf("modifier: multiple JSON values")
+		return errors.New("modifier: multiple JSON values")
 	}
 	all := []string{"apiVersion", "kind", "metadata", "compatibility", "sources", "selfSource", "requires", "provides", "conflicts", "replaces", "bindings", "rules", "toolConstraints", "renames"}
 	if err := wireKeys(top, all, all); err != nil {
@@ -256,10 +259,11 @@ func validateRequiredShape(data []byte) error {
 func wireObject(raw json.RawMessage) (map[string]json.RawMessage, error) {
 	var m map[string]json.RawMessage
 	if json.Unmarshal(raw, &m) != nil || m == nil {
-		return nil, fmt.Errorf("modifier: expected object")
+		return nil, errors.New("modifier: expected object")
 	}
 	return m, nil
 }
+
 func wireKeys(m map[string]json.RawMessage, required, allowed []string) error {
 	set := map[string]bool{}
 	for _, k := range allowed {
@@ -277,17 +281,19 @@ func wireKeys(m map[string]json.RawMessage, required, allowed []string) error {
 	}
 	return nil
 }
-func wireRawString(raw json.RawMessage, min, max int, re *regexp.Regexp) error {
+
+func wireRawString(raw json.RawMessage, minimum, maximum int, re *regexp.Regexp) error {
 	var s string
-	if json.Unmarshal(raw, &s) != nil || utf8.RuneCountInString(s) < min || (max > 0 && utf8.RuneCountInString(s) > max) || (re != nil && !re.MatchString(s)) {
-		return fmt.Errorf("modifier: invalid string facet")
+	if json.Unmarshal(raw, &s) != nil || utf8.RuneCountInString(s) < minimum || (maximum > 0 && utf8.RuneCountInString(s) > maximum) || (re != nil && !re.MatchString(s)) {
+		return errors.New("modifier: invalid string facet")
 	}
 	return nil
 }
-func wireArray(raw json.RawMessage, min, max int) ([]json.RawMessage, error) {
+
+func wireArray(raw json.RawMessage, minimum, maximum int) ([]json.RawMessage, error) {
 	var a []json.RawMessage
-	if json.Unmarshal(raw, &a) != nil || a == nil || len(a) < min || len(a) > max {
-		return nil, fmt.Errorf("modifier: invalid array facet")
+	if json.Unmarshal(raw, &a) != nil || a == nil || len(a) < minimum || len(a) > maximum {
+		return nil, errors.New("modifier: invalid array facet")
 	}
 	seen := map[string]bool{}
 	for _, x := range a {
@@ -296,12 +302,13 @@ func wireArray(raw json.RawMessage, min, max int) ([]json.RawMessage, error) {
 			return nil, e
 		}
 		if seen[string(c)] {
-			return nil, fmt.Errorf("modifier: duplicate array item")
+			return nil, errors.New("modifier: duplicate array item")
 		}
 		seen[string(c)] = true
 	}
 	return a, nil
 }
+
 func wireMetadata(raw json.RawMessage) error {
 	m, e := wireObject(raw)
 	if e != nil {
@@ -315,6 +322,7 @@ func wireMetadata(raw json.RawMessage) error {
 	}
 	return wireRawString(m["version"], 0, 0, semverRE)
 }
+
 func wireCompatibility(raw json.RawMessage) error {
 	m, e := wireObject(raw)
 	if e != nil {
@@ -328,7 +336,7 @@ func wireCompatibility(raw json.RawMessage) error {
 	}
 	var p string
 	if json.Unmarshal(m["portableAPI"], &p) != nil || p != "tplaiter.dev/portable/v1" {
-		return fmt.Errorf("modifier: invalid portable API")
+		return errors.New("modifier: invalid portable API")
 	}
 	for _, k := range []string{"runtimes", "layouts"} {
 		a, x := wireArray(m[k], 1, 32)
@@ -343,6 +351,7 @@ func wireCompatibility(raw json.RawMessage) error {
 	}
 	return nil
 }
+
 func wireSources(raw json.RawMessage) error {
 	a, e := wireArray(raw, 1, 256)
 	if e != nil {
@@ -375,13 +384,13 @@ func wireSources(raw json.RawMessage) error {
 		}
 		var alg string
 		if json.Unmarshal(m["commitAlgorithm"], &alg) != nil {
-			return fmt.Errorf("modifier: invalid commit algorithm")
+			return errors.New("modifier: invalid commit algorithm")
 		}
 		re := regexp.MustCompile("^[0-9a-f]{40}$")
 		if alg == "sha256" {
 			re = regexp.MustCompile("^[0-9a-f]{64}$")
 		} else if alg != "sha1" {
-			return fmt.Errorf("modifier: invalid commit algorithm")
+			return errors.New("modifier: invalid commit algorithm")
 		}
 		if y = wireRawString(m["commit"], 0, 0, re); y != nil {
 			return y
@@ -389,6 +398,7 @@ func wireSources(raw json.RawMessage) error {
 	}
 	return nil
 }
+
 func wireRequires(raw json.RawMessage) error {
 	m, e := wireObject(raw)
 	if e != nil {
@@ -422,8 +432,9 @@ func wireRequires(raw json.RawMessage) error {
 	}
 	return wireNamedArrays(m["capabilities"], 0, 256, []string{"name", "value"})
 }
-func wireNamedArrays(raw json.RawMessage, min, max int, keys []string) error {
-	a, e := wireArray(raw, min, max)
+
+func wireNamedArrays(raw json.RawMessage, minimum, maximum int, keys []string) error { //nolint:unparam // shared shape validator; minimum is part of its contract
+	a, e := wireArray(raw, minimum, maximum)
 	if e != nil {
 		return e
 	}
@@ -447,6 +458,7 @@ func wireNamedArrays(raw json.RawMessage, min, max int, keys []string) error {
 	}
 	return nil
 }
+
 func wireBindings(raw json.RawMessage) error {
 	a, e := wireArray(raw, 0, 256)
 	if e != nil {
@@ -466,7 +478,7 @@ func wireBindings(raw json.RawMessage) error {
 		var s string
 		if json.Unmarshal(m["value"], &s) == nil {
 			if utf8.RuneCountInString(s) > 32768 {
-				return fmt.Errorf("modifier: binding string too long")
+				return errors.New("modifier: binding string too long")
 			}
 			continue
 		}
@@ -482,10 +494,11 @@ func wireBindings(raw json.RawMessage) error {
 				continue
 			}
 		}
-		return fmt.Errorf("modifier: invalid binding value")
+		return errors.New("modifier: invalid binding value")
 	}
 	return nil
 }
+
 func wireOperations(raw json.RawMessage) error {
 	a, e := wireArray(raw, 1, 4096)
 	if e != nil {
@@ -498,7 +511,7 @@ func wireOperations(raw json.RawMessage) error {
 		}
 		var op string
 		if json.Unmarshal(m["op"], &op) != nil {
-			return fmt.Errorf("modifier: invalid operation")
+			return errors.New("modifier: invalid operation")
 		}
 		req := []string{"id", "before", "after", "op"}
 		allow := append([]string{}, req...)
@@ -513,7 +526,7 @@ func wireOperations(raw json.RawMessage) error {
 			req = append(req, "target", "expectedDigest")
 			allow = append(allow, "target", "expectedDigest", "expectedVersion")
 		default:
-			return fmt.Errorf("modifier: invalid operation")
+			return errors.New("modifier: invalid operation")
 		}
 		if y = wireKeys(m, req, allow); y != nil {
 			return y
@@ -553,6 +566,7 @@ func wireOperations(raw json.RawMessage) error {
 	}
 	return nil
 }
+
 func wireTools(raw json.RawMessage) error {
 	a, e := wireArray(raw, 0, 256)
 	if e != nil {
@@ -579,6 +593,7 @@ func wireTools(raw json.RawMessage) error {
 	}
 	return nil
 }
+
 func wireRenames(raw json.RawMessage) error {
 	a, e := wireArray(raw, 0, 4096)
 	if e != nil {
@@ -612,14 +627,14 @@ func wireRenames(raw json.RawMessage) error {
 
 func validateModifierCollections(m Modifier) error {
 	if len(m.Sources) > 256 || len(m.Compatibility.Runtimes) > 32 || len(m.Compatibility.Layouts) > 32 || len(m.Requires.Exports) > 4096 || len(m.Requires.Capabilities) > 256 || len(m.Provides) > 256 || len(m.Conflicts) > 256 || len(m.Replaces) > 256 || len(m.Bindings) > 256 || len(m.Rules) > 4096 || len(m.ToolConstraints) > 256 || len(m.Renames) > 4096 {
-		return fmt.Errorf("modifier: collection limit exceeded")
+		return errors.New("modifier: collection limit exceeded")
 	}
 	if !uniqueStrings(m.Compatibility.Runtimes) || !uniqueStrings(m.Compatibility.Layouts) {
-		return fmt.Errorf("modifier: duplicate compatibility value")
+		return errors.New("modifier: duplicate compatibility value")
 	}
 	for _, v := range append(append([]string{}, m.Compatibility.Runtimes...), m.Compatibility.Layouts...) {
 		if !tokenRE.MatchString(v) {
-			return fmt.Errorf("modifier: invalid compatibility token")
+			return errors.New("modifier: invalid compatibility token")
 		}
 	}
 	seenBindings := map[string]bool{}
@@ -632,7 +647,7 @@ func validateModifierCollections(m Modifier) error {
 	seenExports := map[string]bool{}
 	for _, r := range m.Requires.Exports {
 		if seenExports[r.Selector] {
-			return fmt.Errorf("modifier: duplicate export requirement")
+			return errors.New("modifier: duplicate export requirement")
 		}
 		seenExports[r.Selector] = true
 	}
@@ -640,7 +655,7 @@ func validateModifierCollections(m Modifier) error {
 	for _, c := range append(append([]Capability{}, m.Requires.Capabilities...), m.Conflicts...) {
 		k := c.Name + "\x00" + c.Value
 		if seenCaps[k] {
-			return fmt.Errorf("modifier: duplicate capability")
+			return errors.New("modifier: duplicate capability")
 		}
 		seenCaps[k] = true
 	}
@@ -648,14 +663,14 @@ func validateModifierCollections(m Modifier) error {
 	for _, c := range m.Provides {
 		k := c.Name + "\x00" + c.Value + "\x00" + c.RuleID
 		if seenProvided[k] {
-			return fmt.Errorf("modifier: duplicate provided capability")
+			return errors.New("modifier: duplicate provided capability")
 		}
 		seenProvided[k] = true
 	}
 	seenTools := map[string]bool{}
 	for _, c := range m.ToolConstraints {
 		if seenTools[c.ID] {
-			return fmt.Errorf("modifier: duplicate tool constraint")
+			return errors.New("modifier: duplicate tool constraint")
 		}
 		seenTools[c.ID] = true
 	}
@@ -666,31 +681,31 @@ func validateModifierCollections(m Modifier) error {
 	}
 	for _, r := range m.Requires.Exports {
 		if !selectorRE.MatchString(r.Selector) || !digestRE.MatchString(r.ContractDigest) || runeLen(r.CompatibleRange) < 1 || runeLen(r.CompatibleRange) > 1024 {
-			return fmt.Errorf("modifier: invalid export requirement")
+			return errors.New("modifier: invalid export requirement")
 		}
 		if !sourceAlias(m, strings.Split(r.Selector, ".")[0]) {
-			return fmt.Errorf("modifier: export selector references unknown source")
+			return errors.New("modifier: export selector references unknown source")
 		}
 	}
 	seenReplaces := map[string]bool{}
 	for _, r := range m.Replaces {
 		if !tokenRE.MatchString(r.Name) || !tokenRE.MatchString(r.Value) || !tokenRE.MatchString(r.ProviderRule) || !tokenRE.MatchString(r.WithRule) {
-			return fmt.Errorf("modifier: invalid replacement mapping")
+			return errors.New("modifier: invalid replacement mapping")
 		}
 		key := r.Name + "\x00" + r.Value + "\x00" + r.ProviderRule + "\x00" + r.WithRule
 		if seenReplaces[key] {
-			return fmt.Errorf("modifier: duplicate replacement mapping")
+			return errors.New("modifier: duplicate replacement mapping")
 		}
 		seenReplaces[key] = true
 	}
 	for _, p := range m.Provides {
 		if !tokenRE.MatchString(p.Name) || !tokenRE.MatchString(p.Value) || !tokenRE.MatchString(p.RuleID) {
-			return fmt.Errorf("modifier: invalid provided capability")
+			return errors.New("modifier: invalid provided capability")
 		}
 	}
 	for _, t := range m.ToolConstraints {
 		if !aliasRE.MatchString(t.ID) || runeLen(t.CompatibleRange) < 1 || runeLen(t.CompatibleRange) > 1024 || !digestRE.MatchString(t.OptionsDigest) {
-			return fmt.Errorf("modifier: invalid tool constraint")
+			return errors.New("modifier: invalid tool constraint")
 		}
 	}
 	seenRenames := map[string]bool{}
@@ -699,11 +714,11 @@ func validateModifierCollections(m Modifier) error {
 			return err
 		}
 		if !tokenRE.MatchString(n.OldBlockID) || !tokenRE.MatchString(n.NewBlockID) || !digestRE.MatchString(n.ExpectedBaselineDigest) || !digestRE.MatchString(n.ExpectedSourceDigest) {
-			return fmt.Errorf("modifier: invalid rename")
+			return errors.New("modifier: invalid rename")
 		}
 		key := n.Path + "\x00" + n.OldBlockID + "\x00" + n.NewBlockID + "\x00" + n.ExpectedBaselineDigest + "\x00" + n.ExpectedSourceDigest
 		if seenRenames[key] {
-			return fmt.Errorf("modifier: duplicate rename")
+			return errors.New("modifier: duplicate rename")
 		}
 		seenRenames[key] = true
 	}
@@ -716,7 +731,7 @@ func validateRelativePath(p string, allowDot bool) error {
 	}
 	for _, r := range p {
 		if unicode.IsControl(r) {
-			return fmt.Errorf("modifier: control character in path")
+			return errors.New("modifier: control character in path")
 		}
 	}
 	for _, part := range strings.Split(p, "/") {
@@ -735,14 +750,14 @@ func validateRelativePath(p string, allowDot bool) error {
 func ValidateSourceOrigin(origin string) error {
 	u, err := url.Parse(origin)
 	if err != nil || runeLen(origin) > 1024 || u.Scheme == "" || u.User != nil || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || !utf8.ValidString(origin) {
-		return fmt.Errorf("modifier: unsafe source origin")
+		return errors.New("modifier: unsafe source origin")
 	}
 	return nil
 }
 
-func bindingScalar(b Binding) (any, error) {
+func bindingScalar(b Binding) (any, error) { //nolint:unparam // callers use the error only today; the value is the validator result
 	if len(b.Value) > 512<<10 || !utf8.Valid(b.Value) {
-		return nil, fmt.Errorf("invalid binding bytes")
+		return nil, errors.New("invalid binding bytes")
 	}
 	if _, err := canonicaljson.Canonicalize(b.Value); err != nil {
 		return nil, err
@@ -755,25 +770,25 @@ func bindingScalar(b Binding) (any, error) {
 	}
 	var extra any
 	if err := d.Decode(&extra); err != io.EOF {
-		return nil, fmt.Errorf("multiple JSON values")
+		return nil, errors.New("multiple JSON values")
 	}
 	switch x := v.(type) {
 	case string, bool:
 		if s, ok := x.(string); ok && runeLen(s) > 32768 {
-			return nil, fmt.Errorf("string too long")
+			return nil, errors.New("string too long")
 		}
 		return x, nil
 	case json.Number:
 		if strings.ContainsAny(x.String(), ".eE") {
-			return nil, fmt.Errorf("not integer")
+			return nil, errors.New("not integer")
 		}
 		var n int64
 		if _, err := fmt.Sscan(x.String(), &n); err != nil || n > 9007199254740991 || n < -9007199254740991 {
-			return nil, fmt.Errorf("integer out of range")
+			return nil, errors.New("integer out of range")
 		}
 		return n, nil
 	default:
-		return nil, fmt.Errorf("must be scalar")
+		return nil, errors.New("must be scalar")
 	}
 }
 
@@ -789,6 +804,7 @@ func uniqueStrings(values []string) bool {
 	}
 	return true
 }
+
 func sourceAlias(m Modifier, alias string) bool {
 	for _, s := range m.Sources {
 		if s.Alias == alias {

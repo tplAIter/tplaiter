@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	js "github.com/santhosh-tekuri/jsonschema/v6"
+
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )

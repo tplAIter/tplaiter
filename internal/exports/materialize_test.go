@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	js "github.com/santhosh-tekuri/jsonschema/v6"
+
 	"github.com/tplAIter/tplaiter/internal/managedblocks"
 )
 
@@ -460,13 +461,6 @@ func TestExportPayloadSchemaOracleMatchesStrictParser(t *testing.T) {
 			t.Fatal("schema accepted extra property")
 		}
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func TestMaterializeWholeFileCopiesBlob(t *testing.T) {

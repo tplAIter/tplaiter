@@ -3,7 +3,7 @@ package graphview
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"html/template"
 	"strings"
 
@@ -30,7 +30,7 @@ type ApplicationRelation struct {
 // attributed application relations. It never infers calls from syntax.
 func FromContracts(source *deps.SourceGraph, selected *exports.ExportGraph, app []ApplicationRelation) (graphdoc.Document, error) {
 	if source == nil {
-		return graphdoc.Document{}, fmt.Errorf("graphview: nil source graph")
+		return graphdoc.Document{}, errors.New("graphview: nil source graph")
 	}
 	if err := deps.ValidateSourceGraph(source); err != nil {
 		return graphdoc.Document{}, err
@@ -59,7 +59,7 @@ func FromContracts(source *deps.SourceGraph, selected *exports.ExportGraph, app 
 	}
 	for _, r := range app {
 		if !known[r.From] || !known[r.To] || r.Kind == "" || r.Evidence == "" || (!r.Declared && !r.Detected) {
-			return graphdoc.Document{}, fmt.Errorf("graphview: invalid application relation")
+			return graphdoc.Document{}, errors.New("graphview: invalid application relation")
 		}
 		d.Edges = append(d.Edges, graphdoc.Edge{From: r.From, To: r.To, Kind: r.Kind, Provenance: []graphdoc.Provenance{{Source: "application-relation", Evidence: r.Evidence, Declared: r.Declared, Detected: r.Detected}}})
 	}
@@ -112,7 +112,7 @@ func Render(d graphdoc.Document, opts Options) ([]byte, error) {
 		Title      string
 		Graph      template.JS
 		ContextRaw template.JS
-	}{title, template.JS(raw), template.JS(ctxString)})
+	}{title, template.JS(raw), template.JS(ctxString)}) //nolint:gosec // both values are json.Marshal output, which escapes <, > and &
 	if err != nil {
 		return nil, err
 	}

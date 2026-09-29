@@ -157,7 +157,6 @@ func TestRunPlaybook_PassesExtraVarsFileAndProjectRoot(t *testing.T) {
 	})
 	assertAnsibleDenied(t, err, runner.Calls)
 	if len(runner.Calls) > 0 {
-
 		if len(runner.Calls) != 1 {
 			t.Fatalf("Calls = %+v, want exactly 1 call to ansible-playbook", runner.Calls)
 		}
@@ -242,7 +241,6 @@ func TestRunPlaybook_ExtraVarsFileContentMatchesBuildExtraVars(t *testing.T) {
 	})
 	assertAnsibleDenied(t, err, runner.Calls)
 	if len(runner.Calls) > 0 {
-
 		want, err := buildExtraVars(values, proj)
 		if err != nil {
 			t.Fatalf("buildExtraVars() error = %v", err)
@@ -460,6 +458,7 @@ func (s *denialSpy) LookPath(string) (string, error) {
 	s.lookups++
 	return "", errors.New("LOOKUP_CANARY")
 }
+
 func (s *denialSpy) Run(context.Context, string, []string, execx.Options) (execx.Result, error) {
 	s.runs++
 	return execx.Result{}, errors.New("RUN_CANARY")
@@ -513,6 +512,7 @@ func TestAnsibleDenialLeavesSyntheticRootsUnchanged(t *testing.T) {
 		t.Fatalf("denial mutated roots before=%q after=%q", before, after)
 	}
 }
+
 func snapshotDenialRoots(t *testing.T, roots ...string) string {
 	t.Helper()
 	var b strings.Builder

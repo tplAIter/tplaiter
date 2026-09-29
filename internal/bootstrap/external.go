@@ -51,7 +51,7 @@ func LoadExternal(ctx context.Context, reader ExternalAuthorityReader) (*Externa
 	}
 	s, err := reader.Load(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("%w: reader: %v", ErrExternalInvalid, err)
+		return nil, fmt.Errorf("%w: reader: %w", ErrExternalInvalid, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -109,7 +109,7 @@ func (v *Verifier) VerifyOSS(ctx context.Context, ext *ExternalContext, candidat
 	}
 	if ext.state.StateSHA256 == ext.initialStateSHA256 {
 		if err := v.threshold(ctx, e, descriptorAnchors(ext.descriptor), ext.descriptor.Threshold); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrSelfRoot, err)
+			return nil, fmt.Errorf("%w: %w", ErrSelfRoot, err)
 		}
 	} else if err := v.threshold(ctx, e, eligible(*e, keys), e.Threshold); err != nil {
 		return nil, err
@@ -143,7 +143,7 @@ func (v *Verifier) VerifyOrganization(ctx context.Context, ext *ExternalContext,
 		return nil, err
 	}
 	if err := v.threshold(ctx, e, descriptorAnchors(ext.descriptor), ext.descriptor.Threshold); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrSelfRoot, err)
+		return nil, fmt.Errorf("%w: %w", ErrSelfRoot, err)
 	}
 	keys, err := v.loadKeys(ctx, e)
 	if err != nil {
@@ -233,6 +233,7 @@ func (p *OSSRefreshProposal) ExpectedStateSHA256() string {
 	}
 	return string(p.expected)
 }
+
 func (p *OSSRefreshProposal) NextStateJSON() []byte {
 	if p == nil {
 		return nil

@@ -65,3 +65,29 @@ go test ./internal/contextpack ./internal/graphview
 ```
 
 The complete suite depends on the available module cache and checkpoint state; these focused commands are the small local checks shown here, rather than a claim that every package is production-ready. The validation workflow and its safety boundaries are documented in [template validation](./docs/template-validation.md).
+
+### Canonical gates
+
+The `Makefile` is the single entry point for local runs and CI (`.github/workflows/ci.yml`). Every target runs with `GOWORK=off`. The binary is named `tplaiter`.
+
+| Target | What it checks |
+| --- | --- |
+| `make build` / `make install PREFIX=<dir>` | Builds `bin/tplaiter`; installs it into `<dir>/bin`. `REGISTRATION_PATH` and `REGISTRATION_SHA256` are empty by default, so a stock binary refuses trust-gated commands with `TRUST_ANCHOR_MISSING`. |
+| `make build-linux`, `make cross` | Compiles every package for linux/amd64 and linux/arm64 (`cross` adds darwin; windows is informational only). |
+| `make vet` | `go vet` for both modules, plus the root module for `GOOS=linux`. |
+| `make fmt-check`, `make tidy-check` | gofumpt on tracked and untracked Go files; `go mod tidy -diff` for both modules. |
+| `make lint` | golangci-lint v2 with the committed `.golangci.yml` and `tests/.golangci.yml`. |
+| `make test-race`, `make e2e` | Unit tests with the race detector; the black-box `tests/` module. |
+| `make verify` | All of the above. |
+| `make verify-linux` | Build, vet, race tests and e2e for a Linux container (no lint or formatting tools needed). |
+
+Run the Linux gate offline with a read-only module cache:
+
+```sh
+docker run --rm -v "$PWD":/src -v "$(go env GOMODCACHE)":/go/pkg/mod:ro -w /src \
+  -e GOWORK=off -e GOFLAGS=-mod=readonly -e GOPROXY=off golang:1.27 make verify-linux
+```
+
+The `tests/` e2e module still fails with `TRUST_ANCHOR_MISSING` until the OSS installation registration lands, so `make verify` and `make verify-linux` are not green yet.
+
+MCP tools are registered per domain in `internal/mcpsrv/tools_<domain>.go` and listed once in `toolRegistrars`; `internal/mcpsrv/testdata/tools.golden.txt` pins the tool names. CLI commands register through `registerCommand` in their own file and declare their pre-run class (`readonly`, `trust-owned`, `legacy-action` or the default `stateful`) with a cobra annotation; see `internal/cmd/prerun_class.go`.

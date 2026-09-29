@@ -104,7 +104,7 @@ func newBootstrapFixture(t *testing.T) bootstrapFixture {
 		// registration with the fixed semantic initial-state pin before loading it.
 		load.install.OSS.InitialStateSHA256 = state.StateSHA256
 		load.writeInstall(t)
-		loaded, err = Load(context.Background(), load.selection)
+		_, err = Load(context.Background(), load.selection)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -150,6 +150,9 @@ func TestStoredBundleClosedWireAndDigest(t *testing.T) {
 }
 
 func TestEnrollReadOnlyExternalAndFixedPins(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatalf("Enroll() error = %v", err)
@@ -192,6 +195,9 @@ func TestEnrollReadOnlyExternalAndFixedPins(t *testing.T) {
 // TestOpenReadOnlySB09CompositionMatrix exercises production publication,
 // rather than marker helpers: each hostile state must deny a usable Store.
 func TestOpenReadOnlySB09CompositionMatrix(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	for _, tc := range []struct {
 		name   string
 		mutate func(t *testing.T, root string)
@@ -261,6 +267,9 @@ func TestOpenReadOnlySB09CompositionMatrix(t *testing.T) {
 }
 
 func TestStoreLoadSB09RechecksMarkerPublication(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)
@@ -280,6 +289,9 @@ func TestStoreLoadSB09RechecksMarkerPublication(t *testing.T) {
 }
 
 func TestStoreLoadSB09RejectsValidMarkerAndRootReplacement(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	for _, tc := range []struct {
 		name   string
 		mutate func(t *testing.T, root string)
@@ -406,6 +418,9 @@ func rotateBundle(t *testing.T, fixture bootstrapFixture) ([]byte, map[string][]
 }
 
 func TestRefreshCommitsOnlyPreparedStateAndReloads(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)
@@ -439,6 +454,9 @@ func TestRefreshCommitsOnlyPreparedStateAndReloads(t *testing.T) {
 }
 
 func TestRecoverPendingEnrollmentOnly(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	failing := func(evidencecas.Reader) (*bootstrap.Verifier, error) {
 		return nil, errors.New("injected verifier construction failure")
@@ -446,7 +464,7 @@ func TestRecoverPendingEnrollmentOnly(t *testing.T) {
 	if err := Enroll(context.Background(), fixture.selection, failing, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err == nil {
 		t.Fatal("injected enrollment failure accepted")
 	}
-	if _, err := OpenReadOnly(context.Background(), fixture.selection); err != ErrPending {
+	if _, err := OpenReadOnly(context.Background(), fixture.selection); !errors.Is(err, ErrPending) {
 		t.Fatalf("ordinary pending read = %v", err)
 	}
 	if err := RecoverState(context.Background(), fixture.selection, fixture.factory); err != nil {

@@ -19,14 +19,14 @@ func (r *testReader) ReadObject(_ context.Context, _ SourceOrigin, id ObjectID) 
 	r.calls++
 	o, ok := r.objects[string(id)]
 	if !ok {
-		return GitObject{}, errMissing{}
+		return GitObject{}, missingError{}
 	}
 	return GitObject{Kind: o.Kind, Data: append([]byte(nil), o.Data...)}, nil
 }
 
-type errMissing struct{}
+type missingError struct{}
 
-func (errMissing) Error() string { return "missing" }
+func (missingError) Error() string { return "missing" }
 func refOID(w int, k string, d []byte) string {
 	p := []byte(k + " " + itoa(len(d)) + "\x00")
 	p = append(p, d...)
@@ -37,6 +37,7 @@ func refOID(w int, k string, d []byte) string {
 	h := sha256.Sum256(p)
 	return hex.EncodeToString(h[:])
 }
+
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
@@ -50,7 +51,7 @@ func itoa(n int) string {
 }
 func refB(b []byte) string { h := sha256.Sum256(b); return "sha256:" + hex.EncodeToString(h[:]) }
 func refD(d string, v any) string {
-	var x any = v
+	x := v
 	switch q := v.(type) {
 	case refTree:
 		a := make([]any, len(q.Entries))
@@ -131,6 +132,7 @@ func TestVerifySourceSHA1AndSHA256NestedFixture(t *testing.T) {
 		})
 	}
 }
+
 func TestVerifySourceRawContractLineEndingsChangeDigest(t *testing.T) {
 	r, s := fixture(20, []byte("{\"x\":1}\r\n"))
 	if _, e := VerifySource(context.Background(), r, s); e != nil {
@@ -141,6 +143,7 @@ func TestVerifySourceRawContractLineEndingsChangeDigest(t *testing.T) {
 		t.Fatal("line endings unchanged")
 	}
 }
+
 func TestVerifySourceFailuresLimitsCancel(t *testing.T) {
 	r, s := fixture(20, []byte("{}"))
 	bad := s
@@ -184,6 +187,7 @@ func TestVerifyDevelopmentSourceAllowsMutableRequestedRefOnly(t *testing.T) {
 		t.Fatalf("development pinned commit read: %v", err)
 	}
 }
+
 func TestVerifySourceIndependentLiteralVectors(t *testing.T) {
 	_, fixtureSubject := fixture(20, []byte("{\"apiVersion\":\"test\"}\n"))
 	if fixtureSubject.TreeSHA256 != "sha256:e26600cf598c84ccf353e2756401f708a714474560401e6b3cb372949852429d" || fixtureSubject.ContractSHA256 != "sha256:1897cc2b08db835fadfe17c5096c26172207a0b4631ce593cc1b91e5f5dc0004" {
@@ -234,7 +238,7 @@ func parserFixture(w int, root, commit []byte) (*testReader, Subject) {
 		return id
 	}
 	rootID := add("tree", root)
-	if commit == nil || len(commit) == 0 {
+	if len(commit) == 0 {
 		commit = []byte("tree " + rootID + "\n\n")
 	}
 	commitID := add("commit", commit)

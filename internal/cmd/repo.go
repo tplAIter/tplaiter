@@ -20,7 +20,7 @@ import (
 var repoRunner execx.Runner = execx.Exec{}
 
 func init() {
-	rootCmd.AddCommand(newRepoCmd())
+	registerCommand(newRepoCmd)
 }
 
 func newRepoCmd() *cobra.Command {
@@ -152,6 +152,11 @@ func newRepoRemoveCmd() *cobra.Command {
 
 func newRepoUpdateCmd() *cobra.Command {
 	return &cobra.Command{
+		// Preserved from the former name-based switch, which matched every command
+		// named "update": the root hooks do not run for `repo update`. Revisit when
+		// the live lifecycle returns (U07).
+		Annotations: prerunAnnotations(prerunTrustOwned),
+
 		Use:   "update [alias]",
 		Short: "git fetch + переиндексация всех репозиториев или одного",
 		Args:  cobra.MaximumNArgs(1),

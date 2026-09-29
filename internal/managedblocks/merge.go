@@ -20,14 +20,16 @@ type PlanInput struct {
 	DeleteResolutions  map[string]DeleteResolution
 	Renames            map[string]string // new ID -> old ID
 }
-type BlockConflict struct{ Path, ID, Provider string }
-type FilePlan struct {
-	Path          string
-	Candidate     []byte
-	Baseline      FileBaseline
-	Conflicts     []BlockConflict
-	RenameAliases map[string]string
-}
+type (
+	BlockConflict struct{ Path, ID, Provider string }
+	FilePlan      struct {
+		Path          string
+		Candidate     []byte
+		Baseline      FileBaseline
+		Conflicts     []BlockConflict
+		RenameAliases map[string]string
+	}
+)
 
 type plannedBlock struct {
 	body, begin, end []byte
@@ -339,18 +341,6 @@ func unexplainedOurs(base, ours Document) bool {
 	return false
 }
 
-func sameLayout(base, ours, theirs Document, renames map[string]string) bool {
-	if len(base.Regions) != len(ours.Regions) || len(base.Regions) != len(theirs.Regions) || len(base.Gaps) != len(theirs.Gaps) || len(base.Gaps) != len(ours.Gaps) {
-		return false
-	}
-	for i := range base.Regions {
-		if theirs.Regions[i].ID != renamedID(base.Regions[i].ID, renames) || ours.Regions[i].ID != base.Regions[i].ID {
-			return false
-		}
-	}
-	return true
-}
-
 func renamedID(id string, renames map[string]string) string {
 	for next, old := range renames {
 		if old == id {
@@ -359,6 +349,7 @@ func renamedID(id string, renames map[string]string) string {
 	}
 	return id
 }
+
 func cloneGaps(in [][]byte) [][]byte {
 	out := make([][]byte, len(in))
 	for i := range in {
@@ -366,6 +357,7 @@ func cloneGaps(in [][]byte) [][]byte {
 	}
 	return out
 }
+
 func documentEOL(docs ...Document) []byte {
 	for _, d := range docs {
 		for _, g := range d.Gaps {
@@ -381,9 +373,11 @@ func documentEOL(docs ...Document) []byte {
 	}
 	return []byte("\n")
 }
+
 func failProvider(path, id string) error {
 	return fmt.Errorf("managed blocks: provider transition %s/%s", path, id)
 }
+
 func validateResolutions(r map[string]DeleteResolution, b FileBaseline, o, t Document, ren map[string]string) error {
 	for id, v := range r {
 		or, ok := o.ByID[id]
@@ -400,6 +394,7 @@ func validateResolutions(r map[string]DeleteResolution, b FileBaseline, o, t Doc
 	}
 	return nil
 }
+
 func validateRenames(r map[string]string, baseline FileBaseline, base, ours, theirs Document) error {
 	oldIDs := map[string]bool{}
 	for next, old := range r {
@@ -415,6 +410,7 @@ func validateRenames(r map[string]string, baseline FileBaseline, base, ours, the
 	}
 	return nil
 }
+
 func sortedKeys(m map[string]string) []string {
 	keys := make([]string, 0, len(m))
 	for key := range m {
@@ -423,6 +419,7 @@ func sortedKeys(m map[string]string) []string {
 	sort.Strings(keys)
 	return keys
 }
+
 func sortedSet(set map[string]bool) []string {
 	keys := make([]string, 0, len(set))
 	for key := range set {

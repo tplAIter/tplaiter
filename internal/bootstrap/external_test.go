@@ -162,6 +162,7 @@ func hashText(h MerkleHash) string { return "sha256:" + hex.EncodeToString(h[:])
 func rotationNext(t *testing.T, v *Verifier, current Bundle) Bundle {
 	return rotationNextAt(t, v, current, "2026-12-01T00:00:00Z", false)
 }
+
 func rotationNextAt(t *testing.T, v *Verifier, current Bundle, overlap string, recovery bool) Bundle {
 	t.Helper()
 	store := v.store.(memoryEvidence)

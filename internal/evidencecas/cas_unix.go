@@ -5,11 +5,12 @@ package evidencecas
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 type casRoot struct{ fd int }
@@ -36,6 +37,7 @@ func openCASRoot(name string) (*casRoot, error) {
 	}
 	return &casRoot{fd: fd}, nil
 }
+
 func openDir(parent int, name string) (int, error) {
 	for {
 		fd, err := unix.Openat(parent, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
@@ -57,6 +59,7 @@ func openDir(parent int, name string) (int, error) {
 		return fd, nil
 	}
 }
+
 func (r *casRoot) read(h string) ([]byte, error) {
 	dir, e := openDir(r.fd, "sha256")
 	if e != nil {
@@ -97,6 +100,7 @@ func (r *casRoot) read(h string) ([]byte, error) {
 	}
 	return blob, nil
 }
+
 func openLeaf(parent int, name string) (int, error) {
 	for {
 		fd, err := unix.Openat(parent, name, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
@@ -106,6 +110,7 @@ func openLeaf(parent int, name string) (int, error) {
 		return fd, err
 	}
 }
+
 func (r *casRoot) close() error {
 	if r == nil || r.fd < 0 {
 		return nil

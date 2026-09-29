@@ -18,7 +18,7 @@ import (
 var contributeRunner execx.Runner = execx.Exec{}
 
 func init() {
-	rootCmd.AddCommand(newUpgradeCmd())
+	registerCommand(newUpgradeCmd)
 }
 
 // newUpgradeCmd creates `tplater upgrade`: the reverse flow, where improvements

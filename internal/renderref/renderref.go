@@ -75,13 +75,13 @@ type Result struct {
 // temporary directory, returning in-memory contents and a clean baseline. The
 // temporary directory is removed before returning; callers only need the bytes
 // in [Result.Files].
-func Render(src fs.FS, in Input) (*Result, error) {
+func Render(ctx context.Context, src fs.FS, in Input) (*Result, error) {
 	tmp, err := os.MkdirTemp("", "tplater-render-*")
 	if err != nil {
 		return nil, fmt.Errorf("renderref: временный каталог рендера: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
-	return render(context.Background(), src, in, tmp, func(path string) ([]byte, error) {
+	return render(ctx, src, in, tmp, func(path string) ([]byte, error) {
 		return os.ReadFile(filepath.Join(tmp, "out", filepath.FromSlash(path)))
 	}, nil)
 }

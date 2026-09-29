@@ -12,13 +12,15 @@ import (
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
-type ApprovedRunner struct{ runtime *trustload.Runtime }
-type ExecutionReceipt struct {
-	runner  *ApprovedRunner
-	request string
-	stdout  []byte
-	digest  string
-}
+type (
+	ApprovedRunner   struct{ runtime *trustload.Runtime }
+	ExecutionReceipt struct {
+		runner  *ApprovedRunner
+		request string
+		stdout  []byte
+		digest  string
+	}
+)
 type ExecutionError struct{ Code string }
 
 func (e *ExecutionError) Error() string {
@@ -34,6 +36,7 @@ func NewApprovedRunner(r *trustload.Runtime) (*ApprovedRunner, error) {
 	}
 	return &ApprovedRunner{runtime: r}, nil
 }
+
 func (r *ApprovedRunner) Execute(ctx context.Context, permit *trustverify.ExecutionPermit, request trustverify.ExecutionRequest, material *operationtrust.ExecutionMaterial) (*ExecutionReceipt, error) {
 	if ctx == nil || r == nil || r.runtime == nil || permit == nil || material == nil {
 		return nil, &ExecutionError{"TRUST_APPROVAL_MISMATCH"}
@@ -56,6 +59,7 @@ func (r *ApprovedRunner) Execute(ctx context.Context, permit *trustverify.Execut
 	h := sha256.Sum256(out)
 	return &ExecutionReceipt{runner: r, request: request.RequestSHA256, stdout: append([]byte(nil), out...), digest: "sha256:" + hex.EncodeToString(h[:])}, nil
 }
+
 func (r *ExecutionReceipt) StdoutFor(runner *ApprovedRunner, request trustverify.ExecutionRequest) ([]byte, error) {
 	if r == nil || runner == nil || r.runner != runner || r.request != request.RequestSHA256 {
 		return nil, errors.New("TRUST_EXECUTION_RECEIPT_INVALID")

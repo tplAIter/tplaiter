@@ -61,7 +61,7 @@ func TestStoreLifecycleLOCK01SameProcessMatrix(t *testing.T) {
 				if err := second.Close(); err != nil {
 					t.Fatal(err)
 				}
-				second = nil
+				second = nil //nolint:wastedassign // the lease is closed; keep the handle unusable for the rest of the case
 				writer, err := openRootLease(context.Background(), root, storeRefresh)
 				if err != nil {
 					t.Fatalf("EX after both SH leases: %v", err)
@@ -224,7 +224,7 @@ func TestStoreLifecycleLOCK03Cancellation(t *testing.T) {
 	}
 	root := filepath.Join(base, "nil-store")
 	before := openFDCount(t)
-	if lease, err := openRootLease(nil, root, storeEnroll); lease != nil || err == nil {
+	if lease, err := openRootLease(nil, root, storeEnroll); lease != nil || err == nil { //nolint:staticcheck // deliberately exercises nil-context rejection
 		t.Fatalf("nil context lease=%v err=%v", lease, err)
 	}
 	if got := openFDCount(t); got != before {

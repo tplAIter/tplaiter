@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -23,12 +22,14 @@ import (
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 )
 
 // TestInstalledRegistrationRealCLIAndMCP uses the signed disk fixture through
 // a freshly built main binary. No command authority is injected in-process.
 func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	_, anchor, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +88,7 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	bin := filepath.Join(root, "tplaiter")
 	ldflags := "-X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationPath=" + registrationPath +
 		" -X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationSHA256=sha256:" + hex.EncodeToString(h[:])
-	build := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-ldflags", ldflags, "-o", bin, ".")
+	build := exec.Command(testfixture.GoBinary(t), "build", "-ldflags", ldflags, "-o", bin, ".")
 	build.Dir = filepath.Join("..", "..")
 	build.Env = testBuildEnv(home)
 	if out, err := build.CombinedOutput(); err != nil {
@@ -100,7 +101,7 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	binaryDigest := sha256.Sum256(binaryRaw)
 	t.Logf("T7_PROOF registration_sha256=%x runtime_digest=%s binary_sha256=%x", h, f.selection.RuntimeConfig.SHA256, binaryDigest)
 	unpinned := filepath.Join(root, "tplaiter-unpinned")
-	unpinnedBuild := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-o", unpinned, ".")
+	unpinnedBuild := exec.Command(testfixture.GoBinary(t), "build", "-o", unpinned, ".")
 	unpinnedBuild.Dir, unpinnedBuild.Env = filepath.Join("..", ".."), testBuildEnv(home)
 	if out, err := unpinnedBuild.CombinedOutput(); err != nil {
 		t.Fatalf("build stock binary: %v\n%s", err, out)
@@ -112,7 +113,8 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	unpinnedDigest := sha256.Sum256(unpinnedRaw)
 	t.Logf("T7_PROOF unpinned_binary_sha256=%x", unpinnedDigest)
 
-	env := append(testProcessEnv(home),
+	env := append(
+		testProcessEnv(home),
 		"PATH="+shadow+":/usr/bin:/bin", "TPLAITER_PROFILE=development",
 		"TPLAITER_REGISTRATION_PATH="+filepath.Join(home, ".tplaiter", "trust-profile.json"),
 	)
@@ -643,6 +645,7 @@ func snapshotTree(t *testing.T, root string) map[string]string {
 	}
 	return out
 }
+
 func equalStringMap(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false
@@ -681,7 +684,8 @@ func testBuildEnv(home string) []string {
 	if moduleRoot == "" {
 		moduleRoot = filepath.Join(os.Getenv("HOME"), "go", "pkg", "mod")
 	}
-	return append(testProcessEnv(home),
+	return append(
+		testProcessEnv(home),
 		"GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GOWORK=off",
 		"GOMODCACHE="+moduleRoot, "GOCACHE="+cacheRoot,
 	)

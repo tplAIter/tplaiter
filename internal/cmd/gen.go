@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/spf13/cobra"
+
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/gen"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/ui"
-	"github.com/spf13/cobra"
 )
 
 // genRunner — runner for formatter/build-gate post-steps of [gen.Generate].
@@ -19,7 +20,7 @@ import (
 var genRunner execx.Runner = execx.Exec{}
 
 func init() {
-	rootCmd.AddCommand(newGenCmd())
+	registerCommand(newGenCmd)
 }
 
 // newGenCmd creates `tplater gen <kind> <name> [--<param> ...]` (SPEC-01 §6,
@@ -35,6 +36,8 @@ func init() {
 // parsing the parent's flags.
 func newGenCmd() *cobra.Command {
 	c := &cobra.Command{
+		Annotations: prerunAnnotations(prerunLegacyAction),
+
 		Use:   "gen <kind> <name> [--<param> ...]",
 		Short: "Скаффолдер шаблона: создать файл(ы) вида <kind> с именем <name>",
 		Long: "Генерирует файлы и вставки якорей по generators манифеста шаблона (SPEC-01 §6). " +
@@ -143,6 +146,8 @@ func paramUsage(p *manifest.Param) string {
 // newGenListCmd creates `tplater gen list`.
 func newGenListCmd() *cobra.Command {
 	return &cobra.Command{
+		Annotations: prerunAnnotations(prerunReadonly),
+
 		Use:   "list",
 		Short: "Список видов скаффолда манифеста шаблона (kind/description/available)",
 		Args:  cobra.NoArgs,
@@ -173,6 +178,8 @@ func newGenBatchCmd() *cobra.Command {
 	var operationsJSON string
 	var noBuild bool
 	c := &cobra.Command{
+		Annotations: prerunAnnotations(prerunLegacyAction),
+
 		Use:   "batch --operations <JSON> [--no-build]",
 		Short: "Сгенерировать несколько scaffolds с одной сборкой и атомарным откатом",
 		Long: "Планирует все операции до первой записи, затем создаёт файлы и выполняет один финальный " +
