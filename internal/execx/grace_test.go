@@ -34,8 +34,8 @@ func TestMain(m *testing.M) {
 }
 
 // spawnGrandchildHelper starts `sh -c 'sleep 300'` (which inherits this
-// process group), records the grandchild PID in $TPLAITER_TEST_PIDFILE and
-// blocks until it is signalled.
+// process group), records "<own pid> <grandchild pid>" in
+// $TPLAITER_TEST_PIDFILE and blocks until it is signalled.
 func spawnGrandchildHelper() int {
 	grandchild := exec.Command("/bin/sh", "-c", "sleep 300")
 	if err := grandchild.Start(); err != nil {
@@ -43,7 +43,8 @@ func spawnGrandchildHelper() int {
 	}
 	pidFile := os.Getenv("TPLAITER_TEST_PIDFILE")
 	tmp := pidFile + ".tmp"
-	if err := os.WriteFile(tmp, []byte(strconv.Itoa(grandchild.Process.Pid)), 0o600); err != nil {
+	payload := strconv.Itoa(os.Getpid()) + " " + strconv.Itoa(grandchild.Process.Pid)
+	if err := os.WriteFile(tmp, []byte(payload), 0o600); err != nil {
 		return 99
 	}
 	if err := os.Rename(tmp, pidFile); err != nil {
@@ -83,6 +84,26 @@ func waitForFile(t *testing.T, path string) []byte {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// readPidPair waits for the helper's "<leader pid> <grandchild pid>" file.
+// The leader pid comes from the helper itself, so the test never reads
+// cmd.Process while RunGroup is starting it in another goroutine.
+func readPidPair(t *testing.T, path string) (leader, grandchild int) {
+	t.Helper()
+	fields := strings.Fields(string(waitForFile(t, path)))
+	if len(fields) != 2 {
+		t.Fatalf("malformed pid file %q", fields)
+	}
+	leader, err := strconv.Atoi(fields[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	grandchild, err = strconv.Atoi(fields[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return leader, grandchild
 }
 
 // waitGone polls until kill(target, 0) reports ESRCH. A killed orphan can
@@ -127,11 +148,7 @@ func TestRunGroupCancelKillsGrandchildren(t *testing.T) {
 		res, err := RunGroup(ctx, cmd, GroupOptions{Grace: 5 * time.Second})
 		done <- outcome{res, err}
 	}()
-	grandchild, err := strconv.Atoi(strings.TrimSpace(string(waitForFile(t, pidFile))))
-	if err != nil {
-		t.Fatal(err)
-	}
-	pgid := cmd.Process.Pid
+	pgid, grandchild := readPidPair(t, pidFile)
 	if got, err := syscall.Getpgid(grandchild); err != nil || got != pgid {
 		t.Fatalf("grandchild pgid=%d err=%v, want leader pgid %d", got, err, pgid)
 	}
@@ -226,10 +243,7 @@ func TestExecRunProcessGroupCancelReportsContextCause(t *testing.T) {
 		})
 		done <- err
 	}()
-	grandchild, err := strconv.Atoi(strings.TrimSpace(string(waitForFile(t, pidFile))))
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, grandchild := readPidPair(t, pidFile)
 	cancel()
 	runErr := <-done
 	if !errors.Is(runErr, context.Canceled) {
