@@ -39,8 +39,8 @@ import (
 // Pending tools. testdata/mcp/pending_tools.txt lists the tools whose success
 // path lands in a later work package (trust registration, live lifecycle,
 // trusted actions). The suite still calls each of them and requires a typed
-// result/v1 failure envelope; once a tool is removed from the file its call
-// must succeed.
+// result/v1 failure envelope carrying exactly the diagnostic codes pinned in
+// the file; once a tool is removed from the file its call must succeed.
 
 const (
 	toolsGoldenFile  = "testdata/mcp/tools.schema.golden.json"
@@ -251,20 +251,32 @@ func requireEnvelope(t *testing.T, tool string, res toolResult) (op, status stri
 	return op, status, codes
 }
 
-func readPending(t *testing.T) map[string]string {
+// pendingTool is one line of pending_tools.txt.
+type pendingTool struct {
+	// codes are the exact diagnostic codes the refusal must carry, sorted.
+	codes  []string
+	reason string
+}
+
+func readPending(t *testing.T) map[string]pendingTool {
 	t.Helper()
 	raw, err := os.ReadFile(pendingToolsFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	pending := map[string]string{}
+	pending := map[string]pendingTool{}
 	for _, line := range strings.Split(string(raw), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		name, reason, _ := strings.Cut(line, " ")
-		pending[name] = strings.TrimSpace(reason)
+		fields := strings.SplitN(line, " ", 3)
+		if len(fields) != 3 {
+			t.Fatalf("pending_tools.txt: want \"<tool> <CODE[,CODE]> <owner: reason>\", got %q", line)
+		}
+		codes := strings.Split(fields[1], ",")
+		sort.Strings(codes)
+		pending[fields[0]] = pendingTool{codes: codes, reason: strings.TrimSpace(fields[2])}
 	}
 	return pending
 }
@@ -406,7 +418,8 @@ func TestMCPStdioContract(t *testing.T) {
 			if op != tc.op {
 				t.Fatalf("%s: operation=%s, want %s", tc.tool, op, tc.op)
 			}
-			if reason, isPending := pending[tc.tool]; isPending {
+			if p, isPending := pending[tc.tool]; isPending {
+				reason := p.reason
 				// The backend lands later: the call must fail closed with a
 				// typed diagnostic, never with free text.
 				if !res.IsError || (status != "blocked" && status != "failed") || len(codes) == 0 {
@@ -416,6 +429,11 @@ func TestMCPStdioContract(t *testing.T) {
 					if code == "MCP_CONTRACT_INVALID" || code == "MCP_UNAVAILABLE" || code == "MCP_TIMEOUT" {
 						t.Fatalf("%s (pending): transport failure %s instead of a typed refusal", tc.tool, code)
 					}
+				}
+				got := append([]string(nil), codes...)
+				sort.Strings(got)
+				if strings.Join(got, ",") != strings.Join(p.codes, ",") {
+					t.Fatalf("%s (pending: %s): codes=%v, want exactly %v", tc.tool, reason, got, p.codes)
 				}
 				t.Logf("%s pending (%s): %s %v", tc.tool, reason, status, codes)
 				return

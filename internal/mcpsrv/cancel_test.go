@@ -153,7 +153,11 @@ func durationMs(t *testing.T, d resultdto.Diagnostic) int64 {
 // survives.
 func TestToolTimeoutStopsWholeGroup(t *testing.T) {
 	pidFile := filepath.Join(t.TempDir(), "pids")
-	const timeout = 700 * time.Millisecond
+	// The helper must start and publish its pids before the deadline fires.
+	// A -race test binary under a loaded host (make verify runs every
+	// package in parallel) can take well over a second to start, so the
+	// deadline leaves room for that.
+	const timeout = 3 * time.Second
 	s := directHelperServer(t, Limits{DefaultTimeout: timeout, KillGrace: 500 * time.Millisecond},
 		helperEnv+"=spawn-grandchild", "TPLAITER_TEST_PIDFILE="+pidFile)
 	res := s.callStructured(context.Background(), resultdto.OperationRepoList, "", argvRepoList(), shortCall)

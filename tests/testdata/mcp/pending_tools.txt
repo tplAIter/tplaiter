@@ -1,15 +1,15 @@
 # Tools whose success path lands in a later work package. The stdio suite
 # (mcp_stdio_test.go) still calls every tool listed here and requires a typed
-# result/v1 refusal; a tool removed from this file must succeed. U12 requires
-# this file to be empty.
+# result/v1 refusal carrying exactly the pinned diagnostic codes; a tool
+# removed from this file must succeed. U12 requires this file to be empty.
 #
-# <tool> <owner: reason>
-trust_inspect U02: needs the installed trust registration fixture
-project_new U07: live new (dry-run needs U02 trust state)
-settings_set U07: live settings through the transaction ledger
-workspace_add_service U07: live workspace add-service
-run U13: trusted manifest command execution
-ai_gen U13: trusted AI artifact generation
-gen U13: trusted generation with build gate
-gen_batch U13: trusted batch generation
-env_setup U13: trusted environment playbooks
+# <tool> <CODE[,CODE...]> <owner: reason>
+trust_inspect TRUST_ANCHOR_MISSING U02: needs the installed trust registration fixture
+project_new TRUST_ANCHOR_MISSING U07: live new (dry-run needs U02 trust state)
+settings_set TRUST_LIFECYCLE_UNAVAILABLE U07: live settings through the transaction ledger
+workspace_add_service CLI_OPERATION_FAILED U07: the static fixture is not a workspace; U07 adds a workspace fixture and a typed lifecycle refusal
+run TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted manifest command execution
+ai_gen TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted AI artifact generation
+gen TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted generation with build gate
+gen_batch TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted batch generation
+env_setup TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted environment playbooks

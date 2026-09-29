@@ -152,7 +152,7 @@ func (s *heldStage) Close() error {
 	if s.dir != nil {
 		_ = s.dir.Close()
 	}
-	if e := os.RemoveAll(s.root); err == nil { //nolint:gosec // G703: root is the private MkdirTemp stage directory resolved from its held descriptor, never caller input
+	if e := os.RemoveAll(s.root); err == nil { //nolint:gosec,nolintlint // G703 (reported depending on package-wide taint flow): root is the private MkdirTemp stage directory resolved from its held descriptor, never caller input
 		err = e
 	}
 	return err
