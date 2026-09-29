@@ -21,9 +21,6 @@ type refreshConcurrencyResult struct {
 }
 
 func TestRefreshSB03PreparedConcurrency(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)
@@ -125,9 +122,6 @@ func waitRefreshConcurrency(group *sync.WaitGroup) bool {
 }
 
 func TestRefreshSB03ReadStoreBlocksMaintenance(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)

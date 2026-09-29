@@ -1,4 +1,6 @@
-package cmd
+//go:build darwin || linux
+
+package execx
 
 import (
 	"bytes"
@@ -6,25 +8,168 @@ import (
 	"crypto/ed25519"
 	"crypto/sha1"
 	"crypto/sha256"
+	"debug/buildinfo"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
-	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
+
+func TestLimitedBuffer(t *testing.T) {
+	var b limitedBuffer
+	b.n = 1
+	_, _ = b.Write([]byte("ab"))
+	if !b.over {
+		t.Fatal("unbounded")
+	}
+}
+
+func TestApprovedStageOwnsAndRemovesPrivateFiles(t *testing.T) {
+	root := t6BTempDir(t)
+	fd, err := unix.Open(root, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(fd)
+	if _, err := approvedPathForFD(fd); err != nil {
+		t.Fatalf("held descriptor path: %v", err)
+	}
+	m := stageFixture([]byte("not executed"))
+	s, err := newApprovedStage(root, m, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(s.cwdPath) == root || s.toolPath == "" {
+		t.Fatal("stage bridge was not held")
+	}
+	toolFD, cwdFD := s.tool, s.cwd
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, fd := range []int{toolFD, cwdFD} {
+		if _, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err == nil {
+			t.Fatalf("descriptor %d remains open", fd)
+		}
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("residue after close: %v %v", entries, err)
+	}
+}
+
+func TestApprovedToolReadbackRejectsSubstitution(t *testing.T) {
+	root := t6BTempDir(t)
+	m := stageFixture([]byte("expected"))
+	s, err := newApprovedStage(root, m, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := unix.Unlinkat(s.dir, "native-tool", 0); err != nil {
+		t.Fatal(err)
+	}
+	fd, err := writeApprovedFile(s.dir, "native-tool", []byte("substituted"), 0o500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(fd)
+	if err := verifyApprovedTool(fd, m.ToolBytes, m.Request.Tool.BinarySHA256); err == nil {
+		t.Fatal("substituted staged tool accepted")
+	}
+}
+
+func TestApprovedPrivateLifecycleFailuresHaveNoOutput(t *testing.T) {
+	tool := buildApprovedHelper(t, "package main\nimport \"syscall\"\nfunc main(){syscall.Write(1,[]byte(\"ok\"))}\n")
+	m := approvedMaterial(tool)
+	root := t6BTempDir(t)
+	if out, err := executeApproved(withApprovedHooks(context.Background(), approvedHooks{start: func(*exec.Cmd) error { return errors.New("injected start") }}), root, m); err == nil || out != nil {
+		t.Fatalf("start = %q, %v", out, err)
+	}
+	if out, err := executeApproved(withApprovedHooks(context.Background(), approvedHooks{close: func() error { return errors.New("injected close after reaping") }}), root, m); err == nil || out != nil {
+		t.Fatalf("cleanup = %q, %v", out, err)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("private residue: %v %v", entries, err)
+	}
+}
+
+func TestApprovedStderrOverflowFails(t *testing.T) {
+	tool := buildApprovedHelper(t, "package main\nimport \"syscall\"\nfunc main(){b:=make([]byte,32768);for i:=0;i<3;i++{syscall.Write(2,b)}}\n")
+	if out, err := executeApproved(context.Background(), t6BTempDir(t), approvedMaterial(tool)); err == nil || out != nil {
+		t.Fatalf("stderr overflow = %q, %v", out, err)
+	}
+}
+
+func approvedMaterial(tool []byte) trustverify.StagedMaterial {
+	m := stageFixture(tool)
+	m.Content = []trustverify.ContentEntry{{Root: "provider", Path: ".tplaiter-execution/stdin", Mode: "100644", ContentSHA256: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
+	m.Request.Action.Argv = []string{"native-snapshot-tool-v1"}
+	m.Environment = trustverify.EnvironmentPolicy{APIVersion: "tplaiter.dev/execution-environment/v1", Variables: []trustverify.EnvironmentVariable{{Name: "LANG", Value: "C"}}}
+	return m
+}
+
+func buildApprovedHelper(t *testing.T, source string) []byte {
+	t.Helper()
+	d := t6BTempDir(t)
+	src, out := filepath.Join(d, "main.go"), filepath.Join(d, "tool")
+	if err := os.WriteFile(src, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command(testfixture.GoBinary(t), "build", "-trimpath", "-o", out, src)
+	c.Env = []string{"HOME=" + filepath.Join(d, "home"), "GOMODCACHE=" + filepath.Join(d, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "PATH=/usr/bin:/bin"}
+	c.Env = append(c.Env, testfixture.NativeTargetEnv()...)
+	if err := c.Run(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func testGOCACHE(t *testing.T) string {
+	t.Helper()
+	if cache, ok := os.LookupEnv("GOCACHE"); ok && cache != "" {
+		return cache
+	}
+	return t6BTempDir(t)
+}
+
+func t6BTempDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("resolve test temp dir: %v", err)
+	}
+	return resolved
+}
+
+func stageFixture(tool []byte) trustverify.StagedMaterial {
+	h := sha256.Sum256(tool)
+	return trustverify.StagedMaterial{ToolBytes: tool, ContentBytes: [][]byte{[]byte("input")}, Request: trustverify.ExecutionRequest{Tool: trustverify.Tool{BinarySHA256: "sha256:" + hex.EncodeToString(h[:])}}}
+}
 
 // This exercises the installed-loader path with raw Git objects, signed
 // publisher/transparency evidence, an enrolled store and a persistent permit.
@@ -33,9 +178,14 @@ func TestApprovedRunnerExecutesSignedNativeSnapshotMaterial(t *testing.T) {
 	p := newT6BPrepared(t, "normal")
 	defer p.runtime.Close()
 	t.Setenv("T6B_EXEC_CANARY", "must-not-reach-approved-process")
-	receipt, err := p.runner.Execute(context.Background(), p.permit, p.request, p.material)
+	started, observed := false, false
+	ctx := withApprovedHooks(context.Background(), approvedHooks{
+		start:  func(cmd *exec.Cmd) error { started = true; return cmd.Start() },
+		stdout: func([]byte) { observed = true },
+	})
+	receipt, err := p.runner.Execute(ctx, p.permit, p.request, p.material)
 	if err != nil || receipt == nil {
-		t.Fatalf("Execute = %#v, %v", receipt, err)
+		t.Fatalf("Execute = %#v, %v (started=%t stdout=%t)", receipt, err, started, observed)
 	}
 	stdout, err := receipt.StdoutFor(p.runner, p.request)
 	if err != nil || string(stdout) != "approved:literal signed stdin\n" {
@@ -44,10 +194,93 @@ func TestApprovedRunnerExecutesSignedNativeSnapshotMaterial(t *testing.T) {
 	t6BAssertEmptyScratch(t, p.fixture.scratch)
 }
 
+// This is the Go D6 proof: the tool and its version record are inside the
+// signed source snapshot, both requests belong to one full operation, and two
+// different persistent permits execute F(original), never F(F(original)).
+func TestApprovedRunnerExecutesSignedGofmtPair(t *testing.T) {
+	f := newT6BFixture(t, "gofmt", "gofmt")
+	r, err := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: t6BClock{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	stable := r.TrustRuntime()
+	resolution, err := stable.VerifySubject(context.Background(), f.subject, f.refs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := []byte("package fixture\nfunc f(){ }\n")
+	plan, err := canonicaljson.Canonical(map[string]any{"adapter": "gofmt-stdin-v1", "apiVersion": "tplaiter.dev/formatter-plan/v1", "inputSHA256": evidencecas.Digest(input), "path": "z.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, requests := f.formatterInputs(t, stable.Binding(), r.ProjectContext().ProjectID, input, plan)
+	permits := make([]*trustverify.ExecutionPermit, len(requests))
+	for i, request := range requests {
+		permits[i], err = stable.Authorize(context.Background(), resolution, op, request, f.persistentApproval(t, request))
+		if err != nil || permits[i] == nil {
+			t.Fatalf("Authorize[%d] = %#v, %v", i, permits[i], err)
+		}
+		if _, err = stable.PersistentApprovalReference(permits[i]); err != nil {
+			t.Fatalf("PersistentApprovalReference[%d]: %v", i, err)
+		}
+	}
+	runner, err := NewApprovedRunner(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs := make([][]byte, 2)
+	materials := make([]*operationtrust.ExecutionMaterial, 2)
+	for i, request := range requests {
+		materialInput := operationtrust.FormatterInput{Path: "z.go", Mode: "100644", Bytes: input, PlanJSON: plan}
+		selection, err := operationtrust.ResolveFormatterComposition(context.Background(), stable, resolution, resolution, op, op.Actions[i], materialInput)
+		if err != nil {
+			t.Fatalf("ResolveFormatterComposition[%d]: %v", i, err)
+		}
+		material, err := operationtrust.BindFormatterMaterial(context.Background(), stable, resolution, resolution, op, op.Actions[i], materialInput, selection)
+		if err != nil {
+			t.Fatalf("BindFormatterMaterial[%d]: %v", i, err)
+		}
+		materials[i] = material
+		receipt, err := runner.Execute(context.Background(), permits[i], request, material)
+		if err != nil || receipt == nil {
+			t.Fatalf("Execute[%d] = %#v, %v", i, receipt, err)
+		}
+		outputs[i], err = receipt.StdoutFor(runner, request)
+		if err != nil {
+			t.Fatalf("StdoutFor[%d]: %v", i, err)
+		}
+	}
+	if requests[0].Action.ID == requests[1].Action.ID || requests[0].RequestSHA256 == requests[1].RequestSHA256 || !bytes.Equal(outputs[0], outputs[1]) || !bytes.Contains(outputs[0], []byte("func f() {}")) {
+		t.Fatalf("paired gofmt proof failed: requests=%#v outputs=%q / %q", requests, outputs[0], outputs[1])
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	started := false
+	ctx = withApprovedHooks(ctx, approvedHooks{start: func(cmd *exec.Cmd) error {
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		started = true
+		cancel()
+		return nil
+	}})
+	receipt, err := runner.Execute(ctx, permits[0], requests[0], materials[0])
+	cancel()
+	if !started || err == nil || receipt != nil {
+		t.Fatalf("in-flight gofmt cancellation: started=%t receipt=%#v err=%v", started, receipt, err)
+	}
+	t6BAssertEmptyScratch(t, f.scratch)
+	receipt, err = runner.Execute(withApprovedHooks(context.Background(), approvedHooks{close: func() error { return errors.New("injected gofmt cleanup failure") }}), permits[1], requests[1], materials[1])
+	if err == nil || receipt != nil {
+		t.Fatalf("gofmt cleanup failure exposed receipt=%#v err=%v", receipt, err)
+	}
+	t6BAssertEmptyScratch(t, f.scratch)
+}
+
 type t6BPrepared struct {
 	fixture  *t6BFixture
 	runtime  *trustload.Runtime
-	runner   *execx.ApprovedRunner
+	runner   *ApprovedRunner
 	permit   *trustverify.ExecutionPermit
 	request  trustverify.ExecutionRequest
 	material *operationtrust.ExecutionMaterial
@@ -100,11 +333,109 @@ func newT6BPrepared(t *testing.T, toolMode string) *t6BPrepared {
 	if err != nil {
 		t.Fatalf("BindExecutionMaterial: %v", err)
 	}
-	runner, err := execx.NewApprovedRunner(b.runtime)
+	runner, err := NewApprovedRunner(b.runtime)
 	if err != nil {
 		t.Fatalf("NewApprovedRunner: %v", err)
 	}
 	return &t6BPrepared{fixture: b.fixture, runtime: b.runtime, runner: runner, permit: permits[0], request: b.request, material: material}
+}
+
+func TestApprovedRunnerSignedDescendantGroupTermination(t *testing.T) {
+	p := newT6BPrepared(t, "descendant")
+	defer p.runtime.Close()
+	if !validNativeTool(p.fixture.tool) {
+		t.Fatalf("signed descendant helper rejected by the native envelope (bytes=%d)", len(p.fixture.tool))
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pidCh := make(chan int, 1)
+	var pidLine []byte
+	observe := func(b []byte) {
+		pidLine = append(pidLine, b...)
+		if at := bytes.IndexByte(pidLine, '\n'); at >= 0 {
+			pid, e := strconv.Atoi(string(pidLine[:at]))
+			if e == nil && pid > 1 {
+				select {
+				case pidCh <- pid:
+				default:
+				}
+			}
+		}
+	}
+	type res struct {
+		r *ExecutionReceipt
+		e error
+	}
+	done := make(chan res, 1)
+	go func() {
+		r, e := p.runner.Execute(withApprovedHooks(ctx, approvedHooks{stdout: observe}), p.permit, p.request, p.material)
+		done <- res{r, e}
+	}()
+	var pid int
+	select {
+	case pid = <-pidCh:
+	case got := <-done:
+		t.Fatalf("Execute completed before descendant readiness: receipt=%#v err=%v", got.r, got.e)
+	case <-time.After(30 * time.Second):
+		cancel()
+		select {
+		case got := <-done:
+			if got.e == nil || got.r != nil {
+				t.Fatalf("readiness timeout cleanup result: receipt=%#v err=%v", got.r, got.e)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("descendant readiness timeout cleanup did not finish")
+		}
+		t.Fatal("descendant readiness timeout")
+	}
+	cancel()
+	got := <-done
+	if got.e == nil || got.r != nil {
+		t.Fatalf("receipt=%#v err=%v", got.r, got.e)
+	}
+	until := time.Now().Add(2 * time.Second)
+	for {
+		e := syscall.Kill(pid, 0)
+		if errors.Is(e, syscall.ESRCH) {
+			break
+		}
+		if time.Now().After(until) {
+			t.Fatalf("descendant %d survives", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t6BAssertEmptyScratch(t, p.fixture.scratch)
+}
+
+func TestApprovedRunnerHooksArePerExecution(t *testing.T) {
+	a, b := newT6BPrepared(t, "normal"), newT6BPrepared(t, "normal")
+	defer a.runtime.Close()
+	defer b.runtime.Close()
+	var aN, bN int
+	type result struct {
+		r *ExecutionReceipt
+		e error
+	}
+	doneA, doneB := make(chan result, 1), make(chan result, 1)
+	go func() {
+		r, e := a.runner.Execute(withApprovedHooks(context.Background(), approvedHooks{stdout: func([]byte) { aN++ }}), a.permit, a.request, a.material)
+		doneA <- result{r, e}
+	}()
+	go func() {
+		r, e := b.runner.Execute(withApprovedHooks(context.Background(), approvedHooks{stdout: func([]byte) { bN++ }}), b.permit, b.request, b.material)
+		doneB <- result{r, e}
+	}()
+	for _, done := range []chan result{doneA, doneB} {
+		got := <-done
+		if got.e != nil || got.r == nil {
+			t.Fatalf("concurrent Execute = %#v, %v", got.r, got.e)
+		}
+	}
+	if aN != 1 || bN != 1 {
+		t.Fatalf("cross-execution observers a=%d b=%d", aN, bN)
+	}
+	t6BAssertEmptyScratch(t, a.fixture.scratch)
+	t6BAssertEmptyScratch(t, b.fixture.scratch)
 }
 
 func t6BAssertEmptyScratch(t *testing.T, scratch string) {
@@ -190,166 +521,9 @@ func TestSignedSnapshotConventionRejectsBeforeStage(t *testing.T) {
 	}
 }
 
-func TestSignedMaterialDriftRejectsBeforeStage(t *testing.T) {
-	testfixture.RequireTrustStore(t)
-	p := newT6BPrepared(t, "normal")
-	defer p.runtime.Close()
-	for _, tc := range []struct {
-		name   string
-		mutate func(*trustverify.ExecutionRequest)
-	}{
-		{"provider", func(r *trustverify.ExecutionRequest) { r.Provider.Origin = "https://example.test/other" }},
-		{"action", func(r *trustverify.ExecutionRequest) { r.Action.ID = "other-action" }},
-		{"argv", func(r *trustverify.ExecutionRequest) { r.Action.Argv = []string{"other-tool"} }},
-		{"options", func(r *trustverify.ExecutionRequest) {
-			r.Tool.OptionsSHA256 = evidencecas.Digest([]byte("other-options"))
-		}},
-		{"environment", func(r *trustverify.ExecutionRequest) {
-			r.EnvironmentPolicySHA256 = evidencecas.Digest([]byte("other-environment"))
-		}},
-		{"cwd", func(r *trustverify.ExecutionRequest) { r.WorkingDirectoryScope.Path = "." }},
-		{"timeout", func(r *trustverify.ExecutionRequest) { r.TimeoutMillis = 4999 }},
-		{"operation", func(r *trustverify.ExecutionRequest) {
-			r.OperationInputsSHA256 = evidencecas.Digest([]byte("other-operation"))
-		}},
-		{"request", func(r *trustverify.ExecutionRequest) { r.RequestSHA256 = evidencecas.Digest([]byte("other-request")) }},
-		{"profile", func(r *trustverify.ExecutionRequest) {
-			r.ProfileBindingSHA256 = evidencecas.Digest([]byte("other-profile"))
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			other := p.request
-			tc.mutate(&other)
-			if staged, err := p.material.StagedFor(context.Background(), p.runtime.TrustRuntime(), other); err == nil || staged.ToolBytes != nil {
-				t.Fatalf("StagedFor accepted changed %s", tc.name)
-			}
-			t6BAssertEmptyScratch(t, p.fixture.scratch)
-		})
-	}
-	t.Run("foreign-runtime-resolution-selection", func(t *testing.T) {
-		b, foreign := newT6BResolved(t, "normal", "normal"), newT6BResolved(t, "fail", "normal")
-		defer b.runtime.Close()
-		defer foreign.runtime.Close()
-		for name, pair := range map[string]struct {
-			runtime    *trustverify.Runtime
-			resolution *trustverify.VerifiedResolution
-		}{
-			"runtime":    {foreign.stable, b.resolution},
-			"resolution": {b.stable, foreign.resolution},
-		} {
-			if selection, err := operationtrust.ResolveFixedComposition(context.Background(), pair.runtime, pair.resolution, b.op, b.request); err == nil || selection != nil {
-				t.Fatalf("ResolveFixedComposition accepted foreign %s = %#v, %v", name, selection, err)
-			}
-		}
-		selection, err := operationtrust.ResolveFixedComposition(context.Background(), foreign.stable, foreign.resolution, foreign.op, foreign.request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if material, err := operationtrust.BindExecutionMaterial(context.Background(), b.stable, b.resolution, b.op, b.request, selection); err == nil || material != nil {
-			t.Fatalf("BindExecutionMaterial accepted foreign selection = %#v, %v", material, err)
-		}
-		t6BAssertEmptyScratch(t, b.fixture.scratch)
-		t6BAssertEmptyScratch(t, foreign.fixture.scratch)
-	})
-	t.Run("defensive-staged-copies", func(t *testing.T) {
-		p := newT6BPrepared(t, "normal")
-		defer p.runtime.Close()
-		first, err := p.material.StagedFor(context.Background(), p.runtime.TrustRuntime(), p.request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		first.ToolBytes[0] ^= 0xff
-		first.ContentBytes[0][0] ^= 0xff
-		second, err := p.material.StagedFor(context.Background(), p.runtime.TrustRuntime(), p.request)
-		if err != nil || evidencecas.Digest(second.ToolBytes) != p.request.Tool.BinarySHA256 || string(second.ContentBytes[0]) != string(p.fixture.stdin) {
-			t.Fatalf("StagedFor defensive copy = %#v, %v", second, err)
-		}
-		t6BAssertEmptyScratch(t, p.fixture.scratch)
-	})
-	t.Run("stale-approval-after-resigned-snapshot", func(t *testing.T) {
-		old, next := newT6BPrepared(t, "normal"), newT6BPrepared(t, "fail")
-		defer old.runtime.Close()
-		defer next.runtime.Close()
-		receipt, err := next.runner.Execute(context.Background(), old.permit, next.request, next.material)
-		if err == nil || receipt != nil {
-			t.Fatalf("stale approval Execute = %#v, %v", receipt, err)
-		}
-		t6BAssertEmptyScratch(t, next.fixture.scratch)
-	})
-	t.Run("fresh-valid-action-timeout-needs-fresh-authority", func(t *testing.T) {
-		b := newT6BResolved(t, "normal", "normal")
-		defer b.runtime.Close()
-		oldSelection, err := operationtrust.ResolveFixedComposition(context.Background(), b.stable, b.resolution, b.op, b.request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		oldMaterial, err := operationtrust.BindExecutionMaterial(context.Background(), b.stable, b.resolution, b.op, b.request, oldSelection)
-		if err != nil {
-			t.Fatal(err)
-		}
-		oldPermits, err := operationtrust.AuthorizeActions(context.Background(), b.stable, b.resolution, b.op, []trustverify.ExecutionRequest{b.request}, []trustverify.ApprovalRefs{b.fixture.persistentApproval(t, b.request)})
-		if err != nil || len(oldPermits) != 1 {
-			t.Fatalf("old approval = %v, %v", oldPermits, err)
-		}
-		freshOp, freshRequest := b.op, b.request
-		freshRequest.Action.ID = "new-approved-action"
-		freshRequest.TimeoutMillis = 4999
-		t6BRebind(t, &freshOp, &freshRequest)
-		freshSelection, err := operationtrust.ResolveFixedComposition(context.Background(), b.stable, b.resolution, freshOp, freshRequest)
-		if err != nil || freshSelection == nil {
-			t.Fatalf("fresh Resolve = %#v, %v", freshSelection, err)
-		}
-		if material, err := operationtrust.BindExecutionMaterial(context.Background(), b.stable, b.resolution, freshOp, freshRequest, oldSelection); err == nil || material != nil {
-			t.Fatalf("old selection reused = %#v, %v", material, err)
-		}
-		if staged, err := oldMaterial.StagedFor(context.Background(), b.stable, freshRequest); err == nil || staged.ToolBytes != nil {
-			t.Fatal("old material accepted fresh request")
-		}
-		freshPermits, err := operationtrust.AuthorizeActions(context.Background(), b.stable, b.resolution, freshOp, []trustverify.ExecutionRequest{freshRequest}, []trustverify.ApprovalRefs{b.fixture.persistentApproval(t, freshRequest)})
-		if err != nil || len(freshPermits) != 1 {
-			t.Fatalf("fresh approval = %v, %v", freshPermits, err)
-		}
-		freshMaterial, err := operationtrust.BindExecutionMaterial(context.Background(), b.stable, b.resolution, freshOp, freshRequest, freshSelection)
-		if err != nil {
-			t.Fatal(err)
-		}
-		runner, err := execx.NewApprovedRunner(b.runtime)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if receipt, err := runner.Execute(context.Background(), oldPermits[0], freshRequest, freshMaterial); err == nil || receipt != nil {
-			t.Fatalf("old permit reused = %#v, %v", receipt, err)
-		}
-		t6BAssertEmptyScratch(t, b.fixture.scratch)
-		receipt, err := runner.Execute(context.Background(), freshPermits[0], freshRequest, freshMaterial)
-		if err != nil || receipt == nil {
-			t.Fatalf("fresh Execute = %#v, %v", receipt, err)
-		}
-		stdout, err := receipt.StdoutFor(runner, freshRequest)
-		if err != nil || string(stdout) != "approved:literal signed stdin\n" {
-			t.Fatalf("fresh stdout = %q, %v", stdout, err)
-		}
-		t6BAssertEmptyScratch(t, b.fixture.scratch)
-	})
-}
-
-func t6BRebind(t *testing.T, operation *trustverify.OperationInputs, request *trustverify.ExecutionRequest) {
-	t.Helper()
-	operation.Subjects = []trustverify.Provider{request.Provider}
-	operation.Actions = []trustverify.ActionMaterial{{Provider: request.Provider, Action: request.Action, Tool: request.Tool, WorkingDirectoryScope: request.WorkingDirectoryScope, EnvironmentPolicySHA256: request.EnvironmentPolicySHA256, TimeoutMillis: request.TimeoutMillis, Migration: request.Migration}}
-	d, err := trustverify.ComputeOperationInputsSHA256(*operation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.OperationInputsSHA256 = d
-	if request.RequestSHA256, err = request.ComputeRequestSHA256(); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestApprovedRunnerNoReceiptOnFailureTimeoutCancelOrOverflow(t *testing.T) {
 	testfixture.RequireTrustStore(t)
-	for _, mode := range []string{"fail", "overflow", "hang", "cancel"} {
+	for _, mode := range []string{"fail", "overflow", "stderr", "hang", "cancel"} {
 		t.Run(mode, func(t *testing.T) {
 			toolMode := mode
 			if mode == "cancel" {
@@ -372,6 +546,27 @@ func TestApprovedRunnerNoReceiptOnFailureTimeoutCancelOrOverflow(t *testing.T) {
 	}
 }
 
+func TestApprovedRunnerSignedStartAndCleanupFailureHaveNoReceipt(t *testing.T) {
+	t.Run("start", func(t *testing.T) {
+		p := newT6BPrepared(t, "normal")
+		defer p.runtime.Close()
+		receipt, err := p.runner.Execute(withApprovedHooks(context.Background(), approvedHooks{start: func(*exec.Cmd) error { return errors.New("injected start after recheck") }}), p.permit, p.request, p.material)
+		if err == nil || receipt != nil {
+			t.Fatalf("start receipt=%#v err=%v", receipt, err)
+		}
+		t6BAssertEmptyScratch(t, p.fixture.scratch)
+	})
+	t.Run("cleanup", func(t *testing.T) {
+		p := newT6BPrepared(t, "normal")
+		defer p.runtime.Close()
+		receipt, err := p.runner.Execute(withApprovedHooks(context.Background(), approvedHooks{close: func() error { return errors.New("injected cleanup after direct-child wait") }}), p.permit, p.request, p.material)
+		if err == nil || receipt != nil {
+			t.Fatalf("cleanup receipt=%#v err=%v", receipt, err)
+		}
+		t6BAssertEmptyScratch(t, p.fixture.scratch)
+	})
+}
+
 type t6BClock struct{}
 
 func (t6BClock) Now() time.Time { return time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) }
@@ -388,8 +583,12 @@ type t6BFixture struct {
 
 func newT6BFixture(t *testing.T, toolMode, sourceVariant string) *t6BFixture {
 	t.Helper()
-	dir := t6BTempDir(t)
-	var err error
+	base := testfixture.PrivateTempBase()
+	dir, err := os.MkdirTemp(base, "tplaiter-t6-b-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	f := &t6BFixture{dir: dir, scratch: filepath.Join(dir, "scratch"), project: filepath.Join(dir, "project"), evidence: filepath.Join(dir, "evidence"), anchor: ed25519.NewKeyFromSeed([]byte("01234567890123456789012345678901")), publisher: ed25519.NewKeyFromSeed([]byte("12345678901234567890123456789012")), approver: ed25519.NewKeyFromSeed([]byte("23456789012345678901234567890123")), stdin: []byte("literal signed stdin\n")}
 	for _, p := range []string{f.scratch, f.project, f.evidence, filepath.Join(dir, "objects"), filepath.Join(dir, "home")} {
 		if err := os.Mkdir(p, 0o700); err != nil {
@@ -436,7 +635,7 @@ func newT6BFixture(t *testing.T, toolMode, sourceVariant string) *t6BFixture {
 	state := bootstrap.OSSAcceptedState{APIVersion: bootstrap.OSSAcceptedStateAPIVersion, DescriptorSHA256: desc.DescriptorSHA256, ProvisioningSHA256: prov.ProvisioningSHA256, AuthorityID: env.AuthorityID, Sequence: 1, EnvelopePayloadSHA256: env.PayloadSHA256, RevocationEpoch: 0, ReceiptDigest: receipt.ReceiptDigest, TreeSize: 2, CheckpointDigest: checkpointRef}
 	state.StateSHA256 = state.ComputedSHA256()
 	approverPub := f.approver.Public().(ed25519.PublicKey)
-	f.policy = trustverify.ExecutionPolicy{APIVersion: trustverify.ExecutionPolicyAPIVersion, PolicyID: "t6b-policy", Profile: "oss", MinimumProfile: "oss", Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Principals: []trustverify.Principal{{ID: "principal:approver"}, {ID: "principal:publisher"}, {ID: "principal:submitter"}}, IssuerPrincipals: []trustverify.IssuerPrincipal{{Issuer: "publisher-1", PrincipalID: "principal:publisher"}}, SourceRules: []trustverify.SourceRule{{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: f.subject.Origin, TemplatePath: ".", Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"}}, Approvers: []trustverify.Approver{{ID: "t6b-approver", PrincipalID: "principal:approver", IdentityClass: "operator", KeyFingerprint: bootstrap.Fingerprint(approverPub), PublicKeyBase64: base64.StdEncoding.EncodeToString(approverPub), Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Scopes: []trustverify.ApprovalScope{{ProjectID: "project-t6b", OperationScope: "run", ActionKind: "command", Origin: f.subject.Origin, TemplatePath: "."}}}}, AllowInvocationHuman: false, MaxTimeoutMillis: 5000}
+	f.policy = trustverify.ExecutionPolicy{APIVersion: trustverify.ExecutionPolicyAPIVersion, PolicyID: "t6b-policy", Profile: "oss", MinimumProfile: "oss", Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Principals: []trustverify.Principal{{ID: "principal:approver"}, {ID: "principal:publisher"}, {ID: "principal:submitter"}}, IssuerPrincipals: []trustverify.IssuerPrincipal{{Issuer: "publisher-1", PrincipalID: "principal:publisher"}}, SourceRules: []trustverify.SourceRule{{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: f.subject.Origin, TemplatePath: ".", Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"}}, Approvers: []trustverify.Approver{{ID: "t6b-approver", PrincipalID: "principal:approver", IdentityClass: "operator", KeyFingerprint: bootstrap.Fingerprint(approverPub), PublicKeyBase64: base64.StdEncoding.EncodeToString(approverPub), Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Scopes: []trustverify.ApprovalScope{{ProjectID: "project-t6b", OperationScope: "run", ActionKind: "command", Origin: f.subject.Origin, TemplatePath: "."}, {ProjectID: "project-t6b", OperationScope: "run", ActionKind: "formatter", Origin: f.subject.Origin, TemplatePath: "."}}}}, AllowInvocationHuman: false, MaxTimeoutMillis: 5000}
 	if f.policy.PolicySHA256, err = f.policy.ComputePolicySHA256(); err != nil {
 		t.Fatal(err)
 	}
@@ -480,21 +679,31 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 	src, out := filepath.Join(dir, "native-helper.go"), filepath.Join(dir, "native-tool")
 	var raw []byte
 	switch mode {
+	case "gofmt":
+		raw = []byte("package main\n")
 	case "normal":
 		raw = []byte("package main\nimport \"syscall\"\nfunc main(){if _,ok:=syscall.Getenv(\"T6B_EXEC_CANARY\");ok{syscall.Write(1,[]byte(\"inherited-env\"));return};b:=make([]byte,1024);n,_:=syscall.Read(0,b);syscall.Write(1,append([]byte(\"approved:\"),b[:n]...))}\n")
 	case "fail":
 		raw = []byte("package main\nimport \"syscall\"\nfunc main(){syscall.Exit(3)}\n")
 	case "overflow":
 		raw = []byte("package main\nimport \"syscall\"\nfunc main(){b:=make([]byte,32768);for i:=0;i<64;i++{syscall.Write(1,b)}}\n")
+	case "stderr":
+		raw = []byte("package main\nimport \"syscall\"\nfunc main(){b:=make([]byte,32768);for i:=0;i<3;i++{syscall.Write(2,b)}}\n")
 	case "hang":
 		raw = []byte("package main\nfunc main(){for {}}\n")
+	case "descendant":
+		raw = []byte("package main\nimport \"syscall\"\nfunc main(){p,e:=syscall.ForkExec(\"/bin/sleep\",[]string{\"sleep\",\"30\"},&syscall.ProcAttr{Files:[]uintptr{0,1,2}});if e==nil{var b [24]byte;i:=len(b)-1;b[i]='\\n';for p>0{i--;b[i]=byte('0'+p%10);p/=10};syscall.Write(1,b[i:])};for {}}\n")
 	default:
 		t.Fatalf("unknown helper mode %q", mode)
 	}
 	if err := os.WriteFile(src, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(testfixture.GoBinary(t), "build", "-trimpath", "-o", out, src)
+	args := []string{"build", "-trimpath", "-o", out, src}
+	if mode == "gofmt" {
+		args = []string{"build", "-trimpath", "-o", out, "cmd/gofmt"}
+	}
+	cmd := exec.Command(testfixture.GoBinary(t), args...)
 	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "PATH=/usr/bin:/bin"}
 	cmd.Env = append(cmd.Env, testfixture.NativeTargetEnv()...)
 	if err := cmd.Run(); err != nil {
@@ -505,24 +714,6 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 		t.Fatal(err)
 	}
 	return b
-}
-
-func testGOCACHE(t *testing.T) string {
-	t.Helper()
-	if cache, ok := os.LookupEnv("GOCACHE"); ok && cache != "" {
-		return cache
-	}
-	return t6BTempDir(t)
-}
-
-func t6BTempDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	resolved, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		t.Fatalf("resolve test temp dir: %v", err)
-	}
-	return resolved
 }
 
 func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant string) trustverify.Subject {
@@ -542,9 +733,23 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 	files := t6BTree(add, []t6BTreeEntry{{"100644", "hello.txt.tmpl", blob([]byte("hello\n"))}})
 	execTree := []t6BTreeEntry{{"100755", "native-tool", blob(tool)}, {"100644", "stdin", blob(stdin)}}
 	execEntries := []trustverify.SourceEntry{{Path: ".tplaiter-execution", Kind: "directory", Mode: "40000"}, {Path: ".tplaiter-execution/native-tool", Kind: "file", Mode: "100755", ContentSHA256: evidencecas.Digest(tool)}, {Path: ".tplaiter-execution/stdin", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(stdin)}}
+	var formatterTree string
+	var formatterEntries []trustverify.SourceEntry
+	if variant == "gofmt" {
+		info, err := buildinfo.Read(bytes.NewReader(tool))
+		if err != nil {
+			t.Fatal(err)
+		}
+		record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": operationtrust.FormatterNativeEnvelope()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		formatterTree = t6BTree(add, []t6BTreeEntry{{"100755", "native-tool", blob(tool)}, {"100644", "tool.json", blob(record)}})
+		formatterEntries = []trustverify.SourceEntry{{Path: "formatter", Kind: "directory", Mode: "40000"}, {Path: "formatter/native-tool", Kind: "file", Mode: "100755", ContentSHA256: evidencecas.Digest(tool)}, {Path: "formatter/tool.json", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(record)}}
+	}
 	includeExec := true
 	switch variant {
-	case "normal", "oversize-tool", "oversize-stdin":
+	case "normal", "oversize-tool", "oversize-stdin", "gofmt":
 	case "absent":
 		includeExec, execTree, execEntries = false, nil, nil
 	case "extra":
@@ -573,6 +778,9 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 		t.Fatalf("unknown source variant %q", variant)
 	}
 	rootEntries := []t6BTreeEntry{{"40000", "files", files}, {"100644", "template.contract.json", blob(contract)}, {"100644", "template.manifest.yaml", blob(manifest)}}
+	if formatterTree != "" {
+		rootEntries = append(rootEntries, t6BTreeEntry{"40000", "formatter", formatterTree})
+	}
 	if includeExec {
 		execDir := t6BTree(add, execTree)
 		rootEntries = append(rootEntries, t6BTreeEntry{"40000", ".tplaiter-execution", execDir})
@@ -585,6 +793,7 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 		}
 	}
 	entries := execEntries
+	entries = append(entries, formatterEntries...)
 	entries = append(entries, trustverify.SourceEntry{Path: "files", Kind: "directory", Mode: "40000"}, trustverify.SourceEntry{Path: "files/hello.txt.tmpl", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest([]byte("hello\n"))}, trustverify.SourceEntry{Path: "template.contract.json", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(contract)}, trustverify.SourceEntry{Path: "template.manifest.yaml", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(manifest)})
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 	treeDigest, err := bootstrap.DomainDigest("tplaiter.dev/source-content-tree/v1", struct {
@@ -639,6 +848,66 @@ func (f *t6BFixture) executionInputs(t *testing.T, b bootstrap.ProfileBinding, p
 		t.Fatal(err)
 	}
 	return op, r
+}
+
+func (f *t6BFixture) formatterInputs(t *testing.T, b bootstrap.ProfileBinding, project string, input, plan []byte) (trustverify.OperationInputs, []trustverify.ExecutionRequest) {
+	t.Helper()
+	bd, err := bootstrap.DomainDigest(bootstrap.ProfileBindingAPIVersion, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, ok := f.formatterRecord()
+	if !ok {
+		t.Fatal("missing formatter record")
+	}
+	entries := []trustverify.ContentEntry{{Root: "project", Path: "z.go", Mode: "100644", ContentSHA256: evidencecas.Digest(input)}, {Root: "project", Path: "formatter/plan.json", Mode: "100644", ContentSHA256: evidencecas.Digest(plan)}, {Root: "project", Path: "formatter/tool.json", Mode: "100644", ContentSHA256: evidencecas.Digest(record)}}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Root+"\x00"+entries[i].Path < entries[j].Root+"\x00"+entries[j].Path
+	})
+	closure, err := trustverify.ComputeContentClosureSHA256(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts, err := trustverify.ComputeToolOptionsSHA256([]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := trustverify.ComputeEnvironmentPolicySHA256(trustverify.EnvironmentPolicy{APIVersion: "tplaiter.dev/execution-environment/v1", Variables: []trustverify.EnvironmentVariable{{Name: "LANG", Value: "C"}}, Capabilities: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := buildinfo.Read(bytes.NewReader(f.tool))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := trustverify.Provider{Origin: f.subject.Origin, TemplatePath: f.subject.TemplatePath, Commit: f.subject.Commit, TreeSHA256: f.subject.TreeSHA256, ContractSHA256: f.subject.ContractSHA256}
+	actions := make([]trustverify.ActionMaterial, 2)
+	for i := range actions {
+		actions[i] = trustverify.ActionMaterial{Provider: p, Action: trustverify.Action{ID: "format-" + strings.Repeat("a", 63) + string(rune('1'+i)), Kind: "formatter", Phase: "standalone", Argv: []string{"gofmt"}, ContentClosureSHA256: closure}, Tool: trustverify.Tool{ID: "gofmt", Version: strings.TrimPrefix(info.GoVersion, "go"), BinarySHA256: evidencecas.Digest(f.tool), OptionsSHA256: opts}, WorkingDirectoryScope: trustverify.WorkingDirectoryScope{Root: "project", Path: "."}, EnvironmentPolicySHA256: env, TimeoutMillis: 5000, Migration: trustverify.Migration{Kind: "none"}}
+	}
+	op := trustverify.OperationInputs{APIVersion: "tplaiter.dev/operation-inputs/v1", ProfileBindingSHA256: bd, ProjectID: project, Scope: "run", PreimageSHA256: evidencecas.Digest([]byte("preimage")), AnswersSHA256: evidencecas.Digest([]byte("{}")), Subjects: []trustverify.Provider{p}, Actions: actions}
+	od, err := trustverify.ComputeOperationInputsSHA256(op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests := make([]trustverify.ExecutionRequest, 2)
+	for i, action := range actions {
+		requests[i] = trustverify.ExecutionRequest{APIVersion: trustverify.ExecutionRequestAPIVersion, ProfileBindingSHA256: bd, OperationInputsSHA256: od, ProjectID: project, Scope: "run", Provider: p, Action: action.Action, Tool: action.Tool, WorkingDirectoryScope: action.WorkingDirectoryScope, EnvironmentPolicySHA256: action.EnvironmentPolicySHA256, TimeoutMillis: action.TimeoutMillis, Migration: action.Migration}
+		requests[i].RequestSHA256, err = requests[i].ComputeRequestSHA256()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return op, requests
+}
+
+func (f *t6BFixture) formatterRecord() ([]byte, bool) {
+	info, err := buildinfo.Read(bytes.NewReader(f.tool))
+	if err != nil {
+		return nil, false
+	}
+	record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(f.tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": operationtrust.FormatterNativeEnvelope()})
+	return record, err == nil
 }
 
 func (f *t6BFixture) persistentApproval(t *testing.T, r trustverify.ExecutionRequest) trustverify.ApprovalRefs {
@@ -721,10 +990,4 @@ func t6BPublisherEvidence(t *testing.T, store map[string][]byte, key ed25519.Pri
 	}
 	hash, _ := hex.DecodeString(d[7:])
 	return trustverify.EvidenceRefs{Format: bootstrap.PublisherStatementAPIVersion, StatementCAS: put(raw), SignatureCAS: put([]byte(bootstrap.EncodeSignature(ed25519.Sign(key, hash)))), KeyFingerprint: bootstrap.Fingerprint(key.Public().(ed25519.PublicKey))}
-}
-
-func TestTrustExecutionUnavailable(t *testing.T) {
-	if trustExecutionUnavailable() == nil {
-		t.Fatal("available")
-	}
 }

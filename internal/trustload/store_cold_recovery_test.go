@@ -15,9 +15,6 @@ import (
 )
 
 func TestStoreColdRecoveryBoundsAndHotRetention(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, tc := range []struct {
 		name   string
 		size   int64
@@ -59,9 +56,6 @@ func TestStoreColdRecoveryBoundsAndHotRetention(t *testing.T) {
 }
 
 func TestStoreColdRecoveryPostUnlinkFaultObservations(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	t.Run("sync failure still observes absence", func(t *testing.T) {
 		root := newColdRecoveryRoot(t, 0, 0)
 		old := storeSyncDirectory
@@ -186,9 +180,6 @@ func TestStoreColdRecoveryPostUnlinkFaultObservations(t *testing.T) {
 }
 
 func TestStoreColdRecoveryCancellationAndCloseVeto(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	t.Run("cancel after recovery before unlink", func(t *testing.T) {
 		root := newColdRecoveryRoot(t, 0, 0)
 		old := storeRecoveryHook
@@ -244,9 +235,6 @@ func TestStoreColdRecoveryCancellationAndCloseVeto(t *testing.T) {
 }
 
 func TestStoreColdRecoveryHealthGateBlocksUnlink(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, phase := range []string{"query:0", "integrity"} {
 		t.Run(phase, func(t *testing.T) {
 			root := newColdRecoveryRoot(t, 0, 0)
@@ -268,9 +256,6 @@ func TestStoreColdRecoveryHealthGateBlocksUnlink(t *testing.T) {
 }
 
 func TestStoreColdRecoveryRecordsEXAtime(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	root := newColdRecoveryRoot(t, 1, 0)
 	lease, err := openRootLease(context.Background(), root, storeRecover)
 	if err != nil {
@@ -294,9 +279,6 @@ func TestStoreColdRecoveryRecordsEXAtime(t *testing.T) {
 }
 
 func TestStoreColdRecoveryOversizePreservesEXAtime(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	root := newColdRecoveryRoot(t, coldJournalInspectBudget+1, 0)
 	lease, err := openRootLease(context.Background(), root, storeRecover)
 	if err != nil {
@@ -322,9 +304,6 @@ func TestStoreColdRecoveryOversizePreservesEXAtime(t *testing.T) {
 }
 
 func TestStoreColdRecoveryCancellationDuringColdScan(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	root := newColdRecoveryRoot(t, 128<<10, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -352,9 +331,6 @@ func TestStoreColdRecoveryCancellationDuringColdScan(t *testing.T) {
 }
 
 func TestStoreColdRecoveryCancellationAfterUnlinkCompletesObservations(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	root := newColdRecoveryRoot(t, 0, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	old := storeRecoveryHook
@@ -413,9 +389,6 @@ func TestStoreColdRecoveryRealSQLiteHotControl(t *testing.T) {
 		}
 		time.Sleep(30 * time.Second)
 		return
-	}
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
 	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -545,9 +518,6 @@ INSERT INTO hot_large SELECT x, zeroblob(4096) FROM seq`)
 		time.Sleep(60 * time.Second)
 		return
 	}
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -648,9 +618,6 @@ INSERT INTO hot_large SELECT x, zeroblob(4096) FROM seq`)
 }
 
 func TestStoreColdRecoveryFinalEntryAndFreshReadFailures(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	t.Run("replacement-at-before-unlink", func(t *testing.T) {
 		root := newColdRecoveryRoot(t, 1, 0)
 		journal := filepath.Join(root, storeDBName+"-journal")
@@ -774,9 +741,6 @@ func TestStoreColdRecoveryFinalEntryAndFreshReadFailures(t *testing.T) {
 }
 
 func TestStoreColdRecoveryInspectionFaultConsequences(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, tc := range []struct {
 		name    string
 		install func(*testing.T, string)
@@ -922,9 +886,6 @@ func TestStoreColdRecoveryInspectionFaultConsequences(t *testing.T) {
 // the helper boundary: inspect-only rejection is insufficient evidence that
 // recovery cannot unlink, sync, or otherwise mutate the sidecar namespace.
 func TestStoreColdRecoveryUnsafeHelperConsequences(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, tc := range []struct {
 		name  string
 		setup func(*testing.T, string, string)
@@ -986,9 +947,6 @@ func TestStoreColdRecoveryUnsafeHelperConsequences(t *testing.T) {
 }
 
 func TestStoreColdRecoverySHMFIFOAndOwnerPredicate(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	t.Run("SHM-pending-and-ordinary-read-nonmutating", func(t *testing.T) {
 		root := newColdRecoveryRoot(t, 1, 0)
 		shm := filepath.Join(root, storeDBName+"-shm")
@@ -1098,9 +1056,6 @@ func TestStoreColdRecoverySHMFIFOAndOwnerPredicate(t *testing.T) {
 }
 
 func TestStoreColdRecoveryCloseDuringEachColdScan(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, tc := range []struct {
 		name    string
 		trigger int
@@ -1149,9 +1104,6 @@ func TestStoreColdRecoveryCloseDuringEachColdScan(t *testing.T) {
 }
 
 func TestStoreColdRecoveryUnsafeDirectoryAndHardlinkConsequences(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

@@ -82,7 +82,7 @@ func ResolveFormatterComposition(ctx context.Context, runtime *trustverify.Runti
 		return nil, ErrFormatterMaterialUnavailable
 	}
 	record, err := parseFormatterToolRecord(recordBytes)
-	if err != nil || record.Adapter != "gofmt-stdin-v1" || record.ToolID != "gofmt" || record.ToolVersion != action.Tool.Version || record.BinarySHA256 != action.Tool.BinarySHA256 || record.NativeEnvelope != "darwin-arm64-dyld-libsystem-libresolv-v1" {
+	if err != nil || record.Adapter != "gofmt-stdin-v1" || record.ToolID != "gofmt" || record.ToolVersion != action.Tool.Version || record.BinarySHA256 != action.Tool.BinarySHA256 || record.NativeEnvelope == "" || record.NativeEnvelope != FormatterNativeEnvelope() {
 		return nil, ErrFormatterMaterialUnavailable
 	}
 	if record.VersionEvidence.Kind != "go-buildinfo" {

@@ -13,9 +13,6 @@ import (
 )
 
 func TestStoreLifecycleLOCK01SameProcessMatrix(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -126,9 +123,6 @@ func TestStoreLifecycleLOCK02CrossProcessMatrix(t *testing.T) {
 		_ = lease.Close()
 		return
 	}
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -215,9 +209,6 @@ func TestStoreLifecycleLOCK02CrossProcessMatrix(t *testing.T) {
 }
 
 func TestStoreLifecycleLOCK03Cancellation(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

@@ -21,9 +21,6 @@ import (
 )
 
 func TestStoreVFSActualSQLiteTransaction(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("secure adapter is deliberately unavailable on this platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -78,9 +75,6 @@ func TestStoreVFSActualSQLiteTransaction(t *testing.T) {
 }
 
 func TestStoreVFSRejectsForeignCallbackWithoutOpeningLeaf(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -118,9 +112,6 @@ func TestStoreVFSRejectsForeignCallbackWithoutOpeningLeaf(t *testing.T) {
 }
 
 func TestReadBindingRejectsExistingSidecars(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -163,9 +154,6 @@ func TestReadBindingRejectsExistingSidecars(t *testing.T) {
 }
 
 func TestStoreVFSInjectedIOFaultsReturnSQLiteErrors(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -282,9 +270,6 @@ func TestStoreVFSInjectedIOFaultsReturnSQLiteErrors(t *testing.T) {
 }
 
 func TestStoreVFSDeleteMissingJournalAndPoisonsEntryDrift(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -353,9 +338,6 @@ func TestStoreVFSDeleteMissingJournalAndPoisonsEntryDrift(t *testing.T) {
 }
 
 func TestStoreVFSDeleteRejectsSubstitutedJournal(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -415,9 +397,6 @@ func TestStoreVFSDeleteRejectsSubstitutedJournal(t *testing.T) {
 }
 
 func TestStoreVFSBoundedWorkloadAndTeardown(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -498,9 +477,6 @@ func TestStoreVFSCrashRecoveryKeepsCompleteHead(t *testing.T) {
 		}
 		time.Sleep(30 * time.Second)
 		return
-	}
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
 	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

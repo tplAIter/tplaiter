@@ -42,11 +42,11 @@ func GoBinary(tb testing.TB) string {
 }
 
 // RequireTrustStore skips the test when the secure trust store is unavailable
-// on this platform. Remove the skip for a platform once its store support and
-// proofs land (Linux: work package U03).
+// on this platform. The store is implemented on Darwin and Linux; the skip
+// remains only for deferred hosts (Windows, the BSDs).
 func RequireTrustStore(tb testing.TB) {
 	tb.Helper()
 	if !trustload.StorePlatformAvailable() {
-		tb.Skip("unsupported platform: trust store unavailable on " + runtime.GOOS + " (requires U03)")
+		tb.Skip("unsupported platform: trust store unavailable on " + runtime.GOOS + " (deferred platform)")
 	}
 }

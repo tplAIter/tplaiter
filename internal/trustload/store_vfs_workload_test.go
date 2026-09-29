@@ -37,9 +37,6 @@ type workloadTuple struct {
 }
 
 func TestStoreVFSWorkloadWORK01AndWORK02(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	t.Run("WORK01-commit-constrained-64MiB", func(t *testing.T) {
 		old, _ := newWorkloadFixture(t, false)
 		mem := workloadMemoryStart()

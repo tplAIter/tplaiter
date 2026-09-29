@@ -31,7 +31,7 @@ func (e *ExecutionError) Error() string {
 }
 
 func NewApprovedRunner(r *trustload.Runtime) (*ApprovedRunner, error) {
-	if r == nil || runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" || r.TrustRuntime() == nil || r.ScratchRoot() == "" {
+	if r == nil || !approvedHostSupported(runtime.GOOS, runtime.GOARCH) || r.TrustRuntime() == nil || r.ScratchRoot() == "" {
 		return nil, &ExecutionError{"TRUST_EXECUTION_UNAVAILABLE"}
 	}
 	return &ApprovedRunner{runtime: r}, nil

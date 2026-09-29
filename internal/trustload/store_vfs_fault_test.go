@@ -20,9 +20,6 @@ import (
 )
 
 func TestStoreVFSIO01ReadFaultMatrix(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	cases := []struct {
 		name  string
 		read  func(int, []byte, int64) (int, error)
@@ -134,9 +131,6 @@ func TestStoreVFSIO01ReadFaultMatrix(t *testing.T) {
 }
 
 func TestStoreVFSIO02WriteFaultMatrix(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	cases := []struct {
 		name    string
 		results []struct {
@@ -211,9 +205,6 @@ func TestStoreVFSIO02WriteFaultMatrix(t *testing.T) {
 }
 
 func TestStoreVFSIO02WriteRangesAndImpossibleCounts(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, tc := range []struct {
 		name string
 		n    int32
@@ -285,9 +276,6 @@ func TestStoreVFSIO02WriteRangesAndImpossibleCounts(t *testing.T) {
 }
 
 func TestStoreVFSIO03SyncDeleteAndTruncateMatrix(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	{
 		oldFile := storeSyncFile
 		storeSyncFile = func(int) error { return unix.EIO }
@@ -341,9 +329,6 @@ func TestStoreVFSIO03SyncDeleteAndTruncateMatrix(t *testing.T) {
 }
 
 func TestStoreVFSIO03SQLAndEnrollmentSyncErrors(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -378,9 +363,6 @@ func TestStoreVFSIO03SQLAndEnrollmentSyncErrors(t *testing.T) {
 }
 
 func TestStoreVFSIO03DeleteDirSyncErrnoMatrix(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, tc := range []struct {
 		name               string
 		unlinkErr, syncErr error
@@ -416,9 +398,6 @@ func TestStoreVFSIO03DeleteDirSyncErrnoMatrix(t *testing.T) {
 }
 
 func TestStoreVFSIO03RetainedSQLCommitAndCloseFailures(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	{
 		_, v, p := newIOFile(t, false)
 		c := storeContext(v.vfs)
@@ -504,9 +483,6 @@ func TestStoreVFSIO03RetainedSQLCommitAndCloseFailures(t *testing.T) {
 }
 
 func TestStoreVFSIO04PermissionMatrix(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	{
 		old := storeOpenat
 		_, v, p := newIOFile(t, false)

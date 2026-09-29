@@ -26,9 +26,6 @@ import (
 )
 
 func TestStoreLifecycleLIFE03SuccessfulWorkloadGCAndTwoSessions(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	ctx := context.Background()
 	leaseA, rootA := newLifecycleLeaseMode(t, storeEnroll)
 	leaseB, rootB := newLifecycleLeaseMode(t, storeEnroll)
@@ -227,9 +224,6 @@ func assertLifecycleState(t *testing.T, binding *sqlBinding, wantPayload, wantBl
 }
 
 func TestStoreLifecycleLIFE04TerminalRetentionAndTeardown(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	t.Run("extra-live-file-retains-owner", testLifecycleExtraLiveFile)
 	t.Run("post-native-close-error-retains-owner", testLifecyclePostNativeCloseError)
 	t.Run("physical-close-error-retains-owner", testLifecyclePhysicalCloseError)
@@ -521,9 +515,6 @@ func captureTerminalSnapshotDetached(t *testing.T, lease *rootLease, name string
 }
 
 func TestStoreLifecycleLIFE01ConstructionFailures(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, phase := range []string{
 		"vfs.tls", "vfs.ctx", "vfs.methods", "vfs.vfs", "vfs.name", "vfs.register",
 		"driver.open", "db.Conn", "conn.ATTACHED",
@@ -672,9 +663,6 @@ func testMainOpenAfter(t *testing.T) {
 }
 
 func TestStoreLifecycleLIFE02CancellationBoundaries(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	phases := []string{
 		"vfs.tls", "vfs.ctx", "vfs.methods", "vfs.vfs", "vfs.name", "vfs.register",
 		"driver.open", "db.Conn", "conn.ATTACHED",
@@ -800,9 +788,6 @@ func TestStoreLifecycleLIFE02CancellationBoundaries(t *testing.T) {
 }
 
 func TestStoreLifecycleJournalOpenBoundaries(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, after := range []bool{false, true} {
 		t.Run(map[bool]string{false: "failure-before", true: "cancel-after"}[after], func(t *testing.T) {
 			lease, root := newLifecycleLease(t)
@@ -824,12 +809,12 @@ func TestStoreLifecycleJournalOpenBoundaries(t *testing.T) {
 				t.Fatal("journal-open fault was not observed")
 			}
 			assertLifecycleCheckpoint(t, observer, "journal-open", 1, boolInt(after), boolInt(after))
-			vctx := (*vfsContext)(libcPtr(binding.vfs.ctx))
+			// storeVFS.Close refuses while any VFS file is still open, so a
+			// successful binding Close proves the failed xOpen left openFiles=0.
+			// The counter itself lives in libc memory that Close frees; reading
+			// it afterwards is a use-after-free (it faults on Linux).
 			if err := binding.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if got := atomic.LoadInt64(&vctx.openFiles); got != 0 {
-				t.Fatalf("journal-open after failed xOpen left openFiles=%d", got)
+				t.Fatalf("journal-open after failed xOpen left the VFS busy: %v", err)
 			}
 			assertLifecycleBalanced(t, observer)
 			assertLifecycleBalanced(t, observer)

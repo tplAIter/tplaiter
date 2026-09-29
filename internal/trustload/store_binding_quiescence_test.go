@@ -16,9 +16,6 @@ import (
 // connection.  The physical-close seam synchronizes only the start of Close;
 // the held operation is real SQLite work through the registered VFS.
 func TestStoreBindingCloseWaitsForActualSQLiteRows(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

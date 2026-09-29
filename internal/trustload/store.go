@@ -197,6 +197,9 @@ func openReadOnlyLoaded(ctx context.Context, selection LaunchSelection, loaded *
 	}
 	lease, err := openRootLease(ctx, loaded.Install.OSS.StorePath, storeRead)
 	if err != nil {
+		if errors.Is(err, ErrStoreFilesystemUnsupported) {
+			return nil, ErrStoreFilesystemUnsupported
+		}
 		if errors.Is(err, ErrProvenanceUnavailable) {
 			return nil, ErrAnchorMissing
 		}

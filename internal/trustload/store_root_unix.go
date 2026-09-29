@@ -630,7 +630,7 @@ func openRootLease(ctx context.Context, path string, mode storeMode) (*rootLease
 				if observer != nil {
 					observer.rootFD(fd, false)
 				}
-				return nil, ErrProvenanceUnavailable
+				return nil, ErrStoreFilesystemUnsupported
 			}
 			if unix.Mkdirat(fd, part, 0o700) == nil {
 				createdRoot = true
@@ -685,7 +685,7 @@ func openRootLease(ctx context.Context, path string, mode storeMode) (*rootLease
 		if observer != nil {
 			observer.rootFD(fd, false)
 		}
-		return nil, ErrProvenanceUnavailable
+		return nil, ErrStoreFilesystemUnsupported
 	}
 	observeRootLeaseHook("post-open-pre-lock")
 	if err := ctx.Err(); err != nil {

@@ -83,9 +83,7 @@ func TestRefreshSB06InterruptChild(t *testing.T) {
 }
 
 func TestRefreshSB06ActualInterruptCuts(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
+	requireNativeStore(t)
 	for _, phase := range []string{"begin", "write", "commit-before", "commit"} {
 		t.Run(phase, func(t *testing.T) {
 			fixture := newBootstrapFixture(t)
@@ -350,9 +348,7 @@ func refreshSB06HeadsEqual(a, b refreshSB06Head) bool {
 }
 
 func TestEnrollSB05BoundarySequence(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
+	requireNativeStore(t)
 	fixture := newBootstrapFixture(t)
 	old := storeEnrollmentPhaseHook
 	defer func() { storeEnrollmentPhaseHook = old }()
@@ -377,9 +373,7 @@ func TestEnrollSB05BoundarySequence(t *testing.T) {
 // proposal, commits it, and a fresh Store/LoadExternal/VerifyOSS view sees a
 // complete retained head. Unsupported WAL/SHM evidence remains fail closed.
 func TestRefreshSB06ActualPreparedPath(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
+	requireNativeStore(t)
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)
@@ -412,9 +406,7 @@ func TestRefreshSB06ActualPreparedPath(t *testing.T) {
 }
 
 func TestOrdinaryReaderNeverInitializesOrRecovers(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
+	requireNativeStore(t)
 	fixture := newBootstrapFixture(t)
 	root := fixture.loaded.Install.OSS.StorePath
 	if _, err := OpenReadOnly(context.Background(), fixture.selection); !errors.Is(err, ErrAnchorMissing) {
@@ -444,9 +436,7 @@ func TestOrdinaryReaderNeverInitializesOrRecovers(t *testing.T) {
 }
 
 func TestConcurrentRefreshHasOneCASWinner(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
+	requireNativeStore(t)
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)

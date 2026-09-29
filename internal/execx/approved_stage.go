@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || linux
 
 package execx
 
@@ -16,7 +16,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 
@@ -31,7 +30,7 @@ const (
 
 var errApprovedOverflow = errors.New("approved output limit")
 
-// Test-only package-private seams let the owned Darwin tests observe failure
+// Test-only package-private seams let the owned platform tests observe failure
 // handling after the real material/recheck boundary. They create no exported
 // runner, permit, path, or callback capability.
 type (
@@ -54,7 +53,7 @@ func approvedHooksFor(ctx context.Context) approvedHooks {
 
 func executeApproved(ctx context.Context, scratch string, m trustverify.StagedMaterial) (_ []byte, retErr error) {
 	formatter := validGofmtMaterial(m)
-	if ctx == nil || (!validApprovedMaterial(m) && !formatter) || (formatter && !validGofmtDarwinNative(m.ToolBytes)) || (!formatter && !validDarwinNative(m.ToolBytes)) {
+	if ctx == nil || (!validApprovedMaterial(m) && !formatter) || (formatter && !validGofmtNative(m.ToolBytes)) || (!formatter && !validNativeTool(m.ToolBytes)) {
 		return nil, &ExecutionError{"TRUST_EXECUTION_MATERIAL_UNAVAILABLE"}
 	}
 	hooks := approvedHooksFor(ctx)
@@ -431,22 +430,6 @@ func verifyApprovedTool(fd int, want []byte, requestDigest string) error {
 		return errors.New("staged tool digest")
 	}
 	return nil
-}
-
-func approvedPathForFD(fd int) (string, error) {
-	var raw [1024]byte
-	_, _, eno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_GETPATH), uintptr(unsafe.Pointer(&raw[0]))) //nolint:staticcheck // x/sys/unix has no F_GETPATH wrapper
-	if eno != 0 {
-		return "", eno
-	}
-	n := 0
-	for n < len(raw) && raw[n] != 0 {
-		n++
-	}
-	if n == 0 {
-		return "", errors.New("empty fd path")
-	}
-	return string(raw[:n]), nil
 }
 
 func (s *approvedStage) Close() error {

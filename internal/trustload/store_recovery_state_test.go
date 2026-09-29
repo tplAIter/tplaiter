@@ -12,9 +12,6 @@ import (
 )
 
 func TestReadStoreRecoveryStateUsesFixedHealthTuple(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	fixture, _ := newCrashFixture(t)
 	defer func() {
 		if err := closeCrashFixture(fixture); err != nil {
@@ -66,9 +63,6 @@ func TestReadStoreRecoveryStateRejectsFixedHealthFailures(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if !storePlatformAvailable() {
-				t.Skip("unsupported platform")
-			}
 			fixture, _ := newCrashFixture(t)
 			defer func() { _ = closeCrashFixture(fixture) }()
 			ctx := context.WithValue(context.Background(), storeRecoveryHealthFaultKey{}, storeRecoveryHealthFault{

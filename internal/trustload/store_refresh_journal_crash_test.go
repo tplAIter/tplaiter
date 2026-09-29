@@ -33,9 +33,6 @@ type refreshJournalEvent struct {
 // TestRefreshJournalCrashSB06 obtains journal classes from actual Refresh VFS
 // events. The test never creates, truncates, or edits a journal itself.
 func TestRefreshJournalCrashSB06(t *testing.T) {
-	if !storePlatformAvailable() {
-		t.Skip("unsupported platform")
-	}
 	for _, class := range []string{"empty", "cold", "hot"} {
 		t.Run(class, func(t *testing.T) {
 			fixture := newBootstrapFixture(t)
