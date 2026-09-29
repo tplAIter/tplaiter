@@ -39,7 +39,7 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := t5FTrustFixtureWith(t, t5FFixtureOptions{Anchor: anchor, Publisher: publisher, Now: time.Now().UTC()})
-	root, err := os.MkdirTemp("/private/var/tmp", "tplaiter-t7-process-")
+	root, err := os.MkdirTemp(testfixture.PrivateTempBase(), "tplaiter-t7-process-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -678,11 +678,19 @@ func testProcessEnv(home string) []string {
 func testBuildEnv(home string) []string {
 	cacheRoot := os.Getenv("GOCACHE")
 	if cacheRoot == "" {
-		cacheRoot = filepath.Join(os.Getenv("HOME"), "Library", "Caches", "go-build")
+		// Mirror the go command defaults: os.UserCacheDir is ~/Library/Caches on
+		// Darwin and $XDG_CACHE_HOME or ~/.cache on Linux.
+		if userCache, err := os.UserCacheDir(); err == nil {
+			cacheRoot = filepath.Join(userCache, "go-build")
+		}
 	}
 	moduleRoot := os.Getenv("GOMODCACHE")
 	if moduleRoot == "" {
-		moduleRoot = filepath.Join(os.Getenv("HOME"), "go", "pkg", "mod")
+		gopath := filepath.Join(os.Getenv("HOME"), "go")
+		if list := filepath.SplitList(os.Getenv("GOPATH")); len(list) > 0 && list[0] != "" {
+			gopath = list[0]
+		}
+		moduleRoot = filepath.Join(gopath, "pkg", "mod")
 	}
 	return append(
 		testProcessEnv(home),

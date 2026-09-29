@@ -495,7 +495,8 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(testfixture.GoBinary(t), "build", "-trimpath", "-o", out, src)
-	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "GOOS=darwin", "GOARCH=arm64", "PATH=/usr/bin:/bin"}
+	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "PATH=/usr/bin:/bin"}
+	cmd.Env = append(cmd.Env, testfixture.NativeTargetEnv()...)
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("helper build: %v", err)
 	}

@@ -2,9 +2,20 @@
 
 package execx
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"errors"
+	"unsafe"
+
+	"golang.org/x/sys/unix"
+)
 
 const nativeArm64SubtypeAll uint32 = 0
+
+// validNativeTool and validGofmtNative are the per-platform admission hooks
+// used by the shared approved stage.
+func validNativeTool(b []byte) bool  { return validDarwinNative(b) }
+func validGofmtNative(b []byte) bool { return validGofmtDarwinNative(b) }
 
 // validDarwinNative admits a thin arm64 executable whose loader closure is
 // exactly /usr/lib/dyld plus libSystem. It is structural, never a behavioral
@@ -91,4 +102,21 @@ func machoName(c []byte, at int) (string, bool) {
 		}
 	}
 	return string(c[start:end]), true
+}
+
+// approvedPathForFD resolves a held descriptor through fcntl(F_GETPATH).
+func approvedPathForFD(fd int) (string, error) {
+	var raw [1024]byte
+	_, _, eno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_GETPATH), uintptr(unsafe.Pointer(&raw[0]))) //nolint:staticcheck // x/sys/unix has no F_GETPATH wrapper
+	if eno != 0 {
+		return "", eno
+	}
+	n := 0
+	for n < len(raw) && raw[n] != 0 {
+		n++
+	}
+	if n == 0 {
+		return "", errors.New("empty fd path")
+	}
+	return string(raw[:n]), nil
 }

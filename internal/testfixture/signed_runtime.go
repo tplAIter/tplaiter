@@ -173,7 +173,8 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(GoBinary(t), args...)
-	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "modcache"), "GOCACHE=" + cache, "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "GOOS=darwin", "GOARCH=arm64", "PATH=" + filepath.Join(GoRoot(t), "bin") + ":/usr/bin:/bin"}
+	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "modcache"), "GOCACHE=" + cache, "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "PATH=" + filepath.Join(GoRoot(t), "bin") + ":/usr/bin:/bin"}
+	cmd.Env = append(cmd.Env, NativeTargetEnv()...)
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("helper build: %v", err)
 	}
@@ -208,7 +209,7 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 		if err != nil {
 			t.Fatal(err)
 		}
-		record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": "darwin-arm64-dyld-libsystem-libresolv-v1"})
+		record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": FormatterNativeEnvelope()})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -287,7 +288,7 @@ func (f *Fixture) formatterRecord() ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
-	record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(f.tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": "darwin-arm64-dyld-libsystem-libresolv-v1"})
+	record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(f.tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": FormatterNativeEnvelope()})
 	return record, err == nil
 }
 

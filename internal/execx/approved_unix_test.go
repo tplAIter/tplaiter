@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || linux
 
 package execx
 
@@ -10,7 +10,6 @@ import (
 	"crypto/sha256"
 	"debug/buildinfo"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -52,7 +51,7 @@ func TestApprovedStageOwnsAndRemovesPrivateFiles(t *testing.T) {
 	}
 	defer unix.Close(fd)
 	if _, err := approvedPathForFD(fd); err != nil {
-		t.Fatalf("F_GETPATH: %v", err)
+		t.Fatalf("held descriptor path: %v", err)
 	}
 	m := stageFixture([]byte("not executed"))
 	s, err := newApprovedStage(root, m, nil)
@@ -98,16 +97,6 @@ func TestApprovedToolReadbackRejectsSubstitution(t *testing.T) {
 	}
 }
 
-func TestDarwinNativeParserRejectsMalformedAndDependencies(t *testing.T) {
-	wrongArch := machoFixture("/usr/lib/dyld", "/usr/lib/libSystem.B.dylib", false)
-	binary.LittleEndian.PutUint32(wrongArch[4:], 0x01000007)
-	for _, raw := range [][]byte{nil, make([]byte, 32), fatFixture(), wrongArch, machoFixture("/wrong/dyld", "/usr/lib/libSystem.B.dylib", false), machoFixture("/usr/lib/dyld", "/usr/lib/libSystem.B.dylib", true), machoFixture("/usr/lib/dyld", "/tmp/evil.dylib", false), machoDependencyFixture(0x80000018), machoDependencyFixture(0x8000001f), machoDependencyFixture(0x80000023), machoDependencyFixture(0x20), malformedCommandFixture(), overlappingCommandFixture()} {
-		if validDarwinNative(raw) {
-			t.Fatal("invalid native image accepted")
-		}
-	}
-}
-
 func TestApprovedPrivateLifecycleFailuresHaveNoOutput(t *testing.T) {
 	tool := buildApprovedHelper(t, "package main\nimport \"syscall\"\nfunc main(){syscall.Write(1,[]byte(\"ok\"))}\n")
 	m := approvedMaterial(tool)
@@ -147,7 +136,8 @@ func buildApprovedHelper(t *testing.T, source string) []byte {
 		t.Fatal(err)
 	}
 	c := exec.Command(testfixture.GoBinary(t), "build", "-trimpath", "-o", out, src)
-	c.Env = []string{"HOME=" + filepath.Join(d, "home"), "GOMODCACHE=" + filepath.Join(d, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "GOOS=darwin", "GOARCH=arm64", "PATH=/usr/bin:/bin"}
+	c.Env = []string{"HOME=" + filepath.Join(d, "home"), "GOMODCACHE=" + filepath.Join(d, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "PATH=/usr/bin:/bin"}
+	c.Env = append(c.Env, testfixture.NativeTargetEnv()...)
 	if err := c.Run(); err != nil {
 		t.Fatal(err)
 	}
@@ -176,115 +166,10 @@ func t6BTempDir(t *testing.T) string {
 	return resolved
 }
 
-func TestDarwinNativeParserAcceptsFiniteEnvelope(t *testing.T) {
-	if !validDarwinNative(machoFixture("/usr/lib/dyld", "/usr/lib/libSystem.B.dylib", false)) {
-		t.Fatal("finite loader envelope rejected")
-	}
-}
-
-func TestGofmtDarwinParserAllowsOnlyReviewedLibresolvClosure(t *testing.T) {
-	commands := [][]byte{
-		machoStringCommand(0xe, "/usr/lib/dyld"),
-		machoStringCommand(0xc, "/usr/lib/libSystem.B.dylib"),
-		machoStringCommand(0xc, "/usr/lib/libresolv.9.dylib"),
-	}
-	size := 0
-	for _, command := range commands {
-		size += len(command)
-	}
-	image := make([]byte, 32+size)
-	binary.LittleEndian.PutUint32(image, 0xfeedfacf)
-	binary.LittleEndian.PutUint32(image[4:], 0x0100000c)
-	binary.LittleEndian.PutUint32(image[12:], 2)
-	binary.LittleEndian.PutUint32(image[16:], uint32(len(commands)))
-	binary.LittleEndian.PutUint32(image[20:], uint32(size))
-	off := 32
-	for _, command := range commands {
-		copy(image[off:], command)
-		off += len(command)
-	}
-	if !validGofmtDarwinNative(image) {
-		t.Fatal("reviewed gofmt closure rejected")
-	}
-	if validDarwinNative(image) {
-		t.Fatal("native-snapshot branch accepted gofmt-only libresolv closure")
-	}
-	copy(image[off-len(commands[2])+12:], []byte("/usr/lib/libevil__.dylib\x00"))
-	if validGofmtDarwinNative(image) {
-		t.Fatal("unreviewed dylib accepted")
-	}
-}
-
-func TestDarwinNativeParserRejectsIncompatibleCPUSubtype(t *testing.T) {
-	b := machoFixture("/usr/lib/dyld", "/usr/lib/libSystem.B.dylib", false)
-	binary.LittleEndian.PutUint32(b[8:], 2) // arm64e is outside the declared generic arm64 envelope.
-	if validDarwinNative(b) {
-		t.Fatal("arm64e accepted by arm64-all runner")
-	}
-}
-
 func stageFixture(tool []byte) trustverify.StagedMaterial {
 	h := sha256.Sum256(tool)
 	return trustverify.StagedMaterial{ToolBytes: tool, ContentBytes: [][]byte{[]byte("input")}, Request: trustverify.ExecutionRequest{Tool: trustverify.Tool{BinarySHA256: "sha256:" + hex.EncodeToString(h[:])}}}
 }
-
-func machoFixture(dyld, lib string, rpath bool) []byte {
-	commands := [][]byte{machoStringCommand(0xe, dyld), machoStringCommand(0xc, lib)}
-	if rpath {
-		commands = append(commands, machoStringCommand(0x8000001c, "/tmp"))
-	}
-	sz := 0
-	for _, c := range commands {
-		sz += len(c)
-	}
-	b := make([]byte, 32+sz)
-	binary.LittleEndian.PutUint32(b, 0xfeedfacf)
-	binary.LittleEndian.PutUint32(b[4:], 0x0100000c)
-	binary.LittleEndian.PutUint32(b[12:], 2)
-	binary.LittleEndian.PutUint32(b[16:], uint32(len(commands)))
-	binary.LittleEndian.PutUint32(b[20:], uint32(sz))
-	o := 32
-	for _, c := range commands {
-		copy(b[o:], c)
-		o += len(c)
-	}
-	return b
-}
-
-func machoStringCommand(cmd uint32, value string) []byte {
-	n := 12 + len(value) + 1
-	if rem := n % 8; rem != 0 {
-		n += 8 - rem
-	}
-	b := make([]byte, n)
-	binary.LittleEndian.PutUint32(b, cmd)
-	binary.LittleEndian.PutUint32(b[4:], uint32(len(b)))
-	binary.LittleEndian.PutUint32(b[8:], 12)
-	copy(b[12:], value)
-	return b
-}
-
-func machoDependencyFixture(cmd uint32) []byte {
-	b := machoFixture("/usr/lib/dyld", "/usr/lib/libSystem.B.dylib", false)
-	c := machoStringCommand(cmd, "/usr/lib/libBad.dylib")
-	binary.LittleEndian.PutUint32(b[16:], 3)
-	binary.LittleEndian.PutUint32(b[20:], uint32(len(b)-32+len(c)))
-	return append(b, c...)
-}
-
-func malformedCommandFixture() []byte {
-	b := machoFixture("/usr/lib/dyld", "/usr/lib/libSystem.B.dylib", false)
-	binary.LittleEndian.PutUint32(b[36:], 4)
-	return b
-}
-
-func overlappingCommandFixture() []byte {
-	b := machoFixture("/usr/lib/dyld", "/usr/lib/libSystem.B.dylib", false)
-	binary.LittleEndian.PutUint32(b[36:], uint32(len(b)))
-	return b
-}
-
-func fatFixture() []byte { b := make([]byte, 32); binary.BigEndian.PutUint32(b, 0xcafebabe); return b }
 
 // This exercises the installed-loader path with raw Git objects, signed
 // publisher/transparency evidence, an enrolled store and a persistent permit.
@@ -458,8 +343,8 @@ func newT6BPrepared(t *testing.T, toolMode string) *t6BPrepared {
 func TestApprovedRunnerSignedDescendantGroupTermination(t *testing.T) {
 	p := newT6BPrepared(t, "descendant")
 	defer p.runtime.Close()
-	if !validDarwinNative(p.fixture.tool) {
-		t.Fatalf("signed descendant helper rejected by Darwin envelope (bytes=%d)", len(p.fixture.tool))
+	if !validNativeTool(p.fixture.tool) {
+		t.Fatalf("signed descendant helper rejected by the native envelope (bytes=%d)", len(p.fixture.tool))
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -698,10 +583,7 @@ type t6BFixture struct {
 
 func newT6BFixture(t *testing.T, toolMode, sourceVariant string) *t6BFixture {
 	t.Helper()
-	base := "/private/var/tmp"
-	if _, err := os.Stat(base); err != nil {
-		base = "/tmp"
-	}
+	base := testfixture.PrivateTempBase()
 	dir, err := os.MkdirTemp(base, "tplaiter-t6-b-")
 	if err != nil {
 		t.Fatal(err)
@@ -822,7 +704,8 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 		args = []string{"build", "-trimpath", "-o", out, "cmd/gofmt"}
 	}
 	cmd := exec.Command(testfixture.GoBinary(t), args...)
-	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "GOOS=darwin", "GOARCH=arm64", "PATH=/usr/bin:/bin"}
+	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "PATH=/usr/bin:/bin"}
+	cmd.Env = append(cmd.Env, testfixture.NativeTargetEnv()...)
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("helper build: %v", err)
 	}
@@ -857,7 +740,7 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 		if err != nil {
 			t.Fatal(err)
 		}
-		record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": "darwin-arm64-dyld-libsystem-libresolv-v1"})
+		record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": operationtrust.FormatterNativeEnvelope()})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1023,7 +906,7 @@ func (f *t6BFixture) formatterRecord() ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
-	record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(f.tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": "darwin-arm64-dyld-libsystem-libresolv-v1"})
+	record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(f.tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": operationtrust.FormatterNativeEnvelope()})
 	return record, err == nil
 }
 
