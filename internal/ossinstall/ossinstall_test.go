@@ -47,6 +47,27 @@ func tempRoot(t *testing.T) string {
 	return filepath.Join(dir, "trust")
 }
 
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%s must survive: %v", path, err)
+	}
+	if string(raw) != content {
+		t.Fatalf("%s changed: %q", path, raw)
+	}
+}
+
 func loadRegistration(t *testing.T, result Result) *Registration {
 	t.Helper()
 	raw, err := os.ReadFile(result.RegistrationPath)
@@ -180,8 +201,74 @@ func TestGenerateRefusesForeignOrDamagedRoot(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("mine"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Generate(Options{Root: root}); !errors.Is(err, ErrInstallRootConflict) {
+		if _, err := Generate(Options{Root: root}); !errors.Is(err, ErrInstallRootForeign) {
 			t.Fatalf("Generate over unrelated files: %v", err)
+		}
+		if strings.Contains(ErrInstallRootForeign.Error(), "rotat") {
+			t.Fatalf("the foreign-root error must not suggest rotation: %v", ErrInstallRootForeign)
+		}
+	})
+	t.Run("rotate_over_foreign_entries", func(t *testing.T) {
+		root := tempRoot(t)
+		notes := filepath.Join(root, "notes.txt")
+		project := filepath.Join(root, "projects", "x")
+		writeTestFile(t, notes, "mine")
+		writeTestFile(t, project, "important")
+		if _, err := Generate(Options{Root: root, Rotate: true}); !errors.Is(err, ErrInstallRootForeign) {
+			t.Fatalf("rotation over foreign entries: %v", err)
+		}
+		assertTestFile(t, notes, "mine")
+		assertTestFile(t, project, "important")
+	})
+	t.Run("rotate_over_generated_names_without_ownership", func(t *testing.T) {
+		// Only names Generate would own, but no marker and no registration:
+		// ownership is not proven, so nothing may be removed.
+		root := tempRoot(t)
+		project := filepath.Join(root, "projects", "important", "file")
+		config := filepath.Join(root, "config", "x")
+		writeTestFile(t, project, "important")
+		writeTestFile(t, config, "x")
+		for _, rotate := range []bool{false, true} {
+			if _, err := Generate(Options{Root: root, Rotate: rotate}); !errors.Is(err, ErrInstallRootForeign) {
+				t.Fatalf("Generate (rotate=%v) over unowned generated names: %v", rotate, err)
+			}
+		}
+		assertTestFile(t, project, "important")
+		assertTestFile(t, config, "x")
+	})
+	t.Run("rotate_over_owned_install_with_foreign_entry", func(t *testing.T) {
+		root := tempRoot(t)
+		if _, err := Generate(Options{Root: root}); err != nil {
+			t.Fatal(err)
+		}
+		notes := filepath.Join(root, "notes.txt")
+		writeTestFile(t, notes, "mine")
+		if _, err := Generate(Options{Root: root, Rotate: true}); !errors.Is(err, ErrInstallRootForeign) {
+			t.Fatalf("rotation over an installation with a foreign entry: %v", err)
+		}
+		assertTestFile(t, notes, "mine")
+		if _, err := os.Stat(filepath.Join(root, RegistrationFile)); err != nil {
+			t.Fatalf("refused rotation removed the registration: %v", err)
+		}
+	})
+	t.Run("rotate_legacy_install_without_marker", func(t *testing.T) {
+		root := tempRoot(t)
+		if _, err := Generate(Options{Root: root}); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(root, OwnershipMarker)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Generate(Options{Root: root, Rotate: true}); err != nil {
+			t.Fatalf("rotation of a registration-proven installation: %v", err)
+		}
+		assertTestFile(t, filepath.Join(root, OwnershipMarker), ownershipMarkerContent)
+	})
+	t.Run("marker_only_root", func(t *testing.T) {
+		root := tempRoot(t)
+		writeTestFile(t, filepath.Join(root, OwnershipMarker), ownershipMarkerContent)
+		if _, err := Generate(Options{Root: root}); err != nil {
+			t.Fatalf("Generate after an interrupted first run: %v", err)
 		}
 	})
 	t.Run("tampered_runtime_config", func(t *testing.T) {

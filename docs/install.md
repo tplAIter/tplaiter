@@ -6,7 +6,7 @@ This page covers the OSS profile built from source. There is no published releas
 
 ## Requirements
 
-- macOS (verified on arm64). The secure trust store is not yet available on Linux, so Linux builds install but `trust provision` fails there until the Linux store lands. Windows is not supported.
+- macOS (verified on arm64) or Linux. Both have a secure trust store (see ADR-006 for Linux), so `trust provision` works on both. Windows is not supported.
 - Go 1.26 or newer, `make` and `git`.
 - An install prefix that **you own**. The trust store lives under the prefix and is written by the user who runs `trust provision`. A per-user prefix such as `~/.local` is the recommended layout.
 
@@ -42,7 +42,7 @@ Variables:
 
 `DESTDIR` staging is refused unless both registration pins are given, because a generated registration records absolute paths that must be valid at run time.
 
-Re-running `make install` keeps a valid existing installation and its enrolled store, so an upgrade does not need provisioning again. When the documents under `TRUST_ROOT` do not form a valid installation, `make install` stops and asks for `TRUST_ROTATE=1`. It also stops when `TRUST_PUBLISHERS` names a publisher set that differs from the one the existing installation trusts (a different key, issuer, source origin, template path or object root); it never silently drops the requested publishers. An identical publisher set, or no `TRUST_PUBLISHERS` at all, keeps the installation as it is.
+Re-running `make install` keeps a valid existing installation and its enrolled store, so an upgrade does not need provisioning again. `make install` only writes to, reuses or rotates a `TRUST_ROOT` that is empty or provably a tplaiter installation: it holds the `.tplaiter-install` ownership marker (or, for installations that predate the marker, a valid `registration.json` pointing inside the root) and no entries other than the ones listed in the layout below. Any other directory, such as `$HOME`, is refused even with `TRUST_ROTATE=1`, and nothing in it is touched; choose an empty or new directory instead. When an owned `TRUST_ROOT` does not form a valid installation, `make install` stops and asks for `TRUST_ROTATE=1`. It also stops when `TRUST_PUBLISHERS` names a publisher set that differs from the one the existing installation trusts (a different key, issuer, source origin, template path or object root); it never silently drops the requested publishers. An identical publisher set, or no `TRUST_PUBLISHERS` at all, keeps the installation as it is.
 
 ## Provision (first run)
 
@@ -95,6 +95,7 @@ The profile is always `oss`. The `development` profile is refused in an installe
 
 | Path | Content |
 | --- | --- |
+| `.tplaiter-install` | Ownership marker, written first. Rotation and reuse require it (see above). |
 | `registration.json` | Installed-launch registration: profile `oss`, pins of `config/runtime.json` and `config/operator.json`, installation ID and project key. Its digest is linked into the binary. |
 | `config/runtime.json` | Runtime installation: pins of every document below, the evidence, object, scratch and project roots, and the OSS store location. |
 | `config/descriptor.json` | Bootstrap descriptor: the install-local anchor public key, the policy origin and the publisher scopes. |
@@ -134,7 +135,7 @@ make install PREFIX="$HOME/.local" TRUST_ROTATE=1
 tplaiter trust provision
 ```
 
-Rotation replaces every generated document and removes the old trust store. The new binary carries new pins, and the previous binary stops working because its registration is gone. Rotate when the validity window ends (five years from generation) or when the publisher set changes.
+Rotation replaces every generated document and removes the old trust store. It only runs on a `TRUST_ROOT` proven to be a tplaiter installation that holds no foreign entries, so it never deletes files it did not create. The new binary carries new pins, and the previous binary stops working because its registration is gone. Rotate when the validity window ends (five years from generation) or when the publisher set changes.
 
 ## Uninstall
 
