@@ -1,7 +1,10 @@
 package state
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -51,6 +54,72 @@ func projectsPath(home string) string {
 	return filepath.Join(home, projectsFileName)
 }
 
+// ProjectsPath returns the registry path for home. Callers that coordinate an
+// external transaction must retain this exact target identity in their own
+// durable evidence; ordinary callers use LoadProjects and SaveProjects.
+func ProjectsPath(home string) string {
+	return projectsPath(home)
+}
+
+// ReadProjectsRaw returns the exact on-disk registry bytes. It is a narrow
+// transaction seam: callers must hold WithLock across any read-modify-write
+// sequence. A symlinked or non-regular projects.yaml is refused.
+func ReadProjectsRaw(home string) (data []byte, exists bool, mode fs.FileMode, err error) {
+	path := projectsPath(home)
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, 0, nil
+	}
+	if err != nil {
+		return nil, false, 0, fmt.Errorf("state: checking projects.yaml: %w", err)
+	}
+	if info.Mode()&fs.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return nil, false, 0, errors.New("state: projects.yaml is not a regular file")
+	}
+	data, exists, err = readFile(path)
+	if err != nil || !exists {
+		return data, exists, 0, err
+	}
+	return data, true, info.Mode().Perm(), nil
+}
+
+// WriteProjectsRaw atomically and durably replaces projects.yaml with bytes
+// that must already decode as a registry. It is separate from SaveProjects so
+// an external journal can record and recover the exact before/after images.
+// Callers must hold WithLock for a read-modify-write operation.
+func WriteProjectsRaw(home string, data []byte, mode fs.FileMode) error {
+	if _, err := decodeProjects(data); err != nil {
+		return err
+	}
+	return writeFileAtomicDurable(projectsPath(home), data, mode)
+}
+
+// RemoveProjectsRaw removes projects.yaml and durably records the directory
+// update. It is the inverse of a journaled registry image that was absent
+// before an external transaction.
+func RemoveProjectsRaw(home string) error {
+	path := projectsPath(home)
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("state: removing projects.yaml: %w", err)
+	}
+	return syncDirectory(filepath.Dir(path))
+}
+
+// MarshalProjects returns the YAML encoding used by SaveProjects, so a
+// transaction plan can capture its exact future registry bytes without
+// publishing them before the commit boundary.
+func MarshalProjects(p Projects) ([]byte, error) {
+	data, err := yaml.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("state: marshaling projects.yaml: %w", err)
+	}
+	return data, nil
+}
+
+// DecodeProjectsRaw validates registry bytes retained by an external journal
+// without consulting live state.
+func DecodeProjectsRaw(data []byte) (Projects, error) { return decodeProjects(data) }
+
 // LoadProjects reads projects.yaml from home. A missing file is not an error and
 // returns [DefaultProjects].
 func LoadProjects(home string) (Projects, error) {
@@ -66,9 +135,9 @@ func LoadProjects(home string) (Projects, error) {
 
 // SaveProjects atomically writes p to projects.yaml in home.
 func SaveProjects(home string, p Projects) error {
-	data, err := yaml.Marshal(p)
+	data, err := MarshalProjects(p)
 	if err != nil {
-		return fmt.Errorf("state: marshaling projects.yaml: %w", err)
+		return err
 	}
 	return writeFileAtomic(projectsPath(home), data)
 }
