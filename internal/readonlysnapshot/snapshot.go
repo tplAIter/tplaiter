@@ -272,11 +272,13 @@ func digestFramed(parts ...[]byte) string {
 }
 
 // gitEnv isolates git from user and system configuration, credentials,
-// prompts and lazy fetches.
+// prompts and lazy fetches. Repository-local configuration is still read, so
+// gitOutput also disables the settings that can execute a program
+// (core.fsmonitor, hooks).
 var gitEnv = []string{"GIT_NO_LAZY_FETCH=1", "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_OPTIONAL_LOCKS=0"}
 
 func gitOutput(ctx context.Context, runner execx.Runner, root string, args ...string) (string, error) {
-	argv := append([]string{"-C", root, "-c", "credential.helper=", "-c", "core.askPass=", "--no-optional-locks"}, args...)
+	argv := append([]string{"-C", root, "-c", "credential.helper=", "-c", "core.askPass=", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.DevNull, "--no-optional-locks"}, args...)
 	res, err := runner.Run(ctx, "git", argv, execx.Options{Env: gitEnv})
 	if err != nil {
 		return "", err

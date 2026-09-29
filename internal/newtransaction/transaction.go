@@ -665,13 +665,50 @@ func (t *Transaction) abortLocked() error {
 			return err
 		}
 	case errors.Is(stagingErr, fs.ErrNotExist) && targetErr == nil:
-		// The process stopped before the target was staged: nothing moved.
+		// Only a process that stopped before the target was staged leaves
+		// this shape. A target that already carries this transaction's
+		// pending marker, or no longer matches the journaled before image,
+		// was published by someone: deleting the journal would strand the
+		// rendered files, so the journal is kept for inspection instead.
+		if err := t.verifyTargetUnstaged(); err != nil {
+			return err
+		}
 	default:
 		return ErrUnsafe
 	}
 	t.j.Phase = Aborted
 	_ = t.save()
 	return os.RemoveAll(t.dir)
+}
+
+// verifyTargetUnstaged proves that a prepared transaction never moved its
+// target: no pending marker for this transaction exists there and the tree is
+// byte-for-byte the journaled before image.
+func (t *Transaction) verifyTargetUnstaged() error {
+	// A missing state directory means no marker; any other shape is checked
+	// by transactionDir, which refuses symlinks and non-directories.
+	if _, err := os.Lstat(filepath.Join(t.j.Target, naming.ProjectDir)); err == nil {
+		pendingDir, err := transactionDir(t.j.Target, false)
+		if err != nil {
+			return err
+		}
+		marker := filepath.Join(pendingDir, filepath.Base(t.j.PendingMarker))
+		if _, err := os.Lstat(marker); err == nil {
+			return fmt.Errorf("%w: target already holds the pending marker", ErrUnsafe)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	snapshot, err := snapshotTree(t.j.Target)
+	if err != nil {
+		return err
+	}
+	if digest(snapshot) != t.j.TargetBeforeTreeSHA {
+		return fmt.Errorf("%w: target differs from the journaled before image", ErrUnsafe)
+	}
+	return nil
 }
 
 // RunHooks is an at-least-once executor. A crash before the checkpoint retries
@@ -961,6 +998,11 @@ func ExecuteGC(home string, plan GCPlan) error {
 // caller supplies only the trusted registry home; the after image is read from
 // the journal's immutable CAS, never rebuilt from mutable project input.
 func Continue(home, id, registryHome string) error {
+	return continueTx(home, id, registryHome, nil)
+}
+
+// continueTx is Continue with a crash-injection seam for recovery tests.
+func continueTx(home, id, registryHome string, fault FaultInjector) error {
 	home, err := absClean(home)
 	if err != nil {
 		return err
@@ -974,6 +1016,7 @@ func Continue(home, id, registryHome string) error {
 	if err != nil {
 		return err
 	}
+	t.fault = fault
 	registryHome, err = absClean(registryHome)
 	if err != nil || registryHome == "" || t.j.RegistryTarget != state.ProjectsPath(registryHome) {
 		return ErrUnsafe
@@ -999,8 +1042,50 @@ func Continue(home, id, registryHome string) error {
 			return ErrUnsafe
 		}
 	}
+	if t.j.Phase == Prepared {
+		// A prepared journal is still abortable. Refuse before anything moves
+		// unless it is complete and the staged tree is exactly the journaled
+		// after image, so a doomed publish leaves the journal abortable.
+		if t.j.TargetAfterSHA == "" || t.j.RegistryAfterSHA == "" {
+			return ErrUnsafe
+		}
+		if _, statErr := os.Lstat(t.j.Target); statErr == nil {
+			if err := t.verifyPending(); err != nil {
+				return err
+			}
+		} else if !os.IsNotExist(statErr) {
+			return statErr
+		}
+		// Re-deriving the recovery manifest from the tree on disk must land
+		// on the journaled address; otherwise the tree drifted after the
+		// journal was written, and publishing it would bypass the after image.
+		journaled := t.j.TargetAfterSHA
+		if err := t.updateRecoveryManifest(); err != nil {
+			t.j.TargetAfterSHA = journaled
+			return err
+		}
+		if t.j.TargetAfterSHA != journaled {
+			t.j.TargetAfterSHA = journaled
+			return fmt.Errorf("%w: tree differs from the journaled after image", ErrUnsafe)
+		}
+		// As in Commit, the journal leaves Prepared before the target can
+		// move: from here on abort must refuse, because the rendered tree may
+		// already be published and only Continue can finish it.
+		t.j.Phase = Publishing
+		if err := t.save(); err != nil {
+			return err
+		}
+		if t.j.TargetAfterSHA != journaled {
+			// The tree changed between the check and the save. Nothing has
+			// moved yet; the Publishing journal stays for inspection.
+			return fmt.Errorf("%w: tree changed while publishing", ErrUnsafe)
+		}
+	}
 	if _, statErr := os.Lstat(t.j.Target); os.IsNotExist(statErr) {
 		if err := os.Rename(t.j.Staging, t.j.Target); err != nil {
+			return err
+		}
+		if err := t.inject("continue.after_staging_publish"); err != nil {
 			return err
 		}
 	} else if statErr != nil {

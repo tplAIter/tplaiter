@@ -455,3 +455,183 @@ func TestInProjectRelativeSymlinkIsCommittedButEscapeIsRefused(t *testing.T) {
 		t.Fatalf("escaping symlink committed: %v", err)
 	}
 }
+
+// prepareForContinue drives a transaction to a prepared journal with a
+// complete registry plan and then drops the lock, as a process that died
+// before Commit would.
+func (f crashFixture) prepareForContinue(t *testing.T) *Transaction {
+	t.Helper()
+	tx, err := Begin(f.home, f.target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tx.Workspace(), "generated.txt"), []byte("rendered"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.PrepareRegistry(RegistryPlan{Home: f.registry, Before: registryBefore, After: registryAfter}); err != nil {
+		t.Fatal(err)
+	}
+	tx.Release()
+	return tx
+}
+
+// assertJournalKept checks that a refused recovery left the journal, the
+// published target and the registry preimage in place for inspection.
+func assertJournalKept(t *testing.T, f crashFixture, id string, phase Phase) {
+	t.Helper()
+	items, err := Inventory(f.home)
+	if err != nil || len(items) != 1 || items[0].ID != id || items[0].Status != StatusActive {
+		t.Fatalf("journal not kept: %+v err=%v", items, err)
+	}
+	tx, err := Load(f.home, id)
+	if err != nil || tx.Journal().Phase != phase {
+		t.Fatalf("journal phase: tx=%+v err=%v, want %s", tx, err, phase)
+	}
+	registry, _, _, err := state.ReadProjectsRaw(f.registry)
+	if err != nil || string(registry) != string(registryBefore) {
+		t.Fatalf("registry changed: %q err=%v", registry, err)
+	}
+}
+
+// A prepared journal whose staged tree drifted after PrepareRegistry must be
+// refused before anything moves, and must remain abortable to the before
+// image.
+func TestContinueFromPreparedRefusesDriftedStagingBeforePublishing(t *testing.T) {
+	f := newCrashFixture(t)
+	tx := f.prepareForContinue(t)
+	if err := os.WriteFile(filepath.Join(tx.Workspace(), "late.txt"), []byte("late"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Continue(f.home, tx.ID(), f.registry); !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("Continue error=%v, want ErrUnsafe", err)
+	}
+	if _, err := os.Stat(tx.Workspace()); err != nil {
+		t.Fatalf("staging moved by a refused Continue: %v", err)
+	}
+	assertJournalKept(t, f, tx.ID(), Prepared)
+	recoverAndAssert(t, f)
+	if _, err := os.Stat(filepath.Join(f.target, "late.txt")); !os.IsNotExist(err) {
+		t.Fatalf("late file survived abort: %v", err)
+	}
+}
+
+// A verification failure after Continue has published a prepared journal must
+// never let abort discard the journal: the rendered files and the pending
+// marker are in the target, and only an operator can resolve them.
+func TestAbortRefusesAfterContinuePublishFailsVerification(t *testing.T) {
+	f := newCrashFixture(t)
+	tx := f.prepareForContinue(t)
+	err := continueTx(f.home, tx.ID(), f.registry, func(point string) error {
+		if point == "continue.after_staging_publish" {
+			return os.WriteFile(filepath.Join(f.target, "late.txt"), []byte("late"), 0o644)
+		}
+		return nil
+	})
+	if !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("Continue error=%v, want ErrUnsafe", err)
+	}
+	if err := AbortByID(f.home, tx.ID()); err == nil {
+		t.Fatal("AbortByID discarded a journal whose target was already published")
+	}
+	assertJournalKept(t, f, tx.ID(), Publishing)
+	for _, rel := range []string{"generated.txt", "late.txt", ".tplaiter/new-transaction.pending"} {
+		if _, err := os.Stat(filepath.Join(f.target, filepath.FromSlash(rel))); err != nil {
+			t.Fatalf("published evidence %s missing: %v", rel, err)
+		}
+	}
+}
+
+// A prepared journal whose target already carries the pending marker (for
+// example a journal written by a build that published without leaving
+// Prepared) is not "nothing moved": abort must keep it.
+func TestAbortRefusesPreparedJournalWithPublishedTarget(t *testing.T) {
+	f := newCrashFixture(t)
+	tx := f.prepareForContinue(t)
+	if err := os.Rename(tx.Workspace(), f.target); err != nil {
+		t.Fatal(err)
+	}
+	if err := AbortByID(f.home, tx.ID()); !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("AbortByID error=%v, want ErrUnsafe", err)
+	}
+	assertJournalKept(t, f, tx.ID(), Prepared)
+	if _, err := os.Stat(filepath.Join(f.target, "generated.txt")); err != nil {
+		t.Fatalf("published file removed: %v", err)
+	}
+}
+
+// A prepared journal with an unstaged target that no longer matches the
+// before image is refused too, even without a marker.
+func TestAbortRefusesPreparedJournalWhenTargetDiffersFromBeforeImage(t *testing.T) {
+	f := newCrashFixture(t)
+	err := f.runScenario(func(point string) error {
+		if point == "begin.after_journal" {
+			return ErrInjectedCrash
+		}
+		return nil
+	})
+	if !errors.Is(err, ErrInjectedCrash) {
+		t.Fatalf("scenario error=%v", err)
+	}
+	if err := os.WriteFile(filepath.Join(f.target, "stray.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	items, err := Inventory(f.home)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("inventory=%+v err=%v", items, err)
+	}
+	if err := AbortByID(f.home, items[0].ID); !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("AbortByID error=%v, want ErrUnsafe", err)
+	}
+	if items, err := Inventory(f.home); err != nil || len(items) != 1 {
+		t.Fatalf("journal discarded: %+v err=%v", items, err)
+	}
+}
+
+const continueCrashChildEnv = "TPLAITER_NEWTX_CONTINUE_CRASH_CHILD"
+
+// TestContinueCrashChild is the re-executed child of
+// TestKilledContinueRecoversAfterPublish: it dies right after Continue's
+// staging-to-target rename.
+func TestContinueCrashChild(t *testing.T) {
+	spec := os.Getenv(continueCrashChildEnv)
+	if spec == "" {
+		t.Skip("helper process for TestKilledContinueRecoversAfterPublish")
+	}
+	parts := strings.Split(spec, "\x1f")
+	f := crashFixture{home: parts[0], target: parts[1], registry: parts[2]}
+	// The transaction id is read back from the journal inventory rather than
+	// passed through the environment.
+	items, err := Inventory(f.home)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("inventory=%+v err=%v", items, err)
+	}
+	err = continueTx(f.home, items[0].ID, f.registry, func(point string) error {
+		if point == "continue.after_staging_publish" {
+			os.Exit(crashExitCode)
+		}
+		return nil
+	})
+	t.Fatalf("Continue returned without reaching the failpoint: %v", err)
+}
+
+func TestKilledContinueRecoversAfterPublish(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns a child process")
+	}
+	f := newCrashFixture(t)
+	tx := f.prepareForContinue(t)
+	cmd := exec.Command(os.Args[0], "-test.run=^TestContinueCrashChild$", "-test.count=1")
+	cmd.Env = append(os.Environ(), continueCrashChildEnv+"="+strings.Join([]string{f.home, f.target, f.registry}, "\x1f"))
+	out, err := cmd.CombinedOutput()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != crashExitCode {
+		t.Fatalf("child did not die after the rename: err=%v output=%s", err, out)
+	}
+	// The kill left a published target and a Publishing journal: abort must
+	// refuse, and Continue must finish the publish.
+	if err := AbortByID(f.home, tx.ID()); err == nil {
+		t.Fatal("AbortByID discarded a journal whose target was already published")
+	}
+	assertJournalKept(t, f, tx.ID(), Publishing)
+	recoverAndAssert(t, f)
+}

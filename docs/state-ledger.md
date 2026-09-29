@@ -41,7 +41,9 @@ that re-checks the root lock against its source and, when the dependency lock
 is missing, a proof that the root template has no dependencies, extends or
 blocks; only then is an empty dependency lock synthesized. `ApplyPlan`
 re-plans, requires the reviewed plan digest, writes the dependency lock first
-and the new marker last (the commit point). Downgrades are refused; a newer
+and the new marker last (the commit point). `ApplyPlan` takes no project lock
+itself: callers must hold the project update lock across it, otherwise the
+re-plan and the writes race with a concurrent writer. Downgrades are refused; a newer
 marker is reported as a future version. Profileless v1 locks are refused: they
 must be re-resolved through the trust runtime by `update`.
 
@@ -77,7 +79,14 @@ in `~/.tplaiter/transactions/new/tx-<id>/`, outside the target tree:
 Recovery is driven only by the durable journal and its content-addressed
 evidence: a prepared journal is aborted (added files are removed and the
 target returns to its before image; a modified pre-existing file makes abort
-refuse without changing anything), anything later is continued. Every
+refuse without changing anything), anything later is continued. Both Commit
+and Continue persist the `committing` phase before the staged tree is renamed
+onto the target, so a published target is never paired with an abortable
+journal. Continue refuses a prepared journal whose staged tree no longer
+matches the journaled after image before anything moves. Abort of a prepared
+journal whose staging directory is gone succeeds only when the target holds no
+pending marker for the transaction and still equals the journaled before
+image; otherwise it returns an unsafe error and keeps the journal. Every
 failpoint of this sequence is covered by a test that kills the process and
 recovers from disk.
 
@@ -86,7 +95,9 @@ Inventory statuses are `active`, `complete`, `aborted`, `future`,
 collection selects only terminal records that are older than 30 days or beyond
 the newest 100, plus orphans older than 30 days; it re-validates every
 candidate while holding the global lock. Everything else is preserved
-evidence.
+evidence. Successful complete, abort and finalize steps delete their journal
+immediately, so in practice collection only removes leftovers of crashed or
+interrupted runs.
 
 ## Ownership
 
