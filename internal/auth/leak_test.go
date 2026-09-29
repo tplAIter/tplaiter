@@ -103,7 +103,7 @@ func TestTokenNeverLeaks(t *testing.T) {
 	if inst.Provisioned {
 		record(mcpTranscript(t, inst.Bin, work, env))
 	} else {
-		t.Log("mcp-server part skipped: trust store unavailable on this platform (requires U03)")
+		t.Log("mcp-server part skipped: trust store unavailable on this platform")
 	}
 
 	if strings.Contains(observed.String(), leakCanary) {

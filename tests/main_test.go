@@ -108,11 +108,12 @@ func buildInstalledBinary(out, root string) error {
 	provision.Dir = filepath.Dir(out)
 	provision.Env = append(os.Environ(), "TPLAITER_HOME="+filepath.Join(filepath.Dir(out), "provision-home"))
 	if raw, err := provision.CombinedOutput(); err != nil {
-		if runtime.GOOS == "darwin" {
+		if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 			return fmt.Errorf("trust provision: %w\n%s", err, raw)
 		}
-		// The secure trust store is darwin-only until the Linux store lands
-		// (tp-i9g.4.3.2); trust-dependent tests skip via requireProvisionedTrust.
+		// The secure trust store exists on darwin and Linux only; Windows is
+		// deferred (tp-6v4). Trust-dependent tests skip via
+		// requireProvisionedTrust on other platforms.
 		provisionErr = fmt.Sprintf("%v: %s", err, strings.TrimSpace(string(raw)))
 	}
 	return nil

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -281,11 +282,11 @@ func exists(path string) bool {
 
 // requireProvisionedTrust skips a trust-dependent test when first-run
 // provisioning was unavailable on this platform (see buildInstalledBinary).
-// On darwin provisioning is mandatory, so this never skips there.
+// On darwin and Linux provisioning is mandatory, so this never skips there.
 func requireProvisionedTrust(t *testing.T) {
 	t.Helper()
 	if provisionErr != "" {
-		t.Skip("requires U03 Linux trust store (tp-i9g.4.3.2): " + provisionErr)
+		t.Skip("trust store unavailable on " + runtime.GOOS + " (Windows deferred, tp-6v4): " + provisionErr)
 	}
 }
 

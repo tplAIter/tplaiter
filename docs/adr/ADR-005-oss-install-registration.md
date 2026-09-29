@@ -54,5 +54,5 @@ Resulting properties:
 - Open seams for later work packages:
   - **U07 (live lifecycle):** configure template publishers, for example the neutral `example.test` fixture provider, through `ossinstall.Options.Publishers` or `TRUST_PUBLISHERS`. Replace the single `default` project context (rooted in `TRUST_ROOT/projects/default`) with per-project contexts for arbitrary project directories.
   - **U13 (trusted actions):** add approvers to the generated execution policy; today it has none.
-  - **U03 (Linux store):** on Linux, `trust provision` fails until the store is enabled, and the e2e and package fixtures skip trust-dependent cases with a `requires U03` marker there.
-- `mcp-server` now resolves symlinks in its executable path before creating the held stage. Installs reached through a symlinked directory, such as macOS `/var` or `/tmp` or a package-manager shim, previously reported `MCP_UNAVAILABLE`.
+  - **U03 (Linux store):** landed (ADR-006). The e2e and package fixtures now require provisioning on Linux as well as macOS; only other platforms (Windows, deferred) skip trust-dependent cases.
+- `mcp-server` now resolves symlinks in its executable path before creating the held stage (after `--print-config`, so client snippets keep the launch path). Installs reached through a symlinked directory, such as macOS `/var` or `/tmp` or a package-manager shim, previously reported `MCP_UNAVAILABLE`.

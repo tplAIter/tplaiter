@@ -22,14 +22,15 @@ type Installed struct {
 	// RegistrationSHA256 is the registration digest linked into Bin.
 	RegistrationSHA256 string
 	// Provisioned reports whether `trust provision` enrolled the store. It
-	// is false only where the secure store is unavailable (Linux until U03).
+	// is false only where the secure store is unavailable (platforms other
+	// than darwin and Linux).
 	Provisioned bool
 }
 
 // BuildInstalled generates an OSS installation in a fresh temporary
 // directory, builds the repository's main package with the same linker pins
-// as the Makefile, and runs the first-run `trust provision`. On darwin the
-// provisioning step must succeed.
+// as the Makefile, and runs the first-run `trust provision`. Wherever the
+// trust store platform is available (darwin, Linux) it must succeed.
 func BuildInstalled(t testing.TB) *Installed {
 	t.Helper()
 	dir, err := filepath.EvalSymlinks(t.TempDir())

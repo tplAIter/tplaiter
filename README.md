@@ -89,7 +89,7 @@ docker run --rm -v "$PWD":/src -v "$(go env GOMODCACHE)":/go/pkg/mod:ro -w /src 
   -e GOWORK=off -e GOFLAGS=-mod=readonly -e GOPROXY=off golang:1.27 make verify-linux
 ```
 
-The `tests/` e2e module builds its binary exactly like `make install` and provisions it in `TestMain`. Scenarios that need the live lifecycle end at a tracked `requires U07` skip after proving the step fails only with `TRUST_LIFECYCLE_UNAVAILABLE`. On Linux the trust store is not available yet, so trust-dependent e2e cases skip with a `requires U03` marker.
+The `tests/` e2e module builds its binary exactly like `make install` and provisions it in `TestMain`. Scenarios that need the live lifecycle end at a tracked `requires U07` skip after proving the step fails only with `TRUST_LIFECYCLE_UNAVAILABLE`. Provisioning is mandatory on macOS and Linux.
 
 ### Platform support (trust store, MCP transport, approved runner)
 
