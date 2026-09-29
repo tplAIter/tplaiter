@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/tplAIter/tplaiter/internal/stateledger/ledgerpath"
 )
 
 const algorithm = "tplaiter.naming-migration/v1"
@@ -655,20 +657,17 @@ func capture(source string) ([]Entry, error) {
 	return es, nil
 }
 
+// activeTransaction refuses a root that still carries transaction locks,
+// journals or pending markers. The probe list is the shared state-ledger
+// classification (internal/stateledger/ledgerpath), so migrate-state and the
+// ledger inventory agree on what counts as transaction state.
 func activeTransaction(root string) error {
-	for _, rel := range []string{".lock", "update.lock", filepath.Join("update", "active.json"), filepath.Join("transactions", "new.lock")} {
-		if _, e := os.Stat(filepath.Join(root, rel)); e == nil {
-			return fmt.Errorf("naming: active transaction at %s", rel)
-		} else if !os.IsNotExist(e) {
-			return fmt.Errorf("naming: transaction check %s: %w", rel, e)
-		}
-	}
-	active, err := filepath.Glob(filepath.Join(root, "transactions", "new", "*", "active.json"))
+	rel, err := ledgerpath.TransactionEvidence(root)
 	if err != nil {
-		return fmt.Errorf("naming: transaction glob: %w", err)
+		return fmt.Errorf("naming: %w", err)
 	}
-	if len(active) != 0 {
-		return fmt.Errorf("naming: active transaction at %s", filepath.Join("transactions", "new", filepath.Base(filepath.Dir(active[0])), "active.json"))
+	if rel != "" {
+		return fmt.Errorf("naming: active transaction at %s", filepath.FromSlash(rel))
 	}
 	return nil
 }
