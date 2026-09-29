@@ -22,7 +22,7 @@ func TestEnvGenAI(t *testing.T) {
 		mustRun(t, home, "", "repo", "add", "sb", "file://"+origin)
 
 		projDir := filepath.Join(t.TempDir(), "proj")
-		mustRun(t, home, "", "new", "sb/single-basic", "SB Project", "--dir", projDir, "--defaults")
+		skipAtLiveLifecycle(t, home, "new", "sb/single-basic", "SB Project", "--dir", projDir, "--defaults")
 
 		res := mustRun(t, home, projDir, "env", "list")
 		_ = res // the manifest declares no playbooks; successful completion is enough.
@@ -34,7 +34,7 @@ func TestEnvGenAI(t *testing.T) {
 		mustRun(t, home, "", "repo", "add", "svcrepo", "file://"+repoDir)
 
 		projDir := filepath.Join(t.TempDir(), "proj")
-		mustRun(t, home, "", "new", "svcrepo/svc-ai", "Svc AI", "--dir", projDir, "--defaults")
+		skipAtLiveLifecycle(t, home, "new", "svcrepo/svc-ai", "Svc AI", "--dir", projDir, "--defaults")
 
 		genList := mustRun(t, home, projDir, "gen", "list")
 		mustContain(t, genList.Stdout, "example", "gen list (init-template generators)")

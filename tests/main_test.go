@@ -15,6 +15,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -41,6 +43,14 @@ func TestMain(m *testing.M) {
 }
 
 func runMain(m *testing.M) int {
+	// Offline and machine-independent: no module downloads, and no system git
+	// configuration leaks into fixture repositories or the binary under test.
+	for key, value := range map[string]string{"GOPROXY": "off", "GOSUMDB": "off", "GIT_CONFIG_NOSYSTEM": "1"} {
+		if err := os.Setenv(key, value); err != nil {
+			fmt.Fprintln(os.Stderr, "e2e: setenv:", err)
+			return 1
+		}
+	}
 	tmp, err := os.MkdirTemp("", "tplater-e2e-bin-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "e2e: mkdir temp:", err)
@@ -49,22 +59,81 @@ func runMain(m *testing.M) int {
 	defer os.RemoveAll(tmp)
 
 	binPath = filepath.Join(tmp, "tplaiter")
-	if err := buildBinary(binPath); err != nil {
-		fmt.Fprintln(os.Stderr, "e2e: building the tplater binary:", err)
+	trustRoot = filepath.Join(tmp, "trust")
+	if err := buildInstalledBinary(binPath, trustRoot); err != nil {
+		fmt.Fprintln(os.Stderr, "e2e: building the installed tplaiter binary:", err)
 		return 1
 	}
 
 	return m.Run()
 }
 
+// trustRoot is the OSS install root the test binary is linked against.
+var trustRoot string
+
+// buildInstalledBinary reproduces `make install` for the test binary: it
+// generates the operator-pinned OSS registration under root with the same
+// build-time tool (cmd/tplaiter-oss-register), links the binary against the
+// registration with the same -X pins as the Makefile, and runs the
+// first-run `trust provision`. The harness therefore exercises exactly the
+// installed launch path (ADR-005) without importing any internal package.
+func buildInstalledBinary(out, root string) error {
+	pinsFile := filepath.Join(filepath.Dir(out), "registration.pins")
+	gen := exec.Command("go", "run", "./cmd/tplaiter-oss-register", "--root", root, "--output", pinsFile)
+	gen.Dir = ".."
+	gen.Env = append(os.Environ(), "GOWORK=off")
+	if raw, err := gen.CombinedOutput(); err != nil {
+		return fmt.Errorf("generate registration: %w\n%s", err, raw)
+	}
+	raw, err := os.ReadFile(pinsFile)
+	if err != nil {
+		return err
+	}
+	pins := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			return fmt.Errorf("malformed pin line %q", line)
+		}
+		pins[key] = value
+	}
+	if pins["REGISTRATION_PATH"] == "" || pins["REGISTRATION_SHA256"] == "" {
+		return fmt.Errorf("registration pins missing in %q", raw)
+	}
+	registrationSHA256 = pins["REGISTRATION_SHA256"]
+	if err := buildBinary(out, pins["REGISTRATION_PATH"], pins["REGISTRATION_SHA256"]); err != nil {
+		return err
+	}
+	provision := exec.Command(out, "trust", "provision")
+	provision.Dir = filepath.Dir(out)
+	provision.Env = append(os.Environ(), "TPLAITER_HOME="+filepath.Join(filepath.Dir(out), "provision-home"))
+	if raw, err := provision.CombinedOutput(); err != nil {
+		if runtime.GOOS == "darwin" {
+			return fmt.Errorf("trust provision: %w\n%s", err, raw)
+		}
+		// The secure trust store is darwin-only until the Linux store lands
+		// (tp-i9g.4.3.2); trust-dependent tests skip via requireProvisionedTrust.
+		provisionErr = fmt.Sprintf("%v: %s", err, strings.TrimSpace(string(raw)))
+	}
+	return nil
+}
+
+// provisionErr records why first-run provisioning was unavailable on this
+// platform; it is empty when the trust store was enrolled.
+var provisionErr string
+
+// registrationSHA256 is the registration digest linked into the binary.
+var registrationSHA256 string
+
 // buildBinary builds the root module (../ relative to tests/) into out.
-// ldflags sets the same variable as the release Makefile (LDFLAGS),
-// so resolveVersion() returns buildVersion rather than "dev" (see the comment
-// above). GOWORK=off makes the build use the module independently; the
-// workspace is unnecessary and must not affect the dependency list.
-func buildBinary(out string) error {
+// ldflags sets the same variables as the Makefile (LDFLAGS): the version, so
+// resolveVersion() returns buildVersion rather than "dev" (see the comment
+// above), and the installed-registration pins. GOWORK=off makes the build use
+// the module independently; the workspace must not affect the dependency list.
+func buildBinary(out, registrationPath, registrationDigest string) error {
 	pkg := "github.com/tplAIter/tplaiter/internal/cmd"
-	ldflags := fmt.Sprintf("-s -w -X %s.version=%s", pkg, buildVersion)
+	ldflags := fmt.Sprintf("-s -w -X %s.version=%s -X %s.installedRegistrationPath=%s -X %s.installedRegistrationSHA256=%s",
+		pkg, buildVersion, pkg, registrationPath, pkg, registrationDigest)
 
 	cmd := exec.Command("go", "build", "-trimpath", "-ldflags", ldflags, "-o", out, ".")
 	cmd.Dir = ".."

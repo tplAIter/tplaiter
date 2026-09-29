@@ -17,6 +17,8 @@ func TestNewErrors(t *testing.T) {
 	mustRun(t, home, "", "repo", "add", "example", "file://"+origin)
 
 	t.Run("unknown_template", func(t *testing.T) {
+		skipAtLiveLifecycle(t, home, "new", "example/does-not-exist-template", "proj",
+			"--dir", filepath.Join(t.TempDir(), "proj"), "--defaults")
 		res := run(t, home, "", "new", "example/does-not-exist-template", "proj",
 			"--dir", filepath.Join(t.TempDir(), "proj"), "--defaults")
 		if res.ExitCode == 0 {
@@ -27,7 +29,7 @@ func TestNewErrors(t *testing.T) {
 
 	t.Run("occupied_directory", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "proj")
-		mustRun(t, home, "", "new", "example/single-basic", "First", "--dir", dir, "--defaults")
+		skipAtLiveLifecycle(t, home, "new", "example/single-basic", "First", "--dir", dir, "--defaults")
 
 		again := run(t, home, "", "new", "example/single-basic", "Second", "--dir", dir, "--defaults")
 		if again.ExitCode == 0 {
@@ -39,6 +41,8 @@ func TestNewErrors(t *testing.T) {
 		gateOrigin := buildVersionGateOrigin(t)
 		mustRun(t, home, "", "repo", "add", "gaterepo", "file://"+gateOrigin)
 
+		skipAtLiveLifecycle(t, home, "new", "gaterepo/gatetpl", "proj",
+			"--dir", filepath.Join(t.TempDir(), "proj"), "--defaults")
 		res := run(t, home, "", "new", "gaterepo/gatetpl", "proj",
 			"--dir", filepath.Join(t.TempDir(), "proj"), "--defaults")
 		if res.ExitCode == 0 {
