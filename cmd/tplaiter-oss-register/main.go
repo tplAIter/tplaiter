@@ -1,0 +1,89 @@
+// Command tplaiter-oss-register generates the operator-pinned OSS trust
+// installation for a source build. `make install` runs it before linking the
+// tplaiter binary; its output is the pair of linker pins
+// (REGISTRATION_PATH, REGISTRATION_SHA256) the build compiles in.
+//
+// It is a build-time tool, not part of the installed CLI: it never runs the
+// binary, never touches HOME or XDG directories, and never keeps a private
+// key. See docs/adr/ADR-005-oss-install-registration.md.
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/tplAIter/tplaiter/internal/ossinstall"
+)
+
+func main() {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
+		fmt.Fprintln(os.Stderr, "tplaiter-oss-register:", err)
+		os.Exit(1)
+	}
+}
+
+func run(args []string, stdout io.Writer) error {
+	flags := flag.NewFlagSet("tplaiter-oss-register", flag.ContinueOnError)
+	root := flags.String("root", "", "absolute install root for the trust material (required)")
+	publishers := flags.String("publishers", "", "optional JSON file with a list of trusted template publishers")
+	rotate := flags.Bool("rotate", false, "discard an existing installation (and its trust store) and generate a new one")
+	output := flags.String("output", "", "write the linker pins to this file instead of stdout")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
+	}
+	if *root == "" {
+		return errors.New("--root is required")
+	}
+	absRoot, err := filepath.Abs(*root)
+	if err != nil {
+		return err
+	}
+	if strings.ContainsAny(absRoot, linkerUnsafe) {
+		return fmt.Errorf("install root %q contains characters that cannot be passed to the linker", absRoot)
+	}
+	options := ossinstall.Options{Root: absRoot, Rotate: *rotate}
+	if *publishers != "" {
+		raw, err := os.ReadFile(*publishers)
+		if err != nil {
+			return fmt.Errorf("read publishers: %w", err)
+		}
+		dec := json.NewDecoder(strings.NewReader(string(raw)))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&options.Publishers); err != nil {
+			return fmt.Errorf("decode publishers: %w", err)
+		}
+	}
+	result, err := ossinstall.Generate(options)
+	if err != nil {
+		return err
+	}
+	// The pins travel through make and -X linker flags, which split on
+	// whitespace; reject such paths instead of producing a broken binary.
+	if strings.ContainsAny(result.RegistrationPath, linkerUnsafe) {
+		return fmt.Errorf("install root %q contains characters that cannot be passed to the linker", result.Root)
+	}
+	pins := fmt.Sprintf("REGISTRATION_PATH=%s\nREGISTRATION_SHA256=%s\n", result.RegistrationPath, result.RegistrationSHA256)
+	state := "generated"
+	if result.Reused {
+		state = "reused"
+	}
+	fmt.Fprintf(os.Stderr, "tplaiter-oss-register: %s OSS installation %s at %s\n", state, result.InstallationID, result.Root)
+	if *output == "" {
+		_, err = io.WriteString(stdout, pins)
+		return err
+	}
+	return os.WriteFile(*output, []byte(pins), 0o600)
+}
+
+// linkerUnsafe lists characters that cannot travel through make variables and
+// -X linker flags intact (they split on whitespace and are shell-quoted).
+const linkerUnsafe = " \t\r\n'\"$`\\"
