@@ -10,6 +10,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"time"
 )
 
 // Result — result of executing one command.
@@ -40,6 +41,16 @@ type Options struct {
 	// (leaving the child orphaned), but reach the child normally and give it a
 	// chance for graceful shutdown. nil (the default) forwards no signals.
 	Signals <-chan os.Signal
+	// ProcessGroup runs the command as the leader of its own process group.
+	// Cancellation (ctx) then terminates the whole group — SIGTERM, KillGrace,
+	// SIGKILL — so no grandchild survives. Use it for non-interactive commands
+	// that spawn their own children (hooks, `$SHELL -c` scripts). A group is
+	// not in the terminal foreground, so interactive prompts must not use it.
+	// A non-nil Signals implies ProcessGroup.
+	ProcessGroup bool
+	// KillGrace is the time a cancelled command has between SIGTERM and
+	// SIGKILL; zero means [DefaultKillGrace].
+	KillGrace time.Duration
 }
 
 // Runner executes external commands. Implementations are [Exec] (real os/exec)

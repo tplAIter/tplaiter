@@ -458,10 +458,13 @@ func (r *run) runShellHook(ctx context.Context, target, script string) error {
 		shell = "/bin/sh"
 	}
 	r.infof("postCreate: %s\n", script)
+	// Hooks run in their own process group so that cancellation stops the
+	// whole `$SHELL -c` tree (SIGTERM, grace, SIGKILL).
 	_, err := r.d.Runner.Run(ctx, shell, []string{"-c", script}, execx.Options{
-		Dir:    target,
-		Stdout: r.d.Out,
-		Stderr: r.d.Err,
+		Dir:          target,
+		Stdout:       r.d.Out,
+		Stderr:       r.d.Err,
+		ProcessGroup: true,
 	})
 	return err
 }
