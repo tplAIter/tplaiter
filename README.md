@@ -90,6 +90,17 @@ docker run --rm -v "$PWD":/src -v "$(go env GOMODCACHE)":/go/pkg/mod:ro -w /src 
 
 The `tests/` e2e module still fails with `TRUST_ANCHOR_MISSING` until the OSS installation registration lands, so `make verify` and `make verify-linux` are not green yet.
 
+### Platform support (trust store, MCP transport, approved runner)
+
+| Host | Trust store | `mcp-server` tool calls | Approved runner (hooks, build gates) |
+| --- | --- | --- | --- |
+| macOS arm64 | APFS | held stage (`F_GETPATH`) | Mach-O dyld/libSystem envelope |
+| Linux amd64/arm64 | ext4 and overlayfs only | held stage (`/proc/self/fd`) | static ELF envelope |
+| macOS amd64 | APFS | held stage | `TRUST_EXECUTION_UNAVAILABLE` |
+| Windows, BSDs | unavailable (deferred) | `MCP_UNAVAILABLE` | `TRUST_EXECUTION_UNAVAILABLE` |
+
+On Linux, a trust store on any other filesystem (tmpfs, btrfs, xfs, NFS, FUSE, 9p) is refused with `TRUST_STORE_FILESYSTEM_UNSUPPORTED`; keep `XDG_CONFIG_HOME`/`HOME` on a local ext4 or container overlay filesystem. The design and evidence are in [ADR-006](./docs/adr/ADR-006-linux-trust-store.md).
+
 MCP tools are registered per domain in `internal/mcpsrv/tools_<domain>.go` and listed once in `toolRegistrars`; `internal/mcpsrv/testdata/tools.golden.txt` pins the tool names. CLI commands register through `registerCommand` in their own file and declare their pre-run class (`readonly`, `trust-owned`, `legacy-action` or the default `stateful`) with a cobra annotation; see `internal/cmd/prerun_class.go`.
 
 ## Template discovery
