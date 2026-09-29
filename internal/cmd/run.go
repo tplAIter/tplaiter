@@ -32,13 +32,13 @@ func newRunCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunLegacyAction, prerunReadonly),
 
 		Use:   "run [name] [-- args...]",
-		Short: "Показать команды проекта или исполнить одну из них",
-		Long: "Без аргументов печатает список команд манифеста шаблона (commands, SPEC-01 §5) — " +
-			"имя, описание и статус по when-условию текущих настроек проекта.\n\n" +
-			"С именем команды исполняет её `run` через $SHELL -c в корне проекта: " +
-			"`tplater run build -- --race` передаёт `--race` самой команде. " +
-			"Сигналы INT/TERM, полученные tplater, пересылаются запущенному процессу; " +
-			"код возврата команды становится кодом возврата tplater.",
+		Short: "Show project commands or execute one",
+		Long: "Without arguments, prints a list of commands from the template manifest (commands, SPEC-01 §5) — " +
+			"name, description, and availability status based on the when condition and current project settings.\n\n" +
+			"With a command name, executes its `run` through $SHELL -c in the project root: " +
+			"`tplater run build -- --race` passes `--race` to the command itself. " +
+			"INT/TERM signals received by tplater are forwarded to the executed process; " +
+			"the command's exit code becomes tplater's exit code.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// The composed root rejects this before its hooks.  Keep the same
@@ -64,11 +64,11 @@ func newRunCmd() *cobra.Command {
 func loadRunContext() (tpl *manifest.Template, proj *manifest.Project, root string, err error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("cmd: run: определение рабочего каталога: %w", err)
+		return nil, nil, "", fmt.Errorf("cmd: run: determining working directory: %w", err)
 	}
 	home, err := state.Home()
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("cmd: run: определение домашнего каталога: %w", err)
+		return nil, nil, "", fmt.Errorf("cmd: run: determining home directory: %w", err)
 	}
 
 	root, proj, err = project.FindRoot(cwd)
@@ -126,7 +126,7 @@ func evalWhen(when string, values settings.Values) (bool, error) {
 func listRunCommands(cmd *cobra.Command, commands map[string]manifest.Command, values settings.Values) error {
 	out := cmd.OutOrStdout()
 	if len(commands) == 0 {
-		fmt.Fprintln(out, "манифест шаблона не объявляет команд (commands)")
+		fmt.Fprintln(out, "template manifest does not declare commands (commands)")
 		return nil
 	}
 
@@ -155,7 +155,7 @@ func whenCell(pal ui.Palette, when string, values settings.Values) string {
 	}
 	ok, err := evalWhen(when, values)
 	if err != nil || !ok {
-		return ui.StatusIcon(pal, ui.StatusWarn) + " " + pal.Muted(when+" — недоступно при текущих настройках")
+		return ui.StatusIcon(pal, ui.StatusWarn) + " " + pal.Muted(when+" — unavailable with current settings")
 	}
 	return ui.StatusIcon(pal, ui.StatusOK) + " " + when
 }
@@ -236,7 +236,7 @@ func availableNames(commands map[string]manifest.Command) string {
 	}
 	sort.Strings(names)
 	if len(names) == 0 {
-		return "(нет команд в манифесте)"
+		return "(no commands in manifest)"
 	}
 	return strings.Join(names, ", ")
 }

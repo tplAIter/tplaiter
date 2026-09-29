@@ -15,13 +15,13 @@ func (v *validator) checkLint(l LintConfig) {
 		loc := fmt.Sprintf("lint.rules[%d]", i)
 
 		if r.ID == "" {
-			v.add(loc+".id", "id правила обязателен")
+			v.add(loc+".id", "rule id is required")
 		} else if !knownLintRuleIDs[r.ID] {
-			v.add(loc+".id", "неизвестный id правила %q (известны: %s)", r.ID, strings.Join(sortedLintRuleIDs(), "|"))
+			v.add(loc+".id", "unknown rule id %q (known: %s)", r.ID, strings.Join(sortedLintRuleIDs(), "|"))
 		}
 
 		if len(r.Paths) == 0 {
-			v.add(loc+".paths", "правило без paths ничего не проверяет")
+			v.add(loc+".paths", "rule without paths checks nothing")
 		}
 		v.checkGlobs(loc+".paths", r.Paths)
 		v.checkGlobs(loc+".exclude", r.Exclude)

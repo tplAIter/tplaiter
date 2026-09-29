@@ -25,13 +25,13 @@ func newInitTemplateCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "init-template <name>",
-		Short: "Создать репозиторий шаблона со всем инструментарием",
-		Long: "Генерирует пустой tplaiter-совместимый репозиторий шаблона: " +
-			"скелет template.manifest.yaml с примерными группами настроек, дерево files/ с " +
-			"рабочим минимальным примером, генератор, ai-config, плейбук окружения, NOTES, " +
-			"README мейнтейнера и GitHub Actions workflow с проверкой lint-template.\n\n" +
-			"--multi добавляет repo.manifest.yaml и кладёт шаблон в подкаталог <name>/. " +
-			"По умолчанию делает git init и первый коммит (--no-git отключает).",
+		Short: "Create a template repository with all tooling",
+		Long: "Generates an empty tplaiter-compatible template repository: " +
+			"template.manifest.yaml skeleton with sample settings groups, files/ tree with " +
+			"working minimal example, generator, ai-config, environment playbook, NOTES, " +
+			"maintainer README, and GitHub Actions workflow with lint-template check.\n\n" +
+			"--multi adds repo.manifest.yaml and places template in <name>/ subdirectory. " +
+			"By default runs git init and first commit (--no-git disables this).",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, err := inittemplate.Init(cmd.Context(), inittemplate.InitOptions{
@@ -46,9 +46,9 @@ func newInitTemplateCmd() *cobra.Command {
 		},
 	}
 	f := c.Flags()
-	f.StringVar(&dir, "dir", "", "целевой каталог репозитория (по умолчанию ./<name>)")
-	f.BoolVar(&multi, "multi", false, "multi-репозиторий (repo.manifest.yaml + шаблон в подкаталоге <name>/)")
-	f.BoolVar(&noGit, "no-git", false, "не выполнять git init и первый коммит")
+	f.StringVar(&dir, "dir", "", "target repository directory (defaults to ./<name>)")
+	f.BoolVar(&multi, "multi", false, "multi-repository (repo.manifest.yaml + template in <name>/ subdirectory)")
+	f.BoolVar(&noGit, "no-git", false, "skip git init and first commit")
 	return c
 }
 
@@ -62,13 +62,13 @@ func newLintTemplateCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "lint-template",
-		Short: "Селфтест репозитория шаблона по угловым комбинациям настроек",
-		Long: "Находит манифест(ы) репозитория шаблона (single в корне или multi через " +
-			"repo.manifest.yaml/скан), валидирует каждый шаблон и прогоняет пробный рендер " +
-			"по всем «угловым» комбинациям настроек (): defaults, каждая select/" +
-			"multiselect-опция, все toggle разом (all-on) и полный max. Для каждой комбо " +
-			"проверяет рендер, NOTES, парс генераторов, ai-config и YAML плейбуков окружения.\n\n" +
-			"Печатает таблицу (шаблон × комбо × статус); возвращает код 1 при провале.",
+		Short: "Self-test template repository across corner settings combinations",
+		Long: "Finds template repository manifest(s) (single at root or multi via " +
+			"repo.manifest.yaml/scan), validates each template, and runs trial renders " +
+			"across all \"corner\" settings combinations: defaults, each select/" +
+			"multiselect option, all toggles together (all-on), and full max. For each combo, " +
+			"checks rendering, NOTES, generator parsing, ai-config, and YAML environment playbooks.\n\n" +
+			"Prints table (template × combo × status); returns code 1 on failure.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			res, err := inittemplate.Lint(inittemplate.LintOptions{
@@ -81,13 +81,13 @@ func newLintTemplateCmd() *cobra.Command {
 				return err
 			}
 			if res.Failed {
-				return &ExitError{Code: 1, Err: errors.New("lint-template: обнаружены провалы")}
+				return &ExitError{Code: 1, Err: errors.New("lint-template: failures detected")}
 			}
 			return nil
 		},
 	}
 	f := c.Flags()
-	f.StringVar(&path, "path", ".", "корень репозитория шаблона")
-	f.StringVar(&combo, "combo", "", "фильтр по имени комбинации (точное совпадение)")
+	f.StringVar(&path, "path", ".", "template repository root")
+	f.StringVar(&combo, "combo", "", "filter by combination name (exact match)")
 	return c
 }

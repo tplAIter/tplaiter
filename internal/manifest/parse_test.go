@@ -79,23 +79,23 @@ func TestLoadProject(t *testing.T) {
 func TestLoadTemplate_ForeignAPIVersion(t *testing.T) {
 	_, err := LoadTemplate(fixture("invalid/foreign_apiversion.yaml"))
 	if err == nil {
-		t.Fatal("ожидалась ошибка для чужого apiVersion")
+		t.Fatal("expected an error for a foreign apiVersion")
 	}
 	if !errors.Is(err, ErrUnsupportedAPIVersion) {
 		t.Fatalf("err = %v, want ErrUnsupportedAPIVersion", err)
 	}
-	if !strings.Contains(err.Error(), "обнови tplater") {
-		t.Errorf("сообщение не содержит призыв обновиться: %v", err)
+	if !strings.Contains(err.Error(), "update tplater") {
+		t.Errorf("message does not ask to update: %v", err)
 	}
 }
 
 func TestLoadTemplate_UnknownField(t *testing.T) {
 	_, err := LoadTemplate(fixture("invalid/unknown_field.yaml"))
 	if err == nil {
-		t.Fatal("ожидалась ошибка для неизвестного поля")
+		t.Fatal("expected an error for an unknown field")
 	}
 	if !strings.Contains(err.Error(), "bogusField") {
-		t.Errorf("ошибка не указывает на неизвестное поле: %v", err)
+		t.Errorf("error does not point to the unknown field: %v", err)
 	}
 }
 
@@ -103,7 +103,7 @@ func TestLoadTemplate_WrongKind(t *testing.T) {
 	// project.yaml has kind Project; LoadTemplate must reject it.
 	_, err := LoadTemplate(fixture("project.yaml"))
 	if err == nil {
-		t.Fatal("ожидалась ошибка неверного kind")
+		t.Fatal("expected an invalid kind error")
 	}
 }
 

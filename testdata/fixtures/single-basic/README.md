@@ -1,5 +1,5 @@
 # single-basic
 
-Фикстура engine-тестов tplater. См. `template.manifest.yaml` для набора
-настроек и правил. Дерево `files/` — не настоящий проект, только материал для
-проверки механик рендера.
+Engine test fixture for tplater. See `template.manifest.yaml` for configuration
+settings and rules. The `files/` tree is not a real project, only test material to
+verify render mechanics.

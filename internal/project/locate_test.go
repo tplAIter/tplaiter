@@ -109,7 +109,7 @@ func TestFindRoot_StopsAtHome(t *testing.T) {
 
 	_, _, err := FindRoot(deep)
 	if !errors.Is(err, ErrNotInProject) {
-		t.Fatalf("err = %v, want ErrNotInProject (маркер выше $HOME не должен быть найден)", err)
+		t.Fatalf("err = %v, want ErrNotInProject (a marker above $HOME must not be found)", err)
 	}
 }
 

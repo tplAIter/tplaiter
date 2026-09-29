@@ -29,7 +29,7 @@ var gitExec = execx.Exec{}
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := gitExec.LookPath("git"); err != nil {
-		t.Skip("git не найден в PATH — интеграционный тест пропущен")
+		t.Skip("git not found in PATH — integration test skipped")
 	}
 }
 
@@ -203,7 +203,7 @@ func TestRun_RepeatIntoNonEmpty_Errors(t *testing.T) {
 	}
 	err := Run(context.Background(), opts, newTestDeps(mgr, home, &out, &errOut))
 	if err == nil {
-		t.Fatalf("ожидалась ошибка при непустом каталоге")
+		t.Fatalf("expected an error for a non-empty directory")
 	}
 	// The existing file is untouched (the directory is not removed).
 	mustExist(t, sentinel)
@@ -235,15 +235,15 @@ func TestRun_RequiredHookFails_RemovesTarget(t *testing.T) {
 	}
 	err := Run(context.Background(), opts, newTestDeps(mgr, home, &out, &errOut))
 	if err == nil {
-		t.Fatalf("ожидалась ошибка провалившегося hook")
+		t.Fatalf("expected a failed hook error")
 	}
 	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
-		t.Errorf("каталог не удалён после провала hook: %v", statErr)
+		t.Errorf("directory not removed after the hook failure: %v", statErr)
 	}
 	// The project is not registered.
 	projects, _ := state.LoadProjects(home)
 	if len(projects.Items) != 0 {
-		t.Errorf("проект зарегистрирован несмотря на провал: %+v", projects.Items)
+		t.Errorf("project registered despite the failure: %+v", projects.Items)
 	}
 }
 
@@ -315,7 +315,7 @@ func TestCopyResources_None(t *testing.T) {
 	for _, sub := range []string{"environment", "generators", "ai-config"} {
 		p := filepath.Join(target, ".tplaiter", sub)
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
-			t.Errorf("недекларированный ресурс создан: %s (%v)", p, err)
+			t.Errorf("undeclared resource created: %s (%v)", p, err)
 		}
 	}
 }
@@ -332,33 +332,33 @@ func TestSlugify(t *testing.T) {
 	for in, want := range cases {
 		got, err := Slugify(in)
 		if err != nil {
-			t.Errorf("Slugify(%q) ошибка: %v", in, err)
+			t.Errorf("Slugify(%q) error: %v", in, err)
 			continue
 		}
 		if got != want {
-			t.Errorf("Slugify(%q) = %q, ожидался %q", in, got, want)
+			t.Errorf("Slugify(%q) = %q, expected %q", in, got, want)
 		}
 	}
 	for _, bad := range []string{"", "  ", "1abc", "_leading", "нельзя"} {
 		if _, err := Slugify(bad); err == nil {
-			t.Errorf("Slugify(%q) должен был вернуть ошибку", bad)
+			t.Errorf("Slugify(%q) should have returned an error", bad)
 		}
 	}
 }
 
 func TestCheckTplaterVersion(t *testing.T) {
 	if err := checkTplaterVersion(">=0.1.0", "v1.0.0"); err != nil {
-		t.Errorf("удовлетворяющая версия: %v", err)
+		t.Errorf("satisfying version: %v", err)
 	}
 	if err := checkTplaterVersion(">=99.0.0", "v1.0.0"); err == nil {
-		t.Errorf("несовместимая версия должна была провалиться")
+		t.Errorf("an incompatible version should have failed")
 	}
 	// A dev build passes any gate.
 	if err := checkTplaterVersion(">=99.0.0", "dev"); err != nil {
-		t.Errorf("dev должен проходить гейт: %v", err)
+		t.Errorf("dev must pass the gate: %v", err)
 	}
 	if err := checkTplaterVersion("", "dev"); err != nil {
-		t.Errorf("пустой constraint: %v", err)
+		t.Errorf("empty constraint: %v", err)
 	}
 }
 
@@ -370,10 +370,10 @@ func TestNewUUIDv4(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(id) != 36 || strings.Count(id, "-") != 4 {
-			t.Fatalf("некорректный формат uuid: %q", id)
+			t.Fatalf("invalid uuid format: %q", id)
 		}
 		if seen[id] {
-			t.Fatalf("повтор uuid: %q", id)
+			t.Fatalf("duplicate uuid: %q", id)
 		}
 		seen[id] = true
 	}
@@ -384,7 +384,7 @@ func TestNewUUIDv4(t *testing.T) {
 func mustExist(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Stat(path); err != nil {
-		t.Errorf("ожидался файл %s: %v", path, err)
+		t.Errorf("expected file %s: %v", path, err)
 	}
 }
 
@@ -402,7 +402,7 @@ func assertValidBaseline(t *testing.T, path string) {
 		t.Fatalf("baseline json: %v", err)
 	}
 	if b.Schema == 0 || len(b.Files) == 0 {
-		t.Errorf("baseline пуст/невалиден: %+v", b)
+		t.Errorf("baseline is empty/invalid: %+v", b)
 	}
 }
 

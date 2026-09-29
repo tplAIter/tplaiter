@@ -127,7 +127,7 @@ func TestProjectsPruneCmd_YesRemovesOnlyMissing(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("projects prune --yes error = %v", err)
 	}
-	if !strings.Contains(out.String(), "удалено записей: 2") {
+	if !strings.Contains(out.String(), "removed entries: 2") {
 		t.Errorf("output = %q, want mention of 2 removed records", out.String())
 	}
 
@@ -155,7 +155,7 @@ func TestProjectsPruneCmd_NothingMissing_NoOp(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("projects prune --yes error = %v", err)
 	}
-	if !strings.Contains(out.String(), "нет записей со статусом missing") {
+	if !strings.Contains(out.String(), "no entries with missing status") {
 		t.Errorf("output = %q, want no-op message", out.String())
 	}
 
@@ -181,7 +181,7 @@ func TestProjectsPruneCmd_WithoutYesNonInteractive_ErrorsWithoutRemoving(t *test
 	cmd.SetErr(&errBuf)
 	cmd.SetArgs(nil)
 	if err := cmd.Execute(); err == nil {
-		t.Fatal("projects prune без --yes в неинтерактивном режиме: error = nil, want ошибку с просьбой --yes")
+		t.Fatal("projects prune without --yes in non-interactive mode: error = nil, want an error asking for --yes")
 	}
 
 	projects, err := state.LoadProjects(home)
@@ -189,7 +189,7 @@ func TestProjectsPruneCmd_WithoutYesNonInteractive_ErrorsWithoutRemoving(t *test
 		t.Fatalf("LoadProjects() error = %v", err)
 	}
 	if len(projects.Items) != 1 {
-		t.Errorf("LoadProjects().Items = %+v, отказ подтверждения не должен удалять записи", projects.Items)
+		t.Errorf("LoadProjects().Items = %+v, a declined confirmation must not remove entries", projects.Items)
 	}
 }
 
@@ -207,7 +207,7 @@ func TestProjectSyncPreRun_SkipsForSkipList(t *testing.T) {
 			projectSyncPreRun(top, nil)
 
 			if _, err := os.Stat(filepath.Join(home, "projects.yaml")); err == nil {
-				t.Errorf("projectSyncPreRun() создал projects.yaml для пропускаемой команды %q", topName)
+				t.Errorf("projectSyncPreRun() created projects.yaml for skipped command %q", topName)
 			}
 		})
 	}
@@ -270,10 +270,10 @@ func TestProjectSyncPreRun_Integration_CommandInProjectUpdatesLastSeen(t *testin
 	}
 	ref, ok := projects.FindByID("proj-integration")
 	if !ok {
-		t.Fatalf("LoadProjects() не содержит авто-зарегистрированный проект, items=%+v", projects.Items)
+		t.Fatalf("LoadProjects() does not contain the auto-registered project, items=%+v", projects.Items)
 	}
 	if ref.LastSeenAt.IsZero() || time.Since(ref.LastSeenAt) > time.Minute {
-		t.Errorf("LastSeenAt = %v, want свежий (только что установленный) момент", ref.LastSeenAt)
+		t.Errorf("LastSeenAt = %v, want a fresh (just set) timestamp", ref.LastSeenAt)
 	}
 }
 
@@ -298,9 +298,9 @@ func TestProjectSyncPreRun_Integration_HelpDoesNotTrigger(t *testing.T) {
 	}
 
 	if len(rec.Calls) != 0 {
-		t.Errorf("help сделал %d network-подобных вызовов через runner, want 0", len(rec.Calls))
+		t.Errorf("help made %d network-like calls through runner, want 0", len(rec.Calls))
 	}
 	if _, err := os.Stat(filepath.Join(home, "projects.yaml")); err == nil {
-		t.Error("help создал projects.yaml — синхронизация реестра не должна триггериться для help")
+		t.Error("help created projects.yaml — registry sync must not trigger for help")
 	}
 }

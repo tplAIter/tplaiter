@@ -1,11 +1,11 @@
-Проект {{ .Project.Name }} ({{ .Project.Slug }}) создан из шаблона {{ .Template.Name }}@{{ .Template.Version }}.
+Project {{ .Project.Name }} ({{ .Project.Slug }}) created from template {{ .Template.Name }}@{{ .Template.Version }}.
 
-Настройки:
+Settings:
 - variant: {{ .Settings.variant }}{{ if is "variant" "advanced" }} (verbose={{ .Settings.verbose }}){{ end }}
-- feature_x: {{ if is "feature_x" "true" }}включён{{ else }}выключен{{ end }}
+- feature_x: {{ if is "feature_x" "true" }}enabled{{ else }}disabled{{ end }}
 
-Что дальше:
-  tplaiter run dev    # локальный запуск (замените заглушку в манифесте)
-  tplaiter run test   # прогон тестов
-{{ if is "variant" "advanced" }}  См. advanced/notes.md — материалы расширенного варианта.
+What's next:
+  tplaiter run dev    # local run (replace the stub in the manifest)
+  tplaiter run test   # run tests
+{{ if is "variant" "advanced" }}  See advanced/notes.md — advanced variant materials.
 {{ end }}

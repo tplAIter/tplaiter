@@ -51,7 +51,7 @@ func (m *Manager) resolveGitAuth(ctx context.Context, repoURL string, kind state
 		return m.storeTokenFromReader(host, tool, repoURL)
 	}
 	if !m.ui.Interactive {
-		m.warnf("токен для %s не найден, продолжаю без аутентификации (для приватного репозитория добавьте токен: `tplater auth add %s`)\n", host, host)
+		m.warnf("token for %s not found, continuing without authentication (for a private repository add token: `tplater auth add %s`)\n", host, host)
 		return nil, nil
 	}
 	return m.interactiveAuth(ctx, repoURL, host, kind, tool)
@@ -78,18 +78,18 @@ func (m *Manager) resolveGitAuthQuiet(repoURL string, kind state.RepoKind) ([]st
 // and reading from ui.In (using ui.ReadSecret for tokens when configured).
 func (m *Manager) interactiveAuth(ctx context.Context, repoURL, host string, kind state.RepoKind, tool string) ([]string, error) {
 	if m.authStore == nil {
-		m.warnf("хранилище токенов недоступно — продолжаю без аутентификации\n")
+		m.warnf("token store unavailable — continuing without authentication\n")
 		return nil, nil
 	}
 	bin, importable := importBinFor(kind)
 
-	m.printf("Токен для %s не найден. Выберите способ аутентификации:\n", host)
-	m.printf("  [t] ввести токен вручную\n")
+	m.printf("Token for %s not found. Choose authentication method:\n", host)
+	m.printf("  [t] enter token manually\n")
 	if importable {
-		m.printf("  [g] войти и импортировать токен через %s\n", bin)
+		m.printf("  [g] log in and import token through %s\n", bin)
 	}
-	m.printf("  [s] пропустить (без аутентификации)\n")
-	m.printf("Выбор [t/%ss]: ", pick(importable, "g/", ""))
+	m.printf("  [s] skip (without authentication)\n")
+	m.printf("Choice [t/%ss]: ", pick(importable, "g/", ""))
 
 	choice, err := m.readLine()
 	if err != nil {
@@ -100,15 +100,15 @@ func (m *Manager) interactiveAuth(ctx context.Context, repoURL, host string, kin
 		return m.storeTokenInteractive(host, tool, repoURL)
 	case "g":
 		if !importable {
-			m.warnf("импорт через glab/gh недоступен для этого хоста — введите токен вручную\n")
+			m.warnf("import through glab/gh unavailable for this host — enter token manually\n")
 			return m.storeTokenInteractive(host, tool, repoURL)
 		}
 		return m.importAndStore(ctx, bin, tool, host, repoURL)
 	case "s":
-		m.warnf("продолжаю без аутентификации\n")
+		m.warnf("continuing without authentication\n")
 		return nil, nil
 	default:
-		return nil, fmt.Errorf("repo: неизвестный выбор %q", choice)
+		return nil, fmt.Errorf("repo: unknown choice %q", choice)
 	}
 }
 
@@ -128,11 +128,11 @@ func importBinFor(kind state.RepoKind) (bin string, ok bool) {
 // returns helper-env on success. A missing binary or login produces a clear
 // instructional error from auth.ImportFromTool.
 func (m *Manager) importAndStore(ctx context.Context, bin, tool, host, repoURL string) ([]string, error) {
-	m.printf("Пробую импортировать токен через `%s auth token`…\n", bin)
+	m.printf("Trying to import token through `%s auth token`…\n", bin)
 	if _, err := auth.ImportFromTool(ctx, m.authStore, m.runner, bin, tool, host); err != nil {
 		return nil, err
 	}
-	m.printf("Токен импортирован из %s и сохранён для %s\n", bin, host)
+	m.printf("Token imported from %s and saved for %s\n", bin, host)
 	return auth.HelperEnv(repoURL), nil
 }
 
@@ -148,9 +148,9 @@ func (m *Manager) storeTokenInteractive(host, tool, repoURL string) ([]string, e
 		err   error
 	)
 	if m.ui.ReadSecret != nil {
-		token, err = m.ui.ReadSecret("Токен: ")
+		token, err = m.ui.ReadSecret("Token: ")
 	} else {
-		m.printf("Токен: ")
+		m.printf("Token: ")
 		token, err = m.readLine()
 	}
 	if err != nil {
@@ -162,39 +162,39 @@ func (m *Manager) storeTokenInteractive(host, tool, repoURL string) ([]string, e
 // storeTokenFromReader reads the complete token from ui.In (--token-stdin mode).
 func (m *Manager) storeTokenFromReader(host, tool, repoURL string) ([]string, error) {
 	if m.ui.In == nil {
-		return nil, errors.New("repo: --token-stdin задан, но stdin не подключён")
+		return nil, errors.New("repo: --token-stdin set, but stdin not connected")
 	}
 	data, err := io.ReadAll(m.in)
 	if err != nil {
-		return nil, fmt.Errorf("repo: чтение токена из stdin: %w", err)
+		return nil, fmt.Errorf("repo: reading token from stdin: %w", err)
 	}
 	return m.putToken(host, tool, repoURL, strings.TrimSpace(string(data)))
 }
 
 func (m *Manager) putToken(host, tool, repoURL, token string) ([]string, error) {
 	if token == "" {
-		return nil, errors.New("repo: пустой токен")
+		return nil, errors.New("repo: empty token")
 	}
 	if _, err := m.authStore.Put(auth.Credential{
 		Host:  host,
 		Tool:  tool,
 		Token: token,
-		Note:  "добавлен при `repo add`",
+		Note:  "added by `repo add`",
 	}); err != nil {
 		return nil, err
 	}
-	m.printf("Токен сохранён для %s\n", host)
+	m.printf("Token saved for %s\n", host)
 	return auth.HelperEnv(repoURL), nil
 }
 
 // readLine reads one line from ui.In without the trailing newline.
 func (m *Manager) readLine() (string, error) {
 	if m.in == nil {
-		return "", errors.New("repo: ввод недоступен (stdin не подключён)")
+		return "", errors.New("repo: input unavailable (stdin not connected)")
 	}
 	line, err := m.in.ReadString('\n')
 	if err != nil && err != io.EOF {
-		return "", fmt.Errorf("repo: чтение ввода: %w", err)
+		return "", fmt.Errorf("repo: reading input: %w", err)
 	}
 	return strings.TrimRight(line, "\r\n"), nil
 }
@@ -203,9 +203,9 @@ func (m *Manager) readLine() (string, error) {
 func tokenHint(tool string) string {
 	switch tool {
 	case "gitlab":
-		return "Выпустите Personal Access Token в GitLab (Settings → Access Tokens), scope: read_repository."
+		return "Issue a Personal Access Token in GitLab (Settings → Access Tokens), scope: read_repository."
 	case "github":
-		return "Выпустите Personal Access Token в GitHub (Settings → Developer settings → Tokens), scope: repo (read)."
+		return "Issue a Personal Access Token in GitHub (Settings → Developer settings → Tokens), scope: repo (read)."
 	default:
 		return ""
 	}

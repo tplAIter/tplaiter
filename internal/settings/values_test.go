@@ -21,16 +21,16 @@ func TestDefaultValues_Nested3(t *testing.T) {
 		"extras":      []string{},
 	}
 	if len(got) != len(want) {
-		t.Fatalf("групп в дефолтах = %d, ожидалось %d: %#v", len(got), len(want), got)
+		t.Fatalf("groups in defaults = %d, expected %d: %#v", len(got), len(want), got)
 	}
 	for k, wv := range want {
 		gv, ok := got[k]
 		if !ok {
-			t.Errorf("нет группы %q в дефолтах", k)
+			t.Errorf("group %q missing from defaults", k)
 			continue
 		}
 		if !reflect.DeepEqual(gv, wv) {
-			t.Errorf("группа %q = %#v (%T), ожидалось %#v (%T)", k, gv, gv, wv, wv)
+			t.Errorf("group %q = %#v (%T), expected %#v (%T)", k, gv, gv, wv, wv)
 		}
 	}
 }
@@ -51,7 +51,7 @@ func TestDefaultValues_FullFixture(t *testing.T) {
 	}
 	for k, wv := range checks {
 		if !reflect.DeepEqual(got[k], wv) {
-			t.Errorf("группа %q = %#v, ожидалось %#v", k, got[k], wv)
+			t.Errorf("group %q = %#v, expected %#v", k, got[k], wv)
 		}
 	}
 }
@@ -61,6 +61,6 @@ func TestValues_Clone_IsolatesSlices(t *testing.T) {
 	c := v.Clone()
 	c["brokers"].([]string)[0] = "rabbitmq"
 	if v["brokers"].([]string)[0] != "kafka" {
-		t.Errorf("Clone не изолировал срез: %v", v["brokers"])
+		t.Errorf("Clone did not isolate the slice: %v", v["brokers"])
 	}
 }

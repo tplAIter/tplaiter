@@ -52,7 +52,7 @@ func newHome(t *testing.T) string {
 	home := t.TempDir()
 	cfg := "version: 1\nrepos: []\ndefaults: {}\nupdates:\n  check: false\n"
 	if err := os.WriteFile(filepath.Join(home, "config.yaml"), []byte(cfg), 0o600); err != nil {
-		t.Fatalf("newHome: запись config.yaml: %v", err)
+		t.Fatalf("newHome: writing config.yaml: %v", err)
 	}
 	return home
 }
@@ -114,7 +114,7 @@ func mustRun(t *testing.T, home, dir string, args ...string) runResult {
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git не найден в PATH — e2e пропущен")
+		t.Skip("git not found in PATH — e2e skipped")
 	}
 }
 
@@ -193,7 +193,7 @@ func fixturesDir(t *testing.T) string {
 		t.Fatalf("fixturesDir: %v", err)
 	}
 	if _, err := os.Stat(abs); err != nil {
-		t.Fatalf("fixturesDir: %s: %v (запущен ли тест из tests/?)", abs, err)
+		t.Fatalf("fixturesDir: %s: %v (is the test running from tests/?)", abs, err)
 	}
 	return abs
 }
@@ -220,7 +220,7 @@ kind: Template
 metadata:
   name: gatetpl
   version: 0.1.0
-  description: "e2e-фикстура версия-гейта (requires.tplaiter недостижим)."
+  description: "e2e fixture for the version gate (requires.tplaiter is unreachable)."
 engine:
   type: gotemplate
   root: files
@@ -255,7 +255,7 @@ func buildVersionGateOrigin(t *testing.T) string {
 func mustContain(t *testing.T, s, sub, what string) {
 	t.Helper()
 	if !strings.Contains(s, sub) {
-		t.Errorf("%s: ожидалась подстрока %q, не найдена в:\n%s", what, sub, s)
+		t.Errorf("%s: expected substring %q, not found in:\n%s", what, sub, s)
 	}
 }
 
@@ -266,7 +266,7 @@ func mustReadFile(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("чтение %s: %v", path, err)
+		t.Fatalf("reading %s: %v", path, err)
 	}
 	return string(data)
 }

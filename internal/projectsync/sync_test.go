@@ -66,7 +66,7 @@ func mustFindByID(t *testing.T, home, id string) state.ProjectRef {
 	}
 	ref, ok := projects.FindByID(id)
 	if !ok {
-		t.Fatalf("LoadProjects() не содержит записи с id %q, items=%+v", id, projects.Items)
+		t.Fatalf("LoadProjects() does not contain an entry with id %q, items=%+v", id, projects.Items)
 	}
 	return ref
 }
@@ -78,10 +78,10 @@ func TestSyncCurrent_OutsideProject_NoOp(t *testing.T) {
 	cwd := t.TempDir() // No .tplaiter/project.yaml inside.
 
 	if err := SyncCurrent(home, cwd, time.Now()); err != nil {
-		t.Fatalf("SyncCurrent() вне проекта error = %v, want nil", err)
+		t.Fatalf("SyncCurrent() outside a project error = %v, want nil", err)
 	}
 	if _, err := os.Stat(home); err == nil {
-		t.Errorf("SyncCurrent() вне проекта создал home %s, want no-op", home)
+		t.Errorf("SyncCurrent() outside a project created home %s, want no-op", home)
 	}
 }
 
@@ -121,19 +121,19 @@ func TestSyncCurrent_MovedDirectory_UpdatesPathKeepsCreatedAtAndTemplate(t *test
 
 	ref := mustFindByID(t, home, "proj-1")
 	if cleanPath(t, ref.Path) != cleanPath(t, newPath) {
-		t.Errorf("Path = %q, want %q (переезд каталога не отследился)", ref.Path, newPath)
+		t.Errorf("Path = %q, want %q (directory relocation was not tracked)", ref.Path, newPath)
 	}
 	if !ref.LastSeenAt.Equal(now) {
 		t.Errorf("LastSeenAt = %v, want %v", ref.LastSeenAt, now)
 	}
 	if !ref.CreatedAt.Equal(created) {
-		t.Errorf("CreatedAt = %v, want %v (не должен трогаться при обновлении)", ref.CreatedAt, created)
+		t.Errorf("CreatedAt = %v, want %v (must not change on update)", ref.CreatedAt, created)
 	}
 	if ref.Template != (state.TemplateSelection{Repo: "example", Name: "go-service", Version: "1.4.0"}) {
-		t.Errorf("Template = %+v, не должен трогаться при обновлении", ref.Template)
+		t.Errorf("Template = %+v, must not change on update", ref.Template)
 	}
 	if ref.BaselineSHA != sha {
-		t.Errorf("BaselineSHA = %q, want %q (baseline.json не менялся)", ref.BaselineSHA, sha)
+		t.Errorf("BaselineSHA = %q, want %q (baseline.json did not change)", ref.BaselineSHA, sha)
 	}
 }
 
@@ -159,10 +159,10 @@ func TestSyncCurrent_UnregisteredClone_AutoRegisters(t *testing.T) {
 	}
 	wantTemplate := state.TemplateSelection{Repo: "example", Name: "python-service", Version: "2.0.0"}
 	if ref.Template != wantTemplate {
-		t.Errorf("Template = %+v, want %+v (из .tplaiter/project.yaml)", ref.Template, wantTemplate)
+		t.Errorf("Template = %+v, want %+v (from .tplaiter/project.yaml)", ref.Template, wantTemplate)
 	}
 	if !ref.CreatedAt.Equal(now) || !ref.LastSeenAt.Equal(now) {
-		t.Errorf("CreatedAt/LastSeenAt = %v/%v, want оба = %v (первая регистрация)", ref.CreatedAt, ref.LastSeenAt, now)
+		t.Errorf("CreatedAt/LastSeenAt = %v/%v, want both = %v (first registration)", ref.CreatedAt, ref.LastSeenAt, now)
 	}
 	if ref.BaselineSHA != sha {
 		t.Errorf("BaselineSHA = %q, want %q", ref.BaselineSHA, sha)
@@ -199,10 +199,10 @@ func TestSyncCurrent_BaselineSHAMismatch_Updates(t *testing.T) {
 
 	ref := mustFindByID(t, home, "proj-drift")
 	if ref.BaselineSHA != newSHA {
-		t.Errorf("BaselineSHA = %q, want %q (расхождение должно обновиться)", ref.BaselineSHA, newSHA)
+		t.Errorf("BaselineSHA = %q, want %q (divergence must be updated)", ref.BaselineSHA, newSHA)
 	}
 	if !ref.CreatedAt.Equal(created) {
-		t.Errorf("CreatedAt = %v, не должен трогаться", ref.CreatedAt)
+		t.Errorf("CreatedAt = %v, must not change", ref.CreatedAt)
 	}
 	if !ref.LastSeenAt.Equal(now) {
 		t.Errorf("LastSeenAt = %v, want %v", ref.LastSeenAt, now)
@@ -225,9 +225,9 @@ func TestSyncCurrent_BrokenProjectYAML_ReturnsErrorNotPanics(t *testing.T) {
 
 	err := SyncCurrent(home, dir, time.Now()) // Must not panic.
 	if err == nil {
-		t.Fatal("SyncCurrent() error = nil, want ошибку разбора маркера")
+		t.Fatal("SyncCurrent() error = nil, want a marker parse error")
 	}
 	if errors.Is(err, project.ErrNotInProject) {
-		t.Errorf("SyncCurrent() error = %v, не должен быть ErrNotInProject (маркер найден, но битый)", err)
+		t.Errorf("SyncCurrent() error = %v, must not be ErrNotInProject (marker found but corrupt)", err)
 	}
 }

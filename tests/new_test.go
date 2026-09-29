@@ -20,9 +20,9 @@ func TestNewErrors(t *testing.T) {
 		res := run(t, home, "", "new", "example/does-not-exist-template", "proj",
 			"--dir", filepath.Join(t.TempDir(), "proj"), "--defaults")
 		if res.ExitCode == 0 {
-			t.Fatal("new с несуществующим шаблоном: ожидался ненулевой exit, получен 0")
+			t.Fatal("new with a non-existent template: expected a non-zero exit, got 0")
 		}
-		mustContain(t, res.Stderr+res.Stdout, "does-not-exist-template", "new с несуществующим шаблоном")
+		mustContain(t, res.Stderr+res.Stdout, "does-not-exist-template", "new with a non-existent template")
 	})
 
 	t.Run("occupied_directory", func(t *testing.T) {
@@ -31,7 +31,7 @@ func TestNewErrors(t *testing.T) {
 
 		again := run(t, home, "", "new", "example/single-basic", "Second", "--dir", dir, "--defaults")
 		if again.ExitCode == 0 {
-			t.Fatal("повторный new в занятый каталог: ожидался ненулевой exit, получен 0")
+			t.Fatal("repeated new into an occupied directory: expected a non-zero exit, got 0")
 		}
 	})
 
@@ -42,9 +42,9 @@ func TestNewErrors(t *testing.T) {
 		res := run(t, home, "", "new", "gaterepo/gatetpl", "proj",
 			"--dir", filepath.Join(t.TempDir(), "proj"), "--defaults")
 		if res.ExitCode == 0 {
-			t.Fatal("new с requires.tplaiter >=99.0.0: ожидался ненулевой exit, получен 0")
+			t.Fatal("new with requires.tplaiter >=99.0.0: expected a non-zero exit, got 0")
 		}
 		combined := res.Stderr + res.Stdout
-		mustContain(t, combined, "99.0.0", "new с недостижимым версия-гейтом")
+		mustContain(t, combined, "99.0.0", "new with an unreachable version gate")
 	})
 }

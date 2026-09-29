@@ -20,7 +20,7 @@ const markdownWordWrap = 100
 func Markdown(w io.Writer, src []byte, colorEnabled bool) error {
 	if !colorEnabled {
 		if _, err := w.Write(src); err != nil {
-			return fmt.Errorf("ui: запись markdown: %w", err)
+			return fmt.Errorf("ui: writing markdown: %w", err)
 		}
 		if len(src) == 0 || src[len(src)-1] != '\n' {
 			fmt.Fprintln(w)
@@ -30,11 +30,11 @@ func Markdown(w io.Writer, src []byte, colorEnabled bool) error {
 
 	r, err := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(markdownWordWrap))
 	if err != nil {
-		return fmt.Errorf("ui: инициализация markdown-рендера: %w", err)
+		return fmt.Errorf("ui: initializing markdown renderer: %w", err)
 	}
 	out, err := r.Render(string(src))
 	if err != nil {
-		return fmt.Errorf("ui: рендер markdown: %w", err)
+		return fmt.Errorf("ui: rendering markdown: %w", err)
 	}
 	fmt.Fprint(w, out)
 	return nil

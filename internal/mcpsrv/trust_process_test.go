@@ -148,7 +148,7 @@ func TestInstalledTransportBoundsOutputAndDiagnostics(t *testing.T) {
 		t.Fatalf("successful stderr leaked: %q", text)
 	}
 	res, err = s.runCLI(context.Background(), "", helperArgs("empty"), 10*time.Second)
-	if err != nil || resultText(t, toolResult(res, err)) != "(команда завершилась успешно, вывод пуст)" {
+	if err != nil || resultText(t, toolResult(res, err)) != "(command completed successfully, output is empty)" {
 		t.Fatalf("empty result=%+v err=%v", res, err)
 	}
 	for _, tc := range []struct{ mode, want string }{{"stderr", "MCP_CLI_FAILED"}, {"overflow", "MCP_OUTPUT_LIMIT"}} {

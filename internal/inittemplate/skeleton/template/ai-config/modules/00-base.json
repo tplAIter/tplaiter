@@ -1,9 +1,9 @@
 {
   "id": "00-base",
-  "title": "Базовые правила шаблона",
+  "title": "Base template rules",
   "activation": "always",
   "globs": [],
-  "description": "Базовый безусловный модуль правил.",
+  "description": "Base unconditional rules module.",
   "when": "",
   "rule_file": "rules/00-base.md",
   "doc_file": "docs/00-base.md"

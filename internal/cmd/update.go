@@ -47,15 +47,15 @@ func newUpdateCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunTrustOwned),
 
 		Use:   "update",
-		Short: "Обновить проект на новую версию шаблона (3-way merge)",
-		Long: "Обновляет сгенерированный проект на целевую версию шаблона по модели 3-way merge " +
-			"(): base — чистый рендер зафиксированной версии, target — рендер новой, " +
-			"пользовательские правила определяются по .tplaiter/baseline.json. Непересекающиеся " +
-			"правки сливаются автоматически, пересекающиеся дают конфликт-маркеры " +
-			"(<<<<<<< / ======= / >>>>>>>) и код выхода 2.\n\n" +
-			"Без --to берётся старший стабильный тег из кеша репозитория (`tplater repo update` " +
-			"подтягивает новые теги). --dry-run считает план без записи; --check сканирует дерево " +
-			"на оставшиеся маркеры конфликта (код выхода 1); --all обходит все проекты реестра.",
+		Short: "Update project to new template version (3-way merge)",
+		Long: "Updates the generated project to target template version using the 3-way merge model " +
+			"(base is a clean render of the pinned version, target is a render of the new version; " +
+			"user edits are determined by .tplaiter/baseline.json). Non-overlapping edits merge automatically; " +
+			"overlapping edits produce conflict markers " +
+			"(<<<<<<< / ======= / >>>>>>>) and exit code 2.\n\n" +
+			"Without --to, uses the latest stable tag from repository cache (`tplater repo update` " +
+			"fetches new tags). --dry-run computes the plan without writing; --check scans the tree " +
+			"for remaining conflict markers (exit code 1); --all processes all registry projects.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
@@ -104,11 +104,11 @@ func newUpdateCmd() *cobra.Command {
 	}
 
 	f := c.Flags()
-	f.StringVar(&to, "to", "", "целевая версия шаблона (по умолчанию — старший стабильный тег)")
-	f.BoolVar(&all, "all", false, "обновить все проекты реестра со статусом ok")
-	f.BoolVar(&dryRun, "dry-run", false, "показать план без изменения файлов")
-	f.BoolVar(&check, "check", false, "проверить дерево на маркеры конфликта (код выхода 1 при находке)")
-	f.StringVar(&sourceInput, "source-input", "", "закрытый JSON выбора целевого источника")
+	f.StringVar(&to, "to", "", "target template version (by default — latest stable tag)")
+	f.BoolVar(&all, "all", false, "update all registry projects with status ok")
+	f.BoolVar(&dryRun, "dry-run", false, "show plan without modifying files")
+	f.BoolVar(&check, "check", false, "check tree for conflict markers (exit code 1 if found)")
+	f.StringVar(&sourceInput, "source-input", "", "sealed JSON of target source selection")
 	return c
 }
 

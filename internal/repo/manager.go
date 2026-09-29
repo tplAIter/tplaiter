@@ -104,7 +104,7 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) error {
 		return err
 	}
 	if opts.URL == "" {
-		return errors.New("repo: пустой URL")
+		return errors.New("repo: empty URL")
 	}
 
 	cfg, err := state.LoadConfig(m.home)
@@ -112,7 +112,7 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) error {
 		return err
 	}
 	if _, ok := findRepo(cfg.Repos, opts.Alias); ok {
-		return fmt.Errorf("repo: алиас %q уже используется", opts.Alias)
+		return fmt.Errorf("repo: alias %q already in use", opts.Alias)
 	}
 
 	host, _ := parseGitURL(opts.URL)
@@ -127,7 +127,7 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) error {
 	// Remove a possible leftover from an interrupted attempt with the same alias.
 	_ = os.RemoveAll(dest)
 	if err := os.MkdirAll(m.reposDir(), 0o700); err != nil {
-		return fmt.Errorf("repo: создание каталога кеша: %w", err)
+		return fmt.Errorf("repo: creating cache directory: %w", err)
 	}
 
 	cloneArgs := []string{"clone", "--filter=blob:none"}
@@ -137,12 +137,12 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) error {
 	cloneArgs = append(cloneArgs, opts.URL, dest)
 
 	sp := ui.NewSpinner(m.ui.Err, m.ui.Palette)
-	sp.Start("Клонирую %s → %s", opts.URL, dest)
+	sp.Start("Cloning %s → %s", opts.URL, dest)
 	_, cloneErr := m.git(ctx, "", cloneArgs, authEnv)
 	sp.Stop()
 	if cloneErr != nil {
 		_ = os.RemoveAll(dest)
-		return fmt.Errorf("repo: клонирование %s: %w", opts.URL, cloneErr)
+		return fmt.Errorf("repo: cloning %s: %w", opts.URL, cloneErr)
 	}
 
 	branch := opts.Branch
@@ -165,7 +165,7 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) error {
 			return err
 		}
 		if _, ok := findRepo(cfg.Repos, opts.Alias); ok {
-			return fmt.Errorf("repo: алиас %q уже используется", opts.Alias)
+			return fmt.Errorf("repo: alias %q already in use", opts.Alias)
 		}
 		cfg.Repos = append(cfg.Repos, ref)
 		if err := state.SaveConfig(m.home, cfg); err != nil {
@@ -177,7 +177,7 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) error {
 		return err
 	}
 
-	m.printf("Добавлен репозиторий %s (%s), шаблонов: %d\n", opts.Alias, kind, len(entries))
+	m.printf("Repository %s (%s) added, templates: %d\n", opts.Alias, kind, len(entries))
 	return nil
 }
 
@@ -189,7 +189,7 @@ func (m *Manager) Remove(alias string) error {
 			return err
 		}
 		if _, ok := findRepo(cfg.Repos, alias); !ok {
-			return fmt.Errorf("repo: репозиторий %q не найден", alias)
+			return fmt.Errorf("repo: repository %q not found", alias)
 		}
 		cfg.Repos = removeRepo(cfg.Repos, alias)
 		if err := state.SaveConfig(m.home, cfg); err != nil {
@@ -208,9 +208,9 @@ func (m *Manager) Remove(alias string) error {
 	}
 
 	if err := os.RemoveAll(m.cloneDir(alias)); err != nil {
-		return fmt.Errorf("repo: удаление клона %q: %w", alias, err)
+		return fmt.Errorf("repo: deleting clone %q: %w", alias, err)
 	}
-	m.printf("Удалён репозиторий %s\n", alias)
+	m.printf("Repository %s removed\n", alias)
 	return nil
 }
 
@@ -230,19 +230,19 @@ func (m *Manager) Update(ctx context.Context, alias string) error {
 	} else {
 		ref, ok := findRepo(cfg.Repos, alias)
 		if !ok {
-			return fmt.Errorf("repo: репозиторий %q не найден", alias)
+			return fmt.Errorf("repo: repository %q not found", alias)
 		}
 		targets = []state.RepoRef{ref}
 	}
 	if len(targets) == 0 {
-		m.printf("Нет добавленных репозиториев\n")
+		m.printf("No repositories added\n")
 		return nil
 	}
 
 	for _, ref := range targets {
 		dest := m.cloneDir(ref.Alias)
 		if _, statErr := os.Stat(dest); statErr != nil {
-			m.warnf("репозиторий %q: клон отсутствует (%s) — пропускаю; выполните `tplater repo remove/add`\n", ref.Alias, dest)
+			m.warnf("repository %q: clone missing (%s) — skipping; run `tplater repo remove/add`\n", ref.Alias, dest)
 			continue
 		}
 		authEnv, aerr := m.resolveGitAuthQuiet(ref.URL, ref.Type)
@@ -250,7 +250,7 @@ func (m *Manager) Update(ctx context.Context, alias string) error {
 			return aerr
 		}
 		sp := ui.NewSpinner(m.ui.Err, m.ui.Palette)
-		sp.Start("Обновляю %s", ref.Alias)
+		sp.Start("Updating %s", ref.Alias)
 		_, fetchErr := m.git(ctx, dest, []string{"fetch", "--tags", "--force", "--prune", "origin"}, authEnv)
 		sp.Stop()
 		if fetchErr != nil {
@@ -275,7 +275,7 @@ func (m *Manager) Update(ctx context.Context, alias string) error {
 				return fmt.Errorf("repo: reset %q@%s: %w", ref.Alias, branch, err)
 			}
 		} else {
-			m.warnf("репозиторий %q: detached HEAD в кеше — пропускаю fast-forward рабочего дерева, только переиндексирую\n", ref.Alias)
+			m.warnf("repository %q: detached HEAD in cache — skipping working tree fast-forward, reindexing only\n", ref.Alias)
 		}
 
 		entries, err := m.scanRepo(ctx, dest, branch, false)
@@ -287,7 +287,7 @@ func (m *Manager) Update(ctx context.Context, alias string) error {
 		}); err != nil {
 			return err
 		}
-		m.printf("  %s: шаблонов %d\n", ref.Alias, len(entries))
+		m.printf("  %s: templates %d\n", ref.Alias, len(entries))
 	}
 	return nil
 }
@@ -349,7 +349,7 @@ func (m *Manager) loadIndex() (state.Index, error) {
 	idx, err := state.LoadIndex(m.home)
 	if err != nil {
 		if isIndexCorrupted(err) {
-			m.warnf("index.yaml повреждён — перестраиваю кеш\n")
+			m.warnf("index.yaml corrupted — rebuilding cache\n")
 			return state.NewIndex(m.now()), nil
 		}
 		return state.Index{}, err
@@ -400,17 +400,17 @@ func (m *Manager) warnf(format string, a ...any) {
 	if m.ui.Err == nil {
 		return
 	}
-	fmt.Fprint(m.ui.Err, m.ui.Palette.Warn("предупреждение: "))
+	fmt.Fprint(m.ui.Err, m.ui.Palette.Warn("warning: "))
 	fmt.Fprintf(m.ui.Err, format, a...)
 }
 
 // validateAlias checks the alias format (^[a-z][a-z0-9-]*$).
 func validateAlias(alias string) error {
 	if alias == "" {
-		return errors.New("repo: пустой алиас")
+		return errors.New("repo: empty alias")
 	}
 	if !aliasRe.MatchString(alias) {
-		return fmt.Errorf("repo: некорректный алиас %q (ожидается ^[a-z][a-z0-9-]*$)", alias)
+		return fmt.Errorf("repo: invalid alias %q (expected ^[a-z][a-z0-9-]*$)", alias)
 	}
 	return nil
 }

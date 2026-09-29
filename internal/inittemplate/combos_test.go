@@ -48,7 +48,7 @@ func TestCombos_Composition(t *testing.T) {
 	got := make(map[string]settings.Values, len(combos))
 	for _, c := range combos {
 		if _, dup := got[c.Name]; dup {
-			t.Fatalf("дублирующееся имя комбо %q", c.Name)
+			t.Fatalf("duplicate combo name %q", c.Name)
 		}
 		got[c.Name] = c.Explicit
 	}
@@ -62,29 +62,29 @@ func TestCombos_Composition(t *testing.T) {
 	}
 	for _, name := range want {
 		if _, ok := got[name]; !ok {
-			t.Errorf("ожидалась комбо %q, её нет; есть: %v", name, keys(got))
+			t.Errorf("expected combo %q is missing; present: %v", name, keys(got))
 		}
 	}
 
 	// The planned nats option must not produce a combo.
 	if _, ok := got["brokers=nats"]; ok {
-		t.Errorf("planned-опция nats не должна давать комбо")
+		t.Errorf("planned option nats must not produce a combo")
 	}
 
 	// all-on sets ALL toggles (including nested migrations) to true.
 	allOn := got["all-on"]
 	if allOn["cache"] != true || allOn["migrations"] != true {
-		t.Errorf("all-on должен включать все toggle: %#v", allOn)
+		t.Errorf("all-on must enable every toggle: %#v", allOn)
 	}
 
 	// max: toggle=true + multiselect fully selected (without planned) + select on
 	// its last option.
 	maxVals := got["max"]
 	if maxVals["database"] != "postgres" {
-		t.Errorf("max.database ожидался postgres (последняя опция), получено %v", maxVals["database"])
+		t.Errorf("max.database expected postgres (last option), got %v", maxVals["database"])
 	}
 	if br, _ := maxVals["brokers"].([]string); len(br) != 2 {
-		t.Errorf("max.brokers ожидались обе не-planned опции, получено %v", maxVals["brokers"])
+		t.Errorf("max.brokers expected both non-planned options, got %v", maxVals["brokers"])
 	}
 }
 
@@ -97,7 +97,7 @@ func TestCombos_RequiresTransitivity(t *testing.T) {
 		}
 	}
 	if authCombo == nil {
-		t.Fatal("нет комбо auth=sso")
+		t.Fatal("no combo auth=sso")
 	}
 
 	// The combo sets only auth=[sso]; Resolve must transitively pull
@@ -107,10 +107,10 @@ func TestCombos_RequiresTransitivity(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if resolved.Values["database"] != "postgres" {
-		t.Errorf("requires не дотянул database=postgres: %v", resolved.Values["database"])
+		t.Errorf("requires did not pull in database=postgres: %v", resolved.Values["database"])
 	}
 	if len(resolved.Report.Implied) == 0 {
-		t.Errorf("ожидалось довключение в отчёте резолвера")
+		t.Errorf("expected an auto-enabled entry in the resolver report")
 	}
 }
 
@@ -118,15 +118,15 @@ func TestFilterCombos(t *testing.T) {
 	combos := Combos(comboTemplate())
 	filtered, known := FilterCombos(combos, "database=postgres")
 	if len(filtered) != 1 || filtered[0].Name != "database=postgres" {
-		t.Errorf("фильтр по имени: получено %v", names(filtered))
+		t.Errorf("name filter: got %v", names(filtered))
 	}
 	if len(known) == 0 {
-		t.Errorf("known-список пуст")
+		t.Errorf("known list is empty")
 	}
 
 	all, _ := FilterCombos(combos, "")
 	if len(all) != len(combos) {
-		t.Errorf("пустой фильтр должен вернуть все: %d != %d", len(all), len(combos))
+		t.Errorf("an empty filter must return all: %d != %d", len(all), len(combos))
 	}
 }
 

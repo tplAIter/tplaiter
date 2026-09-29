@@ -14,14 +14,14 @@ func TestResolve_TransitiveChain(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if res.Values["database"] != "postgres" {
-		t.Errorf("database = %v, ожидалось postgres (довключено через sso_provider)", res.Values["database"])
+		t.Errorf("database = %v, expected postgres (auto-enabled via sso_provider)", res.Values["database"])
 	}
 	want := []ImpliedValue{{Group: "database", Value: "postgres", RequiredBy: "sso_provider"}}
 	if !reflect.DeepEqual(res.Report.Implied, want) {
-		t.Errorf("Implied = %#v, ожидалось %#v", res.Report.Implied, want)
+		t.Errorf("Implied = %#v, expected %#v", res.Report.Implied, want)
 	}
 	if len(res.Report.Warnings) != 0 {
-		t.Errorf("предупреждений быть не должно, получено: %v", res.Report.Warnings)
+		t.Errorf("should not have warnings, got: %v", res.Report.Warnings)
 	}
 }
 
@@ -33,11 +33,11 @@ func TestResolve_MultiselectImplication(t *testing.T) {
 	}
 	brokers, _ := res.Values["brokers"].([]string)
 	if !contains(brokers, "kafka") {
-		t.Errorf("brokers = %v, ожидалось содержит kafka (довключено audit)", brokers)
+		t.Errorf("brokers = %v, expected contains kafka (auto-enabled by audit)", brokers)
 	}
 	want := []ImpliedValue{{Group: "brokers", Value: "kafka", RequiredBy: "audit"}}
 	if !reflect.DeepEqual(res.Report.Implied, want) {
-		t.Errorf("Implied = %#v, ожидалось %#v", res.Report.Implied, want)
+		t.Errorf("Implied = %#v, expected %#v", res.Report.Implied, want)
 	}
 	// kafka is now selected -> kafka_ssl is active and not reset.
 	if res.ActiveValues["kafka_ssl"] != false {
@@ -52,11 +52,11 @@ func TestResolve_ToggleImplication(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if res.Values["metrics"] != true {
-		t.Errorf("metrics = %v, ожидалось true (довключено dashboards)", res.Values["metrics"])
+		t.Errorf("metrics = %v, expected true (auto-enabled by dashboards)", res.Values["metrics"])
 	}
 	want := []ImpliedValue{{Group: "metrics", Value: "true", RequiredBy: "dashboards"}}
 	if !reflect.DeepEqual(res.Report.Implied, want) {
-		t.Errorf("Implied = %#v, ожидалось %#v", res.Report.Implied, want)
+		t.Errorf("Implied = %#v, expected %#v", res.Report.Implied, want)
 	}
 }
 
@@ -68,11 +68,11 @@ func TestResolve_ConflictExplicitVsRequires(t *testing.T) {
 	})
 	var ce *ConflictError
 	if !errors.As(err, &ce) {
-		t.Fatalf("ожидался *ConflictError, получено %T (%v)", err, err)
+		t.Fatalf("expected *ConflictError, got %T (%v)", err, err)
 	}
 	msg := ce.Error()
-	if !strings.Contains(msg, "sso_provider требует database=postgres, но задано database=mysql") {
-		t.Errorf("сообщение конфликта не содержит ожидаемую цепочку: %q", msg)
+	if !strings.Contains(msg, "sso_provider requires database=postgres, but database=mysql is set") {
+		t.Errorf("conflict message does not contain expected chain: %q", msg)
 	}
 }
 
@@ -81,10 +81,10 @@ func TestResolve_RequiresCycle(t *testing.T) {
 	_, err := Resolve(tpl, nil)
 	var cyc *CycleError
 	if !errors.As(err, &cyc) {
-		t.Fatalf("ожидался *CycleError, получено %T (%v)", err, err)
+		t.Fatalf("expected *CycleError, got %T (%v)", err, err)
 	}
 	if len(cyc.Chain) < 2 {
-		t.Errorf("цепочка цикла подозрительно коротка: %v", cyc.Chain)
+		t.Errorf("cycle chain suspiciously short: %v", cyc.Chain)
 	}
 }
 
@@ -94,10 +94,10 @@ func TestResolve_ConstraintViolation(t *testing.T) {
 	_, err := Resolve(tpl, Values{"idempotency": true})
 	var cerr *ConstraintError
 	if !errors.As(err, &cerr) {
-		t.Fatalf("ожидался *ConstraintError, получено %T (%v)", err, err)
+		t.Fatalf("expected *ConstraintError, got %T (%v)", err, err)
 	}
-	if cerr.Message != "Идемпотентность требует PostgreSQL" {
-		t.Errorf("сообщение constraint = %q", cerr.Message)
+	if cerr.Message != "Idempotency requires PostgreSQL" {
+		t.Errorf("constraint message = %q", cerr.Message)
 	}
 }
 
@@ -109,19 +109,19 @@ func TestResolve_InactiveNestedResetWithWarning(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if res.Values["kafka_ssl"] != true {
-		t.Errorf("полный снимок должен хранить kafka_ssl=true, получено %v", res.Values["kafka_ssl"])
+		t.Errorf("full snapshot should store kafka_ssl=true, got %v", res.Values["kafka_ssl"])
 	}
 	if res.ActiveValues["kafka_ssl"] != false {
-		t.Errorf("ActiveValues.kafka_ssl должно быть сброшено в false, получено %v", res.ActiveValues["kafka_ssl"])
+		t.Errorf("ActiveValues.kafka_ssl should be reset to false, got %v", res.ActiveValues["kafka_ssl"])
 	}
 	found := false
 	for _, w := range res.Report.Warnings {
-		if strings.Contains(w, "kafka_ssl") && strings.Contains(w, "неактивна") {
+		if strings.Contains(w, "kafka_ssl") && strings.Contains(w, "inactive") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("ожидалось предупреждение про неактивную kafka_ssl, получено: %v", res.Report.Warnings)
+		t.Errorf("expected warning about inactive kafka_ssl, got: %v", res.Report.Warnings)
 	}
 }
 
@@ -134,10 +134,10 @@ func TestResolve_InactiveNonDefault_NoSpuriousWarning(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if res.ActiveValues["pg_shards"] != 0 {
-		t.Errorf("pg_shards в Active = %v, ожидалось 0 (сброс)", res.ActiveValues["pg_shards"])
+		t.Errorf("pg_shards in Active = %v, expected 0 (reset)", res.ActiveValues["pg_shards"])
 	}
 	if len(res.Report.Warnings) != 0 {
-		t.Errorf("ложные предупреждения: %v", res.Report.Warnings)
+		t.Errorf("spurious warnings: %v", res.Report.Warnings)
 	}
 }
 
@@ -148,10 +148,10 @@ func TestResolve_DefaultsOnly_NoImpliedNoWarnings(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if len(res.Report.Implied) != 0 {
-		t.Errorf("Implied должно быть пустым: %#v", res.Report.Implied)
+		t.Errorf("Implied should be empty: %#v", res.Report.Implied)
 	}
 	if len(res.Report.Warnings) != 0 {
-		t.Errorf("Warnings должно быть пустым: %v", res.Report.Warnings)
+		t.Errorf("Warnings should be empty: %v", res.Report.Warnings)
 	}
 }
 
@@ -168,6 +168,6 @@ func TestResolve_UnknownExplicitGroupWarns(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("ожидалось предупреждение про неизвестную группу bogus: %v", res.Report.Warnings)
+		t.Errorf("expected warning about unknown group bogus: %v", res.Report.Warnings)
 	}
 }

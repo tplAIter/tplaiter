@@ -39,16 +39,17 @@ func newGenCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunLegacyAction),
 
 		Use:   "gen <kind> <name> [--<param> ...]",
-		Short: "Скаффолдер шаблона: создать файл(ы) вида <kind> с именем <name>",
-		Long: "Генерирует файлы и вставки якорей по generators манифеста шаблона (SPEC-01 §6). " +
-			"Вид (kind) и его сниппеты приходят из шаблона, не из бинарника tplater — " +
-			"`tplater gen list` показывает доступные виды текущего проекта.\n\n" +
-			"Параметры генератора (Generator.params) становятся флагами: `--fields \"name:type,...\"` " +
-			"и произвольные `--<param>`; обязательные без значения — ошибка.\n\n" +
-			"Идемпотентность: повторный gen с тем же именем — ошибка (целевой файл уже " +
-			"существует либо маркер вставки уже присутствует в якорном файле). " +
-			"После записи Go-проекты форматируются gofumpt (best-effort), затем выполняется " +
-			"commands.build.run манифеста (либо legacy fallback `go build ./...`); ошибка откатывает изменения — см. --no-build.",
+		Short: "Template scaffolder: create file(s) of kind <kind> with name <name>",
+		Long: "Generates files and anchor insertions according to the template manifest generators (SPEC-01 §6). " +
+			"The kind and its snippets come from the template, not from the tplater binary — " +
+			"`tplater gen list` shows available kinds for the current project.\n\n" +
+			"Generator parameters (Generator.params) become flags: `--fields \"name:type,...\"` " +
+			"and arbitrary `--<param>`; required parameters without a value are an error.\n\n" +
+			"Idempotency: running gen again with the same name is an error (target file already " +
+			"exists or insertion marker is already present in the anchor file). " +
+			"After writing, Go projects are formatted with gofumpt (best-effort), then " +
+			"commands.build.run from the manifest is executed (or legacy fallback `go build ./...`); " +
+			"an error rolls back changes — see --no-build.",
 		DisableFlagParsing: true,
 		RunE:               runGen,
 	}
@@ -64,14 +65,14 @@ func runGen(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	}
 	if len(args) < 2 {
-		return errors.New("gen требует аргументы <kind> <name> (см. `tplater gen list`)")
+		return errors.New("gen requires arguments <kind> <name> (see `tplater gen list`)")
 	}
 	kind, name := args[0], args[1]
 	if len(kind) > 0 && kind[0] == '-' {
-		return fmt.Errorf("gen: первым аргументом ожидается <kind>, получен флаг %q", kind)
+		return fmt.Errorf("gen: first argument expected <kind>, got flag %q", kind)
 	}
 	if len(name) > 0 && name[0] == '-' {
-		return fmt.Errorf("gen: вторым аргументом ожидается <name>, получен флаг %q", name)
+		return fmt.Errorf("gen: second argument expected <name>, got flag %q", name)
 	}
 	return actionUnavailable()
 	/*
@@ -135,7 +136,7 @@ func runGen(cmd *cobra.Command, args []string) error {
 func paramUsage(p *manifest.Param) string {
 	usage := "[" + p.Type + "]"
 	if p.Required {
-		usage += " (обязателен)"
+		usage += " (required)"
 	}
 	if p.Description != "" {
 		usage += " " + p.Description
@@ -149,7 +150,7 @@ func newGenListCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunReadonly),
 
 		Use:   "list",
-		Short: "Список видов скаффолда манифеста шаблона (kind/description/available)",
+		Short: "List of scaffold kinds from template manifest (kind/description/available)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			tpl, proj, _, err := loadRunContext()
@@ -181,27 +182,28 @@ func newGenBatchCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunLegacyAction),
 
 		Use:   "batch --operations <JSON> [--no-build]",
-		Short: "Сгенерировать несколько scaffolds с одной сборкой и атомарным откатом",
-		Long: "Планирует все операции до первой записи, затем создаёт файлы и выполняет один финальный " +
-			"build-gate (commands.build.run манифеста либо legacy fallback `go build ./...`). При ошибке любого шага изменения всех операций откатываются.\n\n" +
-			"Формат --operations: '[{\"kind\":\"crud\",\"name\":\"Ride\",\"params\":{\"fields\":\"status:string\"}}]'.",
+		Short: "Generate multiple scaffolds with single build and atomic rollback",
+		Long: "Plans all operations before the first write, then creates files and executes a single final " +
+			"build-gate (commands.build.run from manifest or legacy fallback `go build ./...`). " +
+			"On error at any step, changes from all operations are rolled back.\n\n" +
+			"Format --operations: '[{\"kind\":\"crud\",\"name\":\"Ride\",\"params\":{\"fields\":\"status:string\"}}]'.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Keep input-only validation available to direct callers.  The
 			// denial follows before project discovery or any generator effect.
 			if operationsJSON == "" {
-				return errors.New("gen batch: обязателен --operations с JSON-массивом операций")
+				return errors.New("gen batch: --operations with JSON array of operations is required")
 			}
 			var input []genBatchInput
 			if err := json.Unmarshal([]byte(operationsJSON), &input); err != nil {
-				return fmt.Errorf("gen batch: разбор --operations JSON: %w", err)
+				return fmt.Errorf("gen batch: parsing --operations JSON: %w", err)
 			}
 			if len(input) == 0 {
-				return errors.New("gen batch: список операций пуст")
+				return errors.New("gen batch: operation list is empty")
 			}
 			for i, item := range input {
 				if item.Kind == "" || item.Name == "" {
-					return fmt.Errorf("gen batch: операция %d требует kind и name", i+1)
+					return fmt.Errorf("gen batch: operation %d requires kind and name", i+1)
 				}
 			}
 			return actionUnavailable()
@@ -255,8 +257,8 @@ func newGenBatchCmd() *cobra.Command {
 			*/
 		},
 	}
-	c.Flags().StringVar(&operationsJSON, "operations", "", "JSON-массив операций {kind,name,params}")
-	c.Flags().BoolVar(&noBuild, "no-build", false, "пропустить единственный финальный build-gate")
+	c.Flags().StringVar(&operationsJSON, "operations", "", "JSON array of operations {kind,name,params}")
+	c.Flags().BoolVar(&noBuild, "no-build", false, "skip the single final build-gate")
 	return c
 }
 
@@ -267,7 +269,7 @@ func validateGenBatchParams(declared []manifest.Param, provided map[string]strin
 	}
 	for name := range provided {
 		if _, ok := known[name]; !ok {
-			return fmt.Errorf("неизвестный параметр --%s", name)
+			return fmt.Errorf("unknown parameter --%s", name)
 		}
 	}
 	return nil
@@ -277,10 +279,10 @@ func validateGenBatchParams(declared []manifest.Param, provided map[string]strin
 func printGenResult(cmd *cobra.Command, res *gen.Result) error {
 	out := cmd.OutOrStdout()
 	for _, f := range res.CreatedFiles {
-		fmt.Fprintf(out, "создан %s\n", f)
+		fmt.Fprintf(out, "created %s\n", f)
 	}
 	for _, f := range res.EditedFiles {
-		fmt.Fprintf(out, "изменён %s\n", f)
+		fmt.Fprintf(out, "edited %s\n", f)
 	}
 	return nil
 }
@@ -288,10 +290,10 @@ func printGenResult(cmd *cobra.Command, res *gen.Result) error {
 func printGenBatchResult(cmd *cobra.Command, res *gen.BatchResult) error {
 	out := cmd.OutOrStdout()
 	for _, f := range res.CreatedFiles {
-		fmt.Fprintf(out, "создан %s\n", f)
+		fmt.Fprintf(out, "created %s\n", f)
 	}
 	for _, f := range res.EditedFiles {
-		fmt.Fprintf(out, "изменён %s\n", f)
+		fmt.Fprintf(out, "edited %s\n", f)
 	}
 	return nil
 }
@@ -301,7 +303,7 @@ func printGenBatchResult(cmd *cobra.Command, res *gen.BatchResult) error {
 func printGenList(cmd *cobra.Command, statuses []gen.Status) error {
 	out := cmd.OutOrStdout()
 	if len(statuses) == 0 {
-		fmt.Fprintln(out, "манифест шаблона не объявляет генераторов (generators)")
+		fmt.Fprintln(out, "template manifest does not declare generators (generators)")
 		return nil
 	}
 
@@ -320,11 +322,11 @@ func printGenList(cmd *cobra.Command, statuses []gen.Status) error {
 // "no — requires <condition>" mark.
 func genAvailableCell(pal ui.Palette, st gen.Status) string {
 	if st.Available {
-		return ui.StatusIcon(pal, ui.StatusOK) + " да"
+		return ui.StatusIcon(pal, ui.StatusOK) + " yes"
 	}
 	reason := st.Reason
 	if reason == "" {
-		reason = "недоступно при текущих настройках"
+		reason = "unavailable with current settings"
 	}
-	return ui.StatusIcon(pal, ui.StatusWarn) + " " + pal.Muted("нет — требуется: "+reason)
+	return ui.StatusIcon(pal, ui.StatusWarn) + " " + pal.Muted("no — requires: "+reason)
 }

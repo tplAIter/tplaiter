@@ -47,13 +47,13 @@ func newNewCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunTrustOwned),
 
 		Use:   "new <ref> <project-name>",
-		Short: "Создать проект из шаблона",
-		Long: "Разворачивает шаблон (ссылка <ref> — `repo/name@version` или короткая `name`, " +
-			") в новый проект <project-name>: опрашивает настройки (), " +
-			"рендерит дерево, копирует ресурсы окружения/генераторов/ai-config в .tplaiter/, " +
-			"пишет снимок манифеста и проектный маркер, выполняет hooks.postCreate, " +
-			"регистрирует проект и печатает NOTES.\n\n" +
-			"Опрос интерактивен при наличии TTY; в CI используйте --set/--answers/--defaults.",
+		Short: "Create a project from a template",
+		Long: "Deploys a template (reference <ref> — `repo/name@version` or short `name`) " +
+			"into new project <project-name>: prompts for settings, " +
+			"renders tree, copies environment/generator/ai-config resources to .tplaiter/, " +
+			"writes manifest snapshot and project marker, executes hooks.postCreate, " +
+			"registers project, and prints NOTES.\n\n" +
+			"Prompting is interactive with TTY; in CI use --set/--answers/--defaults.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runtime, err := composeRuntime(cmd.Context())
@@ -88,21 +88,21 @@ func newNewCmd() *cobra.Command {
 	}
 
 	f := c.Flags()
-	f.StringVar(&dir, "dir", "", "целевой каталог (по умолчанию ./<slug>)")
-	f.StringVar(&module, "module", "", "go-module проекта (по умолчанию example.com/<slug> — измените под свой namespace)")
-	f.StringVar(&system, "system", "", "система проекта (.Project.System в контексте рендера)")
-	f.StringVar(&domain, "domain", "", "домен проекта (.Project.Domain в контексте рендера)")
-	f.StringArrayVar(&sets, "set", nil, "значение настройки group=value (повторяемый флаг)")
-	f.StringVar(&answers, "answers", "", "файл ответов YAML (group: value)")
-	f.BoolVar(&defaults, "defaults", false, "не опрашивать — взять дефолты (+ --set/--answers)")
-	f.BoolVar(&noHooks, "no-hooks", false, "пропустить hooks.postCreate")
-	f.BoolVar(&noDepsCheck, "no-deps-check", false, "пропустить проверку инструментов окружения")
-	f.BoolVar(&envSetup, "env-setup", false, "запустить env setup после создания без вопроса")
-	f.BoolVar(&noEnvSetup, "no-env-setup", false, "не предлагать env setup после создания")
-	f.BoolVar(&yes, "yes", false, "авто-подтверждение (установка инструментов и env setup)")
-	f.IntVar(&port, "port", 0, "порт проекта (.Runtime.Port, по умолчанию 8080)")
-	f.BoolVar(&dryRun, "dry-run", false, "подготовить результат без изменения файлов")
-	f.StringVar(&sourceInput, "source-input", "", "закрытый JSON выбора неизменяемого источника")
+	f.StringVar(&dir, "dir", "", "target directory (defaults to ./<slug>)")
+	f.StringVar(&module, "module", "", "project go-module (defaults to example.com/<slug> — change for your namespace)")
+	f.StringVar(&system, "system", "", "project system (.Project.System in render context)")
+	f.StringVar(&domain, "domain", "", "project domain (.Project.Domain in render context)")
+	f.StringArrayVar(&sets, "set", nil, "setting value group=value (repeatable flag)")
+	f.StringVar(&answers, "answers", "", "YAML answers file (group: value)")
+	f.BoolVar(&defaults, "defaults", false, "do not prompt — use defaults (+ --set/--answers)")
+	f.BoolVar(&noHooks, "no-hooks", false, "skip hooks.postCreate")
+	f.BoolVar(&noDepsCheck, "no-deps-check", false, "skip environment tools check")
+	f.BoolVar(&envSetup, "env-setup", false, "run env setup after creation without asking")
+	f.BoolVar(&noEnvSetup, "no-env-setup", false, "do not offer env setup after creation")
+	f.BoolVar(&yes, "yes", false, "auto-confirm (install tools and env setup)")
+	f.IntVar(&port, "port", 0, "project port (.Runtime.Port, defaults to 8080)")
+	f.BoolVar(&dryRun, "dry-run", false, "prepare result without changing files")
+	f.StringVar(&sourceInput, "source-input", "", "sealed JSON immutable source selection")
 	return c
 }
 
@@ -131,7 +131,7 @@ func confirmFunc(cmd *cobra.Command, interactive bool) func(string) (bool, error
 	return func(prompt string) (bool, error) {
 		var ok bool
 		form := huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().Title(prompt).Affirmative("Да").Negative("Нет").Value(&ok),
+			huh.NewConfirm().Title(prompt).Affirmative("Yes").Negative("No").Value(&ok),
 		))
 		form = form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout())
 		if err := form.Run(); err != nil {

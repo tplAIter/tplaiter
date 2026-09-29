@@ -11,7 +11,7 @@ func TestScanConflictsFindsMarkers(t *testing.T) {
 	writeWork(t, dir, "conflicted.go", "package x\n"+markerOurs+"\nlocal\n"+markerSeparator+"\ntpl\n"+markerTheirs+"\n")
 	// Excluded directories must not appear in the result.
 	writeWork(t, dir, ".tplaiter/baseline.json", markerOurs+"\n")
-	writeWork(t, dir, "docs/example.md", markerOurs+" пример в доке\n")
+	writeWork(t, dir, "docs/example.md", markerOurs+" docs example\n")
 
 	found, err := ScanConflicts(dir, nil)
 	if err != nil {

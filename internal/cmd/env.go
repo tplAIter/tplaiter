@@ -34,12 +34,12 @@ func init() {
 func newEnvCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "env",
-		Short: "Настройка окружения проекта через ansible-плейбуки шаблона",
-		Long: "Шаблон декларирует environment.playbooks (SPEC-01 §2) — ansible-плейбуки " +
-			"настройки окружения (инфраструктура, зависимости и т.п.). tplater — единая точка " +
-			"их запуска: устанавливает ansible при необходимости и исполняет плейбук с " +
-			"extra-vars из настроек и идентификации текущего проекта.\n\n" +
-			"См. specs/SPEC-03-scaffolding.md §4.",
+		Short: "Set up project environment through template ansible playbooks",
+		Long: "The template declares environment.playbooks (SPEC-01 §2) — ansible playbooks " +
+			"for environment setup (infrastructure, dependencies, etc.). tplater is the single " +
+			"entry point for running them: it installs ansible if needed and executes the playbook " +
+			"with extra-vars from project settings and identification.\n\n" +
+			"See specs/SPEC-03-scaffolding.md §4.",
 	}
 	c.AddCommand(newEnvListCmd(), newEnvSetupCmd())
 	return c
@@ -51,7 +51,7 @@ func newEnvListCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunReadonly),
 
 		Use:   "list",
-		Short: "Показать плейбуки окружения манифеста шаблона",
+		Short: "Show environment playbooks from template manifest",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			tpl, proj, _, err := loadRunContext()
@@ -70,7 +70,7 @@ func newEnvSetupCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunLegacyAction),
 
 		Use:   "setup [name]",
-		Short: "Запустить плейбук окружения (по умолчанию \"setup\")",
+		Short: "Run environment playbook (default \"setup\")",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Cobra rejects this before root hooks; retain the same guard for a
@@ -110,7 +110,7 @@ func newEnvSetupCmd() *cobra.Command {
 			*/
 		},
 	}
-	c.Flags().BoolVar(&envAutoYes, "yes", false, "подтвердить установку ansible без интерактивного вопроса")
+	c.Flags().BoolVar(&envAutoYes, "yes", false, "confirm ansible installation without interactive prompt")
 	return c
 }
 
@@ -122,7 +122,7 @@ func findPlaybook(playbooks []manifest.Playbook, name string) (manifest.Playbook
 		}
 	}
 	return manifest.Playbook{}, fmt.Errorf(
-		"cmd: env setup: неизвестный плейбук %q — доступные: %s", name, availablePlaybookNames(playbooks),
+		"cmd: env setup: unknown playbook %q — available: %s", name, availablePlaybookNames(playbooks),
 	)
 }
 
@@ -130,7 +130,7 @@ func findPlaybook(playbooks []manifest.Playbook, name string) (manifest.Playbook
 // "unknown playbook" error hint.
 func availablePlaybookNames(playbooks []manifest.Playbook) string {
 	if len(playbooks) == 0 {
-		return "(манифест не объявляет плейбуков окружения — environment.playbooks)"
+		return "(manifest does not declare environment playbooks — environment.playbooks)"
 	}
 	names := make([]string, 0, len(playbooks))
 	for _, pb := range playbooks {
@@ -146,7 +146,7 @@ func renderPlaybookList(cmd *cobra.Command, tpl *manifest.Template, values setti
 	out := cmd.OutOrStdout()
 	infos := envsetup.ListPlaybooks(tpl, values)
 	if len(infos) == 0 {
-		fmt.Fprintln(out, "манифест шаблона не объявляет плейбуков окружения (environment.playbooks)")
+		fmt.Fprintln(out, "template manifest does not declare environment playbooks (environment.playbooks)")
 		return nil
 	}
 
@@ -164,10 +164,10 @@ func renderPlaybookList(cmd *cobra.Command, tpl *manifest.Template, values setti
 // be resolved), following whenCell/statusCell in run.go/doctor.go.
 func availableCell(pal ui.Palette, info envsetup.PlaybookInfo) string {
 	if info.Available {
-		return ui.StatusIcon(pal, ui.StatusOK) + " да"
+		return ui.StatusIcon(pal, ui.StatusOK) + " yes"
 	}
 	if info.WhenStr == "" {
-		return ui.StatusIcon(pal, ui.StatusFail) + " нет"
+		return ui.StatusIcon(pal, ui.StatusFail) + " no"
 	}
-	return ui.StatusIcon(pal, ui.StatusWarn) + " " + pal.Muted("нет — недоступно при текущих настройках ("+info.WhenStr+")")
+	return ui.StatusIcon(pal, ui.StatusWarn) + " " + pal.Muted("no — unavailable with current settings ("+info.WhenStr+")")
 }

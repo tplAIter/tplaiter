@@ -28,7 +28,7 @@ func TestCheckoutLatestSeesFetchedCommits(t *testing.T) {
 	}
 
 	// New commit in origin AFTER add.
-	writeFile(t, filepath.Join(origin, "fresh.txt"), "новый\n")
+	writeFile(t, filepath.Join(origin, "fresh.txt"), "new\n")
 	commitAll(t, origin, "fresh commit")
 
 	if err := m.Update(ctx, "fr"); err != nil {
@@ -46,7 +46,7 @@ func TestCheckoutLatestSeesFetchedCommits(t *testing.T) {
 	defer func() { _ = cleanup() }()
 
 	if _, err := fsys.Open("fresh.txt"); err != nil {
-		t.Fatalf("checkout @latest не видит свежий коммит после update: %v", err)
+		t.Fatalf("checkout @latest does not see the fresh commit after update: %v", err)
 	}
 }
 
@@ -77,7 +77,7 @@ func TestUpdate_WorkingTreeAdvancesAfterFetch(t *testing.T) {
 	commitAll(t, origin, "fresh commit")
 	afterHEAD := runGitOutput(t, origin, "rev-parse", "HEAD")
 	if beforeHEAD == afterHEAD {
-		t.Fatalf("origin HEAD не изменился между коммитами")
+		t.Fatalf("origin HEAD did not change between commits")
 	}
 
 	if err := m.Update(ctx, "fr"); err != nil {
@@ -87,15 +87,15 @@ func TestUpdate_WorkingTreeAdvancesAfterFetch(t *testing.T) {
 	clone := m.cloneDir("fr")
 	cloneHEAD := runGitOutput(t, clone, "rev-parse", "HEAD")
 	if cloneHEAD != afterHEAD {
-		t.Fatalf("HEAD кеш-клона не сдвинулся после update: клон=%s, origin=%s", cloneHEAD, afterHEAD)
+		t.Fatalf("cache clone HEAD did not move after update: clone=%s, origin=%s", cloneHEAD, afterHEAD)
 	}
 
 	got, err := os.ReadFile(filepath.Join(clone, "hello.txt"))
 	if err != nil {
-		t.Fatalf("чтение hello.txt из кеш-клона: %v", err)
+		t.Fatalf("reading hello.txt from the cache clone: %v", err)
 	}
 	if string(got) != "v2\n" {
-		t.Fatalf("hello.txt в кеш-клоне после update = %q, ожидалось %q (рабочее дерево не обновилось)", got, "v2\n")
+		t.Fatalf("hello.txt in the cache clone after update = %q, expected %q (working tree was not updated)", got, "v2\n")
 	}
 }
 

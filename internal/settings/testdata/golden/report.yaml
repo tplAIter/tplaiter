@@ -3,4 +3,4 @@ implied:
       value: postgres
       requiredBy: sso_provider
 warnings:
-    - группа "kafka_ssl" неактивна (родительская опция не выбрана) — значение сброшено в контексте рендера
+    - group "kafka_ssl" inactive (parent option not selected) — value reset in render context

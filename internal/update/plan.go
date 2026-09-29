@@ -142,7 +142,7 @@ func Compute(baseFiles, targetFiles map[string][]byte, baseline map[string]strin
 			default:
 				plan.add(rel, OpKeep, nil, "kept (modified locally, removed upstream)", false)
 				plan.Warnings = append(plan.Warnings,
-					rel+": удалён в новой версии шаблона, но изменён локально — оставлен без изменений")
+					rel+": removed in new template version, but modified locally — kept unchanged")
 			}
 		}
 	}

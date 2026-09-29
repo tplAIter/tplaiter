@@ -51,9 +51,9 @@ type ConflictError struct {
 }
 
 func (e *ConflictError) Error() string {
-	msg := fmt.Sprintf("%s требует %s, но задано %s=%s", e.RequiredBy, e.Requirement, e.Group, e.Current)
+	msg := fmt.Sprintf("%s requires %s, but %s=%s is set", e.RequiredBy, e.Requirement, e.Group, e.Current)
 	if len(e.Chain) > 1 {
-		msg += " (цепочка: " + strings.Join(e.Chain, " → ") + ")"
+		msg += " (chain: " + strings.Join(e.Chain, " → ") + ")"
 	}
 	return msg
 }
@@ -64,7 +64,7 @@ type CycleError struct {
 }
 
 func (e *CycleError) Error() string {
-	return "цикл в requires: " + strings.Join(e.Chain, " → ")
+	return "cycle in requires: " + strings.Join(e.Chain, " → ")
 }
 
 // ConstraintError means a cross-group constraints invariant (§3) is violated:
@@ -143,7 +143,7 @@ func (r *resolver) overlayExplicit(explicit Values) {
 	sort.Strings(keys)
 	for _, k := range keys {
 		if _, ok := r.gidx[k]; !ok {
-			r.warn("неизвестная группа %q в заданных значениях — игнорируется", k)
+			r.warn("unknown group %q in supplied values — ignored", k)
 			continue
 		}
 		r.values[k] = explicit[k]
@@ -196,7 +196,7 @@ func (r *resolver) visit(key string, stack []string) error {
 	for _, reqExpr := range om.opt.Requires {
 		cond, err := manifest.ParseCondition(reqExpr)
 		if err != nil {
-			return fmt.Errorf("опция %q: неразбираемое требование %q: %w", key, reqExpr, err)
+			return fmt.Errorf("option %q: unparseable requirement %q: %w", key, reqExpr, err)
 		}
 		for _, atom := range cond.Atoms {
 			nextKey, err := r.ensure(atom, om.opt.ID, stack)
@@ -223,7 +223,7 @@ func (r *resolver) visit(key string, stack []string) error {
 func (r *resolver) ensure(a manifest.Atom, requiredBy string, stack []string) (string, error) {
 	m, ok := r.gidx[a.Group]
 	if !ok {
-		r.warn("требование опции %q ссылается на неизвестную группу %q — пропущено", requiredBy, a.Group)
+		r.warn("requirement of option %q refers to unknown group %q — skipped", requiredBy, a.Group)
 		return "", nil
 	}
 	holds := atomHolds(a, r.values)
@@ -245,7 +245,7 @@ func (r *resolver) ensure(a manifest.Atom, requiredBy string, stack []string) (s
 			return "", r.conflict(requiredBy, a, stack)
 		}
 		if !r.isOption(key) {
-			return "", fmt.Errorf("опция %q требует несуществующую опцию %s", requiredBy, key)
+			return "", fmt.Errorf("option %q requires non-existent option %s", requiredBy, key)
 		}
 		r.values[a.Group] = a.Value
 		r.imply(a.Group, a.Value, requiredBy)
@@ -255,7 +255,7 @@ func (r *resolver) ensure(a manifest.Atom, requiredBy string, stack []string) (s
 			return key, nil
 		}
 		if !r.isOption(key) {
-			return "", fmt.Errorf("опция %q требует несуществующую опцию %s", requiredBy, key)
+			return "", fmt.Errorf("option %q requires non-existent option %s", requiredBy, key)
 		}
 		list := asStringSlice(r.values[a.Group])
 		r.values[a.Group] = append(list, a.Value)
@@ -280,7 +280,7 @@ func (r *resolver) ensure(a manifest.Atom, requiredBy string, stack []string) (s
 		}
 		n, err := strconv.Atoi(a.Value)
 		if err != nil {
-			return "", fmt.Errorf("опция %q требует нечисловое значение %s", requiredBy, key)
+			return "", fmt.Errorf("option %q requires non-numeric value %s", requiredBy, key)
 		}
 		r.values[a.Group] = n
 		r.imply(a.Group, a.Value, requiredBy)
@@ -345,7 +345,7 @@ func (r *resolver) checkConstraints() error {
 		}
 		msg := c.Message
 		if msg == "" {
-			msg = fmt.Sprintf("нарушено ограничение: если %s, требуется %s", c.If, c.Require)
+			msg = fmt.Sprintf("constraint violated: if %s, requires %s", c.If, c.Require)
 		}
 		return &ConstraintError{If: c.If, Require: c.Require, Message: msg}
 	}
@@ -371,7 +371,7 @@ func (r *resolver) activeValues() Values {
 		// is reset; otherwise an inactive group with a nonzero default (such as
 		// pg_shards=4) would create a gratuitous warning.
 		if !equalValue(active[id], defaultFor(m.g)) {
-			r.warn("группа %q неактивна (родительская опция не выбрана) — значение сброшено в контексте рендера", id)
+			r.warn("group %q inactive (parent option not selected) — value reset in render context", id)
 		}
 		active[id] = zeroValue(m.g.Type)
 	}

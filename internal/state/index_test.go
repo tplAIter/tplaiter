@@ -29,7 +29,7 @@ func TestIndex_SaveLoadRoundTrip(t *testing.T) {
 		{
 			Name:        "go-service",
 			Version:     "1.4.0",
-			Description: "сервис на Go",
+			Description: "Go service",
 			LabelsFlat:  map[string][]string{"lang": {"go"}, "infra": {"kafka", "postgres"}},
 			Path:        "go-service/",
 			Ref:         "v1.4.0",

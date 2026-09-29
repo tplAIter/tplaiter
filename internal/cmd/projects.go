@@ -66,7 +66,7 @@ func logProjectSyncErr(cmd *cobra.Command, err error) {
 	if !verbose {
 		return
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "tplater: синхронизация реестра проектов: %v\n", err)
+	fmt.Fprintf(cmd.ErrOrStderr(), "tplater: project registry synchronization: %v\n", err)
 }
 
 // newProjectsCmd creates `tplater projects`: viewing and pruning the local
@@ -74,14 +74,13 @@ func logProjectSyncErr(cmd *cobra.Command, err error) {
 func newProjectsCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "projects",
-		Short: "Реестр проектов, сгенерированных из шаблонов на этой машине",
-		Long: "Реестр ~/.tplaiter/projects.yaml — удобство навигации, а не источник истины " +
-			"(): источник истины — .tplaiter/ внутри самого проекта. Реестр " +
-			"актуализируется автоматически каждой командой tplater, запущенной внутри " +
-			"проекта: переезд каталога отслеживается по стабильному id из " +
-			".tplaiter/project.yaml, проект без записи (клонирован коллегой) " +
-			"регистрируется по факту, а расхождение baselineSHA (проект обновляли на " +
-			"другой машине) обновляется по факту.",
+		Short: "Registry of projects generated from templates on this machine",
+		Long: "Registry ~/.tplaiter/projects.yaml — a navigation convenience, not the source of truth " +
+			"(the source of truth is .tplaiter/ within each project). The registry is " +
+			"automatically updated by each tplater command run inside a project: directory " +
+			"relocation is tracked by stable id from .tplaiter/project.yaml, a project without " +
+			"an entry (cloned by a colleague) is registered on first discovery, and " +
+			"baselineSHA divergence (project updated on another machine) is updated on discovery.",
 	}
 	c.AddCommand(newProjectsListCmd(), newProjectsPruneCmd())
 	return c
@@ -90,16 +89,16 @@ func newProjectsCmd() *cobra.Command {
 func newProjectsListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "Список проектов реестра (PATH/TEMPLATE/LAST SEEN/STATUS)",
-		Long: "Столбец STATUS:\n" +
-			"  ok      — каталог по PATH существует и .tplaiter/project.yaml в нём читается.\n" +
-			"  missing — каталог удалён или маркер проекта пропал; запись чистится\n" +
-			"            командой `tplater projects prune`.\n\n" +
-			"Отдельного статуса «переехал» нет: переезд каталога (тот же id проекта, " +
-			"другой путь) обнаруживается и правится автоматически при первом же запуске " +
-			"tplater внутри нового пути — синхронизация реестра встроена в " +
-			"PersistentPreRunE каждой команды (см. root.go), так что list всегда видит " +
-			"уже актуальный PATH, а не устаревший.",
+		Short: "List registry projects (PATH/TEMPLATE/LAST SEEN/STATUS)",
+		Long: "STATUS column:\n" +
+			"  ok      — directory at PATH exists and .tplaiter/project.yaml in it can be read.\n" +
+			"  missing — directory deleted or project marker missing; entry cleaned by\n" +
+			"            `tplater projects prune` command.\n\n" +
+			"There is no separate \"relocated\" status: directory relocation (same project id, " +
+			"different path) is detected and fixed automatically on first tplater run " +
+			"in the new path — registry synchronization is built into " +
+			"PersistentPreRunE of each command (see root.go), so list always shows " +
+			"the current PATH, never stale paths.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			home, err := state.Home()
@@ -126,11 +125,11 @@ func newProjectsPruneCmd() *cobra.Command {
 	var yes bool
 	c := &cobra.Command{
 		Use:   "prune",
-		Short: "Удалить из реестра записи со статусом missing",
-		Long: "Убирает записи, для которых каталог по PATH не существует или в нём пропал " +
-			".tplaiter/project.yaml (тот же критерий, что STATUS=missing в `projects list`). " +
-			"Перед удалением печатает список записей-кандидатов; без --yes запрашивает " +
-			"подтверждение интерактивно (huh), в неинтерактивном режиме требует --yes явно.",
+		Short: "Remove entries with missing status from the registry",
+		Long: "Removes entries where the directory at PATH does not exist or " +
+			".tplaiter/project.yaml in it is missing (same criterion as STATUS=missing in `projects list`). " +
+			"Before deletion, prints the list of candidate entries; without --yes prompts " +
+			"for confirmation interactively (huh), in non-interactive mode requires --yes explicitly.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			home, err := state.Home()
@@ -145,12 +144,12 @@ func newProjectsPruneCmd() *cobra.Command {
 
 				stale := missingRefs(projects.Items)
 				if len(stale) == 0 {
-					fmt.Fprintln(cmd.OutOrStdout(), "нет записей со статусом missing — реестр чист.")
+					fmt.Fprintln(cmd.OutOrStdout(), "no entries with missing status — registry is clean.")
 					return nil
 				}
 
 				out := cmd.OutOrStdout()
-				fmt.Fprintln(out, "будут удалены из реестра (STATUS=missing):")
+				fmt.Fprintln(out, "will be removed from registry (STATUS=missing):")
 				for _, ref := range stale {
 					fmt.Fprintf(out, "  %s  (%s)\n", ref.Path, formatTemplateSelection(ref.Template))
 				}
@@ -161,7 +160,7 @@ func newProjectsPruneCmd() *cobra.Command {
 						return err
 					}
 					if !confirmed {
-						fmt.Fprintln(out, "отменено, реестр не изменён.")
+						fmt.Fprintln(out, "cancelled, registry unchanged.")
 						return nil
 					}
 				}
@@ -173,12 +172,12 @@ func newProjectsPruneCmd() *cobra.Command {
 				if err := state.SaveProjects(home, projects); err != nil {
 					return err
 				}
-				fmt.Fprintf(out, "удалено записей: %d\n", len(removed))
+				fmt.Fprintf(out, "removed entries: %d\n", len(removed))
 				return nil
 			})
 		},
 	}
-	c.Flags().BoolVar(&yes, "yes", false, "не спрашивать подтверждения")
+	c.Flags().BoolVar(&yes, "yes", false, "do not ask for confirmation")
 	return c
 }
 
@@ -187,13 +186,13 @@ func newProjectsPruneCmd() *cobra.Command {
 // instead of assuming consent (registry deletion cannot be undone).
 func confirmPrune(cmd *cobra.Command, n int) (bool, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return false, errors.New("cmd: projects prune: неинтерактивный режим — подтвердите флагом --yes")
+		return false, errors.New("cmd: projects prune: non-interactive mode — confirm with --yes flag")
 	}
 	var ok bool
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
-			Title(fmt.Sprintf("Удалить %d запис(ь/и) из реестра?", n)).
-			Affirmative("Да").Negative("Нет").Value(&ok),
+			Title(fmt.Sprintf("Delete %d %s from the registry?", n, pluralEntries(n))).
+			Affirmative("Yes").Negative("No").Value(&ok),
 	))
 	form = form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout())
 	if err := form.Run(); err != nil {
@@ -232,4 +231,12 @@ func statusCellProjects(pal ui.Palette, ref state.ProjectRef) string {
 
 func formatTemplateSelection(t state.TemplateSelection) string {
 	return fmt.Sprintf("%s/%s@%s", t.Repo, t.Name, t.Version)
+}
+
+// pluralEntries returns the English noun form for n registry entries.
+func pluralEntries(n int) string {
+	if n == 1 {
+		return "entry"
+	}
+	return "entries"
 }

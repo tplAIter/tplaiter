@@ -68,7 +68,7 @@ func LoadProjects(home string) (Projects, error) {
 func SaveProjects(home string, p Projects) error {
 	data, err := yaml.Marshal(p)
 	if err != nil {
-		return fmt.Errorf("state: маршализация projects.yaml: %w", err)
+		return fmt.Errorf("state: marshaling projects.yaml: %w", err)
 	}
 	return writeFileAtomic(projectsPath(home), data)
 }
@@ -76,7 +76,7 @@ func SaveProjects(home string, p Projects) error {
 func decodeProjects(data []byte) (Projects, error) {
 	version, err := peekVersion(data)
 	if err != nil {
-		return Projects{}, fmt.Errorf("state: разбор projects.yaml: %w", err)
+		return Projects{}, fmt.Errorf("state: parsing projects.yaml: %w", err)
 	}
 
 	migrated, err := checkAndMigrate(kindProjects, data, version, ProjectsVersion)
@@ -86,7 +86,7 @@ func decodeProjects(data []byte) (Projects, error) {
 
 	var p Projects
 	if err := yaml.Unmarshal(migrated, &p); err != nil {
-		return Projects{}, fmt.Errorf("state: разбор projects.yaml: %w", err)
+		return Projects{}, fmt.Errorf("state: parsing projects.yaml: %w", err)
 	}
 	return p, nil
 }

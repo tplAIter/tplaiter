@@ -64,7 +64,11 @@ func checkArchLint(tpl *manifest.Template, outDir string, files []string) error 
 	for i, v := range violations {
 		parts[i] = v.String()
 	}
-	return fmt.Errorf("arch-lint: %d нарушени(е/й):\n    - %s", len(violations), strings.Join(parts, "\n    - "))
+	noun := "violations"
+	if len(violations) == 1 {
+		noun = "violation"
+	}
+	return fmt.Errorf("arch-lint: %d %s:\n    - %s", len(violations), noun, strings.Join(parts, "\n    - "))
 }
 
 // runLintRule applies one rule to the already filtered (paths/exclude) list of
@@ -121,14 +125,14 @@ func checkGeneratedMarkerRule(outDir string, matched []string) ([]archViolation,
 		abs := filepath.Join(outDir, filepath.FromSlash(rel))
 		data, err := os.ReadFile(abs)
 		if err != nil {
-			return nil, fmt.Errorf("arch-lint %s: чтение %s: %w", manifest.LintRuleGeneratedMarker, rel, err)
+			return nil, fmt.Errorf("arch-lint %s: read %s: %w", manifest.LintRuleGeneratedMarker, rel, err)
 		}
 		if !hasGeneratedMarker(data) {
 			out = append(out, archViolation{
 				RuleID: manifest.LintRuleGeneratedMarker,
 				File:   rel,
 				Line:   1,
-				Msg:    fmt.Sprintf(`в первых %d строках отсутствует маркер "Code generated"/"DO NOT EDIT"`, generatedMarkerCheckLines),
+				Msg:    fmt.Sprintf(`missing "Code generated"/"DO NOT EDIT" marker in first %d lines`, generatedMarkerCheckLines),
 			})
 		}
 	}
@@ -180,7 +184,7 @@ func checkCtxFirst(fset *token.FileSet, f *ast.File, rel string) []archViolation
 			RuleID: manifest.LintRuleCtxFirst,
 			File:   rel,
 			Line:   fset.Position(first.Pos()).Line,
-			Msg:    describeFunc(fd) + ": первый параметр не context.Context",
+			Msg:    describeFunc(fd) + ": first parameter is not context.Context",
 		})
 	}
 	return out
@@ -190,9 +194,9 @@ func checkCtxFirst(fset *token.FileSet, f *ast.File, rel string) []archViolation
 // "function Foo" or "method (*T).Foo"/"method T.Foo".
 func describeFunc(fd *ast.FuncDecl) string {
 	if fd.Recv != nil && len(fd.Recv.List) > 0 {
-		return fmt.Sprintf("метод %s.%s", recvTypeName(fd.Recv.List[0].Type), fd.Name.Name)
+		return fmt.Sprintf("method %s.%s", recvTypeName(fd.Recv.List[0].Type), fd.Name.Name)
 	}
-	return "функция " + fd.Name.Name
+	return "function " + fd.Name.Name
 }
 
 func recvTypeName(expr ast.Expr) string {
@@ -239,7 +243,7 @@ func checkNoInit(fset *token.FileSet, f *ast.File, rel string) []archViolation {
 			RuleID: manifest.LintRuleNoInit,
 			File:   rel,
 			Line:   fset.Position(fd.Pos()).Line,
-			Msg:    "func init() запрещён в этом пути",
+			Msg:    "func init() is forbidden in this path",
 		})
 	}
 	return out
@@ -272,7 +276,7 @@ func checkNoPanic(fset *token.FileSet, f *ast.File, rel string) []archViolation 
 				RuleID: manifest.LintRuleNoPanic,
 				File:   rel,
 				Line:   fset.Position(call.Pos()).Line,
-				Msg:    "panic() запрещён вне func main/func init",
+				Msg:    "panic() is forbidden outside func main/func init",
 			})
 			return true
 		})

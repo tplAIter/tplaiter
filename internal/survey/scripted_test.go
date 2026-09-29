@@ -23,10 +23,10 @@ func TestScriptedPrompter_AsksOnlyActiveGroups(t *testing.T) {
 	}
 	// idempotency active (postgres), kafka_* inactive.
 	if _, ok := got["idempotency"]; !ok {
-		t.Errorf("idempotency должна быть опрошена: %v", p.AskCalls[0])
+		t.Errorf("idempotency must be prompted: %v", p.AskCalls[0])
 	}
 	if _, ok := got["kafka_ssl"]; ok {
-		t.Errorf("kafka_ssl не должна быть опрошена: %v", p.AskCalls[0])
+		t.Errorf("kafka_ssl must not be prompted: %v", p.AskCalls[0])
 	}
 	if got["database"] != "postgres" {
 		t.Errorf("database = %v", got["database"])
@@ -36,19 +36,19 @@ func TestScriptedPrompter_AsksOnlyActiveGroups(t *testing.T) {
 func TestScriptedPrompter_ExhaustedAsk(t *testing.T) {
 	p := &ScriptedPrompter{}
 	if _, err := p.Ask(nil, nil); err == nil {
-		t.Fatalf("ожидали ошибку при пустой очереди ответов")
+		t.Fatalf("expected an error with an empty answer queue")
 	}
 }
 
 func TestScriptedPrompter_ConfirmQueueAndDefault(t *testing.T) {
 	p := &ScriptedPrompter{Confirms: []bool{false}}
 	if ok, _ := p.Confirm("s1"); ok {
-		t.Errorf("первый Confirm должен вернуть false")
+		t.Errorf("the first Confirm must return false")
 	}
 	if ok, _ := p.Confirm("s2"); !ok {
-		t.Errorf("исчерпанная очередь Confirm должна давать true")
+		t.Errorf("an exhausted Confirm queue must yield true")
 	}
 	if len(p.Summaries) != 2 {
-		t.Errorf("Summaries = %v, хотим 2 записи", p.Summaries)
+		t.Errorf("Summaries = %v, want 2 entries", p.Summaries)
 	}
 }

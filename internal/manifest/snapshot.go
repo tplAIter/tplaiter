@@ -18,14 +18,14 @@ const SnapshotRelPath = ".tplaiter/manifest.snapshot.yaml"
 // directories. File mode is 0644 and directory mode is 0755.
 func SaveSnapshot(path string, t *Template) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("создание каталога снимка: %w", err)
+		return fmt.Errorf("creating snapshot directory: %w", err)
 	}
 	data, err := MarshalTemplate(t)
 	if err != nil {
 		return err
 	}
 	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: the manifest is not secret; 0644 is intentional.
-		return fmt.Errorf("запись снимка %s: %w", path, err)
+		return fmt.Errorf("writing snapshot %s: %w", path, err)
 	}
 	return nil
 }
@@ -42,10 +42,10 @@ func MarshalTemplate(t *Template) ([]byte, error) {
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
 	if err := enc.Encode(t); err != nil {
-		return nil, fmt.Errorf("сериализация манифеста: %w", err)
+		return nil, fmt.Errorf("serializing manifest: %w", err)
 	}
 	if err := enc.Close(); err != nil {
-		return nil, fmt.Errorf("закрытие энкодера манифеста: %w", err)
+		return nil, fmt.Errorf("closing manifest encoder: %w", err)
 	}
 	return buf.Bytes(), nil
 }

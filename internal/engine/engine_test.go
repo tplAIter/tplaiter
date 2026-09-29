@@ -33,7 +33,7 @@ func loadFixtureTemplate(t *testing.T, dir string) *manifest.Template {
 		t.Fatalf("LoadTemplate(%s): %v", dir, err)
 	}
 	if err := tpl.Validate(); err != nil {
-		t.Fatalf("фикстура %s невалидна: %v", dir, err)
+		t.Fatalf("fixture %s is invalid: %v", dir, err)
 	}
 	return tpl
 }
@@ -200,7 +200,7 @@ func TestRenderSingleBasicPostgresKafka(t *testing.T) {
 	mustExist(t, filepath.Join(dir, filepath.FromSlash(BaselineRelPath)))
 	for _, f := range res.Files {
 		if f == BaselineRelPath {
-			t.Errorf("Result.Files не должен включать сам baseline: %v", res.Files)
+			t.Errorf("Result.Files must not include the baseline itself: %v", res.Files)
 		}
 	}
 	// Fixture NOTES.tmpl/README.md files outside Engine.Root are not output.
@@ -211,7 +211,7 @@ func TestRenderSingleBasicPostgresKafka(t *testing.T) {
 		t.Errorf("Baseline.TemplateVersion = %q, want 0.1.0", res.Baseline.TemplateVersion)
 	}
 	if res.Context == nil || res.Context.Project.Slug != "demo_svc" {
-		t.Errorf("Result.Context не заполнен ожидаемо: %+v", res.Context)
+		t.Errorf("Result.Context is not populated as expected: %+v", res.Context)
 	}
 }
 
@@ -221,18 +221,18 @@ func TestRenderDeterministic(t *testing.T) {
 	res2 := renderSingleBasic(t, filepath.Join(t.TempDir(), "b"), values)
 
 	if !reflect.DeepEqual(res1.Baseline, res2.Baseline) {
-		t.Errorf("baseline не стабилен:\n first=%+v\n second=%+v", res1.Baseline, res2.Baseline)
+		t.Errorf("baseline is not stable:\n first=%+v\n second=%+v", res1.Baseline, res2.Baseline)
 	}
 	if !reflect.DeepEqual(res1.Files, res2.Files) {
-		t.Errorf("список файлов не стабилен:\n first=%v\n second=%v", res1.Files, res2.Files)
+		t.Errorf("file list is not stable:\n first=%v\n second=%v", res1.Files, res2.Files)
 	}
 	if len(res1.Files) == 0 {
-		t.Fatal("ожидались непустые Result.Files")
+		t.Fatal("expected non-empty Result.Files")
 	}
 	sorted := append([]string(nil), res1.Files...)
 	for i := 1; i < len(sorted); i++ {
 		if sorted[i-1] > sorted[i] {
-			t.Errorf("Result.Files не отсортирован: %v", sorted)
+			t.Errorf("Result.Files is not sorted: %v", sorted)
 			break
 		}
 	}

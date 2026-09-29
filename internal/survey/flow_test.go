@@ -32,10 +32,10 @@ func TestAskFlow_DefaultsMode_SkipsPrompter(t *testing.T) {
 		t.Fatalf("AskFlow defaults: %v", err)
 	}
 	if got := res.Values["database"]; got != "postgres" {
-		t.Fatalf("database = %v, хотим postgres (preset применяется и в defaults)", got)
+		t.Fatalf("database = %v, want postgres (preset also applies with defaults)", got)
 	}
 	if got := res.Values["replicas"]; got != 3 {
-		t.Fatalf("replicas = %v, хотим дефолт 3", got)
+		t.Fatalf("replicas = %v, want default 3", got)
 	}
 }
 
@@ -49,7 +49,7 @@ func TestAskFlow_NonInteractive_DefaultForUnsetSelect(t *testing.T) {
 		t.Fatalf("AskFlow non-interactive: %v", err)
 	}
 	if got := res.Values["database"]; got != "none" {
-		t.Fatalf("database = %v, хотим дефолт none", got)
+		t.Fatalf("database = %v, want default none", got)
 	}
 }
 
@@ -60,13 +60,13 @@ func TestAskFlow_NonInteractive_RequiredStringMissing(t *testing.T) {
 		FlowOptions{Interactive: false}, p, &buf, plainPalette())
 	var missErr *MissingRequiredError
 	if !errors.As(err, &missErr) {
-		t.Fatalf("хотим *MissingRequiredError, получили %v", err)
+		t.Fatalf("want *MissingRequiredError, got %v", err)
 	}
 	if len(missErr.Groups) != 1 || missErr.Groups[0] != "svc_name" {
-		t.Fatalf("Groups = %v, хотим [svc_name]", missErr.Groups)
+		t.Fatalf("Groups = %v, want [svc_name]", missErr.Groups)
 	}
 	if !strings.Contains(err.Error(), "--set") {
-		t.Fatalf("сообщение должно подсказывать --set: %q", err.Error())
+		t.Fatalf("message must suggest --set: %q", err.Error())
 	}
 }
 
@@ -78,7 +78,7 @@ func TestAskFlow_NonInteractive_NestedRequiredNotTriggeredWhenInactive(t *testin
 	_, err := AskFlow(testTemplate(), settings.Values{"svc_name": "svc"},
 		FlowOptions{Interactive: false}, p, &buf, plainPalette())
 	if err != nil {
-		t.Fatalf("неактивная вложенная строка не должна быть обязательной: %v", err)
+		t.Fatalf("an inactive nested string must not be required: %v", err)
 	}
 }
 
@@ -91,10 +91,10 @@ func TestAskFlow_NonInteractive_NestedRequiredTriggeredWhenActive(t *testing.T) 
 		FlowOptions{Interactive: false}, p, &buf, plainPalette())
 	var missErr *MissingRequiredError
 	if !errors.As(err, &missErr) {
-		t.Fatalf("хотим *MissingRequiredError для kafka_topics, получили %v", err)
+		t.Fatalf("want *MissingRequiredError for kafka_topics, got %v", err)
 	}
 	if len(missErr.Groups) != 1 || missErr.Groups[0] != "kafka_topics" {
-		t.Fatalf("Groups = %v, хотим [kafka_topics]", missErr.Groups)
+		t.Fatalf("Groups = %v, want [kafka_topics]", missErr.Groups)
 	}
 }
 
@@ -115,18 +115,18 @@ func TestAskFlow_Interactive_PresetBeatsPromptAndDefault(t *testing.T) {
 		t.Fatalf("AskFlow: %v", err)
 	}
 	if got := res.Values["database"]; got != "postgres" { // preset
-		t.Fatalf("database = %v, хотим postgres (preset)", got)
+		t.Fatalf("database = %v, want postgres (preset)", got)
 	}
 	if got := res.Values["svc_name"]; got != "myservice" { // prompt
-		t.Fatalf("svc_name = %v, хотим myservice (prompt)", got)
+		t.Fatalf("svc_name = %v, want myservice (prompt)", got)
 	}
 	if got := res.Values["replicas"]; got != 5 { // prompt overrides default 3
-		t.Fatalf("replicas = %v, хотим 5 (prompt)", got)
+		t.Fatalf("replicas = %v, want 5 (prompt)", got)
 	}
 	// database must not appear among asked groups (it is preset).
 	for _, id := range p.AskCalls[0] {
 		if id == "database" {
-			t.Fatalf("preset-группа database не должна опрашиваться, AskCalls=%v", p.AskCalls[0])
+			t.Fatalf("preset group database must not be prompted, AskCalls=%v", p.AskCalls[0])
 		}
 	}
 }
@@ -146,7 +146,7 @@ func TestAskFlow_Interactive_NestedAskedOnlyWhenParentSelected(t *testing.T) {
 		t.Fatalf("AskFlow: %v", err)
 	}
 	if containsStr(p.AskCalls[0], "idempotency") {
-		t.Fatalf("idempotency не должна опрашиваться при database=none: %v", p.AskCalls[0])
+		t.Fatalf("idempotency must not be prompted with database=none: %v", p.AskCalls[0])
 	}
 
 	// database=postgres → idempotency is asked; kafka_* are not (no kafka).
@@ -164,10 +164,10 @@ func TestAskFlow_Interactive_NestedAskedOnlyWhenParentSelected(t *testing.T) {
 		t.Fatalf("AskFlow: %v", err)
 	}
 	if !containsStr(p2.AskCalls[0], "idempotency") {
-		t.Fatalf("idempotency должна опрашиваться при database=postgres: %v", p2.AskCalls[0])
+		t.Fatalf("idempotency must be prompted with database=postgres: %v", p2.AskCalls[0])
 	}
 	if containsStr(p2.AskCalls[0], "kafka_ssl") {
-		t.Fatalf("kafka_ssl не должна опрашиваться без kafka: %v", p2.AskCalls[0])
+		t.Fatalf("kafka_ssl must not be prompted without kafka: %v", p2.AskCalls[0])
 	}
 }
 
@@ -188,7 +188,7 @@ func TestAskFlow_Interactive_MultiselectRevealsNested(t *testing.T) {
 		t.Fatalf("AskFlow: %v", err)
 	}
 	if !containsStr(p.AskCalls[0], "kafka_ssl") || !containsStr(p.AskCalls[0], "kafka_topics") {
-		t.Fatalf("вложенные kafka_* должны опрашиваться при выборе kafka: %v", p.AskCalls[0])
+		t.Fatalf("nested kafka_* must be prompted when kafka is selected: %v", p.AskCalls[0])
 	}
 	if got := res.Values["kafka_topics"]; got != "orders,events" {
 		t.Fatalf("kafka_topics = %v", got)
@@ -215,8 +215,8 @@ func TestAskFlow_Interactive_SummaryPrinted(t *testing.T) {
 	if got := res.Values["database"]; got != "postgres" {
 		t.Fatalf("database = %v", got)
 	}
-	if !strings.Contains(out, "Сводка настроек") {
-		t.Fatalf("вывод не содержит сводку:\n%s", out)
+	if !strings.Contains(out, "Settings summary") {
+		t.Fatalf("output does not contain the summary:\n%s", out)
 	}
 }
 
@@ -244,13 +244,13 @@ func TestAskFlow_Interactive_ResolveConflictRepromptsSecondIteration(t *testing.
 		t.Fatalf("AskFlow: %v", err)
 	}
 	if len(p.AskCalls) != 2 {
-		t.Fatalf("ожидали 2 итерации опроса, было %d", len(p.AskCalls))
+		t.Fatalf("expected 2 prompt iterations, got %d", len(p.AskCalls))
 	}
 	if got := res.Values["database"]; got != "postgres" {
-		t.Fatalf("итог database = %v, хотим postgres", got)
+		t.Fatalf("final database = %v, want postgres", got)
 	}
-	if !strings.Contains(out, "не согласованы") {
-		t.Fatalf("ожидали сообщение о рассогласовании:\n%s", out)
+	if !strings.Contains(out, "inconsistent") {
+		t.Fatalf("expected an inconsistency message:\n%s", out)
 	}
 }
 
@@ -270,7 +270,7 @@ func TestAskFlow_Interactive_ConfirmRejectReprompts(t *testing.T) {
 		t.Fatalf("AskFlow: %v", err)
 	}
 	if len(p.AskCalls) != 2 {
-		t.Fatalf("отказ от подтверждения должен переопросить: было %d итераций", len(p.AskCalls))
+		t.Fatalf("a declined confirmation must re-prompt: got %d iterations", len(p.AskCalls))
 	}
 }
 
@@ -279,7 +279,7 @@ func TestAskFlow_Interactive_AbortPropagates(t *testing.T) {
 	p := &abortPrompter{err: sentinel}
 	_, _, err := runInteractive(t, nil, p)
 	if !errors.Is(err, sentinel) {
-		t.Fatalf("ожидали проброс ошибки прерывания, получили %v", err)
+		t.Fatalf("expected the interrupt error to propagate, got %v", err)
 	}
 }
 
@@ -290,12 +290,12 @@ func TestAskFlow_Interactive_AbortPropagates(t *testing.T) {
 type panicPrompter struct{ t *testing.T }
 
 func (p *panicPrompter) Ask([]manifest.SettingGroup, settings.Values) (settings.Values, error) {
-	p.t.Fatalf("Prompter.Ask не должен вызываться в этом режиме")
+	p.t.Fatalf("Prompter.Ask must not be called in this mode")
 	return nil, nil
 }
 
 func (p *panicPrompter) Confirm(string) (bool, error) {
-	p.t.Fatalf("Prompter.Confirm не должен вызываться в этом режиме")
+	p.t.Fatalf("Prompter.Confirm must not be called in this mode")
 	return false, nil
 }
 

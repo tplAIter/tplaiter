@@ -30,13 +30,13 @@ type ValidationErrors []Issue
 
 func (e ValidationErrors) Error() string {
 	if len(e) == 0 {
-		return "манифест валиден"
+		return "manifest is valid"
 	}
 	parts := make([]string, len(e))
 	for i, issue := range e {
 		parts[i] = issue.String()
 	}
-	return fmt.Sprintf("манифест невалиден (%d проблем):\n  - %s", len(e), strings.Join(parts, "\n  - "))
+	return fmt.Sprintf("manifest is invalid (%d problems):\n  - %s", len(e), strings.Join(parts, "\n  - "))
 }
 
 var (
@@ -98,14 +98,14 @@ func (v *validator) add(loc, format string, args ...any) {
 
 func (v *validator) checkMetadata(t *Template) {
 	if t.Metadata.Name == "" {
-		v.add("metadata.name", "имя шаблона обязательно")
+		v.add("metadata.name", "template name is required")
 	} else if !slugRe.MatchString(t.Metadata.Name) {
-		v.add("metadata.name", "имя %q не в формате slug (строчные буквы/цифры через дефис)", t.Metadata.Name)
+		v.add("metadata.name", "name %q is not in slug format (lowercase letters/digits separated by hyphens)", t.Metadata.Name)
 	}
 	if t.Metadata.Version == "" {
-		v.add("metadata.version", "версия шаблона обязательна")
+		v.add("metadata.version", "template version is required")
 	} else if !semverRe.MatchString(t.Metadata.Version) {
-		v.add("metadata.version", "версия %q не является SemVer", t.Metadata.Version)
+		v.add("metadata.version", "version %q is not a valid SemVer", t.Metadata.Version)
 	}
 }
 
@@ -122,17 +122,17 @@ func (v *validator) walkGroups(groups []SettingGroup, prefix string) {
 func (v *validator) checkGroup(g *SettingGroup, loc string) {
 	switch {
 	case g.Group == "":
-		v.add(loc+".group", "id группы обязателен")
+		v.add(loc+".group", "group id is required")
 	case !groupRe.MatchString(g.Group):
-		v.add(loc+".group", "id группы %q недопустим (буквы/цифры/подчёркивание, начинается с буквы)", g.Group)
+		v.add(loc+".group", "group id %q is invalid (letters/digits/underscore, must start with a letter)", g.Group)
 	default:
 		if _, dup := v.groups[g.Group]; dup {
-			v.add(loc+".group", "дублирующийся id группы %q (id глобально уникальны, включая вложенные)", g.Group)
+			v.add(loc+".group", "duplicate group id %q (ids must be globally unique, including nested)", g.Group)
 		}
 	}
 
 	if !isKnownType(g.Type) {
-		v.add(loc+".type", "неизвестный тип %q (select|multiselect|toggle|string|int)", g.Type)
+		v.add(loc+".type", "unknown type %q (select|multiselect|toggle|string|int)", g.Type)
 	}
 
 	optionIDs := v.checkOptions(g, loc)
@@ -163,12 +163,12 @@ func (v *validator) checkOptions(g *SettingGroup, loc string) map[string]bool {
 
 	if !needsOptions {
 		if len(g.Options) > 0 {
-			v.add(loc+".options", "тип %q не поддерживает options", g.Type)
+			v.add(loc+".options", "type %q does not support options", g.Type)
 		}
 		return ids
 	}
 	if len(g.Options) == 0 {
-		v.add(loc+".options", "тип %q требует непустой список options", g.Type)
+		v.add(loc+".options", "type %q requires a non-empty options list", g.Type)
 		return ids
 	}
 
@@ -177,18 +177,18 @@ func (v *validator) checkOptions(g *SettingGroup, loc string) map[string]bool {
 		optLoc := fmt.Sprintf("%s.options[%d]", loc, i)
 		switch {
 		case opt.ID == "":
-			v.add(optLoc+".id", "id опции обязателен")
+			v.add(optLoc+".id", "option id is required")
 		case !optionRe.MatchString(opt.ID):
-			v.add(optLoc+".id", "id опции %q недопустим", opt.ID)
+			v.add(optLoc+".id", "option id %q is invalid", opt.ID)
 		default:
 			if _, dup := ids[opt.ID]; dup {
-				v.add(optLoc+".id", "дублирующийся id опции %q в группе %q", opt.ID, g.Group)
+				v.add(optLoc+".id", "duplicate option id %q in group %q", opt.ID, g.Group)
 			} else {
 				ids[opt.ID] = opt.Status == StatusPlanned
 			}
 		}
 		if opt.Status != "" && opt.Status != StatusPlanned {
-			v.add(optLoc+".status", "недопустимый status %q (пусто|planned)", opt.Status)
+			v.add(optLoc+".status", "invalid status %q (empty|planned)", opt.Status)
 		}
 	}
 	return ids
@@ -205,35 +205,35 @@ func (v *validator) checkDefault(g *SettingGroup, loc string, optionIDs map[stri
 	case TypeSelect:
 		s, ok := g.Default.(string)
 		if !ok {
-			v.add(dloc, "default для select должен быть строкой (id опции)")
+			v.add(dloc, "default for select must be a string (option id)")
 			return
 		}
 		v.checkOptionValue(dloc, g.Group, s, optionIDs)
 	case TypeMultiselect:
 		list, ok := g.Default.([]any)
 		if !ok {
-			v.add(dloc, "default для multiselect должен быть списком id опций")
+			v.add(dloc, "default for multiselect must be a list of option ids")
 			return
 		}
 		for _, el := range list {
 			s, ok := el.(string)
 			if !ok {
-				v.add(dloc, "элемент default %v не строка", el)
+				v.add(dloc, "default element %v is not a string", el)
 				continue
 			}
 			v.checkOptionValue(dloc, g.Group, s, optionIDs)
 		}
 	case TypeToggle:
 		if _, ok := g.Default.(bool); !ok {
-			v.add(dloc, "default для toggle должен быть bool")
+			v.add(dloc, "default for toggle must be bool")
 		}
 	case TypeString:
 		if _, ok := g.Default.(string); !ok {
-			v.add(dloc, "default для string должен быть строкой")
+			v.add(dloc, "default for string must be a string")
 		}
 	case TypeInt:
 		if _, ok := g.Default.(int); !ok {
-			v.add(dloc, "default для int должен быть целым числом")
+			v.add(dloc, "default for int must be an integer")
 		}
 	}
 }
@@ -241,11 +241,11 @@ func (v *validator) checkDefault(g *SettingGroup, loc string, optionIDs map[stri
 func (v *validator) checkOptionValue(loc, group, value string, optionIDs map[string]bool) {
 	planned, ok := optionIDs[value]
 	if !ok {
-		v.add(loc, "значение по умолчанию %q отсутствует среди опций группы %q", value, group)
+		v.add(loc, "default value %q not found among options of group %q", value, group)
 		return
 	}
 	if planned {
-		v.add(loc, "planned-опция %q не может быть значением по умолчанию", value)
+		v.add(loc, "planned option %q cannot be a default value", value)
 	}
 }
 
@@ -257,12 +257,12 @@ func (v *validator) checkFiles(files []FileRule) {
 		hasAnyOf := len(f.AnyOf) > 0
 		switch {
 		case hasWhen && hasAnyOf:
-			v.add(loc, "заданы одновременно when и anyOf — оставьте одно")
+			v.add(loc, "when and anyOf are set simultaneously — leave only one")
 		case !hasWhen && !hasAnyOf:
-			v.add(loc, "правило без when/anyOf не имеет условия")
+			v.add(loc, "rule without when/anyOf has no condition")
 		}
 		if len(f.Paths) == 0 && len(f.Remove) == 0 {
-			v.add(loc, "правило без paths и remove ничего не делает")
+			v.add(loc, "rule without paths and remove does nothing")
 		}
 		if hasWhen {
 			v.conds = append(v.conds, condRef{loc: loc + ".when", expr: f.When})
@@ -278,7 +278,7 @@ func (v *validator) checkFiles(files []FileRule) {
 func (v *validator) checkGlobs(loc string, globs []string) {
 	for i, g := range globs {
 		if _, err := path.Match(g, ""); err != nil {
-			v.add(fmt.Sprintf("%s[%d]", loc, i), "некорректный glob %q: %v", g, err)
+			v.add(fmt.Sprintf("%s[%d]", loc, i), "invalid glob %q: %v", g, err)
 		}
 	}
 }
@@ -287,7 +287,7 @@ func (v *validator) checkEngineGlobs(e Engine) {
 	v.checkGlobs("engine.copyWithoutRender", e.CopyWithoutRender)
 	for i := range e.PostReplace {
 		if _, err := path.Match(e.PostReplace[i].Glob, ""); err != nil {
-			v.add(fmt.Sprintf("engine.postReplace[%d].glob", i), "некорректный glob %q: %v", e.PostReplace[i].Glob, err)
+			v.add(fmt.Sprintf("engine.postReplace[%d].glob", i), "invalid glob %q: %v", e.PostReplace[i].Glob, err)
 		}
 	}
 }
@@ -296,12 +296,12 @@ func (v *validator) checkConstraints(cs []Constraint) {
 	for i := range cs {
 		loc := fmt.Sprintf("constraints[%d]", i)
 		if cs[i].If == "" {
-			v.add(loc+".if", "условие if обязательно")
+			v.add(loc+".if", "if condition is required")
 		} else {
 			v.conds = append(v.conds, condRef{loc: loc + ".if", expr: cs[i].If})
 		}
 		if cs[i].Require == "" {
-			v.add(loc+".require", "условие require обязательно")
+			v.add(loc+".require", "require condition is required")
 		} else {
 			v.conds = append(v.conds, condRef{loc: loc + ".require", expr: cs[i].Require})
 		}
@@ -318,7 +318,7 @@ func (v *validator) checkCommands(cmds map[string]Command) {
 		c := cmds[name]
 		loc := fmt.Sprintf("commands[%q]", name)
 		if strings.TrimSpace(c.Run) == "" {
-			v.add(loc+".run", "команда должна задавать непустой run")
+			v.add(loc+".run", "command must specify a non-empty run")
 		}
 		if c.When != "" {
 			v.conds = append(v.conds, condRef{loc: loc + ".when", expr: c.When})
@@ -331,7 +331,7 @@ func (v *validator) checkGenerators(gens []Generator) {
 		g := &gens[i]
 		loc := fmt.Sprintf("generators[%d]", i)
 		if g.Kind == "" {
-			v.add(loc+".kind", "kind генератора обязателен")
+			v.add(loc+".kind", "generator kind is required")
 		}
 		v.checkGeneratorForm(g, loc)
 		v.checkGeneratorParams(g, loc)
@@ -349,16 +349,16 @@ func (v *validator) checkGeneratorForm(g *Generator, loc string) {
 
 	switch {
 	case hasSingle && hasMulti:
-		v.add(loc, "заданы одновременно одиночная форма (snippet/target) и мультифайловая (targets) — оставьте одну")
+		v.add(loc, "both single-file form (snippet/target) and multi-file form (targets) are specified — leave only one")
 	case hasMulti:
 		v.checkTargets(g.Targets, loc)
 	default:
 		// Single-file form (or an empty generator): both fields are required.
 		if strings.TrimSpace(g.Snippet) == "" {
-			v.add(loc+".snippet", "snippet генератора обязателен (или используйте targets[])")
+			v.add(loc+".snippet", "generator snippet is required (or use targets[])")
 		}
 		if strings.TrimSpace(g.Target) == "" {
-			v.add(loc+".target", "target генератора обязателен (или используйте targets[])")
+			v.add(loc+".target", "generator target is required (or use targets[])")
 		}
 	}
 }
@@ -368,13 +368,13 @@ func (v *validator) checkTargets(targets []Target, loc string) {
 		t := &targets[i]
 		tloc := fmt.Sprintf("%s.targets[%d]", loc, i)
 		if strings.TrimSpace(t.Snippet) == "" {
-			v.add(tloc+".snippet", "snippet таргета обязателен")
+			v.add(tloc+".snippet", "target snippet is required")
 		}
 		if strings.TrimSpace(t.Target) == "" {
-			v.add(tloc+".target", "target таргета обязателен")
+			v.add(tloc+".target", "target path is required")
 		}
 		if t.Numbered != "" && t.Numbered != NumberedGoose {
-			v.add(tloc+".numbered", "неизвестная стратегия нумерации %q (пусто|%s)", t.Numbered, NumberedGoose)
+			v.add(tloc+".numbered", "unknown numbering strategy %q (empty|%s)", t.Numbered, NumberedGoose)
 		}
 		for j, w := range t.When {
 			v.conds = append(v.conds, condRef{loc: fmt.Sprintf("%s.when[%d]", tloc, j), expr: w})
@@ -389,24 +389,24 @@ func (v *validator) checkGeneratorParams(g *Generator, loc string) {
 		ploc := fmt.Sprintf("%s.params[%d]", loc, i)
 		switch {
 		case p.Name == "":
-			v.add(ploc+".name", "имя параметра обязательно")
+			v.add(ploc+".name", "parameter name is required")
 		case !paramNameRe.MatchString(p.Name):
-			v.add(ploc+".name", "недопустимое имя параметра %q (буквы/цифры/дефис, начинается с буквы)", p.Name)
+			v.add(ploc+".name", "invalid parameter name %q (letters/digits/hyphen, must start with a letter)", p.Name)
 		case seen[p.Name]:
-			v.add(ploc+".name", "дублирующееся имя параметра %q", p.Name)
+			v.add(ploc+".name", "duplicate parameter name %q", p.Name)
 		default:
 			seen[p.Name] = true
 		}
 		if !isKnownParamType(p.Type) {
-			v.add(ploc+".type", "неизвестный тип параметра %q (%s|%s|%s|%s|%s)",
+			v.add(ploc+".type", "unknown parameter type %q (%s|%s|%s|%s|%s)",
 				p.Type, ParamTypeString, ParamTypeBool, ParamTypeInt, ParamTypeFields, ParamTypeList)
 		}
 		if p.Pattern != "" {
 			if p.Type != ParamTypeString && p.Type != ParamTypeInt {
-				v.add(ploc+".pattern", "pattern поддерживается только для параметров string или int, не %q", p.Type)
+				v.add(ploc+".pattern", "pattern is only supported for string or int parameters, not %q", p.Type)
 			}
 			if _, err := regexp.Compile(p.Pattern); err != nil {
-				v.add(ploc+".pattern", "некорректный regexp %q: %v", p.Pattern, err)
+				v.add(ploc+".pattern", "invalid regexp %q: %v", p.Pattern, err)
 			}
 		}
 	}
@@ -435,7 +435,7 @@ func (v *validator) checkConditionRefs() {
 	for _, c := range v.conds {
 		cond, err := ParseCondition(c.expr)
 		if err != nil {
-			v.add(c.loc, "условие %q: %v", c.expr, err)
+			v.add(c.loc, "condition %q: %v", c.expr, err)
 			continue
 		}
 		for _, atom := range cond.Atoms {
@@ -447,21 +447,21 @@ func (v *validator) checkConditionRefs() {
 func (v *validator) checkAtomRef(loc string, atom Atom) {
 	info, ok := v.groups[atom.Group]
 	if !ok {
-		v.add(loc, "условие ссылается на несуществующую группу %q", atom.Group)
+		v.add(loc, "condition references non-existent group %q", atom.Group)
 		return
 	}
 	switch info.typ {
 	case TypeSelect, TypeMultiselect:
 		if _, ok := info.options[atom.Value]; !ok {
-			v.add(loc, "группа %q не имеет опции %q", atom.Group, atom.Value)
+			v.add(loc, "group %q does not have option %q", atom.Group, atom.Value)
 		}
 	case TypeToggle:
 		if atom.Value != "true" && atom.Value != "false" {
-			v.add(loc, "toggle-группа %q сравнивается с %q (ожидается true|false)", atom.Group, atom.Value)
+			v.add(loc, "toggle group %q is compared with %q (expected true|false)", atom.Group, atom.Value)
 		}
 	case TypeInt:
 		if _, err := strconv.Atoi(atom.Value); err != nil {
-			v.add(loc, "int-группа %q сравнивается с нечисловым %q", atom.Group, atom.Value)
+			v.add(loc, "int group %q is compared with non-numeric %q", atom.Group, atom.Value)
 		}
 	case TypeString:
 		// The value is arbitrary, so there is nothing to validate.

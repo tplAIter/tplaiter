@@ -56,7 +56,7 @@ func topLevelCommand(cmd *cobra.Command) *cobra.Command {
 func printWelcome(cmd *cobra.Command) {
 	p := ui.Default()
 	out := cmd.ErrOrStderr()
-	fmt.Fprintln(out, p.Muted("tplaiter: создан каталог ~/.tplaiter — это первый запуск на этой машине."))
-	fmt.Fprintln(out, p.Muted("Добавьте репозиторий шаблонов:  tplaiter repo add <alias> <url>"))
-	fmt.Fprintln(out, p.Muted("Документация: README.md и docs/ в репозитории tplaiter."))
+	fmt.Fprintln(out, p.Muted("tplaiter: created directory ~/.tplaiter — this is the first run on this machine."))
+	fmt.Fprintln(out, p.Muted("Add template repository:  tplaiter repo add <alias> <url>"))
+	fmt.Fprintln(out, p.Muted("Documentation: README.md and docs/ in tplaiter repository."))
 }

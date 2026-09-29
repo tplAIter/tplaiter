@@ -32,7 +32,7 @@ var gitExec = execx.Exec{}
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := gitExec.LookPath("git"); err != nil {
-		t.Skip("git не найден в PATH — интеграционный тест пропущен")
+		t.Skip("git not found in PATH — integration test skipped")
 	}
 }
 
@@ -219,18 +219,18 @@ func TestStats_E2E_ZeroDrift(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 	if rep.Score != 0 {
-		t.Errorf("score = %d, ожидался 0 сразу после new", rep.Score)
+		t.Errorf("score = %d, expected 0 right after new", rep.Score)
 	}
 	if len(rep.Extras) != 0 {
-		t.Errorf("extras = %v, ожидались пустые", rep.Extras)
+		t.Errorf("extras = %v, expected empty", rep.Extras)
 	}
 
 	var out, errOut bytes.Buffer
 	if err := stats.Run(context.Background(), testDeps(mgr, home, &out, &errOut), stats.Options{StartDir: projDir}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(out.String(), "проект соответствует шаблону") {
-		t.Errorf("нет сообщения о соответствии:\n%s", out.String())
+	if !strings.Contains(out.String(), "project matches template") {
+		t.Errorf("no match message:\n%s", out.String())
 	}
 }
 
@@ -256,17 +256,17 @@ func TestStats_E2E_ConflictProneVsAuto(t *testing.T) {
 				return f.Class
 			}
 		}
-		t.Fatalf("нет файла %q в отчёте", path)
+		t.Fatalf("file %q missing from the report", path)
 		return ""
 	}
 	if c := classOf("churned.txt"); c != stats.ClassConflictProne {
-		t.Errorf("churned.txt класс = %q, ожидался conflict-prone", c)
+		t.Errorf("churned.txt class = %q, expected conflict-prone", c)
 	}
 	if c := classOf("stable.txt"); c != stats.ClassAuto {
-		t.Errorf("stable.txt класс = %q, ожидался auto", c)
+		t.Errorf("stable.txt class = %q, expected auto", c)
 	}
 	if len(rep.Warnings) != 0 {
-		t.Errorf("не ожидались предупреждения при 3 тегах: %v", rep.Warnings)
+		t.Errorf("expected no warnings with 3 tags: %v", rep.Warnings)
 	}
 }
 
@@ -281,11 +281,11 @@ func TestStats_E2E_BrokenAnchor(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 	if len(rep.BrokenAnchors) != 1 || rep.BrokenAnchors[0] != "wiring.txt" {
-		t.Errorf("brokenAnchors = %v, ожидался [wiring.txt]", rep.BrokenAnchors)
+		t.Errorf("brokenAnchors = %v, expected [wiring.txt]", rep.BrokenAnchors)
 	}
 	for _, f := range rep.Files {
 		if f.Path == "wiring.txt" && f.Class != stats.ClassManualOnly {
-			t.Errorf("wiring.txt класс = %q, ожидался manual-only", f.Class)
+			t.Errorf("wiring.txt class = %q, expected manual-only", f.Class)
 		}
 	}
 }
@@ -302,7 +302,7 @@ func TestStats_E2E_CopyWithoutRender(t *testing.T) {
 	}
 	for _, f := range rep.Files {
 		if f.Path == "dashboards/app.json" && f.Class != stats.ClassManualOnly {
-			t.Errorf("dashboards/app.json класс = %q, ожидался manual-only", f.Class)
+			t.Errorf("dashboards/app.json class = %q, expected manual-only", f.Class)
 		}
 	}
 }
@@ -319,12 +319,12 @@ func TestStats_E2E_HistoryUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	if len(rep.Warnings) == 0 || !strings.Contains(rep.Warnings[0], "недоступна") {
-		t.Errorf("ожидалось предупреждение о недоступности эвристики, получено: %v", rep.Warnings)
+	if len(rep.Warnings) == 0 || !strings.Contains(rep.Warnings[0], "unavailable") {
+		t.Errorf("expected a warning about the unavailable heuristic, got: %v", rep.Warnings)
 	}
 	for _, f := range rep.Files {
 		if f.Path == "churned.txt" && f.Class != stats.ClassAuto {
-			t.Errorf("при <2 тегах правка должна быть auto, стало %q", f.Class)
+			t.Errorf("with <2 tags an edit must be auto, got %q", f.Class)
 		}
 	}
 
@@ -332,7 +332,7 @@ func TestStats_E2E_HistoryUnavailable(t *testing.T) {
 	if err := stats.Run(context.Background(), testDeps(mgr, home, &out, &errOut), stats.Options{StartDir: projDir}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !strings.Contains(errOut.String(), "недоступна") {
-		t.Errorf("Run не напечатал предупреждение в Err:\n%s", errOut.String())
+	if !strings.Contains(errOut.String(), "unavailable") {
+		t.Errorf("Run did not print the warning to Err:\n%s", errOut.String())
 	}
 }

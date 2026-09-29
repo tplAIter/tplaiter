@@ -31,7 +31,7 @@ var gitExec = execx.Exec{}
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := gitExec.LookPath("git"); err != nil {
-		t.Skip("git не найден в PATH — интеграционный тест пропущен")
+		t.Skip("git not found in PATH — integration test skipped")
 	}
 }
 
@@ -266,51 +266,51 @@ func TestUpgrade_E2E_MR(t *testing.T) {
 
 	var out bytes.Buffer
 	res, err := Upgrade(context.Background(), testDeps(mgr, home, rec, &out), Options{
-		StartDir: projDir, Yes: true, Title: "вклад",
+		StartDir: projDir, Yes: true, Title: "contribution",
 	})
 	if err != nil {
 		t.Fatalf("Upgrade: %v", err)
 	}
 
 	if res.Mode != modeMR {
-		t.Fatalf("Mode = %q, ожидался mr", res.Mode)
+		t.Fatalf("Mode = %q, expected mr", res.Mode)
 	}
 	wantBranch := "tplater/upgrade-demo_svc-20260711-1647"
 	if res.Branch != wantBranch {
-		t.Errorf("Branch = %q, ожидался %q", res.Branch, wantBranch)
+		t.Errorf("Branch = %q, expected %q", res.Branch, wantBranch)
 	}
 
 	// The .tmpl source path is correct.
 	if !contains(res.Files, "files/main.go.tmpl") {
-		t.Errorf("Files = %v, ожидался files/main.go.tmpl", res.Files)
+		t.Errorf("Files = %v, expected files/main.go.tmpl", res.Files)
 	}
 
 	// The branch was pushed to origin and the file was parameterized again.
 	origin := originDir(t, home)
 	content, ok := gitShow(t, origin, wantBranch, "files/main.go.tmpl")
 	if !ok {
-		t.Fatalf("ветка %s не найдена в origin", wantBranch)
+		t.Fatalf("branch %s not found in origin", wantBranch)
 	}
 	if !strings.Contains(content, "{{ .Project.Slug }}") {
-		t.Errorf("main.go.tmpl не параметризован slug'ом:\n%s", content)
+		t.Errorf("main.go.tmpl is not parameterized by slug:\n%s", content)
 	}
 	if !strings.Contains(content, "{{ .Project.Module }}") {
-		t.Errorf("main.go.tmpl не параметризован module'ом:\n%s", content)
+		t.Errorf("main.go.tmpl is not parameterized by module:\n%s", content)
 	}
 	if strings.Contains(content, "demo_svc") {
-		t.Errorf("в шаблоне остались буквальные значения проекта:\n%s", content)
+		t.Errorf("literal project values remain in the template:\n%s", content)
 	}
 
 	// The MR command was called with the expected arguments.
 	glab := findCall(t, rec, "glab")
-	assertArgs(t, glab.Args, "mr", "create", "--source-branch", wantBranch, "--title", "вклад")
+	assertArgs(t, glab.Args, "mr", "create", "--source-branch", wantBranch, "--title", "contribution")
 	if !hasArg(glab.Args, "--description") {
-		t.Errorf("нет --description в вызове glab: %v", glab.Args)
+		t.Errorf("no --description in the MR CLI call: %v", glab.Args)
 	}
 	// The description contains the metadata block.
 	desc := argValue(glab.Args, "--description")
 	if !strings.Contains(desc, "## tplater upgrade") || !strings.Contains(desc, "example/svc@v1.0.0") {
-		t.Errorf("описание без метаблока:\n%s", desc)
+		t.Errorf("description has no metadata block:\n%s", desc)
 	}
 
 	// The cached clone returned to the original ref and the branch was deleted locally.
@@ -334,11 +334,11 @@ func TestUpgrade_E2E_Patch(t *testing.T) {
 	}
 
 	if res.Mode != modePatch {
-		t.Fatalf("Mode = %q, ожидался patch", res.Mode)
+		t.Fatalf("Mode = %q, expected patch", res.Mode)
 	}
 	entries, err := os.ReadDir(res.PatchDir)
 	if err != nil {
-		t.Fatalf("каталог патчей: %v", err)
+		t.Fatalf("patch directory: %v", err)
 	}
 	var patches int
 	for _, e := range entries {
@@ -347,13 +347,13 @@ func TestUpgrade_E2E_Patch(t *testing.T) {
 		}
 	}
 	if patches == 0 {
-		t.Errorf("в %s нет .patch файлов", res.PatchDir)
+		t.Errorf("no .patch files in %s", res.PatchDir)
 	}
 
 	// The MR CLI was not called.
 	for _, c := range rec.Calls {
 		if c.Name == "glab" || c.Name == "gh" {
-			t.Errorf("в --patch режиме не должно быть вызова MR-CLI, был: %s %v", c.Name, c.Args)
+			t.Errorf("--patch mode must not call the MR CLI, got: %s %v", c.Name, c.Args)
 		}
 	}
 	assertCloneRestored(t, mgr.CloneDir("example"), res.Branch)
@@ -377,13 +377,13 @@ func TestUpgrade_ConditionalVerticalMarker(t *testing.T) {
 
 	patch := readPatches(t, res.PatchDir)
 	if !strings.Contains(patch, "TPLATER-REVIEW") {
-		t.Errorf("нет маркера TPLATER-REVIEW в патче kafka.go.tmpl:\n%s", patch)
+		t.Errorf("no TPLATER-REVIEW marker in the kafka.go.tmpl patch:\n%s", patch)
 	}
-	if !strings.Contains(patch, "условной вертикали kafka=true") {
-		t.Errorf("маркер без условия вертикали:\n%s", patch)
+	if !strings.Contains(patch, "conditional vertical kafka=true") {
+		t.Errorf("marker lacks the vertical condition:\n%s", patch)
 	}
 	if !contains(res.Files, "files/kafka.go.tmpl") {
-		t.Errorf("Files = %v, ожидался files/kafka.go.tmpl", res.Files)
+		t.Errorf("Files = %v, expected files/kafka.go.tmpl", res.Files)
 	}
 }
 
@@ -407,10 +407,10 @@ func TestUpgrade_GoModExcluded_FilesAddsExtra(t *testing.T) {
 	}
 
 	if contains(res.Files, "files/go.mod.tmpl") || contains(res.Files, "files/go.mod") {
-		t.Errorf("go.mod не должен попадать в кандидаты: %v", res.Files)
+		t.Errorf("go.mod must not be a candidate: %v", res.Files)
 	}
 	if !contains(res.Files, "files/docs/notes.txt") {
-		t.Errorf("extra-файл по --files не добавлен: %v", res.Files)
+		t.Errorf("extra file from --files was not added: %v", res.Files)
 	}
 }
 
@@ -430,23 +430,23 @@ func TestBuildSubstitutions_Dedup(t *testing.T) {
 		if s.value == "demo_svc" {
 			slugCount++
 			if s.placeholder != "{{ .Project.Slug }}" {
-				t.Errorf("значение demo_svc отдано плейсхолдеру %q, ожидался Slug", s.placeholder)
+				t.Errorf("value demo_svc was assigned to placeholder %q, expected Slug", s.placeholder)
 			}
 		}
 	}
 	if slugCount != 1 {
-		t.Errorf("подстановок для demo_svc = %d, ожидалась 1 (дедуп slug==name==snake)", slugCount)
+		t.Errorf("substitutions for demo_svc = %d, expected 1 (dedup slug==name==snake)", slugCount)
 	}
 
 	// Module is applied before Slug (otherwise it would split the Go path).
 	content := []byte("import \"example.test/demo_svc/pkg\"\nconst s = \"demo_svc\"\n")
 	got, changed := derender(content, subs)
 	if !changed {
-		t.Fatal("derender не выполнил замен")
+		t.Fatal("derender made no substitutions")
 	}
 	want := "import \"{{ .Project.Module }}/pkg\"\nconst s = \"{{ .Project.Slug }}\"\n"
 	if string(got) != want {
-		t.Errorf("derender =\n%q\nожидалось\n%q", got, want)
+		t.Errorf("derender =\n%q\nexpected\n%q", got, want)
 	}
 }
 
@@ -456,7 +456,7 @@ func appendToFile(t *testing.T, path, extra string) {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("чтение %s: %v", path, err)
+		t.Fatalf("reading %s: %v", path, err)
 	}
 	if err := os.WriteFile(path, append(data, []byte(extra)...), 0o644); err != nil {
 		t.Fatal(err)
@@ -467,7 +467,7 @@ func readPatches(t *testing.T, dir string) string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		t.Fatalf("каталог патчей: %v", err)
+		t.Fatalf("patch directory: %v", err)
 	}
 	var b strings.Builder
 	for _, e := range entries {
@@ -485,15 +485,15 @@ func assertCloneRestored(t *testing.T, clone, branch string) {
 	res, err := gitExec.Run(context.Background(), "git",
 		[]string{"symbolic-ref", "--short", "-q", "HEAD"}, execx.Options{Dir: clone})
 	if err != nil {
-		t.Fatalf("HEAD клона: %v", err)
+		t.Fatalf("clone HEAD: %v", err)
 	}
 	if b := strings.TrimSpace(res.Stdout); b != "main" {
-		t.Errorf("клон на ветке %q, ожидался main", b)
+		t.Errorf("clone is on branch %q, expected main", b)
 	}
 	res, _ = gitExec.Run(context.Background(), "git",
 		[]string{"branch", "--list", branch}, execx.Options{Dir: clone})
 	if strings.TrimSpace(res.Stdout) != "" {
-		t.Errorf("ветка %s не удалена локально: %q", branch, res.Stdout)
+		t.Errorf("branch %s was not deleted locally: %q", branch, res.Stdout)
 	}
 }
 
@@ -504,7 +504,7 @@ func findCall(t *testing.T, rec *execx.RecordingRunner, name string) execx.Call 
 			return c
 		}
 	}
-	t.Fatalf("нет вызова %q среди %v", name, rec.Calls)
+	t.Fatalf("no call %q among %v", name, rec.Calls)
 	return execx.Call{}
 }
 
@@ -512,7 +512,7 @@ func assertArgs(t *testing.T, args []string, want ...string) {
 	t.Helper()
 	for _, w := range want {
 		if !hasArg(args, w) {
-			t.Errorf("нет аргумента %q в %v", w, args)
+			t.Errorf("no argument %q in %v", w, args)
 		}
 	}
 }

@@ -28,7 +28,7 @@ import (
 // project created (README rendered, feature_x path works).
 func TestE2E_InitTemplateToNewProject(t *testing.T) {
 	if _, err := (execx.Exec{}).LookPath("git"); err != nil {
-		t.Skip("git не найден в PATH — e2e пропущен")
+		t.Skip("git not found in PATH — e2e skipped")
 	}
 	ctx := context.Background()
 
@@ -42,7 +42,7 @@ func TestE2E_InitTemplateToNewProject(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(repoDir, ".git")); err != nil {
-		t.Fatalf("ожидался git-репозиторий: %v", err)
+		t.Fatalf("expected a git repository: %v", err)
 	}
 
 	// 2. tplater repo add file://<repoDir>.
@@ -129,32 +129,32 @@ func TestE2E_InitTemplateToNewProject(t *testing.T) {
 	// 4. Checks for the generated project.
 	readme, err := os.ReadFile(filepath.Join(projDir, "README.md"))
 	if err != nil {
-		t.Fatalf("README.md не создан: %v", err)
+		t.Fatalf("README.md not created: %v", err)
 	}
 	if !bytes.Contains(readme, []byte("My Service")) {
-		t.Errorf("README не отрендерил имя проекта:\n%s", readme)
+		t.Errorf("README did not render the project name:\n%s", readme)
 	}
 	if !bytes.Contains(readme, []byte("my_service")) {
-		t.Errorf("README не отрендерил slug:\n%s", readme)
+		t.Errorf("README did not render the slug:\n%s", readme)
 	}
 	if !bytes.Contains(readme, []byte("tplaiter run dev")) || !bytes.Contains(readme, []byte("tplaiter run test")) {
-		t.Errorf("README не содержит текущие команды запуска:\n%s", readme)
+		t.Errorf("README does not contain the current run commands:\n%s", readme)
 	}
 	if bytes.Contains(readme, []byte("tplater run ")) || bytes.Contains(out.Bytes(), []byte("tplater run ")) {
-		t.Errorf("new вывел устаревшую CLI-подсказку:\nREADME:\n%s\nNOTES/output:\n%s", readme, out.String())
+		t.Errorf("new printed a stale CLI hint:\nREADME:\n%s\nNOTES/output:\n%s", readme, out.String())
 	}
 
 	// feature_x=true → conditional directory __if_feature_x__/ produced extra.txt.
 	if _, err := os.Stat(filepath.Join(projDir, "extra.txt")); err != nil {
-		t.Errorf("feature_x-путь не сработал (extra.txt отсутствует): %v", err)
+		t.Errorf("feature_x path did not apply (extra.txt is missing): %v", err)
 	}
 	// variant=advanced → the files rule included advanced/notes.md.
 	if _, err := os.Stat(filepath.Join(projDir, "advanced", "notes.md")); err != nil {
-		t.Errorf("variant=advanced-путь не сработал (advanced/notes.md отсутствует): %v", err)
+		t.Errorf("variant=advanced path did not apply (advanced/notes.md is missing): %v", err)
 	}
 	// Project marker was written.
 	if _, err := os.Stat(filepath.Join(projDir, ".tplaiter", "project.yaml")); err != nil {
-		t.Errorf("проектный маркер .tplaiter/project.yaml отсутствует: %v", err)
+		t.Errorf("project marker .tplaiter/project.yaml is missing: %v", err)
 	}
 }
 

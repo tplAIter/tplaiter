@@ -31,7 +31,7 @@ type ScriptedPrompter struct {
 func (s *ScriptedPrompter) Ask(groups []manifest.SettingGroup, current settings.Values) (settings.Values, error) {
 	if s.askIdx >= len(s.Answers) {
 		s.askIdx++
-		return nil, fmt.Errorf("scripted: нет ответа для вызова Ask #%d", s.askIdx)
+		return nil, fmt.Errorf("scripted: no answer for Ask call #%d", s.askIdx)
 	}
 	ans := s.Answers[s.askIdx]
 	s.askIdx++

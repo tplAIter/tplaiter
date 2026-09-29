@@ -19,7 +19,7 @@ const indexFileName = "index.yaml"
 // an [Index]. The index is only a cache: callers should rebuild it from
 // ~/.tplaiter/repos/ rather than treat this as a fatal process error. Check with
 // errors.Is(err, ErrIndexCorrupted).
-var ErrIndexCorrupted = errors.New("state: index.yaml повреждён")
+var ErrIndexCorrupted = errors.New("state: index.yaml corrupted")
 
 // TemplateEntry is one template in an aggregated repository index.
 type TemplateEntry struct {
@@ -87,7 +87,7 @@ func LoadIndex(home string) (Index, error) {
 func SaveIndex(home string, idx Index) error {
 	data, err := yaml.Marshal(idx)
 	if err != nil {
-		return fmt.Errorf("state: маршализация index.yaml: %w", err)
+		return fmt.Errorf("state: marshaling index.yaml: %w", err)
 	}
 	return writeFileAtomic(indexPath(home), data)
 }

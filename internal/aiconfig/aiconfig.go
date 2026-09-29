@@ -112,13 +112,13 @@ func loadConfig(dir string) (Config, error) {
 	path := filepath.Join(dir, ConfigFileName)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("aiconfig: чтение %s: %w", path, err)
+		return Config{}, fmt.Errorf("aiconfig: reading %s: %w", path, err)
 	}
 	var cfg Config
 	dec := json.NewDecoder(strings.NewReader(string(data)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&cfg); err != nil {
-		return Config{}, fmt.Errorf("aiconfig: разбор %s: %w", path, err)
+		return Config{}, fmt.Errorf("aiconfig: parsing %s: %w", path, err)
 	}
 	return cfg, nil
 }
@@ -128,7 +128,7 @@ func loadModules(dir string) ([]LoadedModule, error) {
 	modulesDir := filepath.Join(dir, "modules")
 	entries, err := os.ReadDir(modulesDir)
 	if err != nil {
-		return nil, fmt.Errorf("aiconfig: чтение каталога modules %s: %w", modulesDir, err)
+		return nil, fmt.Errorf("aiconfig: reading modules directory %s: %w", modulesDir, err)
 	}
 
 	modules := make([]LoadedModule, 0, len(entries))
@@ -151,20 +151,20 @@ func loadModules(dir string) ([]LoadedModule, error) {
 func loadModule(root, path string) (LoadedModule, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return LoadedModule{}, fmt.Errorf("aiconfig: чтение модуля %s: %w", path, err)
+		return LoadedModule{}, fmt.Errorf("aiconfig: reading module %s: %w", path, err)
 	}
 	var m Module
 	dec := json.NewDecoder(strings.NewReader(string(data)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&m); err != nil {
-		return LoadedModule{}, fmt.Errorf("aiconfig: разбор модуля %s: %w", path, err)
+		return LoadedModule{}, fmt.Errorf("aiconfig: parsing module %s: %w", path, err)
 	}
 
 	loaded := LoadedModule{Module: m}
 	if m.RuleFile != "" {
 		content, err := os.ReadFile(filepath.Join(root, m.RuleFile))
 		if err != nil {
-			return LoadedModule{}, fmt.Errorf("aiconfig: чтение rule %s (модуль %s): %w", m.RuleFile, m.ID, err)
+			return LoadedModule{}, fmt.Errorf("aiconfig: reading rule %s (module %s): %w", m.RuleFile, m.ID, err)
 		}
 		loaded.Rule = string(content)
 		loaded.RuleName = baseName(m.RuleFile)
@@ -172,7 +172,7 @@ func loadModule(root, path string) (LoadedModule, error) {
 	if m.DocFile != "" {
 		content, err := os.ReadFile(filepath.Join(root, m.DocFile))
 		if err != nil {
-			return LoadedModule{}, fmt.Errorf("aiconfig: чтение doc %s (модуль %s): %w", m.DocFile, m.ID, err)
+			return LoadedModule{}, fmt.Errorf("aiconfig: reading doc %s (module %s): %w", m.DocFile, m.ID, err)
 		}
 		loaded.Doc = string(content)
 		loaded.DocBase = filepath.Base(m.DocFile)
@@ -202,7 +202,7 @@ func (s *Source) Filter(values settings.Values) ([]LoadedModule, error) {
 		}
 		ok, err := evalWhen(m.When, values)
 		if err != nil {
-			return nil, fmt.Errorf("aiconfig: модуль %s: when %q: %w", m.ID, m.When, err)
+			return nil, fmt.Errorf("aiconfig: module %s: when %q: %w", m.ID, m.When, err)
 		}
 		if ok {
 			out = append(out, m)

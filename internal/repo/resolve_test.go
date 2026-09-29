@@ -69,11 +69,11 @@ func TestResolveRef_ShortAmbiguous(t *testing.T) {
 	m, _ := newTestManager(t, sampleIndex())
 	_, err := m.ResolveRef("go-service")
 	if err == nil {
-		t.Fatal("ожидалась ошибка неоднозначности")
+		t.Fatal("expected an ambiguity error")
 	}
 	// The message contains both candidates.
 	if !strings.Contains(err.Error(), "example/go-service") || !strings.Contains(err.Error(), "contrib/go-service") {
-		t.Errorf("ошибка без списка кандидатов: %v", err)
+		t.Errorf("error lacks the candidate list: %v", err)
 	}
 }
 
@@ -109,8 +109,8 @@ func TestResolveRef_NoTagsWarns(t *testing.T) {
 	if got.GitRef != "main" || got.Version != "latest" {
 		t.Errorf("got %+v", got)
 	}
-	if !strings.Contains(errBuf.String(), "не имеет стабильных тегов") {
-		t.Errorf("ожидалось предупреждение об отсутствии тегов, got %q", errBuf.String())
+	if !strings.Contains(errBuf.String(), "has no stable tags") {
+		t.Errorf("expected warning about missing tags, got %q", errBuf.String())
 	}
 }
 
@@ -118,19 +118,19 @@ func TestResolveRef_UnknownVersion(t *testing.T) {
 	m, _ := newTestManager(t, sampleIndex())
 	_, err := m.ResolveRef("example/go-service@v9.9.9")
 	if err == nil {
-		t.Fatal("ожидалась ошибка отсутствующей версии")
+		t.Fatal("expected a missing version error")
 	}
 	if !strings.Contains(err.Error(), "v1.1.0") {
-		t.Errorf("ошибка без списка доступных версий: %v", err)
+		t.Errorf("error lacks the available versions list: %v", err)
 	}
 }
 
 func TestResolveRef_UnknownRepo(t *testing.T) {
 	m, _ := newTestManager(t, sampleIndex())
 	if _, err := m.ResolveRef("nope/go-service"); err == nil {
-		t.Fatal("ожидалась ошибка неизвестного репозитория")
+		t.Fatal("expected an unknown repository error")
 	}
 	if _, err := m.ResolveRef("does-not-exist"); err == nil {
-		t.Fatal("ожидалась ошибка неизвестного имени")
+		t.Fatal("expected an unknown name error")
 	}
 }

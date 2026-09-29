@@ -12,7 +12,7 @@ func TestValidate_Full_Clean(t *testing.T) {
 		t.Fatalf("LoadTemplate: %v", err)
 	}
 	if err := tpl.Validate(); err != nil {
-		t.Fatalf("полный манифест должен быть валиден, получено: %v", err)
+		t.Fatalf("the full manifest must be valid, got: %v", err)
 	}
 }
 
@@ -21,9 +21,9 @@ func TestValidate_InvalidFixtures(t *testing.T) {
 		file string
 		want string // substring expected in the aggregate error
 	}{
-		{"invalid/dup_id.yaml", "дублирующийся id группы"},
-		{"invalid/planned_default.yaml", "planned-опция"},
-		{"invalid/bad_condition.yaml", "несуществующую группу"},
+		{"invalid/dup_id.yaml", "duplicate group id"},
+		{"invalid/planned_default.yaml", "planned option"},
+		{"invalid/bad_condition.yaml", "non-existent group"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.file, func(t *testing.T) {
@@ -33,10 +33,10 @@ func TestValidate_InvalidFixtures(t *testing.T) {
 			}
 			err = tpl.Validate()
 			if err == nil {
-				t.Fatal("ожидалась ошибка валидации")
+				t.Fatal("expected a validation error")
 			}
 			if !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("ошибка не содержит %q:\n%v", tc.want, err)
+				t.Errorf("error does not contain %q:\n%v", tc.want, err)
 			}
 		})
 	}
@@ -49,11 +49,11 @@ func TestValidate_BadConditionSyntax(t *testing.T) {
 	}
 	err = tpl.Validate()
 	if err == nil {
-		t.Fatal("ожидалась ошибка")
+		t.Fatal("expected an error")
 	}
 	// The second files rule, `when: "database"`, has a condition syntax error.
-	if !strings.Contains(err.Error(), "без оператора") {
-		t.Errorf("ожидалась ошибка синтаксиса условия:\n%v", err)
+	if !strings.Contains(err.Error(), "has no operator") {
+		t.Errorf("expected a condition syntax error:\n%v", err)
 	}
 }
 
@@ -84,25 +84,25 @@ generators:
 	}
 	var verr ValidationErrors
 	if !errors.As(tpl.Validate(), &verr) {
-		t.Fatalf("Validate вернул не ValidationErrors: %T", tpl.Validate())
+		t.Fatalf("Validate did not return ValidationErrors: %T", tpl.Validate())
 	}
 	checks := []string{
 		"metadata.name",
 		"metadata.version",
-		"неизвестный тип",
-		"несуществующую группу",
-		"некорректный glob",
+		"unknown type",
+		"non-existent group",
+		"invalid glob",
 		"snippet",
 		"target",
 	}
 	agg := verr.Error()
 	for _, c := range checks {
 		if !strings.Contains(agg, c) {
-			t.Errorf("агрегированная ошибка не содержит %q:\n%s", c, agg)
+			t.Errorf("aggregated error does not contain %q:\n%s", c, agg)
 		}
 	}
 	if len(verr) < len(checks) {
-		t.Errorf("ожидалось >= %d проблем, получено %d", len(checks), len(verr))
+		t.Errorf("expected >= %d problems, got %d", len(checks), len(verr))
 	}
 }
 
@@ -120,7 +120,7 @@ settings:
 generators:
   - kind: crud
     params:
-      - { name: fields, type: fields, required: true, description: "поля" }
+      - { name: fields, type: fields, required: true, description: "fields" }
       - { name: with-list, type: bool, default: true }
     targets:
       - { snippet: g/entity.tmpl, target: "internal/domain/{{ .Name.Snake }}.go" }
@@ -134,7 +134,7 @@ generators:
 		t.Fatalf("ParseTemplate: %v", err)
 	}
 	if err := tpl.Validate(); err != nil {
-		t.Fatalf("мультифайловый генератор должен быть валиден: %v", err)
+		t.Fatalf("a multi-file generator must be valid: %v", err)
 	}
 }
 
@@ -145,42 +145,42 @@ func TestValidate_Generator_Errors(t *testing.T) {
 		{
 			"both_forms",
 			"  - { kind: k, snippet: a.tmpl, target: t, targets: [{ snippet: b.tmpl, target: u }] }",
-			"одновременно одиночная форма",
+			"both single-file form",
 		},
 		{
 			"target_missing_snippet",
 			"  - { kind: k, targets: [{ target: u }] }",
-			"snippet таргета обязателен",
+			"target snippet is required",
 		},
 		{
 			"bad_numbered",
 			"  - { kind: k, targets: [{ snippet: a.tmpl, target: u, numbered: bogus }] }",
-			"неизвестная стратегия нумерации",
+			"unknown numbering strategy",
 		},
 		{
 			"bad_param_type",
 			"  - { kind: k, snippet: a.tmpl, target: t, params: [{ name: x, type: money }] }",
-			"неизвестный тип параметра",
+			"unknown parameter type",
 		},
 		{
 			"dup_param",
 			"  - { kind: k, snippet: a.tmpl, target: t, params: [{ name: x, type: int }, { name: x, type: string }] }",
-			"дублирующееся имя параметра",
+			"duplicate parameter name",
 		},
 		{
 			"bad_param_name",
 			"  - { kind: k, snippet: a.tmpl, target: t, params: [{ name: \"1x\", type: int }] }",
-			"недопустимое имя параметра",
+			"invalid parameter name",
 		},
 		{
 			"bad_param_pattern",
 			"  - { kind: k, snippet: a.tmpl, target: t, params: [{ name: table, type: string, pattern: \"([a-z\" }] }",
-			"некорректный regexp",
+			"invalid regexp",
 		},
 		{
 			"unsupported_param_pattern_type",
 			"  - { kind: k, snippet: a.tmpl, target: t, params: [{ name: enabled, type: bool, pattern: \"^true$\" }] }",
-			"pattern поддерживается только",
+			"pattern is only supported",
 		},
 	}
 	for _, tc := range tests {
@@ -192,7 +192,7 @@ func TestValidate_Generator_Errors(t *testing.T) {
 			}
 			err = tpl.Validate()
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("ожидалась ошибка %q, получено: %v", tc.want, err)
+				t.Fatalf("expected error %q, got: %v", tc.want, err)
 			}
 		})
 	}
@@ -215,7 +215,7 @@ settings:
 		t.Fatalf("ParseTemplate: %v", err)
 	}
 	err = tpl.Validate()
-	if err == nil || !strings.Contains(err.Error(), "отсутствует среди опций") {
-		t.Fatalf("ожидалась ошибка про отсутствующую опцию в default, получено: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "not found among options") {
+		t.Fatalf("expected an error about a missing option in default, got: %v", err)
 	}
 }

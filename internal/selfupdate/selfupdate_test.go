@@ -89,8 +89,8 @@ func TestChannelLabel(t *testing.T) {
 	cases := map[Channel]string{
 		ChannelGoInstall: "go install",
 		ChannelBrew:      "brew",
-		ChannelUnknown:   "неизвестен",
-		Channel("bogus"): "неизвестен",
+		ChannelUnknown:   "unknown",
+		Channel("bogus"): "unknown",
 	}
 	for ch, want := range cases {
 		if got := ch.Label(); got != want {

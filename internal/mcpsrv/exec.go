@@ -132,7 +132,7 @@ func toolResult(res execx.Result, runErr error) *mcp.CallToolResult {
 	}
 	out := res.Stdout
 	if strings.TrimSpace(out) == "" {
-		out = "(команда завершилась успешно, вывод пуст)"
+		out = "(command completed successfully, output is empty)"
 	}
 	return mcp.NewToolResultText(out)
 }

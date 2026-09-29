@@ -158,7 +158,7 @@ func applyLegacyUpdate(
 		return err
 	}
 	if err := manifest.SaveSnapshot(filepath.Join(root, manifest.SnapshotRelPath), tgt.Template); err != nil {
-		return fmt.Errorf("update: сохранение снимка манифеста: %w", err)
+		return fmt.Errorf("update: saving manifest snapshot: %w", err)
 	}
 	// baseline is the clean target render (NOT merged files containing markers).
 	if err := tgt.Baseline.Save(root); err != nil {
@@ -223,11 +223,11 @@ func writeUpdatedMarker(root string, proj *manifest.Project, newVersion string) 
 	proj.Template.Version = newVersion
 	data, err := yaml.Marshal(proj)
 	if err != nil {
-		return fmt.Errorf("update: сериализация project.yaml: %w", err)
+		return fmt.Errorf("update: serializing project.yaml: %w", err)
 	}
 	path := filepath.Join(root, project.MarkerRelPath)
 	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: marker is not secret.
-		return fmt.Errorf("update: запись project.yaml: %w", err)
+		return fmt.Errorf("update: writing project.yaml: %w", err)
 	}
 	return nil
 }
@@ -237,7 +237,7 @@ func writeUpdatedMarker(root string, proj *manifest.Project, newVersion string) 
 func updateRegistry(d Deps, root string, proj *manifest.Project, targetRef repo.Resolved) error {
 	baselineSHA, err := hashFile(filepath.Join(root, engine.BaselineRelPath))
 	if err != nil {
-		return fmt.Errorf("update: хеш baseline: %w", err)
+		return fmt.Errorf("update: baseline hash: %w", err)
 	}
 	now := nowFn(d)()
 	ref := state.ProjectRef{
@@ -271,11 +271,11 @@ func loadBaselineHashes(projectDir string) (map[string]string, error) {
 		return map[string]string{}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("update: чтение baseline: %w", err)
+		return nil, fmt.Errorf("update: reading baseline: %w", err)
 	}
 	var b engine.Baseline
 	if err := json.Unmarshal(data, &b); err != nil {
-		return nil, fmt.Errorf("update: разбор baseline: %w", err)
+		return nil, fmt.Errorf("update: parsing baseline: %w", err)
 	}
 	if b.Files == nil {
 		return map[string]string{}, nil
@@ -314,10 +314,10 @@ func runPostUpdateHooks(
 			continue
 		}
 		if h.Optional {
-			warnf(d, "postUpdate-хук пропущен (optional): %v", err)
+			warnf(d, "postUpdate hook skipped (optional): %v", err)
 			continue
 		}
-		return fmt.Errorf("update: postUpdate-хук: %w", err)
+		return fmt.Errorf("update: postUpdate hook: %w", err)
 	}
 	return nil
 }
@@ -368,6 +368,6 @@ func warnf(d Deps, format string, a ...any) {
 	if d.Err == nil {
 		return
 	}
-	fmt.Fprint(d.Err, d.Palette.Warn("предупреждение: "))
+	fmt.Fprint(d.Err, d.Palette.Warn("warning: "))
 	fmt.Fprintf(d.Err, format+"\n", a...)
 }

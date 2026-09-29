@@ -82,8 +82,8 @@ func Lint(opts LintOptions) (*LintResult, error) {
 		return nil, err
 	}
 	if len(templates) == 0 {
-		return nil, fmt.Errorf("inittemplate: манифесты шаблонов не найдены в %q "+
-			"(ожидался %s в корне, %s, или подкаталог с %s)",
+		return nil, fmt.Errorf("inittemplate: template manifests not found in %q "+
+			"(expected %s at root, %s, or a subdirectory with %s)",
 			root, templateManifestFileName, repoManifestFileName, templateManifestFileName)
 	}
 
@@ -107,7 +107,7 @@ func (res *LintResult) lintOne(d discovered, comboFilter string) {
 		res.fail(d.name, "validate", verr)
 		return
 	}
-	res.ok(d.name, "validate", "манифест валиден")
+	res.ok(d.name, "validate", "manifest is valid")
 
 	// ai-config is loaded and validated once (independent of combo); per-combo
 	// processing only runs Filter.
@@ -120,7 +120,7 @@ func (res *LintResult) lintOne(d discovered, comboFilter string) {
 	combos := Combos(tpl)
 	filtered, known := FilterCombos(combos, comboFilter)
 	if comboFilter != "" && len(filtered) == 0 {
-		res.fail(d.name, comboFilter, fmt.Errorf("неизвестная комбинация; доступны: %v", known))
+		res.fail(d.name, comboFilter, fmt.Errorf("unknown combination; available: %v", known))
 		return
 	}
 
@@ -210,14 +210,14 @@ func checkNotes(root string, tpl *manifest.Template, renderRes *engine.Result) e
 	}
 	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(tpl.Metadata.Notes)))
 	if err != nil {
-		return fmt.Errorf("notes: чтение %s: %w", tpl.Metadata.Notes, err)
+		return fmt.Errorf("notes: reading %s: %w", tpl.Metadata.Notes, err)
 	}
 	t, err := template.New("notes").Funcs(engine.FuncMap(renderRes.Context.Settings)).Parse(string(data))
 	if err != nil {
-		return fmt.Errorf("notes: разбор: %w", err)
+		return fmt.Errorf("notes: parsing: %w", err)
 	}
 	if err := t.Execute(io.Discard, renderRes.Context); err != nil {
-		return fmt.Errorf("notes: рендер: %w", err)
+		return fmt.Errorf("notes: rendering: %w", err)
 	}
 	return nil
 }
@@ -256,10 +256,10 @@ func parseSnippetFile(root, rel string, fm template.FuncMap) error {
 	path := filepath.Join(root, filepath.FromSlash(rel))
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("чтение %s: %w", rel, err)
+		return fmt.Errorf("reading %s: %w", rel, err)
 	}
 	if _, err := template.New(filepath.Base(rel)).Funcs(fm).Parse(string(data)); err != nil {
-		return fmt.Errorf("разбор %s: %w", rel, err)
+		return fmt.Errorf("parsing %s: %w", rel, err)
 	}
 	return nil
 }
@@ -277,7 +277,7 @@ func checkEnvironment(root string, tpl *manifest.Template) error {
 		}
 		var doc any
 		if err := yaml.Unmarshal(data, &doc); err != nil {
-			return fmt.Errorf("environment playbook %q (%s): невалидный YAML: %w", pb.Name, pb.File, err)
+			return fmt.Errorf("environment playbook %q (%s): invalid YAML: %w", pb.Name, pb.File, err)
 		}
 	}
 	return nil
@@ -331,7 +331,7 @@ func discoverMulti(root string) ([]discovered, error) {
 func scanSubdirs(root string) ([]discovered, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return nil, fmt.Errorf("inittemplate: чтение %q: %w", root, err)
+		return nil, fmt.Errorf("inittemplate: reading %q: %w", root, err)
 	}
 	var out []discovered
 	for _, e := range entries {
@@ -379,9 +379,9 @@ func renderTable(out io.Writer, pal ui.Palette, res *LintResult) {
 	}
 	fmt.Fprintln(out, t.RenderStyled(pal))
 	if res.Failed {
-		fmt.Fprintln(out, pal.Error("lint-template: обнаружены провалы"))
+		fmt.Fprintln(out, pal.Error("lint-template: failures detected"))
 	} else {
-		fmt.Fprintln(out, pal.Success("lint-template: все комбинации зелёные"))
+		fmt.Fprintln(out, pal.Success("lint-template: all combinations are green"))
 	}
 }
 

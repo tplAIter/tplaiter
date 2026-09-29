@@ -20,7 +20,7 @@ var repoGitExec = execx.Exec{}
 func requireGitBin(t *testing.T) {
 	t.Helper()
 	if _, err := repoGitExec.LookPath("git"); err != nil {
-		t.Skip("git не найден в PATH — интеграционный тест пропущен")
+		t.Skip("git not found in PATH — integration test skipped")
 	}
 }
 
@@ -97,9 +97,9 @@ requires:
 		t.Fatalf("LoadManifestForProject: %v", err)
 	}
 	if source != "repo" {
-		t.Errorf("source = %q, ожидался repo (кеш приоритетнее снимка)", source)
+		t.Errorf("source = %q, expected repo (cache takes precedence over snapshot)", source)
 	}
 	if tpl.Metadata.Name != "svc" {
-		t.Errorf("tpl.Metadata.Name = %q, ожидался svc", tpl.Metadata.Name)
+		t.Errorf("tpl.Metadata.Name = %q, expected svc", tpl.Metadata.Name)
 	}
 }

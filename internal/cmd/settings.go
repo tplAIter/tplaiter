@@ -25,13 +25,13 @@ func init() {
 func newSettingsCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "settings",
-		Short: "Просмотр и изменение настроек проекта",
-		Long: "Управляет настройками сгенерированного проекта. " +
-			"`list` показывает текущие значения; `set group=value` меняет их той же " +
-			"3-way-механикой, что и update (смена select-значения удаляет старую " +
-			"вертикаль файлов и добавляет новую, локальные правки сохраняются или дают " +
-			"конфликт-маркеры); `edit <group>` переопрашивает одну группу интерактивно. " +
-			"Версия шаблона и хуки не затрагиваются — только рендер с новыми значениями.",
+		Short: "View and modify project settings",
+		Long: "Manages settings for the generated project. " +
+			"`list` shows current values; `set group=value` changes them using the same " +
+			"3-way merge mechanism as `update` (changing a select value removes the old " +
+			"vertical of files and adds the new one; local edits are preserved or produce " +
+			"conflict markers); `edit <group>` re-prompts one group interactively. " +
+			"Template version and hooks are not affected — only re-rendering with new values.",
 	}
 	c.AddCommand(newSettingsListCmd())
 	c.AddCommand(newSettingsSetCmd())
@@ -43,7 +43,7 @@ func newSettingsCmd() *cobra.Command {
 func newSettingsListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "Показать текущие значения настроек проекта",
+		Short: "Show current project settings values",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			d, cleanup, err := settingsDeps(cmd)
@@ -53,7 +53,7 @@ func newSettingsListCmd() *cobra.Command {
 			defer cleanup()
 			cwd, err := os.Getwd()
 			if err != nil {
-				return fmt.Errorf("cmd: settings: рабочий каталог: %w", err)
+				return fmt.Errorf("cmd: settings: working directory: %w", err)
 			}
 			return settingscmd.List(d, settingscmd.Options{StartDir: cwd})
 		},
@@ -68,7 +68,7 @@ func newSettingsSetCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "set group=value [group2=value2 ...]",
-		Short: "Изменить настройки проекта (3-way merge на текущей версии)",
+		Short: "Modify project settings (3-way merge on current version)",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			d, cleanup, err := settingsDeps(cmd)
@@ -78,7 +78,7 @@ func newSettingsSetCmd() *cobra.Command {
 			defer cleanup()
 			cwd, err := os.Getwd()
 			if err != nil {
-				return fmt.Errorf("cmd: settings: рабочий каталог: %w", err)
+				return fmt.Errorf("cmd: settings: working directory: %w", err)
 			}
 			opts := settingscmd.Options{
 				StartDir: cwd,
@@ -91,8 +91,8 @@ func newSettingsSetCmd() *cobra.Command {
 		},
 	}
 	f := c.Flags()
-	f.BoolVar(&dryRun, "dry-run", false, "показать план без изменения файлов")
-	f.BoolVar(&yes, "yes", false, "не запрашивать подтверждение перед применением")
+	f.BoolVar(&dryRun, "dry-run", false, "show plan without modifying files")
+	f.BoolVar(&yes, "yes", false, "do not ask for confirmation before applying")
 	return c
 }
 
@@ -104,7 +104,7 @@ func newSettingsEditCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "edit [group]",
-		Short: "Переопросить одну группу настроек интерактивно",
+		Short: "Re-prompt one settings group interactively",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			d, cleanup, err := settingsDeps(cmd)
@@ -114,7 +114,7 @@ func newSettingsEditCmd() *cobra.Command {
 			defer cleanup()
 			cwd, err := os.Getwd()
 			if err != nil {
-				return fmt.Errorf("cmd: settings: рабочий каталог: %w", err)
+				return fmt.Errorf("cmd: settings: working directory: %w", err)
 			}
 			opts := settingscmd.Options{
 				StartDir: cwd,
@@ -129,8 +129,8 @@ func newSettingsEditCmd() *cobra.Command {
 		},
 	}
 	f := c.Flags()
-	f.BoolVar(&dryRun, "dry-run", false, "показать план без изменения файлов")
-	f.BoolVar(&yes, "yes", false, "не запрашивать подтверждение перед применением")
+	f.BoolVar(&dryRun, "dry-run", false, "show plan without modifying files")
+	f.BoolVar(&yes, "yes", false, "do not ask for confirmation before applying")
 	return c
 }
 

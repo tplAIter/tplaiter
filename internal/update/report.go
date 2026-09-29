@@ -118,25 +118,25 @@ func (r *Report) Render(out io.Writer, pal ui.Palette, verbose bool) {
 
 	// Categories with explicit semantics use matching palette colors (updated=success,
 	// conflict=error, deviations=warn); neutral categories use a bold header.
-	section(pal.Success("обновлено:"), r.Updated)
-	section(pal.Header("создано:"), r.Created)
-	section(pal.Header("удалено:"), r.Deleted)
-	section(pal.Header("сохранено ваше:"), r.KeptYours)
+	section(pal.Success("updated:"), r.Updated)
+	section(pal.Header("created:"), r.Created)
+	section(pal.Header("deleted:"), r.Deleted)
+	section(pal.Header("kept yours:"), r.KeptYours)
 
 	if len(r.Merged) > 0 {
-		fmt.Fprintln(out, pal.Header("смержено:"))
+		fmt.Fprintln(out, pal.Header("merged:"))
 		for _, d := range r.Merged {
 			fmt.Fprintf(out, "  %s (%s)\n", d.Path, deltaStr(pal, d))
 		}
 	}
 	if len(r.Conflicts) > 0 {
-		fmt.Fprintln(out, pal.Error("КОНФЛИКТ (маркеры в файлах, требуется ручное разрешение):"))
+		fmt.Fprintln(out, pal.Error("CONFLICT (markers in files, manual resolution required):"))
 		for _, c := range r.Conflicts {
 			fmt.Fprintf(out, "  %s\n", c)
 		}
 	}
 	if len(r.LocalDeviations) > 0 {
-		fmt.Fprintln(out, pal.Warn("локальные отклонения (сделано не по шаблону, work↔baseline):"))
+		fmt.Fprintln(out, pal.Warn("local deviations (made outside template, work↔baseline):"))
 		for _, d := range r.LocalDeviations {
 			fmt.Fprintf(out, "  %s (%s)\n", d.Path, deltaStr(pal, d))
 			if verbose {
@@ -144,11 +144,11 @@ func (r *Report) Render(out io.Writer, pal ui.Palette, verbose bool) {
 			}
 		}
 		if !verbose {
-			fmt.Fprintln(out, pal.Muted("  (--verbose — показать унифицированный diff)"))
+			fmt.Fprintln(out, pal.Muted("  (--verbose — show unified diff)"))
 		}
 	}
 	for _, w := range r.Warnings {
-		fmt.Fprintln(out, pal.Warn("предупреждение: ")+w)
+		fmt.Fprintln(out, pal.Warn("warning: ")+w)
 	}
 }
 

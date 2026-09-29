@@ -15,7 +15,7 @@ func TestBuildForm_ConstructsFieldPerGroup(t *testing.T) {
 		t.Fatalf("buildForm: %v", err)
 	}
 	if form == nil {
-		t.Fatalf("форма не должна быть nil")
+		t.Fatalf("form must not be nil")
 	}
 	// All 8 groups in the tree (including nested groups) received a binding/field.
 	want := []string{
@@ -23,11 +23,11 @@ func TestBuildForm_ConstructsFieldPerGroup(t *testing.T) {
 		"kafka_ssl", "kafka_topics", "auth", "svc_name", "replicas",
 	}
 	if len(binds) != len(want) {
-		t.Fatalf("биндингов %d, хотим %d (%v)", len(binds), len(want), want)
+		t.Fatalf("bindings %d, want %d (%v)", len(binds), len(want), want)
 	}
 	for _, id := range want {
 		if _, ok := binds[id]; !ok {
-			t.Errorf("нет биндинга для группы %q", id)
+			t.Errorf("no binding for group %q", id)
 		}
 	}
 }
@@ -39,7 +39,7 @@ func TestBuildForm_BadPatternPropagatesError(t *testing.T) {
 		},
 	}
 	if _, _, err := buildForm(tpl.Settings, settings.DefaultValues(tpl)); err == nil {
-		t.Fatalf("ожидали ошибку компиляции pattern")
+		t.Fatalf("expected a pattern compile error")
 	}
 }
 
@@ -53,14 +53,14 @@ func TestSelectableOptions_FiltersPlanned(t *testing.T) {
 	}
 	opts, planned := selectableOptions(database, nil)
 	if len(opts) != 2 {
-		t.Fatalf("выбираемых опций %d, хотим 2 (none, postgres)", len(opts))
+		t.Fatalf("selectable options %d, want 2 (none, postgres)", len(opts))
 	}
 	if len(planned) != 1 || planned[0] != "MySQL" {
-		t.Fatalf("planned = %v, хотим [MySQL]", planned)
+		t.Fatalf("planned = %v, want [MySQL]", planned)
 	}
 	desc := fieldDescription(database, planned)
 	if !strings.Contains(desc, "planned") || !strings.Contains(desc, "MySQL") {
-		t.Fatalf("описание не отражает planned-опцию: %q", desc)
+		t.Fatalf("description does not reflect the planned option: %q", desc)
 	}
 }
 
@@ -71,7 +71,7 @@ func TestSelectableOptions_MultiselectPreselect(t *testing.T) {
 	}
 	opts, _ := selectableOptions(g, []string{"kafka"})
 	if len(opts) != 2 {
-		t.Fatalf("опций %d, хотим 2", len(opts))
+		t.Fatalf("options %d, want 2", len(opts))
 	}
 }
 
@@ -92,7 +92,7 @@ func TestBinding_ValueRoundTrip(t *testing.T) {
 		bd := newBinding(&g, c.cur)
 		got := bd.value()
 		if !equalAny(got, c.want) {
-			t.Errorf("тип %s: value() = %v, хотим %v", g.Type, got, c.want)
+			t.Errorf("type %s: value() = %v, want %v", g.Type, got, c.want)
 		}
 	}
 }
@@ -102,7 +102,7 @@ func TestValidators(t *testing.T) {
 		t.Errorf("intValidator(12): %v", err)
 	}
 	if err := intValidator("x"); err == nil {
-		t.Errorf("intValidator(x) должен падать")
+		t.Errorf("intValidator(x) must fail")
 	}
 	v, err := patternValidator("^[a-z]+$")
 	if err != nil {
@@ -112,7 +112,7 @@ func TestValidators(t *testing.T) {
 		t.Errorf("pattern abc: %v", err)
 	}
 	if err := v("A1"); err == nil {
-		t.Errorf("pattern A1 должен падать")
+		t.Errorf("pattern A1 must fail")
 	}
 }
 

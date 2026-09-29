@@ -53,7 +53,7 @@ func LoadRunState(home string) (RunState, error) {
 func SaveRunState(home string, s RunState) error {
 	data, err := yaml.Marshal(s)
 	if err != nil {
-		return fmt.Errorf("state: маршализация state.yaml: %w", err)
+		return fmt.Errorf("state: marshaling state.yaml: %w", err)
 	}
 	return writeFileAtomic(runStatePath(home), data)
 }
@@ -61,7 +61,7 @@ func SaveRunState(home string, s RunState) error {
 func decodeRunState(data []byte) (RunState, error) {
 	version, err := peekVersion(data)
 	if err != nil {
-		return RunState{}, fmt.Errorf("state: разбор state.yaml: %w", err)
+		return RunState{}, fmt.Errorf("state: parsing state.yaml: %w", err)
 	}
 
 	migrated, err := checkAndMigrate(kindState, data, version, RunStateVersion)
@@ -71,7 +71,7 @@ func decodeRunState(data []byte) (RunState, error) {
 
 	var s RunState
 	if err := yaml.Unmarshal(migrated, &s); err != nil {
-		return RunState{}, fmt.Errorf("state: разбор state.yaml: %w", err)
+		return RunState{}, fmt.Errorf("state: parsing state.yaml: %w", err)
 	}
 	return s, nil
 }

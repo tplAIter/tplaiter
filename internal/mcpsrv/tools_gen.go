@@ -25,12 +25,12 @@ type genBatchArgs struct {
 func (s *Server) addGenTools() {
 	s.mcp.AddTool(mcp.NewTool(
 		"gen",
-		mcp.WithDescription("Скаффолдер: создать файл(ы) вида kind с именем name по generators манифеста проекта (dir). После записи выполняется commands.build.run манифеста либо legacy Go fallback; ошибка откатывает изменения. noBuild=true пропускает build-gate и сохраняет изменения."),
-		mcp.WithString("dir", mcp.Required(), mcp.Description("Каталог проекта")),
-		mcp.WithString("kind", mcp.Required(), mcp.Description("Вид скаффолда (см. gen_list)")),
-		mcp.WithString("name", mcp.Required(), mcp.Description("Имя создаваемой сущности")),
-		mcp.WithObject("params", mcp.Description("Параметры генератора: ключ→строковое значение (сериализуются в динамические CLI-флаги --<param>)")),
-		mcp.WithBoolean("noBuild", mcp.Description("Пропустить build-gate после генерации (--no-build)"), mcp.DefaultBool(false)),
+		mcp.WithDescription("Scaffolder: create file(s) of type kind with name according to project manifest generators (dir). After writing, commands.build.run or legacy Go fallback is executed; error rolls back changes. noBuild=true skips build-gate and saves changes."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
+		mcp.WithString("kind", mcp.Required(), mcp.Description("Type of scaffold (see gen_list)")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Name of entity to create")),
+		mcp.WithObject("params", mcp.Description("Generator parameters: key→string value (serialized as dynamic CLI flags --<param>)")),
+		mcp.WithBoolean("noBuild", mcp.Description("Skip build-gate after generation (--no-build)"), mcp.DefaultBool(false)),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a genArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
 		if err != nil {
@@ -41,40 +41,40 @@ func (s *Server) addGenTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"gen_batch",
-		mcp.WithDescription("Атомарно сгенерировать несколько scaffolds. Все операции планируются до записи, затем выполняется один build-gate из commands.build.run манифеста (legacy Go fallback: go build ./...); при ошибке изменения всего batch откатываются."),
-		mcp.WithString("dir", mcp.Required(), mcp.Description("Каталог проекта")),
+		mcp.WithDescription("Atomically generate multiple scaffolds. All operations are planned before writing, then a single build-gate from manifest commands.build.run (legacy Go fallback: go build ./...) is executed; on error, all batch changes are rolled back."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithArray(
 			"operations",
 			mcp.Required(),
 			mcp.MinItems(1),
-			mcp.Description("Операции {kind, name, params}; params — строковые значения параметров generator"),
+			mcp.Description("Operations {kind, name, params}; params are string values of generator parameters"),
 			mcp.Items(map[string]any{
 				"type":     "object",
 				"required": []string{"kind", "name"},
 				"properties": map[string]any{
 					"kind": map[string]any{
 						"type":        "string",
-						"description": "Вид generator из template.manifest.yaml",
+						"description": "Generator type from template.manifest.yaml",
 						"minLength":   1,
 					},
 					"name": map[string]any{
 						"type":        "string",
-						"description": "Имя создаваемой сущности/вертикали",
+						"description": "Name of entity/vertical to create",
 						"minLength":   1,
 					},
 					"params": map[string]any{
 						"type":                 "object",
-						"description":          "Параметры generator в строковом CLI-представлении",
+						"description":          "Generator parameters in string CLI representation",
 						"additionalProperties": map[string]any{"type": "string"},
 					},
 				},
 				"additionalProperties": false,
 			}),
 		),
-		mcp.WithBoolean("noBuild", mcp.Description("Пропустить единственный финальный build-gate"), mcp.DefaultBool(false)),
+		mcp.WithBoolean("noBuild", mcp.Description("Skip the final build-gate"), mcp.DefaultBool(false)),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a genBatchArgs) (*mcp.CallToolResult, error) {
 		if len(a.Operations) == 0 {
-			return mcp.NewToolResultError("gen_batch: operations должен содержать хотя бы одну операцию"), nil
+			return mcp.NewToolResultError("gen_batch: operations must contain at least one operation"), nil
 		}
 		cwd, err := resolveWorkDir(a.Dir)
 		if err != nil {
@@ -86,8 +86,8 @@ func (s *Server) addGenTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"gen_list",
-		mcp.WithDescription("Список доступных видов скаффолда манифеста шаблона проекта (dir)."),
-		mcp.WithString("dir", mcp.Required(), mcp.Description("Каталог проекта")),
+		mcp.WithDescription("List of available scaffold types from project template manifest (dir)."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a dirArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)

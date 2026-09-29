@@ -71,7 +71,7 @@ type InitOptions struct {
 // directory is an error).
 func Init(ctx context.Context, opts InitOptions) (string, error) {
 	if !nameRe.MatchString(opts.Name) {
-		return "", fmt.Errorf("inittemplate: имя %q не в формате slug (строчные буквы/цифры через дефис)", opts.Name)
+		return "", fmt.Errorf("inittemplate: name %q is not in slug format (lowercase letters/digits with hyphens)", opts.Name)
 	}
 
 	repoDir := opts.Dir
@@ -121,7 +121,7 @@ func renderSubtree(embedRoot, dst string, data skelContext) error {
 		rel := strings.TrimPrefix(p, embedRoot+"/")
 		raw, rerr := skeletonFS.ReadFile(p)
 		if rerr != nil {
-			return fmt.Errorf("inittemplate: чтение скелета %s: %w", p, rerr)
+			return fmt.Errorf("inittemplate: read skeleton %s: %w", p, rerr)
 		}
 		out, rerr := renderSkeletonBytes(rel, raw, data)
 		if rerr != nil {
@@ -132,7 +132,7 @@ func renderSubtree(embedRoot, dst string, data skelContext) error {
 			return fmt.Errorf("inittemplate: mkdir %s: %w", filepath.Dir(outPath), mkErr)
 		}
 		if wErr := os.WriteFile(outPath, out, 0o644); wErr != nil { //nolint:gosec // G306: generated template sources are ordinary 0644 files.
-			return fmt.Errorf("inittemplate: запись %s: %w", outPath, wErr)
+			return fmt.Errorf("inittemplate: write %s: %w", outPath, wErr)
 		}
 		return nil
 	})
@@ -143,11 +143,11 @@ func renderSubtree(embedRoot, dst string, data skelContext) error {
 func renderSkeletonBytes(name string, raw []byte, data skelContext) ([]byte, error) {
 	t, err := template.New(name).Delims("<<", ">>").Parse(string(raw))
 	if err != nil {
-		return nil, fmt.Errorf("inittemplate: разбор скелета %s: %w", name, err)
+		return nil, fmt.Errorf("inittemplate: parse skeleton %s: %w", name, err)
 	}
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, data); err != nil {
-		return nil, fmt.Errorf("inittemplate: рендер скелета %s: %w", name, err)
+		return nil, fmt.Errorf("inittemplate: render skeleton %s: %w", name, err)
 	}
 	return buf.Bytes(), nil
 }
@@ -159,17 +159,17 @@ func ensureVacant(path string) error {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("inittemplate: проверка %q: %w", path, err)
+		return fmt.Errorf("inittemplate: check %q: %w", path, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("inittemplate: %q существует и не является каталогом", path)
+		return fmt.Errorf("inittemplate: %q exists and is not a directory", path)
 	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
-		return fmt.Errorf("inittemplate: чтение %q: %w", path, err)
+		return fmt.Errorf("inittemplate: read %q: %w", path, err)
 	}
 	if len(entries) > 0 {
-		return fmt.Errorf("inittemplate: каталог %q не пуст — выберите пустой каталог или другое имя", path)
+		return fmt.Errorf("inittemplate: directory %q is not empty — choose an empty directory or different name", path)
 	}
 	return nil
 }
@@ -183,7 +183,7 @@ func initGit(ctx context.Context, opts InitOptions, repoDir string) {
 		runner = execx.Exec{}
 	}
 	if _, err := runner.LookPath("git"); err != nil {
-		warnf(opts.Out, "git не найден — пропускаю git init (инициализируйте вручную)")
+		warnf(opts.Out, "git not found — skipping git init (initialize manually)")
 		return
 	}
 	steps := [][]string{
@@ -193,7 +193,7 @@ func initGit(ctx context.Context, opts InitOptions, repoDir string) {
 	}
 	for _, args := range steps {
 		if _, err := runner.Run(ctx, "git", args, execx.Options{Dir: repoDir}); err != nil {
-			warnf(opts.Out, "git %s: %v — коммит пропущен, репозиторий создан", strings.Join(args, " "), err)
+			warnf(opts.Out, "git %s: %v — commit skipped, repository created", strings.Join(args, " "), err)
 			return
 		}
 	}
@@ -204,19 +204,19 @@ func printNextSteps(opts InitOptions, repoDir string) {
 	if opts.Out == nil {
 		return
 	}
-	fmt.Fprintf(opts.Out, "\nРепозиторий шаблона %q создан в %s.\n", opts.Name, repoDir)
-	fmt.Fprintln(opts.Out, "Что дальше:")
+	fmt.Fprintf(opts.Out, "\nTemplate repository %q created in %s.\n", opts.Name, repoDir)
+	fmt.Fprintln(opts.Out, "What's next:")
 	fmt.Fprintf(opts.Out, "  1. cd %s\n", repoDir)
-	fmt.Fprintln(opts.Out, "  2. tplaiter lint-template           # прогнать селфтест угловых комбинаций")
-	fmt.Fprintln(opts.Out, "  3. отредактируйте template.manifest.yaml и files/ под свою вертикаль")
-	fmt.Fprintln(opts.Out, "  4. git tag v0.1.0 && git push --tags # опубликуйте версию тегом")
-	fmt.Fprintln(opts.Out, "  5. tplaiter repo add <alias> <url>  # подключите репозиторий")
-	fmt.Fprintln(opts.Out, "  подробнее — в README.md и ai-config/rules/00-base.md сгенерированного репозитория")
+	fmt.Fprintln(opts.Out, "  2. tplaiter lint-template           # run self-test of corner combinations")
+	fmt.Fprintln(opts.Out, "  3. edit template.manifest.yaml and files/ for your vertical")
+	fmt.Fprintln(opts.Out, "  4. git tag v0.1.0 && git push --tags # publish version as tag")
+	fmt.Fprintln(opts.Out, "  5. tplaiter repo add <alias> <url>  # add repository")
+	fmt.Fprintln(opts.Out, "  for details see README.md and ai-config/rules/00-base.md in the generated repository")
 }
 
 func warnf(out io.Writer, format string, args ...any) {
 	if out == nil {
 		return
 	}
-	fmt.Fprintf(out, "предупреждение: "+format+"\n", args...)
+	fmt.Fprintf(out, "warning: "+format+"\n", args...)
 }

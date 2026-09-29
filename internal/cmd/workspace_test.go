@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/newcmd"
 	"github.com/tplAIter/tplaiter/internal/repo"
+	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
@@ -159,7 +161,7 @@ kind: Template
 metadata:
   name: plainroot
   version: "1.0.0"
-  description: "Не workspace"
+  description: "Not a workspace"
   labels:
     type: [service]
 `
@@ -262,10 +264,10 @@ func TestWorkspaceAddService_OutsideProject(t *testing.T) {
 
 	_, err := runWorkspaceCmd(t, "add-service", "billing", "--defaults")
 	if err == nil {
-		t.Fatal("workspace add-service вне проекта: ожидалась ошибка")
+		t.Fatal("workspace add-service outside project: expected error")
 	}
-	if !strings.Contains(err.Error(), "не является проектом tplater") {
-		t.Errorf("ошибка не упоминает отсутствие проекта: %v", err)
+	if !strings.Contains(err.Error(), "is not a tplater project") {
+		t.Errorf("error does not mention missing project: %v", err)
 	}
 }
 
@@ -279,10 +281,10 @@ func TestWorkspaceAddService_NotWorkspaceKind(t *testing.T) {
 
 	_, err := runWorkspaceCmd(t, "add-service", "billing", "--defaults")
 	if err == nil {
-		t.Fatal("workspace add-service в не-workspace проекте: ожидалась ошибка")
+		t.Fatal("workspace add-service in non-workspace project: expected error")
 	}
-	if !strings.Contains(err.Error(), "не является workspace") {
-		t.Errorf("ошибка не упоминает несовпадение kind=workspace: %v", err)
+	if !strings.Contains(err.Error(), "is not a workspace") {
+		t.Errorf("error does not mention kind=workspace mismatch: %v", err)
 	}
 }
 
@@ -301,15 +303,15 @@ func TestWorkspaceAddService_ExistingServiceDir(t *testing.T) {
 
 	_, err := runWorkspaceCmd(t, "add-service", "Billing", "--defaults", "--no-hooks", "--no-deps-check", "--no-env-setup")
 	if err == nil {
-		t.Fatal("workspace add-service с уже существующим services/<slug>: ожидалась ошибка")
+		t.Fatal("workspace add-service with existing services/<slug>: expected error")
 	}
 
 	work, rerr := os.ReadFile(filepath.Join(root, "go.work"))
 	if rerr != nil {
-		t.Fatalf("чтение go.work: %v", rerr)
+		t.Fatalf("reading go.work: %v", rerr)
 	}
 	if strings.Contains(string(work), "services/billing") {
-		t.Errorf("go.work не должен был измениться при провале до рендера: %s", work)
+		t.Errorf("go.work should not have changed before rendering failed: %s", work)
 	}
 }
 
@@ -401,22 +403,22 @@ func TestWorkspaceAddService_ServiceTemplateWorkflowGroupWrongType(t *testing.T)
 
 	_, err := runWorkspaceCmd(t, "add-service", "Billing", "--defaults", "--no-hooks", "--no-deps-check", "--no-env-setup")
 	if err == nil {
-		t.Fatal("workspace add-service на шаблоне с group workflow типа select: ожидалась ошибка")
+		t.Fatal("workspace add-service on template with workflow group of select type: expected error")
 	}
 	if !strings.Contains(err.Error(), "workflow") {
-		t.Errorf("ошибка не упоминает группу workflow: %v", err)
+		t.Errorf("error does not mention workflow group: %v", err)
 	}
-	if !strings.Contains(err.Error(), "несовместима") {
-		t.Errorf("ошибка не поясняет несовместимость типа группы с форсируемым значением: %v", err)
+	if !strings.Contains(err.Error(), "incompatible") {
+		t.Errorf("error does not explain incompatibility of group type with forced value: %v", err)
 	}
 
 	// go.work must be unchanged because rendering did not complete.
 	work, rerr := os.ReadFile(filepath.Join(root, "go.work"))
 	if rerr != nil {
-		t.Fatalf("чтение go.work: %v", rerr)
+		t.Fatalf("reading go.work: %v", rerr)
 	}
 	if strings.Contains(string(work), "services/billing") {
-		t.Errorf("go.work не должен был измениться при провале проверки настроек: %s", work)
+		t.Errorf("go.work should not have changed after settings check failed: %s", work)
 	}
 }
 
@@ -436,10 +438,10 @@ func TestResolveServiceTemplateName_NoMatches(t *testing.T) {
 	}
 	_, err := resolveServiceTemplateName(idx, "example")
 	if err == nil {
-		t.Fatal("0 совпадений type=service: ожидалась ошибка")
+		t.Fatal("0 matches for type=service: expected error")
 	}
-	if !strings.Contains(err.Error(), "не найден шаблон") {
-		t.Errorf("ошибка не про отсутствие шаблона: %v", err)
+	if !strings.Contains(err.Error(), "has no template") {
+		t.Errorf("error does not mention missing template: %v", err)
 	}
 }
 
@@ -452,10 +454,10 @@ func TestResolveServiceTemplateName_MultipleMatches(t *testing.T) {
 	}
 	_, err := resolveServiceTemplateName(idx, "example")
 	if err == nil {
-		t.Fatal("2+ совпадений type=service: ожидалась ошибка")
+		t.Fatal("2+ matches for type=service: expected error")
 	}
 	if !strings.Contains(err.Error(), "svc-a") || !strings.Contains(err.Error(), "svc-b") {
-		t.Errorf("ошибка не перечисляет оба совпадения: %v", err)
+		t.Errorf("error does not list both matches: %v", err)
 	}
 }
 
@@ -468,37 +470,59 @@ func TestAddWorkspaceUse_Idempotent(t *testing.T) {
 	writeTestFile(t, workPath, "go 1.23\n\nuse services/billing\n")
 
 	if err := addWorkspaceUse(root, "./services/billing"); err != nil {
-		t.Fatalf("addWorkspaceUse (уже есть без ./): %v", err)
+		t.Fatalf("addWorkspaceUse (already exists without ./): %v", err)
 	}
 	data, err := os.ReadFile(workPath)
 	if err != nil {
-		t.Fatalf("чтение go.work: %v", err)
+		t.Fatalf("reading go.work: %v", err)
 	}
 	if n := strings.Count(string(data), "services/billing"); n != 1 {
-		t.Errorf("services/billing встречается %d раз(а), ожидался 1:\n%s", n, data)
+		t.Errorf("services/billing appears %d time(s), expected 1:\n%s", n, data)
 	}
 
 	// Repeating the same path must not duplicate it.
 	if err := addWorkspaceUse(root, "./services/billing"); err != nil {
-		t.Fatalf("addWorkspaceUse (повторно): %v", err)
+		t.Fatalf("addWorkspaceUse (repeat): %v", err)
 	}
 	data, err = os.ReadFile(workPath)
 	if err != nil {
-		t.Fatalf("чтение go.work: %v", err)
+		t.Fatalf("reading go.work: %v", err)
 	}
 	if n := strings.Count(string(data), "services/billing"); n != 1 {
-		t.Errorf("после повторного вызова services/billing встречается %d раз(а), ожидался 1:\n%s", n, data)
+		t.Errorf("after repeated call services/billing appears %d time(s), expected 1:\n%s", n, data)
 	}
 
 	// A new path is appended normally.
 	if err := addWorkspaceUse(root, "./services/payments"); err != nil {
-		t.Fatalf("addWorkspaceUse (новый путь): %v", err)
+		t.Fatalf("addWorkspaceUse (new path): %v", err)
 	}
 	data, err = os.ReadFile(workPath)
 	if err != nil {
-		t.Fatalf("чтение go.work: %v", err)
+		t.Fatalf("reading go.work: %v", err)
 	}
 	if !strings.Contains(string(data), "services/payments") {
-		t.Errorf("go.work не содержит новый путь services/payments:\n%s", data)
+		t.Errorf("go.work does not contain new path services/payments:\n%s", data)
+	}
+}
+
+// TestIsUnknownForcedGroupError checks that only the typed ParseSet error for the
+// same group triggers the add-service fallback; other "unknown group" messages
+// (condition evaluation, settings edit) and other groups must not.
+func TestIsUnknownForcedGroupError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"parse set, same group", &settings.UnknownSetGroupError{Group: "workflow"}, true},
+		{"wrapped parse set", fmt.Errorf("new: %w", &settings.UnknownSetGroupError{Group: "workflow"}), true},
+		{"parse set, other group", &settings.UnknownSetGroupError{Group: "database"}, false},
+		{"condition error", &settings.UnknownGroupError{Group: "workflow"}, false},
+		{"settings edit text", errors.New(`settings edit: unknown group "workflow"`), false},
+	}
+	for _, tc := range tests {
+		if got := isUnknownForcedGroupError(tc.err, "workflow"); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }

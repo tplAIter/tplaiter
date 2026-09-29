@@ -32,9 +32,9 @@ func init() {
 func newAuthCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "auth",
-		Short: "Управление токенами доступа к репозиториям шаблонов",
-		Long: "Хранит токены в ~/.tplaiter/tplater.db (права 0600) и подставляет их в " +
-			"git-операции через собственный credential helper. См. документацию",
+		Short: "Manage access tokens for template repositories",
+		Long: "Stores tokens in ~/.tplaiter/tplater.db (mode 0600) and supplies them to " +
+			"git operations via a built-in credential helper. See documentation",
 	}
 	c.AddCommand(
 		newAuthListCmd(),
@@ -50,7 +50,7 @@ func newAuthCmd() *cobra.Command {
 func newAuthListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "Показать сохранённые токены (маскированные)",
+		Short: "Show saved tokens (masked)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			st, err := auth.Open(cmd.Context())
@@ -90,14 +90,14 @@ func newAuthAddCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "add <host>",
-		Short: "Добавить/обновить токен для хоста (и опционально репозитория)",
+		Short: "Add/update token for host (and optionally repository)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var expiresAt time.Time
 			if expires != "" {
 				parsed, err := time.Parse(dateLayout, expires)
 				if err != nil {
-					return fmt.Errorf("auth: некорректная дата --expires %q (ожидается YYYY-MM-DD): %w", expires, err)
+					return fmt.Errorf("auth: invalid date --expires %q (expected YYYY-MM-DD): %w", expires, err)
 				}
 				expiresAt = parsed
 			}
@@ -107,7 +107,7 @@ func newAuthAddCmd() *cobra.Command {
 				return err
 			}
 			if token == "" {
-				return errors.New("auth: пустой токен")
+				return errors.New("auth: empty token")
 			}
 
 			st, err := auth.Open(cmd.Context())
@@ -130,30 +130,30 @@ func newAuthAddCmd() *cobra.Command {
 				return err
 			}
 			// NEVER print the token — report only that it was saved.
-			fmt.Fprintf(cmd.OutOrStdout(), "Токен сохранён: id=%d host=%s\n", id, args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "Token saved: id=%d host=%s\n", id, args[0])
 			return nil
 		},
 	}
 	f := c.Flags()
-	f.StringVar(&repo, "repo", "", "репозиторий (пусто = токен уровня хоста)")
-	f.StringVar(&tool, "tool", "git", "инструмент: gitlab|github|git|other")
-	f.StringVar(&username, "username", "", "имя пользователя")
-	f.StringVar(&scopes, "scopes", "", "scopes токена (справочно)")
-	f.StringVar(&note, "note", "", "заметка")
-	f.StringVar(&expires, "expires", "", "срок действия YYYY-MM-DD")
-	f.BoolVar(&tokenStdin, "token-stdin", false, "прочитать токен из stdin (для пайпа)")
+	f.StringVar(&repo, "repo", "", "repository (empty = host-level token)")
+	f.StringVar(&tool, "tool", "git", "tool: gitlab|github|git|other")
+	f.StringVar(&username, "username", "", "username")
+	f.StringVar(&scopes, "scopes", "", "token scopes (for reference)")
+	f.StringVar(&note, "note", "", "note")
+	f.StringVar(&expires, "expires", "", "expiration date YYYY-MM-DD")
+	f.BoolVar(&tokenStdin, "token-stdin", false, "read token from stdin (for piping)")
 	return c
 }
 
 func newAuthRemoveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove <id>",
-		Short: "Удалить токен по id",
+		Short: "Delete token by id",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
-				return fmt.Errorf("auth: некорректный id %q: %w", args[0], err)
+				return fmt.Errorf("auth: invalid id %q: %w", args[0], err)
 			}
 			st, err := auth.Open(cmd.Context())
 			if err != nil {
@@ -164,7 +164,7 @@ func newAuthRemoveCmd() *cobra.Command {
 			if err := st.Delete(id); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Токен удалён: id=%d\n", id)
+			fmt.Fprintf(cmd.OutOrStdout(), "Token deleted: id=%d\n", id)
 			return nil
 		},
 	}
@@ -173,7 +173,7 @@ func newAuthRemoveCmd() *cobra.Command {
 func newAuthGitCredentialCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "git-credential <get|store|erase>",
-		Short:  "git credential helper (внутренняя команда)",
+		Short:  "git credential helper (internal command)",
 		Hidden: true,
 		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -199,11 +199,11 @@ func newAuthImportCmd(use, bin, toolName, defaultHost string) *cobra.Command {
 	var hostname string
 	c := &cobra.Command{
 		Use:   use + " [--hostname <h>]",
-		Short: fmt.Sprintf("Импортировать токен из %s в хранилище tplater", bin),
+		Short: fmt.Sprintf("Import token from %s into tplater store", bin),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if _, err := authRunner.LookPath(bin); err != nil {
-				return fmt.Errorf("auth: %s не найден в PATH — установите его и повторите (%s auth login)", bin, bin)
+				return fmt.Errorf("auth: %s not found in PATH — install it and retry (%s auth login)", bin, bin)
 			}
 
 			runArgs := []string{"auth", "token"}
@@ -216,7 +216,7 @@ func newAuthImportCmd(use, bin, toolName, defaultHost string) *cobra.Command {
 			}
 			token := strings.TrimSpace(res.Stdout)
 			if token == "" {
-				return fmt.Errorf("auth: %s вернул пустой токен (выполните `%s auth login`)", bin, bin)
+				return fmt.Errorf("auth: %s returned empty token (run `%s auth login`)", bin, bin)
 			}
 
 			host := hostname
@@ -234,16 +234,16 @@ func newAuthImportCmd(use, bin, toolName, defaultHost string) *cobra.Command {
 				Host:  host,
 				Tool:  toolName,
 				Token: token,
-				Note:  "импортирован из " + bin,
+				Note:  "imported from " + bin,
 			})
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Импортирован токен %s: id=%d host=%s\n", toolName, id, host)
+			fmt.Fprintf(cmd.OutOrStdout(), "Imported %s token: id=%d host=%s\n", toolName, id, host)
 			return nil
 		},
 	}
-	c.Flags().StringVar(&hostname, "hostname", "", "хост (по умолчанию "+defaultHost+")")
+	c.Flags().StringVar(&hostname, "hostname", "", "host (default "+defaultHost+")")
 	return c
 }
 
@@ -255,19 +255,19 @@ func readToken(cmd *cobra.Command, fromStdin bool) (string, error) {
 	if fromStdin {
 		data, err := io.ReadAll(cmd.InOrStdin())
 		if err != nil {
-			return "", fmt.Errorf("auth: чтение токена из stdin: %w", err)
+			return "", fmt.Errorf("auth: reading token from stdin: %w", err)
 		}
 		return strings.TrimSpace(string(data)), nil
 	}
 
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return "", errors.New("auth: stdin не терминал — передайте токен через --token-stdin")
+		return "", errors.New("auth: stdin is not a terminal — pass token via --token-stdin")
 	}
-	fmt.Fprint(cmd.ErrOrStderr(), "Токен: ")
+	fmt.Fprint(cmd.ErrOrStderr(), "Token: ")
 	b, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Fprintln(cmd.ErrOrStderr())
 	if err != nil {
-		return "", fmt.Errorf("auth: чтение токена: %w", err)
+		return "", fmt.Errorf("auth: reading token: %w", err)
 	}
 	return strings.TrimSpace(string(b)), nil
 }

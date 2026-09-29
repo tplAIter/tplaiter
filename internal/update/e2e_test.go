@@ -30,7 +30,7 @@ var gitExec = execx.Exec{}
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := gitExec.LookPath("git"); err != nil {
-		t.Skip("git не найден в PATH — интеграционный тест пропущен")
+		t.Skip("git not found in PATH — integration test skipped")
 	}
 }
 

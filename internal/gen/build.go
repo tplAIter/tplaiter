@@ -86,7 +86,7 @@ func workspaceUseDirs(root string) ([]string, error) {
 	}
 	wf, err := modfile.ParseWork("go.work", data, nil)
 	if err != nil {
-		return nil, fmt.Errorf("gen: разбор go.work: %w", err)
+		return nil, fmt.Errorf("gen: parsing go.work: %w", err)
 	}
 	dirs := make([]string, 0, len(wf.Use))
 	for _, u := range wf.Use {

@@ -76,7 +76,7 @@ func suggestUpdatePreRun(cmd *cobra.Command, _ []string) {
 func newSelfUpgradeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "self-upgrade",
-		Short: "Обновить tplaiter до последней версии",
+		Short: "Update tplaiter to the latest version",
 		Args:  cobra.NoArgs,
 		RunE:  runSelfUpgrade,
 	}
@@ -96,13 +96,13 @@ func runSelfUpgrade(cmd *cobra.Command, _ []string) error {
 	if latest, err := selfupdate.LatestTag(ctx, runner, selfupdate.RepoURL()); err == nil && latest != "" {
 		switch selfupdate.Compare(current, latest) {
 		case selfupdate.CompareUpToDate:
-			fmt.Fprintf(out, "уже установлена последняя версия (%s)\n", current)
+			fmt.Fprintf(out, "latest version is already installed (%s)\n", current)
 			return nil
 		case selfupdate.CompareAhead:
-			fmt.Fprintf(out, "текущая версия (%s) новее последнего тега (%s) — обновление не требуется\n", current, latest)
+			fmt.Fprintf(out, "current version (%s) is newer than the latest tag (%s) — no update needed\n", current, latest)
 			return nil
 		case selfupdate.CompareOutdated:
-			fmt.Fprintf(out, "доступна новая версия: %s -> %s\n", current, latest)
+			fmt.Fprintf(out, "new version available: %s -> %s\n", current, latest)
 		case selfupdate.CompareUnknown:
 			// current is not SemVer (usually a "dev" build): continue below;
 			// comparison does not prevent attempting an update.
@@ -139,12 +139,12 @@ var initShellGenerators = map[string]func(cmd *cobra.Command) error{
 func newInitShellCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init-shell [bash|zsh|fish]",
-		Short: "Скрипт автодополнения shell (алиас `tplaiter completion <shell>`)",
-		Long: "init-shell печатает скрипт автодополнения tplaiter для указанной оболочки — " +
-			"то же самое, что встроенная `tplaiter completion <shell>`.\n\n" +
-			"Разовая загрузка в текущей сессии:\n  source <(tplaiter init-shell bash)\n\n" +
-			"Постоянная загрузка — допишите вызов выше в ~/.bashrc / ~/.zshrc, либо для fish " +
-			"сохраните вывод в ~/.config/fish/completions/tplaiter.fish.",
+		Short: "Shell completion script (alias `tplaiter completion <shell>`)",
+		Long: "init-shell prints the tplaiter completion script for the specified shell — " +
+			"the same as the built-in `tplaiter completion <shell>`.\n\n" +
+			"Load in current session:\n  source <(tplaiter init-shell bash)\n\n" +
+			"For permanent loading, append the above command to ~/.bashrc / ~/.zshrc, or for fish " +
+			"save the output to ~/.config/fish/completions/tplaiter.fish.",
 		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 		ValidArgs: []string{"bash", "zsh", "fish"},
 		RunE: func(cmd *cobra.Command, args []string) error {

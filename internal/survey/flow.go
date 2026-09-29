@@ -33,7 +33,7 @@ type MissingRequiredError struct {
 }
 
 func (e *MissingRequiredError) Error() string {
-	return "не заданы обязательные строковые настройки (задайте через --set): " + strings.Join(e.Groups, ", ")
+	return "required string settings not set (set via --set): " + strings.Join(e.Groups, ", ")
 }
 
 // AskFlow orchestrates settings acquisition: applies preset (--set/--answers,
@@ -79,8 +79,8 @@ func AskFlow(
 
 		resolved, rerr := settings.Resolve(tpl, explicit)
 		if rerr != nil {
-			fmt.Fprintln(out, pal.Error("Настройки не согласованы: "+rerr.Error()))
-			fmt.Fprintln(out, pal.Muted("Повторите ввод."))
+			fmt.Fprintln(out, pal.Error("Settings inconsistent: "+rerr.Error()))
+			fmt.Fprintln(out, pal.Muted("Try again."))
 			current = mergeValues(defaults, asked, preset)
 			continue
 		}
@@ -125,13 +125,13 @@ func requiredMissing(tpl *manifest.Template, defaults, preset settings.Values) [
 // printReport prints resolver output: implied values and warnings.
 func printReport(out io.Writer, pal ui.Palette, rep settings.Report) {
 	if len(rep.Implied) > 0 {
-		fmt.Fprintln(out, pal.Warn("Довключено автоматически (требуется выбранными опциями):"))
+		fmt.Fprintln(out, pal.Warn("Automatically enabled (required by selected options):"))
 		for _, im := range rep.Implied {
-			fmt.Fprintf(out, "  %s=%s (требует %s)\n", im.Group, im.Value, im.RequiredBy)
+			fmt.Fprintf(out, "  %s=%s (required by %s)\n", im.Group, im.Value, im.RequiredBy)
 		}
 	}
 	for _, w := range rep.Warnings {
-		fmt.Fprintln(out, pal.Muted("предупреждение: "+w))
+		fmt.Fprintln(out, pal.Muted("warning: "+w))
 	}
 }
 
@@ -149,7 +149,7 @@ func buildSummary(
 		impliedBy[im.Group] = true
 	}
 
-	tbl := ui.NewTable("Настройка", "Значение", "Источник")
+	tbl := ui.NewTable("Setting", "Value", "Source")
 	valueOf := func(id string) any { return resolved.Values[id] }
 	walkActive(tpl.Settings, valueOf, func(g *manifest.SettingGroup) {
 		id := g.Group
@@ -157,7 +157,7 @@ func buildSummary(
 		tbl.AddRow(id, formatValue(resolved.Values[id]), colorSource(pal, src))
 	})
 
-	return pal.Header("Сводка настроек:") + "\n" + tbl.RenderStyled(pal)
+	return pal.Header("Settings summary:") + "\n" + tbl.RenderStyled(pal)
 }
 
 // sourceOf determines a group's source by priority.

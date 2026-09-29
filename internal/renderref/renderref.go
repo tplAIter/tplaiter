@@ -78,7 +78,7 @@ type Result struct {
 func Render(ctx context.Context, src fs.FS, in Input) (*Result, error) {
 	tmp, err := os.MkdirTemp("", "tplater-render-*")
 	if err != nil {
-		return nil, fmt.Errorf("renderref: временный каталог рендера: %w", err)
+		return nil, fmt.Errorf("renderref: render temporary directory: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 	return render(ctx, src, in, tmp, func(path string) ([]byte, error) {
@@ -128,7 +128,7 @@ func render(ctx context.Context, src fs.FS, in Input, scratch string, readOutput
 	}
 	resolved, err := settings.Resolve(tpl, in.Values)
 	if err != nil {
-		return nil, fmt.Errorf("renderref: разрешение настроек: %w", err)
+		return nil, fmt.Errorf("renderref: settings resolution: %w", err)
 	}
 	partials, err := templatePartials(src)
 	if err != nil {
@@ -147,7 +147,7 @@ func render(ctx context.Context, src fs.FS, in Input, scratch string, readOutput
 		Partials: partials,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("renderref: рендер: %w", err)
+		return nil, fmt.Errorf("renderref: render: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -171,7 +171,7 @@ func render(ctx context.Context, src fs.FS, in Input, scratch string, readOutput
 		}
 		data, rerr := readOutput(rel)
 		if rerr != nil {
-			return nil, fmt.Errorf("renderref: чтение отрендеренного %s: %w", rel, rerr)
+			return nil, fmt.Errorf("renderref: reading rendered %s: %w", rel, rerr)
 		}
 		total += int64(len(data))
 		if total > 64<<20 {
@@ -190,14 +190,14 @@ func render(ctx context.Context, src fs.FS, in Input, scratch string, readOutput
 func LoadTemplate(src fs.FS) (*manifest.Template, error) {
 	data, err := fs.ReadFile(src, templateManifestFileName)
 	if err != nil {
-		return nil, fmt.Errorf("renderref: чтение %s: %w", templateManifestFileName, err)
+		return nil, fmt.Errorf("renderref: reading %s: %w", templateManifestFileName, err)
 	}
 	tpl, err := manifest.ParseTemplate(data)
 	if err != nil {
 		return nil, fmt.Errorf("renderref: %w", err)
 	}
 	if err := tpl.Validate(); err != nil {
-		return nil, fmt.Errorf("renderref: манифест шаблона невалиден: %w", err)
+		return nil, fmt.Errorf("renderref: template manifest is invalid: %w", err)
 	}
 	return tpl, nil
 }
@@ -237,7 +237,7 @@ func templatePartials(src fs.FS) ([]fs.FS, error) {
 	}
 	sub, err := fs.Sub(src, partialsDirName)
 	if err != nil {
-		return nil, fmt.Errorf("renderref: подкаталог partials: %w", err)
+		return nil, fmt.Errorf("renderref: partials subdirectory: %w", err)
 	}
 	return []fs.FS{sub}, nil
 }

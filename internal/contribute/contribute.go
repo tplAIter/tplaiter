@@ -156,7 +156,7 @@ func Upgrade(ctx context.Context, d Deps, opts Options) (*Result, error) {
 
 	candidates := selectCandidates(report, opts.Files)
 	if len(candidates) == 0 {
-		fmt.Fprintln(d.Out, "Нет изменений для вклада: рабочее дерево совпадает с эталоном шаблона.")
+		fmt.Fprintln(d.Out, "No changes to contribute: working tree matches template reference.")
 		return &Result{}, nil
 	}
 
@@ -165,7 +165,7 @@ func Upgrade(ctx context.Context, d Deps, opts Options) (*Result, error) {
 		return nil, err
 	}
 	if len(selected) == 0 {
-		fmt.Fprintln(d.Out, "Файлы не выбраны — вклад отменён.")
+		fmt.Fprintln(d.Out, "No files selected — contribution cancelled.")
 		return &Result{}, nil
 	}
 
@@ -211,7 +211,7 @@ func renderReference(ctx context.Context, mgr *repo.Manager, proj *manifest.Proj
 	coord := proj.Template.Repo + "/" + proj.Template.Name
 	res, err := mgr.ResolveRef(coord + "@" + proj.Template.Version)
 	if err != nil {
-		return reference{}, fmt.Errorf("upgrade: версия %s: %w", proj.Template.Version, err)
+		return reference{}, fmt.Errorf("upgrade: version %s: %w", proj.Template.Version, err)
 	}
 
 	src, cleanup, err := mgr.Checkout(ctx, res.RepoAlias, res.GitRef, res.Entry.Path)
@@ -222,7 +222,7 @@ func renderReference(ctx context.Context, mgr *repo.Manager, proj *manifest.Proj
 
 	rendered, err := renderref.Render(ctx, src, in)
 	if err != nil {
-		return reference{}, fmt.Errorf("upgrade: рендер эталона: %w", err)
+		return reference{}, fmt.Errorf("upgrade: render reference: %w", err)
 	}
 
 	srcMap := buildSourceMap(src, normalizeRoot(rendered.Template.Engine.Root))
@@ -296,7 +296,7 @@ func buildChanges(root string, proj manifest.ProjectInfo, ref reference, selecte
 	for _, rel := range selected {
 		content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
-			return nil, fmt.Errorf("upgrade: чтение %s: %w", rel, err)
+			return nil, fmt.Errorf("upgrade: read %s: %w", rel, err)
 		}
 
 		derendered, changed := derender(content, subs)
@@ -350,7 +350,7 @@ func applyInClone(ctx context.Context, d Deps, repoEntry state.RepoRef, changes 
 	startPoint := resolveStartPoint(ctx, d.Manager, clone, ref.res.GitRef)
 
 	if err := runGit(ctx, d.Manager, clone, "switch", "-c", out.Branch, startPoint); err != nil {
-		return fmt.Errorf("upgrade: создание ветки %s: %w", out.Branch, err)
+		return fmt.Errorf("upgrade: create branch %s: %w", out.Branch, err)
 	}
 	// Invariant: return the clone to the original ref and delete the branch on any outcome.
 	defer func() {
@@ -362,10 +362,10 @@ func applyInClone(ctx context.Context, d Deps, repoEntry state.RepoRef, changes 
 	for _, ch := range changes {
 		dest := filepath.Join(clone, templateDir, filepath.FromSlash(ch.sourceRel))
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return fmt.Errorf("upgrade: подготовка каталога для %s: %w", ch.sourceRel, err)
+			return fmt.Errorf("upgrade: prepare directory for %s: %w", ch.sourceRel, err)
 		}
 		if err := os.WriteFile(dest, ch.content, 0o644); err != nil { //nolint:gosec // G306: template sources are ordinary 0644 files (committed to git, mode is not secret).
-			return fmt.Errorf("upgrade: запись %s: %w", ch.sourceRel, err)
+			return fmt.Errorf("upgrade: write %s: %w", ch.sourceRel, err)
 		}
 	}
 
@@ -386,7 +386,7 @@ func applyInClone(ctx context.Context, d Deps, repoEntry state.RepoRef, changes 
 func formatPatch(ctx context.Context, d Deps, clone, startPoint string, out *Result, root string) error {
 	dir := filepath.Join(root, "tplater-upgrade-"+d.Now().Format("20060102-1504"))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("upgrade: каталог патчей: %w", err)
+		return fmt.Errorf("upgrade: patch directory: %w", err)
 	}
 	if err := runGit(ctx, d.Manager, clone, "format-patch", startPoint, "-o", dir); err != nil {
 		return fmt.Errorf("upgrade: git format-patch: %w", err)
@@ -401,7 +401,7 @@ func pushAndOpenMR(ctx context.Context, d Deps, repoEntry state.RepoRef, out *Re
 	pushEnv := auth.HelperEnv(repoEntry.URL)
 	if res, err := d.Manager.RunGit(ctx, clone, []string{"push", "-u", "origin", out.Branch}, pushEnv); err != nil {
 		return fmt.Errorf(
-			"upgrade: push ветки %s: %s: %w\nпроверьте доступ к репозиторию шаблона: `tplater auth add %s`",
+			"upgrade: push branch %s: %s: %w\ncheck template repository access: `tplater auth add %s`",
 			out.Branch, strings.TrimSpace(res.Stderr), err, hostOf(repoEntry.URL),
 		)
 	}
@@ -435,7 +435,7 @@ func currentBranch(ctx context.Context, mgr *repo.Manager, clone string) (string
 	res, err := mgr.RunGit(ctx, clone, []string{"symbolic-ref", "--short", "-q", "HEAD"}, nil)
 	b := strings.TrimSpace(res.Stdout)
 	if err != nil || b == "" {
-		return "", errors.New("upgrade: кеш-клон в состоянии detached HEAD — не могу безопасно вести ветку (выполните `tplater repo update`)")
+		return "", errors.New("upgrade: cache clone is in detached HEAD state — cannot safely maintain branch (run `tplater repo update`)")
 	}
 	return b, nil
 }
@@ -461,7 +461,7 @@ func repoRef(home, alias string) (state.RepoRef, error) {
 			return r, nil
 		}
 	}
-	return state.RepoRef{}, fmt.Errorf("upgrade: репозиторий %q не найден в реестре", alias)
+	return state.RepoRef{}, fmt.Errorf("upgrade: repository %q not found in registry", alias)
 }
 
 // --- helpers ---
@@ -493,12 +493,12 @@ func branchName(slug string, now time.Time) string {
 
 // defaultTitle — default MR title.
 func defaultTitle(proj *manifest.Project) string {
-	return "tplater: вклад из проекта " + proj.Project.Slug
+	return "tplater: contribution from project " + proj.Project.Slug
 }
 
 // commitMessage — commit message.
 func commitMessage(proj *manifest.Project, res repo.Resolved) string {
-	return fmt.Sprintf("tplater upgrade: вклад из %s (%s/%s@%s)",
+	return fmt.Sprintf("tplater upgrade: contribution from %s (%s/%s@%s)",
 		proj.Project.Slug, res.RepoAlias, res.Entry.Name, res.Version)
 }
 
@@ -531,18 +531,18 @@ func mrArgs(kind state.RepoKind, branch, title, desc string, draft bool) []strin
 func buildDescription(proj *manifest.Project, res repo.Resolved, changes []fileChange) string {
 	var b strings.Builder
 	b.WriteString("## tplater upgrade\n\n")
-	fmt.Fprintf(&b, "- Шаблон: `%s/%s@%s`\n", res.RepoAlias, res.Entry.Name, res.Version)
-	fmt.Fprintf(&b, "- Проект: `%s` (модуль `%s`)\n", proj.Project.Slug, proj.Project.Module)
+	fmt.Fprintf(&b, "- Template: `%s/%s@%s`\n", res.RepoAlias, res.Entry.Name, res.Version)
+	fmt.Fprintf(&b, "- Project: `%s` (module `%s`)\n", proj.Project.Slug, proj.Project.Module)
 
 	if len(proj.Settings) > 0 {
-		fmt.Fprintf(&b, "- Настройки: %s\n", settingsSnapshot(proj.Settings))
+		fmt.Fprintf(&b, "- Settings: %s\n", settingsSnapshot(proj.Settings))
 	}
 
-	b.WriteString("- Файлы:\n")
+	b.WriteString("- Files:\n")
 	for _, ch := range changes {
 		line := "  - `" + ch.sourceRel + "`"
 		if ch.condition != "" {
-			line += fmt.Sprintf(" — условная вертикаль `%s`", ch.condition)
+			line += fmt.Sprintf(" — conditional vertical `%s`", ch.condition)
 		}
 		b.WriteString(line + "\n")
 	}
@@ -551,15 +551,15 @@ func buildDescription(proj *manifest.Project, res repo.Resolved, changes []fileC
 	for _, ch := range changes {
 		if ch.reviewDesc {
 			reviewNotes = append(reviewNotes,
-				fmt.Sprintf("`%s` (условие `%s`)", ch.sourceRel, ch.condition))
+				fmt.Sprintf("`%s` (condition `%s`)", ch.sourceRel, ch.condition))
 		}
 	}
 	if len(reviewNotes) > 0 {
-		b.WriteString("\n> " + reviewMarker + ": для файлов ниже пометку не удалось вставить в тело (нет стиля комментария) — проверьте условные блоки вручную: ")
+		b.WriteString("\n> " + reviewMarker + ": for the files below, the marker could not be inserted in the body (no comment style) — check conditional blocks manually: ")
 		b.WriteString(strings.Join(reviewNotes, ", ") + "\n")
 	}
 
-	b.WriteString("\n_Сгенерировано `tplater upgrade`. Обратная параметризация не восстанавливает условные блоки — проверьте пометки TPLATER-REVIEW._\n")
+	b.WriteString("\n_Generated by `tplater upgrade`. Reverse parameterization does not restore conditional blocks — check TPLATER-REVIEW markers._\n")
 	return b.String()
 }
 
@@ -582,15 +582,15 @@ func settingsSnapshot(s map[string]any) string {
 func printSummary(d Deps, out *Result, repoEntry state.RepoRef) {
 	switch out.Mode {
 	case modePatch:
-		fmt.Fprintln(d.Out, d.Palette.Success("Патчи сформированы: ")+out.PatchDir)
-		fmt.Fprintf(d.Out, "Передайте их мейнтейнеру шаблона (%s) — например, `git am %s/*.patch`.\n",
+		fmt.Fprintln(d.Out, d.Palette.Success("Patches created: ")+out.PatchDir)
+		fmt.Fprintf(d.Out, "Send them to the template maintainer (%s) — for example, `git am %s/*.patch`.\n",
 			repoEntry.Alias, out.PatchDir)
 	case modeMR:
-		fmt.Fprintln(d.Out, d.Palette.Success("Ветка запушена и запрос открыт: ")+out.Branch)
-		fmt.Fprintf(d.Out, "MR/PR создан через `%s` (репозиторий %s).\n", mrBinary(repoEntry.Type), repoEntry.Alias)
+		fmt.Fprintln(d.Out, d.Palette.Success("Branch pushed and request opened: ")+out.Branch)
+		fmt.Fprintf(d.Out, "MR/PR created via `%s` (repository %s).\n", mrBinary(repoEntry.Type), repoEntry.Alias)
 	}
 	if len(out.Files) > 0 {
-		fmt.Fprintf(d.Out, "Файлов во вкладе: %d.\n", len(out.Files))
+		fmt.Fprintf(d.Out, "Files in contribution: %d.\n", len(out.Files))
 	}
 }
 

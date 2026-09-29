@@ -50,7 +50,7 @@ func runMain(m *testing.M) int {
 
 	binPath = filepath.Join(tmp, "tplaiter")
 	if err := buildBinary(binPath); err != nil {
-		fmt.Fprintln(os.Stderr, "e2e: сборка бинарника tplater:", err)
+		fmt.Fprintln(os.Stderr, "e2e: building the tplater binary:", err)
 		return 1
 	}
 

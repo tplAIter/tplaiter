@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/mod/modfile"
@@ -39,8 +38,8 @@ func init() {
 func newWorkspaceCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "workspace",
-		Short: "Операции над монорепо-проектом (kind=workspace)",
-		Long:  "Функции CLI, завязанные на структуру монорепо (go.work + Temporal), а не на манифест конкретного шаблона.",
+		Short: "Operations on a monorepo project (kind=workspace)",
+		Long:  "CLI functions tied to monorepo structure (go.work + Temporal), not a specific template manifest.",
 	}
 	c.AddCommand(newWorkspaceAddServiceCmd())
 	return c
@@ -68,12 +67,12 @@ func newWorkspaceAddServiceCmd() *cobra.Command {
 
 	c := &cobra.Command{
 		Use:   "add-service <name>",
-		Short: "Добавить сервис-action в текущий workspace-проект",
-		Long: "Разворачивает шаблон сервиса (type=service того же репозитория, что и текущий " +
-			"workspace) в services/<slug>, по возможности форсирует настройку workflow=true (сервис = " +
-			"набор Temporal activities, см. docs/workspace-temporal.md репозитория шаблонов go-template) и " +
-			"добавляет каталог в go.work. Выполняется из корня workspace-проекта (или любого " +
-			"вложенного подкаталога, включая уже созданные services/<slug>).",
+		Short: "Add a service action to the current workspace project",
+		Long: "Deploys a service template (type=service from the same repository as the current " +
+			"workspace) into services/<slug>, best-effort forces workflow=true setting (a service is a " +
+			"set of Temporal activities, see docs/workspace-temporal.md in the go-template repository), and " +
+			"adds the directory to go.work. Runs from the workspace root (or any nested subdirectory, including " +
+			"existing services/<slug>).",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, _, err := state.EnsureHome()
@@ -88,12 +87,12 @@ func newWorkspaceAddServiceCmd() *cobra.Command {
 			root, proj, tpl, err := findWorkspaceRoot(home, cwd)
 			if err != nil {
 				if errors.Is(err, project.ErrNotInProject) {
-					return fmt.Errorf("workspace add-service: текущий каталог не является проектом tplater (нужен корень workspace, %s): %w", project.MarkerRelPath, err)
+					return fmt.Errorf("workspace add-service: current directory is not a tplater project (workspace root needed, %s): %w", project.MarkerRelPath, err)
 				}
-				return fmt.Errorf("workspace add-service: чтение манифеста текущего проекта: %w", err)
+				return fmt.Errorf("workspace add-service: reading current project manifest: %w", err)
 			}
 			if !slices.Contains(tpl.Metadata.Labels["type"], "workspace") {
-				return fmt.Errorf("workspace add-service: проект %s (шаблон %s) не является workspace (labels.type=%v) — команда применима только к kind=workspace проектам; если вы внутри вложенного сервиса (services/<slug>), поднимитесь в корень workspace", proj.Project.Slug, tpl.Metadata.Name, tpl.Metadata.Labels["type"])
+				return fmt.Errorf("workspace add-service: project %s (template %s) is not a workspace (labels.type=%v) — command applies only to kind=workspace projects; if you are inside a nested service (services/<slug>), go up to the workspace root", proj.Project.Slug, tpl.Metadata.Name, tpl.Metadata.Labels["type"])
 			}
 
 			mgr, st, err := newManager(cmd)
@@ -131,16 +130,16 @@ func newWorkspaceAddServiceCmd() *cobra.Command {
 			allSets := slices.Clone(sets)
 			hasWorkflow, err := serviceTemplateHasGroup(cmd, mgr, svcRef, forcedWorkflowGroup)
 			if err != nil {
-				return fmt.Errorf("workspace add-service: проверка настроек шаблона сервиса %s: %w", svcRef, err)
+				return fmt.Errorf("workspace add-service: checking service template settings %s: %w", svcRef, err)
 			}
 			if hasWorkflow {
 				allSets = append(allSets, forcedWorkflowGroup+"=true")
 			} else {
 				fmt.Fprintln(cmd.ErrOrStderr(), ui.WarnLine(pal, fmt.Sprintf(
-					"шаблон сервиса %s не содержит настройки %q — сервис создаётся БЕЗ форсированного "+
-						"%s=true (сервис в workspace, как правило, обязан быть Temporal-воркером, "+
-						"docs/workspace-temporal.md репозитория шаблонов go-template; добавьте группу "+
-						"%s типа toggle в template.manifest.yaml шаблона сервиса, если это применимо)",
+					"service template %s does not contain setting %q — service is created WITHOUT forced "+
+						"%s=true (a service in workspace must normally be a Temporal worker, "+
+						"docs/workspace-temporal.md in go-template repository; add a toggle group "+
+						"%s to template.manifest.yaml of the service template if applicable)",
 					svcRef, forcedWorkflowGroup, forcedWorkflowGroup, forcedWorkflowGroup,
 				)))
 			}
@@ -183,11 +182,11 @@ func newWorkspaceAddServiceCmd() *cobra.Command {
 				// the raw settings.ParseSet error.
 				if isUnknownForcedGroupError(err, forcedWorkflowGroup) {
 					return fmt.Errorf(
-						"workspace add-service: шаблон сервиса %s/%s не содержит настройки %q "+
-							"(эта команда пытается форсировать %s=true — сервис в workspace, как правило, "+
-							"обязан быть Temporal-воркером, см. docs/workspace-temporal.md репозитория "+
-							"шаблонов go-template; значение подставлено самим tplater, а не пользователем — "+
-							"добавьте группу %s типа toggle в template.manifest.yaml шаблона сервиса): %w",
+						"workspace add-service: service template %s/%s does not contain setting %q "+
+							"(this command tries to force %s=true — a service in workspace must normally "+
+							"be a Temporal worker, see docs/workspace-temporal.md in go-template repository; "+
+							"the value is provided by tplater, not the user — "+
+							"add a toggle group %s to template.manifest.yaml of the service template): %w",
 						proj.Template.Repo, svcName, forcedWorkflowGroup, forcedWorkflowGroup, forcedWorkflowGroup, err,
 					)
 				}
@@ -195,25 +194,25 @@ func newWorkspaceAddServiceCmd() *cobra.Command {
 			}
 
 			if err := addWorkspaceUse(root, "./services/"+slug); err != nil {
-				return fmt.Errorf("workspace add-service: сервис создан в %s, но регистрация в go.work не удалась (добавьте вручную use ./services/%s): %w", targetDir, slug, err)
+				return fmt.Errorf("workspace add-service: service created in %s, but registration in go.work failed (add manually: use ./services/%s): %w", targetDir, slug, err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "\nСервис-action %s зарегистрирован в go.work (./services/%s). Выполните `tplater run sync` в корне workspace.\n", slug, slug)
+			fmt.Fprintf(cmd.OutOrStdout(), "\nService action %s registered in go.work (./services/%s). Run `tplater run sync` at the workspace root.\n", slug, slug)
 			return nil
 		},
 	}
 
 	f := c.Flags()
-	f.StringVar(&module, "module", "", "go-module сервиса (по умолчанию <module воркспейса>/services/<slug>)")
-	f.StringArrayVar(&sets, "set", nil, "значение настройки group=value (повторяемый флаг); workflow=true форсируется отдельно")
-	f.StringVar(&answers, "answers", "", "файл ответов YAML (group: value)")
-	f.BoolVar(&defaults, "defaults", false, "не опрашивать — взять дефолты (+ --set/--answers)")
-	f.BoolVar(&noHooks, "no-hooks", false, "пропустить hooks.postCreate")
-	f.BoolVar(&noDepsCheck, "no-deps-check", false, "пропустить проверку инструментов окружения")
-	f.BoolVar(&envSetup, "env-setup", false, "запустить env setup после создания без вопроса")
-	f.BoolVar(&noEnvSetup, "no-env-setup", false, "не предлагать env setup после создания")
-	f.BoolVar(&yes, "yes", false, "авто-подтверждение (установка инструментов и env setup)")
-	f.IntVar(&port, "port", 0, "порт сервиса (.Runtime.Port)")
+	f.StringVar(&module, "module", "", "service go-module (default <workspace module>/services/<slug>)")
+	f.StringArrayVar(&sets, "set", nil, "setting value group=value (repeatable flag); workflow=true is forced separately")
+	f.StringVar(&answers, "answers", "", "YAML answers file (group: value)")
+	f.BoolVar(&defaults, "defaults", false, "do not prompt — use defaults (+ --set/--answers)")
+	f.BoolVar(&noHooks, "no-hooks", false, "skip hooks.postCreate")
+	f.BoolVar(&noDepsCheck, "no-deps-check", false, "skip environment tools check")
+	f.BoolVar(&envSetup, "env-setup", false, "run env setup after creation without prompting")
+	f.BoolVar(&noEnvSetup, "no-env-setup", false, "do not offer env setup after creation")
+	f.BoolVar(&yes, "yes", false, "auto-confirm (tool installation and env setup)")
+	f.IntVar(&port, "port", 0, "service port (.Runtime.Port)")
 	return c
 }
 
@@ -250,12 +249,14 @@ func findWorkspaceRoot(home, startDir string) (root string, proj *manifest.Proje
 
 // isUnknownForcedGroupError reports whether an error (settings.ParseSet directly
 // in [serviceTemplateHasGroup] or a failed newcmd.Run) is caused by group being
-// absent from the service template manifest. settings.ParseSet uses this text
-// for every unknown group and has no sentinel error, so compare the text. This
-// distinguishes a failed forced --set (added by tplater) from an error in the
-// user's --set/--answers for the same command.
+// absent from the service template manifest. It matches the typed
+// [settings.UnknownSetGroupError] so that other "unknown group" messages (condition
+// evaluation, settings edit, conditional paths) do not trigger the fallback.
+// This distinguishes a failed forced --set (added by tplaiter) from an error in
+// the user's --set/--answers for the same command.
 func isUnknownForcedGroupError(err error, group string) bool {
-	return strings.Contains(err.Error(), fmt.Sprintf("неизвестная группа %q", group))
+	var ug *settings.UnknownSetGroupError
+	return errors.As(err, &ug) && ug.Group == group
 }
 
 // serviceTemplateHasGroup reports whether the service template manifest at ref
@@ -274,21 +275,21 @@ func isUnknownForcedGroupError(err error, group string) bool {
 func serviceTemplateHasGroup(cmd *cobra.Command, mgr *repo.Manager, ref, group string) (bool, error) {
 	resolved, err := mgr.ResolveRef(ref)
 	if err != nil {
-		return false, fmt.Errorf("резолюция шаблона %s: %w", ref, err)
+		return false, fmt.Errorf("resolving template %s: %w", ref, err)
 	}
 	fsys, cleanup, err := mgr.Checkout(cmd.Context(), resolved.RepoAlias, resolved.GitRef, resolved.Entry.Path)
 	if err != nil {
-		return false, fmt.Errorf("checkout шаблона %s: %w", ref, err)
+		return false, fmt.Errorf("checking out template %s: %w", ref, err)
 	}
 	defer func() { _ = cleanup() }()
 
 	data, err := fs.ReadFile(fsys, templateManifestFileName)
 	if err != nil {
-		return false, fmt.Errorf("чтение %s: %w", templateManifestFileName, err)
+		return false, fmt.Errorf("reading %s: %w", templateManifestFileName, err)
 	}
 	tpl, err := manifest.ParseTemplate(data)
 	if err != nil {
-		return false, fmt.Errorf("разбор манифеста: %w", err)
+		return false, fmt.Errorf("parsing manifest: %w", err)
 	}
 
 	if _, _, err := settings.ParseSet(tpl, group+"=true"); err != nil {
@@ -298,7 +299,7 @@ func serviceTemplateHasGroup(cmd *cobra.Command, mgr *repo.Manager, ref, group s
 		// The group exists but is incompatible with value "true" (for example,
 		// select/int rather than toggle). This is a real conflict with the
 		// manifest, not a missing group, and best-effort logic must not hide it.
-		return false, fmt.Errorf("группа %q объявлена в манифесте шаблона, но несовместима с форсируемым значением true: %w", group, err)
+		return false, fmt.Errorf("group %q declared in template manifest but incompatible with forced value true: %w", group, err)
 	}
 	return true, nil
 }
@@ -313,7 +314,7 @@ func resolveServiceTemplateName(mgr interface {
 ) (string, error) {
 	idx, err := mgr.Templates()
 	if err != nil {
-		return "", fmt.Errorf("резолюция шаблона сервиса: %w", err)
+		return "", fmt.Errorf("resolving service template: %w", err)
 	}
 	entries := idx[repoAlias]
 	var matches []string
@@ -324,11 +325,11 @@ func resolveServiceTemplateName(mgr interface {
 	}
 	switch len(matches) {
 	case 0:
-		return "", fmt.Errorf("в репозитории %s не найден шаблон с labels.type=service (tplater template list -l type=service)", repoAlias)
+		return "", fmt.Errorf("repository %s has no template with labels.type=service (run: tplater template list -l type=service)", repoAlias)
 	case 1:
 		return matches[0], nil
 	default:
-		return "", fmt.Errorf("в репозитории %s несколько шаблонов с labels.type=service: %v — уточнение через флаг пока не реализовано", repoAlias, matches)
+		return "", fmt.Errorf("repository %s has multiple templates with labels.type=service: %v — flag-based disambiguation not yet implemented", repoAlias, matches)
 	}
 }
 
@@ -339,11 +340,11 @@ func addWorkspaceUse(root, diskPath string) error {
 	workPath := filepath.Join(root, "go.work")
 	data, err := os.ReadFile(workPath)
 	if err != nil {
-		return fmt.Errorf("чтение go.work: %w", err)
+		return fmt.Errorf("reading go.work: %w", err)
 	}
 	wf, err := modfile.ParseWork(workPath, data, nil)
 	if err != nil {
-		return fmt.Errorf("разбор go.work: %w", err)
+		return fmt.Errorf("parsing go.work: %w", err)
 	}
 	// filepath.Clean normalizes "./services/<slug>" (what we pass) and equivalent
 	// manual directives such as "use services/<slug>" (valid go.work syntax) to
@@ -356,14 +357,14 @@ func addWorkspaceUse(root, diskPath string) error {
 		}
 	}
 	if err := wf.AddUse(diskPath, ""); err != nil {
-		return fmt.Errorf("добавление use %s: %w", diskPath, err)
+		return fmt.Errorf("adding use %s: %w", diskPath, err)
 	}
 	wf.Cleanup()
 	out := modfile.Format(wf.Syntax)
 	// Leave the neighboring go.work.sum alone; `go work sync`/`tplater run sync`
 	// will regenerate it normally after the new module is registered.
 	if err := os.WriteFile(workPath, out, 0o644); err != nil { //nolint:gosec // G306: go.work is not secret; 0644 is intentional (as in manifest.SaveSnapshot).
-		return fmt.Errorf("запись go.work: %w", err)
+		return fmt.Errorf("writing go.work: %w", err)
 	}
 	return nil
 }

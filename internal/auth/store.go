@@ -80,13 +80,13 @@ type Store struct {
 func Open(ctx context.Context) (*Store, error) {
 	home, _, err := state.EnsureHome()
 	if err != nil {
-		return nil, fmt.Errorf("auth: домашний каталог: %w", err)
+		return nil, fmt.Errorf("auth: home directory: %w", err)
 	}
 	path := filepath.Join(home, dbFileName)
 
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return nil, fmt.Errorf("auth: открытие БД: %w", err)
+		return nil, fmt.Errorf("auth: opening database: %w", err)
 	}
 	// One connection: modernc.org/sqlite plus one process avoids "database is
 	// locked" during concurrent requests within the process.
@@ -94,11 +94,11 @@ func Open(ctx context.Context) (*Store, error) {
 
 	if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout=5000"); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("auth: настройка БД: %w", err)
+		return nil, fmt.Errorf("auth: database configuration: %w", err)
 	}
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("auth: проверка БД: %w", err)
+		return nil, fmt.Errorf("auth: database check: %w", err)
 	}
 	if err := migrate(ctx, db); err != nil {
 		_ = db.Close()
@@ -108,7 +108,7 @@ func Open(ctx context.Context) (*Store, error) {
 	// mode strictly after that.
 	if err := os.Chmod(path, dbFilePerm); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("auth: права файла БД: %w", err)
+		return nil, fmt.Errorf("auth: database file permissions: %w", err)
 	}
 
 	return &Store{db: db, ctx: ctx, path: path}, nil
@@ -130,7 +130,7 @@ func (s *Store) Path() string { return s.path }
 func migrate(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx,
 		`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
-		return fmt.Errorf("auth: миграция schema_version: %w", err)
+		return fmt.Errorf("auth: schema_version migration: %w", err)
 	}
 
 	var current int
@@ -138,11 +138,11 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		if _, err := db.ExecContext(ctx, `INSERT INTO schema_version(version) VALUES (0)`); err != nil {
-			return fmt.Errorf("auth: инициализация schema_version: %w", err)
+			return fmt.Errorf("auth: schema_version initialization: %w", err)
 		}
 		current = 0
 	case err != nil:
-		return fmt.Errorf("auth: чтение schema_version: %w", err)
+		return fmt.Errorf("auth: reading schema_version: %w", err)
 	}
 
 	if current >= schemaVersion {
@@ -151,12 +151,12 @@ func migrate(ctx context.Context, db *sql.DB) error {
 
 	if current < 1 {
 		if _, err := db.ExecContext(ctx, createCredentialsTable); err != nil {
-			return fmt.Errorf("auth: миграция credentials: %w", err)
+			return fmt.Errorf("auth: credentials migration: %w", err)
 		}
 	}
 
 	if _, err := db.ExecContext(ctx, `UPDATE schema_version SET version = ?`, schemaVersion); err != nil {
-		return fmt.Errorf("auth: обновление schema_version: %w", err)
+		return fmt.Errorf("auth: updating schema_version: %w", err)
 	}
 	return nil
 }
@@ -296,7 +296,7 @@ func (s *Store) queryOne(query string, args ...any) (Credential, bool, error) {
 		return Credential{}, false, nil
 	}
 	if err != nil {
-		return Credential{}, false, fmt.Errorf("auth: запрос токена: %w", err)
+		return Credential{}, false, fmt.Errorf("auth: token query: %w", err)
 	}
 	return c, true, nil
 }
@@ -326,7 +326,7 @@ func (s *Store) list() ([]Credential, error) {
 		`SELECT `+credColumns+` FROM credentials ORDER BY host, repo, tool`,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("auth: список токенов: %w", err)
+		return nil, fmt.Errorf("auth: token list: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -334,12 +334,12 @@ func (s *Store) list() ([]Credential, error) {
 	for rows.Next() {
 		c, scanErr := scanCredential(rows)
 		if scanErr != nil {
-			return nil, fmt.Errorf("auth: чтение токена: %w", scanErr)
+			return nil, fmt.Errorf("auth: reading token: %w", scanErr)
 		}
 		out = append(out, c)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("auth: список токенов: %w", err)
+		return nil, fmt.Errorf("auth: token list: %w", err)
 	}
 	return out, nil
 }
@@ -347,7 +347,7 @@ func (s *Store) list() ([]Credential, error) {
 // Delete removes an entry by ID.
 func (s *Store) Delete(id int64) error {
 	if _, err := s.db.ExecContext(s.ctx, `DELETE FROM credentials WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("auth: удаление токена: %w", err)
+		return fmt.Errorf("auth: token deletion: %w", err)
 	}
 	return nil
 }
@@ -360,7 +360,7 @@ func (s *Store) TouchLastUsed(id int64, when time.Time) error {
 		`UPDATE credentials SET last_used_at = ? WHERE id = ?`,
 		when.UTC().Format(timeLayout), id,
 	); err != nil {
-		return fmt.Errorf("auth: отметка использования токена: %w", err)
+		return fmt.Errorf("auth: token usage marking: %w", err)
 	}
 	return nil
 }
@@ -376,7 +376,7 @@ func (s *Store) ExpiredSoon(within time.Duration) ([]Credential, error) {
 		  ORDER BY expires_at`, cutoff,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("auth: истекающие токены: %w", err)
+		return nil, fmt.Errorf("auth: expiring tokens: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -384,12 +384,12 @@ func (s *Store) ExpiredSoon(within time.Duration) ([]Credential, error) {
 	for rows.Next() {
 		c, scanErr := scanCredential(rows)
 		if scanErr != nil {
-			return nil, fmt.Errorf("auth: чтение токена: %w", scanErr)
+			return nil, fmt.Errorf("auth: reading token: %w", scanErr)
 		}
 		out = append(out, c)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("auth: истекающие токены: %w", err)
+		return nil, fmt.Errorf("auth: expiring tokens: %w", err)
 	}
 	return out, nil
 }

@@ -23,12 +23,12 @@ import (
 func writeFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, homeDirPerm); err != nil {
-		return fmt.Errorf("state: создание каталога %s: %w", dir, err)
+		return fmt.Errorf("state: creating directory %s: %w", dir, err)
 	}
 
 	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {
-		return fmt.Errorf("state: создание временного файла для %s: %w", path, err)
+		return fmt.Errorf("state: creating temporary file for %s: %w", path, err)
 	}
 	tmpPath := tmp.Name()
 	// A successful Rename makes Remove a no-op (ENOENT is silently ignored).
@@ -36,18 +36,18 @@ func writeFileAtomic(path string, data []byte) error {
 
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("state: запись временного файла %s: %w", tmpPath, err)
+		return fmt.Errorf("state: writing temporary file %s: %w", tmpPath, err)
 	}
 	if err := tmp.Chmod(filePerm); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("state: chmod временного файла %s: %w", tmpPath, err)
+		return fmt.Errorf("state: chmod temporary file %s: %w", tmpPath, err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("state: закрытие временного файла %s: %w", tmpPath, err)
+		return fmt.Errorf("state: closing temporary file %s: %w", tmpPath, err)
 	}
 
 	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("state: переименование %s -> %s: %w", tmpPath, path, err)
+		return fmt.Errorf("state: renaming %s -> %s: %w", tmpPath, path, err)
 	}
 	return nil
 }
@@ -62,6 +62,6 @@ func readFile(path string) (data []byte, existed bool, err error) {
 	case os.IsNotExist(err):
 		return nil, false, nil
 	default:
-		return nil, false, fmt.Errorf("state: чтение %s: %w", path, err)
+		return nil, false, fmt.Errorf("state: reading %s: %w", path, err)
 	}
 }

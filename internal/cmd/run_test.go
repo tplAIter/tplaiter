@@ -31,10 +31,10 @@ engine:
   type: gotemplate
   root: files/
 commands:
-  echoargs: { run: "printf '%s\n' > marker.txt", description: "пишет args в marker.txt" }
-  failcmd: { run: "exit 3", description: "падает с кодом 3" }
-  avail: { run: "true", description: "доступна", when: "database=postgres" }
-  unavail: { run: "true", description: "недоступна", when: "database=mysql" }
+  echoargs: { run: "printf '%s\n' > marker.txt", description: "writes args to marker.txt" }
+  failcmd: { run: "exit 3", description: "fails with code 3" }
+  avail: { run: "true", description: "postgres-gated", when: "database=postgres" }
+  unavail: { run: "true", description: "mysql-gated", when: "database=mysql" }
 `
 
 const runFixtureProject = `apiVersion: tplater.dev/v1alpha1
@@ -86,7 +86,7 @@ func newRunFixture(t *testing.T) string {
 	// project.LoadManifestForProject, so a YAML typo fails here rather than as an
 	// obscure error deep inside the test.
 	if _, err := manifest.LoadSnapshot(filepath.Join(tplDir, "manifest.snapshot.yaml")); err != nil {
-		t.Fatalf("фикстура манифеста невалидна: %v", err)
+		t.Fatalf("manifest fixture is invalid: %v", err)
 	}
 
 	return root
@@ -128,19 +128,19 @@ func TestRun_List_WhenFiltering(t *testing.T) {
 		}
 	}
 	if availLine == "" {
-		t.Fatalf("не нашли строку avail в выводе:\n%s", out)
+		t.Fatalf("avail row not found in output:\n%s", out)
 	}
 	if unavailLine == "" {
-		t.Fatalf("не нашли строку unavail в выводе:\n%s", out)
+		t.Fatalf("unavail row not found in output:\n%s", out)
 	}
-	if strings.Contains(availLine, "недоступно") {
-		t.Errorf("avail (when выполнен) помечена как недоступная: %q", availLine)
+	if strings.Contains(availLine, "unavailable") {
+		t.Errorf("avail (when satisfied) is marked unavailable: %q", availLine)
 	}
-	if !strings.Contains(unavailLine, "недоступно") {
-		t.Errorf("unavail (when не выполнен) не помечена как недоступная: %q", unavailLine)
+	if !strings.Contains(unavailLine, "unavailable") {
+		t.Errorf("unavail (when not satisfied) is not marked unavailable: %q", unavailLine)
 	}
 	if !strings.Contains(out, "echoargs") || !strings.Contains(out, "failcmd") {
-		t.Errorf("в списке нет всех команд манифеста:\n%s", out)
+		t.Errorf("the list does not contain all manifest commands:\n%s", out)
 	}
 }
 
@@ -218,7 +218,7 @@ func TestRun_Exec_ExitCodePropagates(t *testing.T) {
 
 	_, err := runRunCmd(t, "failcmd")
 	if err == nil {
-		t.Fatal("run failcmd: ожидалась ошибка")
+		t.Fatal("run failcmd: expected error")
 	}
 	if !errors.Is(err, ErrActionUnavailable) {
 		t.Fatalf("err = %v, want typed denial", err)
@@ -230,7 +230,7 @@ func TestRun_Exec_WhenMismatch(t *testing.T) {
 
 	_, err := runRunCmd(t, "unavail")
 	if err == nil {
-		t.Fatal("run unavail: ожидалась ошибка when-гейта")
+		t.Fatal("run unavail: expected when-gate error")
 	}
 	if !errors.Is(err, ErrActionUnavailable) {
 		t.Fatalf("err = %v, want typed denial", err)
@@ -242,7 +242,7 @@ func TestRun_Exec_UnknownCommand(t *testing.T) {
 
 	_, err := runRunCmd(t, "does-not-exist")
 	if err == nil {
-		t.Fatal("run does-not-exist: ожидалась ошибка")
+		t.Fatal("run does-not-exist: expected error")
 	}
 	if !errors.Is(err, ErrActionUnavailable) {
 		t.Fatalf("err = %v, want typed denial", err)
@@ -269,6 +269,6 @@ func TestRun_OutsideProject(t *testing.T) {
 
 	_, err = runRunCmd(t)
 	if err == nil {
-		t.Fatal("run вне проекта: ожидалась ошибка")
+		t.Fatal("run outside project: expected error")
 	}
 }

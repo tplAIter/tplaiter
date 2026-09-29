@@ -22,8 +22,8 @@ import (
 func (s *Server) registerResources() {
 	s.mcp.AddResource(
 		mcp.NewResource(
-			"tplaiter://config", "Конфигурация tplaiter",
-			mcp.WithResourceDescription("Список добавленных репозиториев шаблонов без секретов (токены не раскрываются)."),
+			"tplaiter://config", "tplaiter configuration",
+			mcp.WithResourceDescription("List of added template repositories without secrets (tokens are not exposed)."),
 			mcp.WithMIMEType("text/plain"),
 		),
 		s.readConfigResource,
@@ -31,8 +31,8 @@ func (s *Server) registerResources() {
 
 	s.mcp.AddResourceTemplate(
 		mcp.NewResourceTemplate(
-			"tplaiter://project/{dir}", "Манифест проекта tplaiter",
-			mcp.WithTemplateDescription("Содержимое .tplaiter/project.yaml проекта по абсолютному пути dir."),
+			"tplaiter://project/{dir}", "tplaiter project manifest",
+			mcp.WithTemplateDescription("Contents of .tplaiter/project.yaml for a project at absolute path dir."),
 			mcp.WithTemplateMIMEType("application/yaml"),
 		),
 		s.readProjectResource,
@@ -57,17 +57,17 @@ func (s *Server) readConfigResource(ctx context.Context, req mcp.ReadResourceReq
 func (s *Server) readProjectResource(_ context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 	dir := strings.TrimPrefix(req.Params.URI, "tplaiter://project/")
 	if dir == "" || dir == req.Params.URI {
-		return nil, fmt.Errorf("tplaiter://project: не указан каталог проекта в URI %q", req.Params.URI)
+		return nil, fmt.Errorf("tplaiter://project: project directory not specified in URI %q", req.Params.URI)
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return nil, fmt.Errorf("tplaiter://project: некорректный путь %q: %w", dir, err)
+		return nil, fmt.Errorf("tplaiter://project: invalid path %q: %w", dir, err)
 	}
 
 	marker := filepath.Join(abs, project.MarkerRelPath)
 	data, err := os.ReadFile(marker)
 	if err != nil {
-		return nil, fmt.Errorf("tplaiter://project: чтение %s: %w", marker, err)
+		return nil, fmt.Errorf("tplaiter://project: reading %s: %w", marker, err)
 	}
 	return []mcp.ResourceContents{
 		mcp.TextResourceContents{URI: req.Params.URI, MIMEType: "application/yaml", Text: string(data)},

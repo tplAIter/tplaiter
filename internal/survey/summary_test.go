@@ -19,7 +19,7 @@ func TestBuildSummary_SourcesAndImpliedMark(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if len(resolved.Report.Implied) == 0 {
-		t.Fatalf("ожидали довключение database=postgres")
+		t.Fatalf("expected auto-enabled database=postgres")
 	}
 
 	preset := settings.Values{"svc_name": "mysvc"}
@@ -29,19 +29,19 @@ func TestBuildSummary_SourcesAndImpliedMark(t *testing.T) {
 
 	// database was implied → source implied.
 	if !lineHas(summary, "database", "implied") {
-		t.Fatalf("database должен иметь источник implied:\n%s", summary)
+		t.Fatalf("database must have source implied:\n%s", summary)
 	}
 	// svc_name from --answers.
 	if !lineHas(summary, "svc_name", "answer") {
-		t.Fatalf("svc_name должен иметь источник answer:\n%s", summary)
+		t.Fatalf("svc_name must have source answer:\n%s", summary)
 	}
 	// replicas was "asked".
 	if !lineHas(summary, "replicas", "prompt") {
-		t.Fatalf("replicas должен иметь источник prompt:\n%s", summary)
+		t.Fatalf("replicas must have source prompt:\n%s", summary)
 	}
 	// brokers untouched → default.
 	if !lineHas(summary, "brokers", "default") {
-		t.Fatalf("brokers должен иметь источник default:\n%s", summary)
+		t.Fatalf("brokers must have source default:\n%s", summary)
 	}
 }
 
@@ -49,18 +49,18 @@ func TestPrintReport_ImpliedAndWarnings(t *testing.T) {
 	var buf bytes.Buffer
 	rep := settings.Report{
 		Implied:  []settings.ImpliedValue{{Group: "database", Value: "postgres", RequiredBy: "sso_provider"}},
-		Warnings: []string{"группа X неактивна"},
+		Warnings: []string{"group X inactive"},
 	}
 	printReport(&buf, plainPalette(), rep)
 	out := buf.String()
-	if !strings.Contains(out, "Довключено") {
-		t.Fatalf("нет заголовка довключений:\n%s", out)
+	if !strings.Contains(out, "Automatically enabled") {
+		t.Fatalf("no auto-enabled header:\n%s", out)
 	}
 	if !strings.Contains(out, "database=postgres") || !strings.Contains(out, "sso_provider") {
-		t.Fatalf("нет строки довключения:\n%s", out)
+		t.Fatalf("no auto-enabled row:\n%s", out)
 	}
-	if !strings.Contains(out, "предупреждение") {
-		t.Fatalf("нет предупреждения:\n%s", out)
+	if !strings.Contains(out, "warning") {
+		t.Fatalf("no warning:\n%s", out)
 	}
 }
 
@@ -76,7 +76,7 @@ func TestFormatValue(t *testing.T) {
 	}
 	for _, c := range cases {
 		if got := formatValue(c.in); got != c.want {
-			t.Errorf("formatValue(%v) = %q, хотим %q", c.in, got, c.want)
+			t.Errorf("formatValue(%v) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

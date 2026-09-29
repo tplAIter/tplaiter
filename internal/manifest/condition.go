@@ -13,7 +13,7 @@ const (
 )
 
 // ErrEmptyCondition is returned by [ParseCondition] for an empty condition string.
-var ErrEmptyCondition = errors.New("пустое условие")
+var ErrEmptyCondition = errors.New("empty condition")
 
 // Atom is an elementary `group=value` or `group!=value` comparison (for a
 // multiselect, `=` means contains and `!=` means does not contain); a toggle is
@@ -80,7 +80,7 @@ func ParseCondition(s string) (Condition, error) {
 func parseAtom(raw string) (Atom, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
-		return Atom{}, fmt.Errorf("пустой атом в условии %q", raw)
+		return Atom{}, fmt.Errorf("empty atom in condition %q", raw)
 	}
 
 	op := OpEq
@@ -91,22 +91,22 @@ func parseAtom(raw string) (Atom, error) {
 		idx = strings.Index(s, OpEq)
 	}
 	if idx < 0 {
-		return Atom{}, fmt.Errorf("атом %q без оператора = или !=", s)
+		return Atom{}, fmt.Errorf("atom %q has no operator = or !=", s)
 	}
 
 	group := strings.TrimSpace(s[:idx])
 	value := strings.TrimSpace(s[idx+len(op):])
 	if group == "" {
-		return Atom{}, fmt.Errorf("атом %q без имени группы", s)
+		return Atom{}, fmt.Errorf("atom %q has no group name", s)
 	}
 	if value == "" {
-		return Atom{}, fmt.Errorf("атом %q без значения", s)
+		return Atom{}, fmt.Errorf("atom %q has no value", s)
 	}
 	if strings.ContainsAny(group, "=!&") {
-		return Atom{}, fmt.Errorf("недопустимый символ в имени группы атома %q", s)
+		return Atom{}, fmt.Errorf("invalid character in group name of atom %q", s)
 	}
 	if strings.Contains(value, OpEq) || strings.Contains(value, "!") {
-		return Atom{}, fmt.Errorf("лишний оператор в значении атома %q", s)
+		return Atom{}, fmt.Errorf("extra operator in value of atom %q", s)
 	}
 	return Atom{Group: group, Op: op, Value: value}, nil
 }

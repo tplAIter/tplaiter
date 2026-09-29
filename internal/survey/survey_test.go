@@ -14,18 +14,18 @@ func testTemplate() *manifest.Template {
 		Settings: []manifest.SettingGroup{
 			{
 				Group:   "database",
-				Title:   "База данных",
+				Title:   "Database",
 				Type:    manifest.TypeSelect,
 				Default: "none",
 				Options: []manifest.Option{
-					{ID: "none", Title: "Без БД"},
+					{ID: "none", Title: "No DB"},
 					{
 						ID:    "postgres",
 						Title: "PostgreSQL",
 						Settings: []manifest.SettingGroup{
 							{
 								Group:   "idempotency",
-								Title:   "Идемпотентность",
+								Title:   "Idempotency",
 								Type:    manifest.TypeToggle,
 								Default: false,
 							},
@@ -36,7 +36,7 @@ func testTemplate() *manifest.Template {
 			},
 			{
 				Group:   "brokers",
-				Title:   "Брокеры",
+				Title:   "Brokers",
 				Type:    manifest.TypeMultiselect,
 				Default: []any{},
 				Options: []manifest.Option{
@@ -45,7 +45,7 @@ func testTemplate() *manifest.Template {
 						Title: "Kafka",
 						Settings: []manifest.SettingGroup{
 							{Group: "kafka_ssl", Title: "SSL", Type: manifest.TypeToggle, Default: false},
-							{Group: "kafka_topics", Title: "Топики", Type: manifest.TypeString, Default: ""},
+							{Group: "kafka_topics", Title: "Topics", Type: manifest.TypeString, Default: ""},
 						},
 					},
 					{ID: "rabbitmq", Title: "RabbitMQ"},
@@ -53,7 +53,7 @@ func testTemplate() *manifest.Template {
 			},
 			{
 				Group: "auth",
-				Title: "Аутентификация",
+				Title: "Authentication",
 				Type:  manifest.TypeMultiselect,
 				Options: []manifest.Option{
 					{ID: "sso_provider", Title: "SSO provider", Requires: []string{"database=postgres"}},
@@ -61,20 +61,20 @@ func testTemplate() *manifest.Template {
 			},
 			{
 				Group:   "svc_name",
-				Title:   "Имя сервиса",
+				Title:   "Service name",
 				Type:    manifest.TypeString,
 				Default: "",
 				Pattern: "^[a-z][a-z0-9-]*$",
 			},
 			{
 				Group:   "replicas",
-				Title:   "Реплики",
+				Title:   "Replicas",
 				Type:    manifest.TypeInt,
 				Default: 3,
 			},
 		},
 		Constraints: []manifest.Constraint{
-			{If: "idempotency=true", Require: "database=postgres", Message: "идемпотентность требует postgres"},
+			{If: "idempotency=true", Require: "database=postgres", Message: "Idempotency requires PostgreSQL"},
 		},
 	}
 }

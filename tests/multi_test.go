@@ -40,11 +40,11 @@ func TestMultiRepoAmbiguous(t *testing.T) {
 	// for each match.
 	ambiguous := run(t, home, "", "template", "show", "alpha")
 	if ambiguous.ExitCode == 0 {
-		t.Fatalf("template show alpha: ожидалась ошибка неоднозначности, получен exit 0\n%s", ambiguous.Stdout)
+		t.Fatalf("template show alpha: expected ambiguity error, got exit 0\n%s", ambiguous.Stdout)
 	}
 	combined := ambiguous.Stderr + ambiguous.Stdout
-	mustContain(t, combined, "multi1/alpha", "неоднозначное имя alpha")
-	mustContain(t, combined, "multi2/alpha", "неоднозначное имя alpha")
+	mustContain(t, combined, "multi1/alpha", "ambiguous name alpha")
+	mustContain(t, combined, "multi2/alpha", "ambiguous name alpha")
 
 	// Qualifying with repo/ removes the ambiguity.
 	mustRun(t, home, "", "template", "show", "multi1/alpha")
@@ -55,6 +55,6 @@ func TestMultiRepoAmbiguous(t *testing.T) {
 	projDir := filepath.Join(t.TempDir(), "beta-proj")
 	mustRun(t, home, "", "new", "multi1/beta", "Beta Project", "--dir", projDir, "--defaults")
 	if !exists(filepath.Join(projDir, ".tplaiter", "project.yaml")) {
-		t.Error("new multi1/beta: отсутствует проектный маркер")
+		t.Error("new multi1/beta: project marker is missing")
 	}
 }

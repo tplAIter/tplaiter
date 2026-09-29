@@ -60,7 +60,7 @@ func Run(ctx context.Context, d Deps, opts Options) error {
 		return rep.WriteJSON(d.Out)
 	}
 	for _, w := range rep.Warnings {
-		fmt.Fprintln(d.Err, d.Palette.Warn("предупреждение: ")+w)
+		fmt.Fprintln(d.Err, d.Palette.Warn("warning: ")+w)
 	}
 	rep.Render(d.Out, d.Palette)
 	return nil
@@ -84,12 +84,12 @@ func Collect(ctx context.Context, d Deps, startDir string) (*Report, error) {
 
 	ref, err := d.Manager.ResolveRef(coord + "@" + proj.Template.Version)
 	if err != nil {
-		return nil, fmt.Errorf("stats: версия %s: %w", proj.Template.Version, err)
+		return nil, fmt.Errorf("stats: version %s: %w", proj.Template.Version, err)
 	}
 
 	rendered, err := renderVersion(ctx, d.Manager, ref, in)
 	if err != nil {
-		return nil, fmt.Errorf("stats: рендер эталона: %w", err)
+		return nil, fmt.Errorf("stats: render reference: %w", err)
 	}
 
 	churn, histAvailable := historicalChurn(ctx, d.Manager, ref, in)
@@ -108,7 +108,7 @@ func Collect(ctx context.Context, d Deps, startDir string) (*Report, error) {
 	rep.OldVersion = proj.Template.Version
 	if !histAvailable {
 		rep.Warnings = append(rep.Warnings,
-			"историческая эвристика недоступна (<2 стабильных тегов) — все правки классифицированы как auto")
+			"historical heuristic unavailable (<2 stable tags) — all edits classified as auto")
 	}
 	return rep, nil
 }

@@ -16,7 +16,7 @@ func TestLint_SingleBasicFixtureGreen(t *testing.T) {
 		t.Fatalf("Lint: %v", err)
 	}
 	if res.Failed {
-		t.Fatalf("single-basic должна быть зелёной:\n%s", failDetails(res))
+		t.Fatalf("single-basic must be green:\n%s", failDetails(res))
 	}
 	// Expect corner combos from two groups (select database + multiselect brokers)
 	// plus defaults/all-on/max.
@@ -26,7 +26,7 @@ func TestLint_SingleBasicFixtureGreen(t *testing.T) {
 	}
 	for _, want := range []string{"defaults", "database=postgres", "brokers=kafka", "all-on", "max"} {
 		if !combos[want] {
-			t.Errorf("ожидалась комбо %q в результатах", want)
+			t.Errorf("expected combo %q in the results", want)
 		}
 	}
 }
@@ -43,11 +43,11 @@ func TestLint_ComboFilter(t *testing.T) {
 			comboRows++
 		}
 		if r.Combo != "validate" && r.Combo != "database=postgres" {
-			t.Errorf("фильтр пропустил лишнюю комбо %q", r.Combo)
+			t.Errorf("filter let through an extra combo %q", r.Combo)
 		}
 	}
 	if comboRows != 1 {
-		t.Errorf("ожидалась одна строка database=postgres, получено %d", comboRows)
+		t.Errorf("expected one database=postgres row, got %d", comboRows)
 	}
 }
 
@@ -57,7 +57,7 @@ func TestLint_UnknownComboErrors(t *testing.T) {
 		t.Fatalf("Lint: %v", err)
 	}
 	if !res.Failed {
-		t.Fatal("неизвестная комбо должна давать провал")
+		t.Fatal("an unknown combo must fail")
 	}
 }
 
@@ -80,7 +80,7 @@ func TestLint_BrokenConditionRed(t *testing.T) {
 		t.Fatalf("Lint: %v", err)
 	}
 	if !res.Failed {
-		t.Fatal("сломанное условие в files должно давать провал")
+		t.Fatal("a broken files condition must fail")
 	}
 	found := false
 	for _, r := range res.Rows {
@@ -89,7 +89,7 @@ func TestLint_BrokenConditionRed(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("ожидалось сообщение о неизвестной группе ghost; строки: %s", failDetails(res))
+		t.Errorf("expected a message about unknown group ghost; rows: %s", failDetails(res))
 	}
 }
 

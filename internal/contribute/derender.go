@@ -20,7 +20,7 @@ const minSubstLen = 4
 // to a conditional vertical (files glob option). A complete reverse
 // transformation of conditional blocks is algorithmically unreliable, so the
 // template reviewer handles it explicitly.
-const reviewMarker = "TPLATER-REVIEW: файл принадлежит условной вертикали"
+const reviewMarker = "TPLATER-REVIEW: file belongs to a conditional vertical"
 
 // substitution — one reverse substitution: literal project value → go-template placeholder.
 type substitution struct {
@@ -136,7 +136,7 @@ func markReview(content []byte, logicalPath, condition string) ([]byte, bool) {
 	if condition != "" {
 		text += " " + condition
 	}
-	text += "; проверьте условные блоки"
+	text += "; check conditional blocks"
 	line := open + text + closeTag + "\n"
 
 	// Already marked — do not duplicate.

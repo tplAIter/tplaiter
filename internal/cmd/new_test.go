@@ -30,12 +30,12 @@ func TestEnvSetupTriState(t *testing.T) {
 			got := envSetupTriState(c, tc.envSetup, tc.noEnv)
 			if tc.wantNil {
 				if got != nil {
-					t.Fatalf("ожидался nil, получено %v", *got)
+					t.Fatalf("expected nil, got %v", *got)
 				}
 				return
 			}
 			if got == nil {
-				t.Fatalf("ожидался %v, получен nil", tc.wantVal)
+				t.Fatalf("expected %v, got nil", tc.wantVal)
 			}
 			if *got != tc.wantVal {
 				t.Fatalf("got %v, want %v", *got, tc.wantVal)

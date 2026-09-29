@@ -16,7 +16,7 @@ func TestPrintConfig(t *testing.T) {
 				t.Fatalf("PrintConfig(%q): %v", client, err)
 			}
 			if !json.Valid([]byte(snippet)) {
-				t.Fatalf("PrintConfig(%q): невалидный JSON:\n%s", client, snippet)
+				t.Fatalf("PrintConfig(%q): invalid JSON:\n%s", client, snippet)
 			}
 
 			var root map[string]json.RawMessage
@@ -30,7 +30,7 @@ func TestPrintConfig(t *testing.T) {
 			}
 			raw, ok := root[key]
 			if !ok {
-				t.Fatalf("отсутствует ключ %q в конфиге %q:\n%s", key, client, snippet)
+				t.Fatalf("key %q missing in config %q:\n%s", key, client, snippet)
 			}
 
 			var servers map[string]serverEntry
@@ -39,7 +39,7 @@ func TestPrintConfig(t *testing.T) {
 			}
 			entry, ok := servers["tplaiter"]
 			if !ok {
-				t.Fatalf("отсутствует сервер tplater в конфиге %q", client)
+				t.Fatalf("tplater server missing in config %q", client)
 			}
 			if entry.Command != exe {
 				t.Errorf("command = %q, want %q", entry.Command, exe)
@@ -57,9 +57,9 @@ func TestPrintConfig(t *testing.T) {
 func TestPrintConfigUnknownClient(t *testing.T) {
 	_, err := PrintConfig("emacs", "/bin/tplater")
 	if err == nil {
-		t.Fatal("ожидалась ошибка для неизвестного клиента")
+		t.Fatal("expected an error for an unknown client")
 	}
 	if !strings.Contains(err.Error(), "emacs") {
-		t.Errorf("ошибка не упоминает клиента: %v", err)
+		t.Errorf("error does not mention the client: %v", err)
 	}
 }

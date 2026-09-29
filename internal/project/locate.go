@@ -29,7 +29,7 @@ const LegacyMarkerRelPath = ".tplater/project.yaml"
 // absent from the starting directory and all parents up to $HOME or the file
 // system root. errors.Is distinguishes this case from other filesystem or
 // parsing errors, which FindRoot returns unchanged.
-var ErrNotInProject = errors.New("каталог не является проектом tplater")
+var ErrNotInProject = errors.New("directory is not a tplater project")
 
 // FindRoot searches for the tplater project root by walking upward from
 // startDir until it finds .tplaiter/project.yaml. It stops at the user's home
@@ -46,7 +46,7 @@ var ErrNotInProject = errors.New("каталог не является прое�
 func FindRoot(startDir string) (root string, proj *manifest.Project, err error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
-		return "", nil, fmt.Errorf("project: определение абсолютного пути для %s: %w", startDir, err)
+		return "", nil, fmt.Errorf("project: determining absolute path for %s: %w", startDir, err)
 	}
 	dir = filepath.Clean(dir)
 
@@ -90,13 +90,13 @@ func FindRoot(startDir string) (root string, proj *manifest.Project, err error) 
 		case modernErr == nil:
 			p, loadErr := manifest.LoadProject(markerPath)
 			if loadErr != nil {
-				return "", nil, fmt.Errorf("project: загрузка маркера проекта %s: %w", markerPath, loadErr)
+				return "", nil, fmt.Errorf("project: loading project marker %s: %w", markerPath, loadErr)
 			}
 			return dir, p, nil
 		case !os.IsNotExist(modernErr):
-			return "", nil, fmt.Errorf("project: проверка маркера проекта %s: %w", markerPath, modernErr)
+			return "", nil, fmt.Errorf("project: checking project marker %s: %w", markerPath, modernErr)
 		case !os.IsNotExist(legacyErr):
-			return "", nil, fmt.Errorf("project: проверка legacy-маркера проекта %s: %w", legacyPath, legacyErr)
+			return "", nil, fmt.Errorf("project: checking legacy project marker %s: %w", legacyPath, legacyErr)
 		}
 
 		if homeErr == nil && dir == home {
@@ -110,8 +110,8 @@ func FindRoot(startDir string) (root string, proj *manifest.Project, err error) 
 	}
 
 	return "", nil, fmt.Errorf(
-		"%w: не найден %s ни в %s, ни в одном из родительских каталогов — "+
-			"команда должна выполняться внутри проекта, созданного `tplater new`",
+		"%w: %s not found in %s or any parent directory — "+
+			"command must be run inside a project created with `tplater new`",
 		ErrNotInProject, MarkerRelPath, startDir,
 	)
 }

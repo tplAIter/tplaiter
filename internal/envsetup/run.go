@@ -75,11 +75,11 @@ const ansiblePlaybookBinary = "ansible-playbook"
 // attempted) installation did not solve the problem. errors.Is distinguishes
 // this [Runner.RunPlaybook] failure from others (missing playbook file or an
 // ansible-playbook error).
-var ErrAnsibleMissing = errors.New("envsetup: ansible-playbook не найден в PATH")
+var ErrAnsibleMissing = errors.New("envsetup: ansible-playbook not found in PATH")
 
 // ErrPlaybookFileNotFound reports that the playbook file is absent at the
 // expected path (TemplateDir/Playbook.File).
-var ErrPlaybookFileNotFound = errors.New("envsetup: файл плейбука не найден")
+var ErrPlaybookFileNotFound = errors.New("envsetup: playbook file not found")
 
 // ErrAnsibleAdapterUnavailable is returned before inspecting a playbook,
 // resolving a tool, creating extra-vars, or invoking an installer. Generic
@@ -280,7 +280,7 @@ func installRecipe(exec execx.Runner) string {
 	if action.Kind != deps.ActionNone {
 		return action.Command
 	}
-	return "brew install " + ansibleTool.Install.Brew + " (или " + ansibleTool.Install.Apt + " через apt на linux)"
+	return "brew install " + ansibleTool.Install.Brew + " (or " + ansibleTool.Install.Apt + " via apt on linux)"
 }
 
 // projectVars — tplater.project portion of extra-vars (SPEC-03 §4: JSON
@@ -329,7 +329,7 @@ func buildExtraVars(values settings.Values, proj manifest.ProjectInfo) (string, 
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("envsetup: сериализация extra-vars: %w", err)
+		return "", fmt.Errorf("envsetup: serialize extra-vars: %w", err)
 	}
 	return string(data), nil
 }
@@ -341,23 +341,23 @@ func buildExtraVars(values settings.Values, proj manifest.ProjectInfo) (string, 
 func writeExtraVarsFile(content string) (string, error) {
 	f, err := os.CreateTemp("", "tplater-extravars-*.json")
 	if err != nil {
-		return "", fmt.Errorf("envsetup: создание временного файла extra-vars: %w", err)
+		return "", fmt.Errorf("envsetup: create temporary extra-vars file: %w", err)
 	}
 	path := f.Name()
 
 	if err := f.Chmod(0o600); err != nil {
 		_ = f.Close()
 		_ = os.Remove(path)
-		return "", fmt.Errorf("envsetup: права временного файла extra-vars %s: %w", path, err)
+		return "", fmt.Errorf("envsetup: chmod temporary extra-vars file %s: %w", path, err)
 	}
 	if _, err := f.WriteString(content); err != nil {
 		_ = f.Close()
 		_ = os.Remove(path)
-		return "", fmt.Errorf("envsetup: запись временного файла extra-vars %s: %w", path, err)
+		return "", fmt.Errorf("envsetup: write temporary extra-vars file %s: %w", path, err)
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(path)
-		return "", fmt.Errorf("envsetup: закрытие временного файла extra-vars %s: %w", path, err)
+		return "", fmt.Errorf("envsetup: close temporary extra-vars file %s: %w", path, err)
 	}
 	return path, nil
 }

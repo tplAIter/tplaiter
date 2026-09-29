@@ -306,7 +306,7 @@ func TestValidateDuplicateID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if err := src.Validate(fixtureTemplate()); err == nil || !strings.Contains(err.Error(), "дублирующийся id") {
+	if err := src.Validate(fixtureTemplate()); err == nil || !strings.Contains(err.Error(), "duplicate id") {
 		t.Fatalf("expected duplicate id error, got: %v", err)
 	}
 }
@@ -321,7 +321,7 @@ func TestValidateUnknownWhenGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if err := src.Validate(fixtureTemplate()); err == nil || !strings.Contains(err.Error(), "несуществующую группу") {
+	if err := src.Validate(fixtureTemplate()); err == nil || !strings.Contains(err.Error(), "non-existent group") {
 		t.Fatalf("expected unknown-group error, got: %v", err)
 	}
 }

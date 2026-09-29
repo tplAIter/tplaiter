@@ -20,7 +20,7 @@ func TestValidate_Lint_OptInNoEffect(t *testing.T) {
 	tpl := baseTemplateForLint()
 	// Lint is unset (the zero value), so the validator must not add lint issues.
 	if err := tpl.Validate(); err != nil {
-		t.Fatalf("пустая секция lint не должна влиять на валидацию: %v", err)
+		t.Fatalf("an empty lint section must not affect validation: %v", err)
 	}
 }
 
@@ -48,27 +48,27 @@ func TestValidate_Lint_Rules(t *testing.T) {
 		{
 			name:  "missing id",
 			rules: []LintRule{{Paths: []string{"internal/**"}}},
-			want:  "id правила обязателен",
+			want:  "rule id is required",
 		},
 		{
 			name:  "unknown id",
 			rules: []LintRule{{ID: "no-such-rule", Paths: []string{"internal/**"}}},
-			want:  "неизвестный id правила",
+			want:  "unknown rule id",
 		},
 		{
 			name:  "empty paths",
 			rules: []LintRule{{ID: LintRuleNoInit}},
-			want:  "ничего не проверяет",
+			want:  "checks nothing",
 		},
 		{
 			name:  "bad glob in paths",
 			rules: []LintRule{{ID: LintRuleNoInit, Paths: []string{"internal/[unclosed"}}},
-			want:  "некорректный glob",
+			want:  "invalid glob",
 		},
 		{
 			name:  "bad glob in exclude",
 			rules: []LintRule{{ID: LintRuleNoInit, Paths: []string{"internal/**"}, Exclude: []string{"[unclosed"}}},
-			want:  "некорректный glob",
+			want:  "invalid glob",
 		},
 	}
 
@@ -79,15 +79,15 @@ func TestValidate_Lint_Rules(t *testing.T) {
 			err := tpl.Validate()
 			if tc.want == "" {
 				if err != nil {
-					t.Fatalf("ожидалась валидность, получено: %v", err)
+					t.Fatalf("expected valid, got: %v", err)
 				}
 				return
 			}
 			if err == nil {
-				t.Fatal("ожидалась ошибка валидации")
+				t.Fatal("expected a validation error")
 			}
 			if !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("ошибка не содержит %q:\n%v", tc.want, err)
+				t.Errorf("error does not contain %q:\n%v", tc.want, err)
 			}
 		})
 	}

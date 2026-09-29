@@ -18,11 +18,11 @@ import (
 // the repository cache is not fetched). It is not an error, but tells the
 // caller to try the next source. Other errors, such as bad YAML or filesystem
 // failures, must be returned unchanged rather than hidden by fallback.
-var ErrSourceUnavailable = errors.New("источник манифеста недоступен")
+var ErrSourceUnavailable = errors.New("manifest source unavailable")
 
 // ErrNoManifest is returned by [LoadManifestForProject] when no source in the
 // chain can provide a manifest.
-var ErrNoManifest = errors.New("нет ни кеша шаблона, ни снимка манифеста — запусти tplater update")
+var ErrNoManifest = errors.New("no template cache or manifest snapshot — run tplater update")
 
 // ManifestSource resolves a template manifest for a project at a pinned
 // version. Implementations are [repoSource] (the preferred source, checking
@@ -56,12 +56,12 @@ func (s SnapshotSource) Load(_ *manifest.Project) (*manifest.Template, error) {
 		if os.IsNotExist(err) {
 			return nil, ErrSourceUnavailable
 		}
-		return nil, fmt.Errorf("project: проверка снимка манифеста %s: %w", path, err)
+		return nil, fmt.Errorf("project: checking manifest snapshot %s: %w", path, err)
 	}
 
 	tpl, err := manifest.LoadSnapshot(path)
 	if err != nil {
-		return nil, fmt.Errorf("project: загрузка снимка манифеста %s: %w", path, err)
+		return nil, fmt.Errorf("project: loading manifest snapshot %s: %w", path, err)
 	}
 	return tpl, nil
 }

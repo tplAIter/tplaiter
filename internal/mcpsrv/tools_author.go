@@ -22,9 +22,9 @@ type initTemplateArgs struct {
 func (s *Server) addTemplateAuthorTools() {
 	s.mcp.AddTool(mcp.NewTool(
 		"lint_template",
-		mcp.WithDescription("Селфтест репозитория шаблона по угловым комбинациям настроек. Провал даёт ненулевой код возврата (isError)."),
-		mcp.WithString("path", mcp.Required(), mcp.Description("Корень репозитория шаблона")),
-		mcp.WithString("combo", mcp.Description("Фильтр по имени комбинации (точное совпадение)")),
+		mcp.WithDescription("Self-test template repository for edge case combinations. Failure returns a non-zero exit code (isError)."),
+		mcp.WithString("path", mcp.Required(), mcp.Description("Template repository root")),
+		mcp.WithString("combo", mcp.Description("Filter by combination name (exact match)")),
 		mcp.WithReadOnlyHintAnnotation(true),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a lintTemplateArgs) (*mcp.CallToolResult, error) {
 		path, err := resolveWorkDir(a.Path)
@@ -36,10 +36,10 @@ func (s *Server) addTemplateAuthorTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"init_template",
-		mcp.WithDescription("Создать репозиторий шаблона со всем инструментарием (манифест, files/, генераторы, ai-config, CI)."),
-		mcp.WithString("name", mcp.Required(), mcp.Description("Имя нового шаблона")),
-		mcp.WithString("dir", mcp.Description("Целевой каталог репозитория (создаётся; по умолчанию ./<name>)")),
-		mcp.WithBoolean("multi", mcp.Description("Multi-репозиторий (repo.manifest.yaml + шаблон в подкаталоге)"), mcp.DefaultBool(false)),
+		mcp.WithDescription("Create a template repository with full tooling (manifest, files/, generators, ai-config, CI)."),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Name of new template")),
+		mcp.WithString("dir", mcp.Description("Target repository directory (created; default ./<name>)")),
+		mcp.WithBoolean("multi", mcp.Description("Multi-repository (repo.manifest.yaml + template in subdirectory)"), mcp.DefaultBool(false)),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a initTemplateArgs) (*mcp.CallToolResult, error) {
 		dir, err := resolveTargetDir(a.Dir)
 		if err != nil {

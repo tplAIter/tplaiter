@@ -7,17 +7,17 @@ import (
 
 func TestKeyValue_AlignsToLongestKey(t *testing.T) {
 	kv := NewKeyValue().
-		Add("репозиторий", "a").
-		Add("версия", "v1.0.0").
-		Add("описание", "Demo alpha template").
+		Add("repository", "a").
+		Add("version", "v1.0.0").
+		Add("description", "Demo alpha template").
 		Add("maintainers", "Alice <alice@example.com>").
 		Add("labels", "infra=kafka; lang=go")
 
 	got := kv.String()
 	for _, want := range []string{
-		"репозиторий: a",
-		"версия:      v1.0.0",
-		"описание:    Demo alpha template",
+		"repository:  a",
+		"version:     v1.0.0",
+		"description: Demo alpha template",
 		"maintainers: Alice <alice@example.com>",
 		"labels:      infra=kafka; lang=go",
 	} {

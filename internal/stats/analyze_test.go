@@ -42,7 +42,7 @@ func findFile(t *testing.T, rep *stats.Report, path string) stats.FileStat {
 			return f
 		}
 	}
-	t.Fatalf("файл %q отсутствует в отчёте", path)
+	t.Fatalf("file %q missing from the report", path)
 	return stats.FileStat{}
 }
 
@@ -64,15 +64,15 @@ func TestAnalyze_ZeroDrift(t *testing.T) {
 	rep := analyze(t, stats.AnalyzeInput{RefFiles: refFiles(tree), WorkDir: work})
 
 	if rep.Score != 0 {
-		t.Errorf("score = %d, ожидался 0", rep.Score)
+		t.Errorf("score = %d, expected 0", rep.Score)
 	}
 	for _, f := range rep.Files {
 		if f.Status != stats.StatusIdentical {
-			t.Errorf("%s: статус %q, ожидался identical", f.Path, f.Status)
+			t.Errorf("%s: status %q, expected identical", f.Path, f.Status)
 		}
 	}
 	if len(rep.Extras) != 0 || len(rep.BrokenAnchors) != 0 {
-		t.Errorf("extras=%v brokenAnchors=%v, ожидались пустые", rep.Extras, rep.BrokenAnchors)
+		t.Errorf("extras=%v brokenAnchors=%v, expected empty", rep.Extras, rep.BrokenAnchors)
 	}
 }
 
@@ -86,20 +86,20 @@ func TestAnalyze_ModifiedFile(t *testing.T) {
 
 	f := findFile(t, rep, "m.txt")
 	if f.Status != stats.StatusModified {
-		t.Errorf("статус = %q, ожидался modified", f.Status)
+		t.Errorf("status = %q, expected modified", f.Status)
 	}
 	if f.Class != stats.ClassAuto {
-		t.Errorf("класс = %q, ожидался auto (эвристика недоступна)", f.Class)
+		t.Errorf("class = %q, expected auto (heuristic unavailable)", f.Class)
 	}
 	if f.AddedLines != 1 || f.RemovedLines != 1 {
-		t.Errorf("± = +%d/-%d, ожидалось +1/-1", f.AddedLines, f.RemovedLines)
+		t.Errorf("± = +%d/-%d, expected +1/-1", f.AddedLines, f.RemovedLines)
 	}
 	if f.Percent != 50 {
-		t.Errorf("percent = %v, ожидался 50", f.Percent)
+		t.Errorf("percent = %v, expected 50", f.Percent)
 	}
 	// auto: 50 * 0.5 = 25 -> rounded 25.
 	if rep.Score != 25 {
-		t.Errorf("score = %d, ожидался 25", rep.Score)
+		t.Errorf("score = %d, expected 25", rep.Score)
 	}
 }
 
@@ -113,11 +113,11 @@ func TestAnalyze_DeletedFile(t *testing.T) {
 
 	f := findFile(t, rep, "gone.txt")
 	if f.Status != stats.StatusDeleted || f.Class != stats.ClassManualOnly {
-		t.Errorf("gone.txt: %q/%q, ожидалось deleted/manual-only", f.Status, f.Class)
+		t.Errorf("gone.txt: %q/%q, expected deleted/manual-only", f.Status, f.Class)
 	}
 	// (0 + 100)/2 = 50.
 	if rep.Score != 50 {
-		t.Errorf("score = %d, ожидался 50", rep.Score)
+		t.Errorf("score = %d, expected 50", rep.Score)
 	}
 }
 
@@ -130,14 +130,14 @@ func TestAnalyze_ExtraFile(t *testing.T) {
 	rep := analyze(t, stats.AnalyzeInput{RefFiles: refFiles(ref), WorkDir: work})
 
 	if len(rep.Extras) != 1 || rep.Extras[0] != "extra/new.txt" {
-		t.Errorf("extras = %v, ожидался [extra/new.txt]", rep.Extras)
+		t.Errorf("extras = %v, expected [extra/new.txt]", rep.Extras)
 	}
 	if rep.Score != 0 {
-		t.Errorf("score = %d, ожидался 0 (extra не входит)", rep.Score)
+		t.Errorf("score = %d, expected 0 (extra is not counted)", rep.Score)
 	}
 	for _, f := range rep.Files {
 		if f.Path == "extra/new.txt" {
-			t.Errorf("extra-файл не должен быть в files")
+			t.Errorf("an extra file must not be in files")
 		}
 	}
 }
@@ -154,7 +154,7 @@ func TestAnalyze_ExcludesServiceDirs(t *testing.T) {
 
 	rep := analyze(t, stats.AnalyzeInput{RefFiles: refFiles(ref), WorkDir: work})
 	if len(rep.Extras) != 0 {
-		t.Errorf("extras = %v, ожидались пустые (служебные каталоги исключены)", rep.Extras)
+		t.Errorf("extras = %v, expected empty (service directories excluded)", rep.Extras)
 	}
 }
 
@@ -174,14 +174,14 @@ func TestAnalyze_BrokenAnchor(t *testing.T) {
 	rep := analyze(t, stats.AnalyzeInput{RefFiles: refFiles(ref), WorkDir: work, Generators: gens})
 
 	if len(rep.BrokenAnchors) != 1 || rep.BrokenAnchors[0] != "wiring.txt" {
-		t.Errorf("brokenAnchors = %v, ожидался [wiring.txt]", rep.BrokenAnchors)
+		t.Errorf("brokenAnchors = %v, expected [wiring.txt]", rep.BrokenAnchors)
 	}
 	f := findFile(t, rep, "wiring.txt")
 	if f.Class != stats.ClassManualOnly {
-		t.Errorf("класс = %q, ожидался manual-only (сломанный якорь)", f.Class)
+		t.Errorf("class = %q, expected manual-only (broken anchor)", f.Class)
 	}
 	if rep.Score != 100 {
-		t.Errorf("score = %d, ожидался 100 (manual-only)", rep.Score)
+		t.Errorf("score = %d, expected 100 (manual-only)", rep.Score)
 	}
 }
 
@@ -197,11 +197,11 @@ func TestAnalyze_IntactAnchor(t *testing.T) {
 
 	rep := analyze(t, stats.AnalyzeInput{RefFiles: refFiles(ref), WorkDir: work, Generators: gens, HistAvailable: false})
 	if len(rep.BrokenAnchors) != 0 {
-		t.Errorf("brokenAnchors = %v, ожидались пустые", rep.BrokenAnchors)
+		t.Errorf("brokenAnchors = %v, expected empty", rep.BrokenAnchors)
 	}
 	f := findFile(t, rep, "wiring.txt")
 	if f.Class != stats.ClassAuto {
-		t.Errorf("класс = %q, ожидался auto (якорь цел)", f.Class)
+		t.Errorf("class = %q, expected auto (anchor intact)", f.Class)
 	}
 }
 
@@ -219,10 +219,10 @@ func TestAnalyze_ConflictProneVsAuto(t *testing.T) {
 	})
 
 	if c := findFile(t, rep, "churned.txt").Class; c != stats.ClassConflictProne {
-		t.Errorf("churned.txt класс = %q, ожидался conflict-prone", c)
+		t.Errorf("churned.txt class = %q, expected conflict-prone", c)
 	}
 	if c := findFile(t, rep, "stable.txt").Class; c != stats.ClassAuto {
-		t.Errorf("stable.txt класс = %q, ожидался auto", c)
+		t.Errorf("stable.txt class = %q, expected auto", c)
 	}
 }
 
@@ -239,7 +239,7 @@ func TestAnalyze_CopyWithoutRenderManualOnly(t *testing.T) {
 		HistAvailable: true,
 	})
 	if c := findFile(t, rep, "dashboards/app.json").Class; c != stats.ClassManualOnly {
-		t.Errorf("класс = %q, ожидался manual-only (copyWithoutRender)", c)
+		t.Errorf("class = %q, expected manual-only (copyWithoutRender)", c)
 	}
 }
 
@@ -255,14 +255,14 @@ func TestAnalyze_ModifiedBinary(t *testing.T) {
 	rep := analyze(t, stats.AnalyzeInput{RefFiles: ref, WorkDir: work, HistAvailable: false})
 	f := findFile(t, rep, "bin.dat")
 	if f.Status != stats.StatusModifiedBinary {
-		t.Errorf("статус = %q, ожидался modified-binary", f.Status)
+		t.Errorf("status = %q, expected modified-binary", f.Status)
 	}
 	if f.AddedLines != 0 || f.RemovedLines != 0 || f.Percent != 0 {
-		t.Errorf("бинарный файл не должен иметь построчной метрики: %+v", f)
+		t.Errorf("a binary file must not have line metrics: %+v", f)
 	}
 	// modified-binary auto: base 100 * 0.5 = 50.
 	if rep.Score != 50 {
-		t.Errorf("score = %d, ожидался 50", rep.Score)
+		t.Errorf("score = %d, expected 50", rep.Score)
 	}
 }
 
@@ -279,7 +279,7 @@ func TestAnalyze_ScoreMonotonic(t *testing.T) {
 	rep2 := analyze(t, stats.AnalyzeInput{RefFiles: refFiles(ref), WorkDir: work2})
 
 	if rep2.Score <= rep1.Score {
-		t.Errorf("монотонность нарушена: score1=%d, score2=%d (ожидалось score2 > score1)", rep1.Score, rep2.Score)
+		t.Errorf("monotonicity violated: score1=%d, score2=%d (expected score2 > score1)", rep1.Score, rep2.Score)
 	}
 }
 
@@ -339,7 +339,7 @@ func TestAnalyze_JSONGolden(t *testing.T) {
 }
 `
 	if buf.String() != want {
-		t.Errorf("JSON golden не совпал:\n--- получено ---\n%s\n--- ожидалось ---\n%s", buf.String(), want)
+		t.Errorf("JSON golden mismatch:\n--- got ---\n%s\n--- want ---\n%s", buf.String(), want)
 	}
 }
 
@@ -363,9 +363,9 @@ func TestReport_RenderText(t *testing.T) {
 	rep.Render(&buf, ui.NewPalette(false))
 	got := buf.String()
 
-	for _, want := range []string{"drift-score", "топ-", "mod.txt", "gone.txt", "extra-файлов (вне шаблона): 1"} {
+	for _, want := range []string{"drift-score", "top-", "mod.txt", "gone.txt", "extra files (outside template): 1"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("в текстовом отчёте нет %q:\n%s", want, got)
+			t.Errorf("text report does not contain %q:\n%s", want, got)
 		}
 	}
 }

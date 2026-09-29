@@ -37,7 +37,7 @@ func TestSnapshot_Roundtrip(t *testing.T) {
 	}
 
 	if !bytes.Equal(first, second) {
-		t.Errorf("сериализация не стабильна после roundtrip\nfirst:\n%s\nsecond:\n%s", first, second)
+		t.Errorf("serialization is not stable after roundtrip\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
 	// Significant normalized structures match (the second load pass).
 	got2, err := LoadSnapshot(path)
@@ -45,7 +45,7 @@ func TestSnapshot_Roundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, got2) {
-		t.Error("повторная загрузка снимка дала иную структуру")
+		t.Error("reloading the snapshot produced a different structure")
 	}
 }
 
@@ -64,6 +64,6 @@ func TestSnapshot_LoadValidates(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := got.Validate(); err != nil {
-		t.Errorf("восстановленный из снимка манифест не валиден: %v", err)
+		t.Errorf("the manifest restored from the snapshot is invalid: %v", err)
 	}
 }

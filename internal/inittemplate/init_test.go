@@ -36,7 +36,7 @@ func TestInit_GeneratedRepoPassesLint(t *testing.T) {
 		"NOTES.tmpl",
 	} {
 		if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(rel))); err != nil {
-			t.Errorf("ожидался файл %s: %v", rel, err)
+			t.Errorf("expected file %s: %v", rel, err)
 		}
 	}
 
@@ -45,10 +45,10 @@ func TestInit_GeneratedRepoPassesLint(t *testing.T) {
 		t.Fatalf("Lint: %v", err)
 	}
 	if res.Failed {
-		t.Fatalf("сгенерированный репозиторий НЕ прошёл lint-template:\n%s", failDetails(res))
+		t.Fatalf("the generated repository did NOT pass lint-template:\n%s", failDetails(res))
 	}
 	if len(res.Rows) == 0 {
-		t.Fatal("lint не дал ни одной строки результата")
+		t.Fatal("lint produced no result rows")
 	}
 }
 
@@ -87,10 +87,10 @@ func TestInit_Multi_PassesLint(t *testing.T) {
 	}
 	// In multi mode repo.manifest.yaml is at root and the template is in a subdirectory.
 	if _, err := os.Stat(filepath.Join(repo, "repo.manifest.yaml")); err != nil {
-		t.Fatalf("ожидался repo.manifest.yaml: %v", err)
+		t.Fatalf("expected repo.manifest.yaml: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(repo, "demo-svc", "template.manifest.yaml")); err != nil {
-		t.Fatalf("ожидался demo-svc/template.manifest.yaml: %v", err)
+		t.Fatalf("expected demo-svc/template.manifest.yaml: %v", err)
 	}
 
 	res, err := Lint(LintOptions{Path: repo, Out: io.Discard})
@@ -98,7 +98,7 @@ func TestInit_Multi_PassesLint(t *testing.T) {
 		t.Fatalf("Lint: %v", err)
 	}
 	if res.Failed {
-		t.Fatalf("multi-репозиторий НЕ прошёл lint:\n%s", failDetails(res))
+		t.Fatalf("the multi repository did NOT pass lint:\n%s", failDetails(res))
 	}
 }
 
@@ -113,7 +113,7 @@ func TestInit_NonEmptyDirErrors(t *testing.T) {
 	if _, err := Init(context.Background(), InitOptions{
 		Name: "demo-svc", Dir: repo, NoGit: true, Out: io.Discard,
 	}); err == nil {
-		t.Fatal("ожидалась ошибка при init в непустой каталог")
+		t.Fatal("expected an error on init into a non-empty directory")
 	}
 }
 
@@ -122,7 +122,7 @@ func TestInit_InvalidName(t *testing.T) {
 		if _, err := Init(context.Background(), InitOptions{
 			Name: name, Dir: filepath.Join(t.TempDir(), "r"), NoGit: true, Out: io.Discard,
 		}); err == nil {
-			t.Errorf("имя %q должно быть отклонено", name)
+			t.Errorf("name %q must be rejected", name)
 		}
 	}
 }

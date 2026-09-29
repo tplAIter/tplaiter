@@ -15,8 +15,8 @@ func TestSpinner_NonTTY_NoAnimation(t *testing.T) {
 	var buf bytes.Buffer
 	sp := NewSpinner(&buf, NewPalette(false))
 
-	sp.Start("клонирую %s", "repo")
-	if got := buf.String(); got != "клонирую repo\n" {
+	sp.Start("cloning %s", "repo")
+	if got := buf.String(); got != "cloning repo\n" {
 		t.Errorf("Start() non-TTY output = %q, want plain single line", got)
 	}
 	if strings.Contains(buf.String(), "\r") {
@@ -57,11 +57,11 @@ func TestSpinner_AnimationDoesNotBlock(t *testing.T) {
 	sp := NewSpinner(&buf, NewPalette(false))
 	sp.tty = true // simulate a TTY to check the animation lifecycle
 
-	sp.Start("работаю")
+	sp.Start("working")
 	time.Sleep(150 * time.Millisecond) // allow at least one animation tick (MiniDot FPS ~83ms)
 	sp.Stop()
 
-	if !strings.Contains(buf.String(), "работаю") {
+	if !strings.Contains(buf.String(), "working") {
 		t.Errorf("animated Start() output does not contain label: %q", buf.String())
 	}
 }

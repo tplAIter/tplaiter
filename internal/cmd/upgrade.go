@@ -34,18 +34,18 @@ func newUpgradeCmd() *cobra.Command {
 
 	c := &cobra.Command{
 		Use:   "upgrade",
-		Short: "Предложить доработки проекта в шаблон (MR/PR)",
-		Long: "Сравнивает рабочее дерево проекта с чистым рендером зафиксированной версии шаблона " +
-			"(эталон, как `tplater stats`) и предлагает изменённые файлы обратно в репозиторий шаблона " +
-			"(). Кандидаты — изменённые файлы эталона (go.mod/go.sum исключены как шумные); " +
-			"extra-файлы добавляются только явным --files <glob>. Выбранные файлы де-параметризуются " +
-			"(slug/module/имя проекта → плейсхолдеры `{{ .Project.* }}`), кладутся в исходные `.tmpl` " +
-			"дерева шаблона в новой ветке кеш-клона, после чего открывается MR (`glab`) / PR (`gh`) по " +
-			"типу репозитория.\n\n" +
-			"Условные блоки настроек обратно не восстанавливаются: файл условной вертикали помечается " +
-			"комментарием TPLATER-REVIEW для ручной проверки мейнтейнером. Для репозиториев без " +
-			"API-доступа (или обычного git) используйте --patch — вместо push+MR формируется серия " +
-			"`git format-patch` в ./tplater-upgrade-<date>/. Прямых пушей в защищённые ветки не делается.",
+		Short: "Propose project improvements to template (MR/PR)",
+		Long: "Compares the project working tree with a clean render of the pinned template version " +
+			"(baseline, like `tplater stats`) and proposes changed files back to the template repository. " +
+			"Candidates are modified baseline files (go.mod/go.sum excluded as noisy); " +
+			"extra files are added only with explicit --files <glob>. Selected files are de-parametrized " +
+			"(slug/module/project name → placeholders `{{ .Project.* }}`), placed in the template `.tmpl` " +
+			"source tree in a new cache-clone branch, then opens an MR (`glab`) / PR (`gh`) depending on " +
+			"repository type.\n\n" +
+			"Conditional settings blocks are not restored: a file from a conditional vertical is marked " +
+			"with a TPLATER-REVIEW comment for manual maintainer review. For repositories without " +
+			"API access (or plain git), use --patch — instead of push+MR, generates a series of " +
+			"`git format-patch` files in ./tplater-upgrade-<date>/. No direct pushes to protected branches.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mgr, st, err := newManager(cmd)
@@ -61,7 +61,7 @@ func newUpgradeCmd() *cobra.Command {
 
 			cwd, err := os.Getwd()
 			if err != nil {
-				return fmt.Errorf("cmd: upgrade: определение рабочего каталога: %w", err)
+				return fmt.Errorf("cmd: upgrade: determining working directory: %w", err)
 			}
 
 			interactive := term.IsTerminal(int(os.Stdin.Fd()))
@@ -93,10 +93,10 @@ func newUpgradeCmd() *cobra.Command {
 	}
 
 	f := c.Flags()
-	f.StringArrayVar(&files, "files", nil, "glob extra-файлов для включения (повторяемый)")
-	f.StringVar(&title, "title", "", "заголовок MR/PR")
-	f.BoolVar(&draft, "draft", false, "открыть MR/PR черновиком")
-	f.BoolVar(&patch, "patch", false, "сформировать git format-patch вместо push+MR")
-	f.BoolVar(&yes, "yes", false, "не задавать вопросов (выбрать всех кандидатов)")
+	f.StringArrayVar(&files, "files", nil, "glob of extra files to include (repeatable)")
+	f.StringVar(&title, "title", "", "MR/PR title")
+	f.BoolVar(&draft, "draft", false, "open MR/PR as draft")
+	f.BoolVar(&patch, "patch", false, "generate git format-patch instead of push+MR")
+	f.BoolVar(&yes, "yes", false, "do not ask questions (select all candidates)")
 	return c
 }

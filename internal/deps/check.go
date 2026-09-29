@@ -58,7 +58,7 @@ func checkOne(ctx context.Context, runner execx.Runner, tool manifest.Tool) Tool
 
 	path, err := runner.LookPath(tool.Name)
 	if err != nil {
-		st.Err = fmt.Errorf("deps: %s не найден в PATH: %w", tool.Name, err)
+		st.Err = fmt.Errorf("deps: %s not found in PATH: %w", tool.Name, err)
 		return st
 	}
 	st.Found = true
@@ -66,20 +66,20 @@ func checkOne(ctx context.Context, runner execx.Runner, tool manifest.Tool) Tool
 
 	raw, err := detectVersion(ctx, runner, tool.Name)
 	if err != nil {
-		st.Err = fmt.Errorf("deps: определение версии %s: %w", tool.Name, err)
+		st.Err = fmt.Errorf("deps: detect version for %s: %w", tool.Name, err)
 		return st
 	}
 
 	version, ok := normalizeVersion(raw)
 	if !ok {
-		st.Err = fmt.Errorf("deps: не удалось разобрать версию %s из %q", tool.Name, raw)
+		st.Err = fmt.Errorf("deps: failed to parse version %s from %q", tool.Name, raw)
 		return st
 	}
 	st.Version = version
 
 	satisfies, err := satisfiesConstraint(version, tool.Version)
 	if err != nil {
-		st.Err = fmt.Errorf("deps: constraint %q инструмента %s: %w", tool.Version, tool.Name, err)
+		st.Err = fmt.Errorf("deps: constraint %q for tool %s: %w", tool.Version, tool.Name, err)
 		return st
 	}
 	st.Satisfies = satisfies
@@ -153,10 +153,10 @@ func detectVersion(ctx context.Context, runner execx.Runner, name string) (strin
 		if ok {
 			return token, nil
 		}
-		lastErr = fmt.Errorf("не удалось найти версию в выводе %q", firstLine(output))
+		lastErr = fmt.Errorf("failed to find version in output %q", firstLine(output))
 	}
 	if lastErr == nil {
-		lastErr = errors.New("нет ни одной попытки определения версии")
+		lastErr = errors.New("no version detection attempts")
 	}
 	return "", lastErr
 }
@@ -211,11 +211,11 @@ func satisfiesConstraint(version, constraint string) (bool, error) {
 	}
 	v, err := semver.NewVersion(version)
 	if err != nil {
-		return false, fmt.Errorf("разбор версии %q: %w", version, err)
+		return false, fmt.Errorf("parse version %q: %w", version, err)
 	}
 	c, err := semver.NewConstraint(constraint)
 	if err != nil {
-		return false, fmt.Errorf("разбор constraint %q: %w", constraint, err)
+		return false, fmt.Errorf("parse constraint %q: %w", constraint, err)
 	}
 	return c.Check(v), nil
 }

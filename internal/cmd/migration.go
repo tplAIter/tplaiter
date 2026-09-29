@@ -22,7 +22,7 @@ func newMigrationCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunTrustOwned),
 
 		Use:   "migrate-state --root kind=source:destination [--root ...] | --apply --plan file --expected-digest sha256",
-		Short: "Построить или применить явную миграцию состояния",
+		Short: "Build or apply explicit state migration",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if apply {

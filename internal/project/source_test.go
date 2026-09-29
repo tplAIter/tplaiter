@@ -18,7 +18,7 @@ func writeSnapshot(t *testing.T, root string) {
 	t.Helper()
 	data, err := os.ReadFile(manifestFixture)
 	if err != nil {
-		t.Fatalf("чтение фикстуры %s: %v", manifestFixture, err)
+		t.Fatalf("reading fixture %s: %v", manifestFixture, err)
 	}
 	snapPath := filepath.Join(root, manifest.SnapshotRelPath)
 	if err := os.MkdirAll(filepath.Dir(snapPath), 0o755); err != nil {
@@ -68,10 +68,10 @@ func TestSnapshotSource_Corrupt(t *testing.T) {
 
 	_, err := (SnapshotSource{Root: root}).Load(&manifest.Project{})
 	if err == nil {
-		t.Fatal("ожидалась ошибка для битого снимка")
+		t.Fatal("expected an error for a corrupt snapshot")
 	}
 	if errors.Is(err, ErrSourceUnavailable) {
-		t.Fatalf("испорченный снимок не должен маскироваться под ErrSourceUnavailable: %v", err)
+		t.Fatalf("a corrupt snapshot must not be masked as ErrSourceUnavailable: %v", err)
 	}
 }
 

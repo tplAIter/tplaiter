@@ -22,15 +22,15 @@ type workspaceAddServiceArgs struct {
 func (s *Server) addWorkspaceTools() {
 	s.mcp.AddTool(mcp.NewTool(
 		"workspace_add_service",
-		mcp.WithDescription("Добавить Temporal service-action в go-workspace проект и зарегистрировать его в go.work. Выполняется полностью неинтерактивно."),
-		mcp.WithString("dir", mcp.Required(), mcp.Description("Корень workspace-проекта или вложенный каталог внутри него")),
-		mcp.WithString("name", mcp.Required(), mcp.Description("Имя нового сервиса-action")),
-		mcp.WithString("module", mcp.Description("Go module сервиса; по умолчанию <module workspace>/services/<slug>")),
-		mcp.WithObject("set", mcp.Description("Настройки шаблона сервиса: группа→значение; workflow=true форсируется CLI")),
-		mcp.WithBoolean("defaults", mcp.Description("Взять значения по умолчанию для незаданных групп"), mcp.DefaultBool(true)),
-		mcp.WithBoolean("noHooks", mcp.Description("Не запускать hooks.postCreate"), mcp.DefaultBool(false)),
-		mcp.WithBoolean("noDepsCheck", mcp.Description("Не проверять инструменты окружения"), mcp.DefaultBool(false)),
-		mcp.WithNumber("port", mcp.Description("Порт сервиса; 0 — использовать значение шаблона")),
+		mcp.WithDescription("Add a Temporal service-action to a go-workspace project and register it in go.work. Executed completely non-interactively."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Root of workspace-project or a nested directory inside it")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Name of new service-action")),
+		mcp.WithString("module", mcp.Description("Go module of service; default <workspace module>/services/<slug>")),
+		mcp.WithObject("set", mcp.Description("Service template settings: group→value; workflow=true is forced by CLI")),
+		mcp.WithBoolean("defaults", mcp.Description("Use default values for unspecified groups"), mcp.DefaultBool(true)),
+		mcp.WithBoolean("noHooks", mcp.Description("Don't run hooks.postCreate"), mcp.DefaultBool(false)),
+		mcp.WithBoolean("noDepsCheck", mcp.Description("Don't check environment tools"), mcp.DefaultBool(false)),
+		mcp.WithNumber("port", mcp.Description("Service port; 0 — use template value")),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a workspaceAddServiceArgs) (*mcp.CallToolResult, error) {
 		cwd, err := resolveWorkDir(a.Dir)
 		if err != nil {

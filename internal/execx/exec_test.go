@@ -174,7 +174,7 @@ func TestExec_Run_SignalForwarding(t *testing.T) {
 	case <-waiter.ready:
 		// trap is installed — the signal can be sent.
 	case out := <-done:
-		t.Fatalf("процесс завершился до маркера готовности: res=%+v err=%v", out.res, out.err)
+		t.Fatalf("process exited before the readiness marker: res=%+v err=%v", out.res, out.err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for trap-ready marker from child process")
 	}
@@ -229,7 +229,7 @@ func TestExitError_Error(t *testing.T) {
 func TestLookPath_ErrorType(t *testing.T) {
 	_, err := exec.LookPath("tplater-definitely-not-a-real-binary")
 	if err == nil {
-		t.Skip("окружение неожиданно содержит такой бинарник")
+		t.Skip("environment unexpectedly contains this binary")
 	}
 	var target *exec.Error
 	if !errors.As(err, &target) {

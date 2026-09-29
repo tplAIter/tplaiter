@@ -32,12 +32,12 @@ func ResolveParams(g *manifest.Generator, provided map[string]string) (map[strin
 			}
 			val, fs, err := defaultParamValue(p)
 			if err != nil {
-				return nil, nil, fmt.Errorf("параметр --%s (default): %w", p.Name, err)
+				return nil, nil, fmt.Errorf("parameter --%s (default): %w", p.Name, err)
 			}
 			params[p.Name] = val
 			if p.Default != nil {
 				if err := validateParamPattern(p, defaultRawValue(p)); err != nil {
-					return nil, nil, fmt.Errorf("параметр --%s (default): %w", p.Name, err)
+					return nil, nil, fmt.Errorf("parameter --%s (default): %w", p.Name, err)
 				}
 			}
 			if p.Type == manifest.ParamTypeFields {
@@ -46,11 +46,11 @@ func ResolveParams(g *manifest.Generator, provided map[string]string) (map[strin
 			continue
 		}
 		if err := validateParamPattern(p, raw); err != nil {
-			return nil, nil, fmt.Errorf("параметр --%s: %w", p.Name, err)
+			return nil, nil, fmt.Errorf("parameter --%s: %w", p.Name, err)
 		}
 		val, fs, err := convertParam(p, raw)
 		if err != nil {
-			return nil, nil, fmt.Errorf("параметр --%s: %w", p.Name, err)
+			return nil, nil, fmt.Errorf("parameter --%s: %w", p.Name, err)
 		}
 		params[p.Name] = val
 		if p.Type == manifest.ParamTypeFields {
@@ -72,10 +72,10 @@ func validateParamPattern(p *manifest.Param, raw string) error {
 	if err != nil {
 		// The normal path rejects this through manifest.Validate; this branch
 		// protects library calls with a manually assembled manifest.
-		return fmt.Errorf("некорректный pattern %q: %w", p.Pattern, err)
+		return fmt.Errorf("invalid pattern %q: %w", p.Pattern, err)
 	}
 	if !re.MatchString(raw) {
-		return fmt.Errorf("значение %q не соответствует pattern %q", raw, p.Pattern)
+		return fmt.Errorf("value %q does not match pattern %q", raw, p.Pattern)
 	}
 	return nil
 }
@@ -94,9 +94,9 @@ func defaultRawValue(p *manifest.Param) string {
 
 func requiredParamErr(p *manifest.Param) error {
 	if p.Description != "" {
-		return fmt.Errorf("параметр --%s обязателен — %s", p.Name, p.Description)
+		return fmt.Errorf("parameter --%s is required — %s", p.Name, p.Description)
 	}
-	return fmt.Errorf("параметр --%s обязателен", p.Name)
+	return fmt.Errorf("parameter --%s is required", p.Name)
 }
 
 // convertParam converts a flag string to a typed value according to Param.Type
@@ -108,13 +108,13 @@ func convertParam(p *manifest.Param, raw string) (any, []Field, error) {
 	case manifest.ParamTypeBool:
 		b, err := strconv.ParseBool(raw)
 		if err != nil {
-			return nil, nil, fmt.Errorf("ожидается bool, получено %q", raw)
+			return nil, nil, fmt.Errorf("expected bool, got %q", raw)
 		}
 		return b, nil, nil
 	case manifest.ParamTypeInt:
 		n, err := strconv.Atoi(raw)
 		if err != nil {
-			return nil, nil, fmt.Errorf("ожидается int, получено %q", raw)
+			return nil, nil, fmt.Errorf("expected int, got %q", raw)
 		}
 		return n, nil, nil
 	case manifest.ParamTypeFields:
@@ -126,7 +126,7 @@ func convertParam(p *manifest.Param, raw string) (any, []Field, error) {
 	case manifest.ParamTypeList:
 		return ParseList(raw), nil, nil
 	default:
-		return nil, nil, fmt.Errorf("неизвестный тип параметра %q", p.Type)
+		return nil, nil, fmt.Errorf("unknown parameter type %q", p.Type)
 	}
 }
 
@@ -157,7 +157,7 @@ func defaultParamValue(p *manifest.Param) (any, []Field, error) {
 		}
 		s, ok := p.Default.(string)
 		if !ok {
-			return nil, nil, errors.New("default должен быть строкой")
+			return nil, nil, errors.New("default must be a string")
 		}
 		return s, nil, nil
 	case manifest.ParamTypeBool:
@@ -166,7 +166,7 @@ func defaultParamValue(p *manifest.Param) (any, []Field, error) {
 		}
 		b, ok := p.Default.(bool)
 		if !ok {
-			return nil, nil, errors.New("default должен быть bool")
+			return nil, nil, errors.New("default must be bool")
 		}
 		return b, nil, nil
 	case manifest.ParamTypeInt:
@@ -175,7 +175,7 @@ func defaultParamValue(p *manifest.Param) (any, []Field, error) {
 		}
 		n, ok := p.Default.(int)
 		if !ok {
-			return nil, nil, errors.New("default должен быть int")
+			return nil, nil, errors.New("default must be int")
 		}
 		return n, nil, nil
 	case manifest.ParamTypeFields:
@@ -184,7 +184,7 @@ func defaultParamValue(p *manifest.Param) (any, []Field, error) {
 		}
 		s, ok := p.Default.(string)
 		if !ok {
-			return nil, nil, errors.New("default должен быть строкой вида name:type")
+			return nil, nil, errors.New("default must be a string of the form name:type")
 		}
 		fs, err := ParseFields(s)
 		if err != nil {
@@ -197,11 +197,11 @@ func defaultParamValue(p *manifest.Param) (any, []Field, error) {
 		}
 		s, ok := p.Default.(string)
 		if !ok {
-			return nil, nil, errors.New("default должен быть строкой вида a,b,c")
+			return nil, nil, errors.New("default must be a string of the form a,b,c")
 		}
 		return ParseList(s), nil, nil
 	default:
-		return nil, nil, fmt.Errorf("неизвестный тип параметра %q", p.Type)
+		return nil, nil, fmt.Errorf("unknown parameter type %q", p.Type)
 	}
 }
 

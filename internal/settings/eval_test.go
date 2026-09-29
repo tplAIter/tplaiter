@@ -51,10 +51,10 @@ func TestEval_Types(t *testing.T) {
 	for _, tc := range tests {
 		got, err := Eval(cond(t, tc.expr), v)
 		if err != nil {
-			t.Errorf("Eval(%q) неожиданная ошибка: %v", tc.expr, err)
+			t.Errorf("Eval(%q) unexpected error: %v", tc.expr, err)
 		}
 		if got != tc.want {
-			t.Errorf("Eval(%q) = %v, ожидалось %v", tc.expr, got, tc.want)
+			t.Errorf("Eval(%q) = %v, expected %v", tc.expr, got, tc.want)
 		}
 	}
 }
@@ -63,14 +63,14 @@ func TestEval_UnknownGroup(t *testing.T) {
 	v := Values{"database": "postgres"}
 	got, err := Eval(cond(t, "missing=1"), v)
 	if got {
-		t.Errorf("неизвестная группа должна давать false, получено true")
+		t.Errorf("an unknown group must yield false, got true")
 	}
 	var uge *UnknownGroupError
 	if !errors.As(err, &uge) {
-		t.Fatalf("ожидался *UnknownGroupError, получено %T (%v)", err, err)
+		t.Fatalf("expected *UnknownGroupError, got %T (%v)", err, err)
 	}
 	if uge.Group != "missing" {
-		t.Errorf("UnknownGroupError.Group = %q, ожидалось \"missing\"", uge.Group)
+		t.Errorf("UnknownGroupError.Group = %q, expected \"missing\"", uge.Group)
 	}
 }
 
@@ -80,7 +80,7 @@ func TestEval_UnknownGroup_ShortCircuitsFalse(t *testing.T) {
 	v := Values{"database": "mysql"}
 	got, err := Eval(cond(t, "database=postgres && missing=1"), v)
 	if got || err != nil {
-		t.Errorf("ожидалось (false, nil), получено (%v, %v)", got, err)
+		t.Errorf("expected (false, nil), got (%v, %v)", got, err)
 	}
 }
 
@@ -92,20 +92,20 @@ func TestEvalAny_OR(t *testing.T) {
 	}
 	got, err := EvalAny(conds, v)
 	if err != nil {
-		t.Errorf("неожиданная ошибка: %v", err)
+		t.Errorf("unexpected error: %v", err)
 	}
 	if !got {
-		t.Errorf("EvalAny должно быть true (kafka присутствует)")
+		t.Errorf("EvalAny should be true (kafka present)")
 	}
 
 	none, _ := EvalAny([]manifest.Condition{cond(t, "brokers=nats")}, v)
 	if none {
-		t.Errorf("EvalAny должно быть false")
+		t.Errorf("EvalAny should be false")
 	}
 
 	empty, _ := EvalAny(nil, v)
 	if empty {
-		t.Errorf("пустой список условий -> false")
+		t.Errorf("empty condition list -> false")
 	}
 }
 
@@ -117,9 +117,9 @@ func TestEvalAny_CollectsWarnings(t *testing.T) {
 	}
 	got, err := EvalAny(conds, v)
 	if !got {
-		t.Errorf("должно быть true (второе условие истинно)")
+		t.Errorf("should be true (second condition is true)")
 	}
 	if err == nil {
-		t.Errorf("предупреждение о неизвестной группе должно вернуться даже при true")
+		t.Errorf("warning about unknown group should be returned even with true")
 	}
 }

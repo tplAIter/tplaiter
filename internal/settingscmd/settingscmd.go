@@ -95,7 +95,7 @@ func List(d Deps, opts Options) error {
 // version, and merges the tree.
 func Set(ctx context.Context, d Deps, opts Options) error {
 	if len(opts.Pairs) == 0 {
-		return errors.New("settings set: укажите хотя бы одно значение group=value")
+		return errors.New("settings set: provide at least one group=value")
 	}
 	ch, cleanup, err := openChange(ctx, d, opts.StartDir)
 	if err != nil {
@@ -143,12 +143,12 @@ func Edit(ctx context.Context, d Deps, opts Options) error {
 			return fmt.Errorf("settings edit: %w", rerr)
 		}
 		printSettingsTable(d.Out, d.Palette, ch.tpl, resolved.Values)
-		fmt.Fprintln(d.Out, d.Palette.Muted("укажите группу для переопроса: tplater settings edit <group>"))
+		fmt.Fprintln(d.Out, d.Palette.Muted("specify group to re-ask: tplater settings edit <group>"))
 		return nil
 	}
 
 	if !groupExists(ch.tpl, opts.Group) {
-		return fmt.Errorf("settings edit: неизвестная группа %q", opts.Group)
+		return fmt.Errorf("settings edit: unknown group %q", opts.Group)
 	}
 
 	// preset — all current values EXCEPT the re-asked group and nested refinements;
@@ -198,11 +198,11 @@ func openChange(ctx context.Context, d Deps, startDir string) (*change, func(), 
 	coord := proj.Template.Repo + "/" + proj.Template.Name
 	ref, err := d.Manager.ResolveRef(coord + "@" + proj.Template.Version)
 	if err != nil {
-		return nil, nil, fmt.Errorf("settings: версия шаблона %s недоступна в кеше репозитория: %w", proj.Template.Version, err)
+		return nil, nil, fmt.Errorf("settings: template version %s not available in repository cache: %w", proj.Template.Version, err)
 	}
 	src, cleanup, err := d.Manager.Checkout(ctx, ref.RepoAlias, ref.GitRef, ref.Entry.Path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("settings: checkout версии шаблона: %w", err)
+		return nil, nil, fmt.Errorf("settings: template version checkout: %w", err)
 	}
 	tpl, err := renderref.LoadTemplate(src)
 	if err != nil {
@@ -233,14 +233,14 @@ func applyChange(ctx context.Context, d Deps, ch *change, opts Options, confirm 
 	}
 	baseRendered, err := renderref.Render(ctx, ch.src, base)
 	if err != nil {
-		return fmt.Errorf("settings: рендер текущих значений: %w", err)
+		return fmt.Errorf("settings: rendering current values: %w", err)
 	}
 
 	target := base
 	target.Values = ch.resolved.Values
 	tgtRendered, err := renderref.Render(ctx, ch.src, target)
 	if err != nil {
-		return fmt.Errorf("settings: рендер новых значений: %w", err)
+		return fmt.Errorf("settings: rendering new values: %w", err)
 	}
 
 	baseline, err := update.LoadBaselineHashes(ch.root)
@@ -256,11 +256,11 @@ func applyChange(ctx context.Context, d Deps, ch *change, opts Options, confirm 
 	changed := changedGroups(ch.tpl, ch.oldValues, ch.resolved.Values)
 
 	if !tw.Plan.HasChanges() && len(changed) == 0 {
-		fmt.Fprintln(d.Out, "изменений настроек нет — всё уже как задано")
+		fmt.Fprintln(d.Out, "no settings changes — already as set")
 		return nil
 	}
 
-	fmt.Fprintln(d.Out, "изменение настроек проекта:")
+	fmt.Fprintln(d.Out, "changing project settings:")
 	fmt.Fprintln(d.Out)
 	tw.Report.Render(d.Out, d.Palette, opts.Verbose)
 	printChangedGroups(d.Out, d.Palette, changed)
@@ -268,17 +268,17 @@ func applyChange(ctx context.Context, d Deps, ch *change, opts Options, confirm 
 	conflicts := tw.Plan.Conflicts()
 
 	if opts.DryRun {
-		fmt.Fprintln(d.Out, d.Palette.Muted("(--dry-run — изменения не записаны)"))
+		fmt.Fprintln(d.Out, d.Palette.Muted("(--dry-run — changes not written)"))
 		return exitForConflicts(conflicts)
 	}
 
 	if confirm && d.Prompter != nil {
-		ok, cerr := d.Prompter.Confirm("Применить изменения настроек?")
+		ok, cerr := d.Prompter.Confirm("Apply settings changes?")
 		if cerr != nil {
 			return cerr
 		}
 		if !ok {
-			fmt.Fprintln(d.Out, "отменено — изменения не записаны")
+			fmt.Fprintln(d.Out, "cancelled — changes not written")
 			return nil
 		}
 	}
@@ -288,12 +288,12 @@ func applyChange(ctx context.Context, d Deps, ch *change, opts Options, confirm 
 	}
 
 	if ch.tpl.AIConfig.Path != "" {
-		fmt.Fprintln(d.Err, d.Palette.Warn("предупреждение: ")+
-			"состав ai-config мог измениться со сменой настроек — перегенерируйте: tplater ai gen")
+		fmt.Fprintln(d.Err, d.Palette.Warn("warning: ")+
+			"ai-config composition may have changed with settings — regenerate: tplater ai gen")
 	}
-	fmt.Fprintln(d.Out, d.Palette.Success("настройки применены"))
+	fmt.Fprintln(d.Out, d.Palette.Success("settings applied"))
 	if len(conflicts) > 0 {
-		fmt.Fprintln(d.Out, d.Palette.Warn("часть файлов содержит конфликт-маркеры — разрешите их и закоммитьте"))
+		fmt.Fprintln(d.Out, d.Palette.Warn("some files contain conflict markers — resolve them and commit"))
 	}
 	return exitForConflicts(conflicts)
 }

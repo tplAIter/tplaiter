@@ -27,11 +27,11 @@ func Slugify(name string) (string, error) {
 	s := strings.ToLower(strings.TrimSpace(name))
 	s = slugSepRe.ReplaceAllString(s, "_")
 	if s == "" {
-		return "", errors.New("newcmd: пустое имя проекта — slug не выводится")
+		return "", errors.New("newcmd: empty project name — slug cannot be derived")
 	}
 	if !slugRe.MatchString(s) {
 		return "", fmt.Errorf(
-			"newcmd: имя %q даёт недопустимый slug %q (ожидается %s) — задайте имя из латиницы/цифр",
+			"newcmd: name %q produces invalid slug %q (expected %s) — use only Latin letters/digits",
 			name, s, slugRe.String(),
 		)
 	}
@@ -59,11 +59,11 @@ func checkTplaterVersion(constraint, cliVersion string) error {
 	}
 	c, cerr := semver.NewConstraint(constraint)
 	if cerr != nil {
-		return fmt.Errorf("newcmd: неразбираемое требование requires.tplaiter %q: %w", constraint, cerr)
+		return fmt.Errorf("newcmd: unparseable requires.tplaiter requirement %q: %w", constraint, cerr)
 	}
 	if !c.Check(v) {
 		return fmt.Errorf(
-			"newcmd: шаблон требует tplaiter %s, а установлена %s — обновите tplaiter (`tplaiter self-upgrade`)",
+			"newcmd: template requires tplaiter %s, but %s is installed — update tplaiter (`tplaiter self-upgrade`)",
 			constraint, cliVersion,
 		)
 	}
@@ -76,7 +76,7 @@ func checkTplaterVersion(constraint, cliVersion string) error {
 func newUUIDv4() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("newcmd: генерация UUID: %w", err)
+		return "", fmt.Errorf("newcmd: UUID generation: %w", err)
 	}
 	b[6] = (b[6] & 0x0f) | 0x40 // version 4
 	b[8] = (b[8] & 0x3f) | 0x80 // RFC 4122 variant

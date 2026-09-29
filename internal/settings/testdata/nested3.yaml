@@ -5,35 +5,35 @@ metadata:
   version: 1.0.0
 settings:
   - group: database
-    title: "База данных"
+    title: "Database"
     type: select
     default: none
     options:
       - id: none
-        title: "Без БД"
+        title: "No DB"
       - id: postgres
         title: "PostgreSQL"
         settings:
-          - group: pg_pool          # уровень 2
-            title: "Пул соединений"
+          - group: pg_pool          # level 2
+            title: "Connection pool"
             type: select
             default: small
             options:
               - id: small
               - id: large
                 settings:
-                  - group: pg_shards   # уровень 3
-                    title: "Число шардов"
+                  - group: pg_shards   # level 3
+                    title: "Shard count"
                     type: int
                     default: 4
           - group: idempotency
-            title: "Идемпотентность"
+            title: "Idempotency"
             type: toggle
             default: false
       - id: mysql
         title: "MySQL"
   - group: brokers
-    title: "Брокеры"
+    title: "Brokers"
     type: multiselect
     default: []
     options:
@@ -63,4 +63,4 @@ settings:
 constraints:
   - if: "idempotency=true"
     require: "database=postgres"
-    message: "Идемпотентность требует PostgreSQL"
+    message: "Idempotency requires PostgreSQL"

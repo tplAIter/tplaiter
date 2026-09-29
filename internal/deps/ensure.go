@@ -24,7 +24,7 @@ type EnsureOptions struct {
 // ErrMissingRequiredTools is returned by [EnsureTools] when, after checking (and
 // attempting installation), at least one required tool remains missing or does
 // not satisfy its constraint. errors.Is distinguishes this from other orchestration errors.
-var ErrMissingRequiredTools = errors.New("deps: отсутствуют обязательные инструменты окружения")
+var ErrMissingRequiredTools = errors.New("deps: required environment tools are missing")
 
 // EnsureTools — orchestration of checking and (optionally) installing tools for
 // `tplater new` (SPEC-03 §4): check -> offer installation for missing/mismatched

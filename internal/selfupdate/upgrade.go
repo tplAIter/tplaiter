@@ -25,11 +25,11 @@ func Upgrade(ctx context.Context, runner execx.Runner, channel Channel, modulePa
 	case ChannelGoInstall:
 		return upgradeGoInstall(ctx, runner, modulePath, out)
 	case ChannelBrew:
-		fmt.Fprintln(out, "Канал установки — Homebrew. Выполните обновление командой:")
+		fmt.Fprintln(out, "Installation channel is Homebrew. Update with:")
 		printBrewInstruction(out)
 		return nil
 	default:
-		fmt.Fprintln(out, "Канал установки tplater не распознан — обновите вручную одним из способов:")
+		fmt.Fprintln(out, "tplater installation channel not recognized — update manually using one of the following methods:")
 		printGoInstallInstruction(out, modulePath)
 		printBrewInstruction(out)
 		return nil
@@ -38,7 +38,7 @@ func Upgrade(ctx context.Context, runner execx.Runner, channel Channel, modulePa
 
 func upgradeGoInstall(ctx context.Context, runner execx.Runner, modulePath string, out io.Writer) error {
 	if modulePath == "" {
-		return fmt.Errorf("selfupdate: upgrade: канал %s, но путь Go-модуля не определён (пустой debug.BuildInfo.Main.Path)", ChannelGoInstall)
+		return fmt.Errorf("selfupdate: upgrade: channel %s, but Go module path is not defined (empty debug.BuildInfo.Main.Path)", ChannelGoInstall)
 	}
 
 	target := modulePath + "@latest"
@@ -48,7 +48,7 @@ func upgradeGoInstall(ctx context.Context, runner execx.Runner, modulePath strin
 		return fmt.Errorf("selfupdate: go install %s: %w", target, err)
 	}
 
-	fmt.Fprintln(out, "Готово — изменения вступят в силу при следующем запуске tplater.")
+	fmt.Fprintln(out, "Done — changes will take effect on the next tplater run.")
 	return nil
 }
 

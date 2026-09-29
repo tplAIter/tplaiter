@@ -26,9 +26,9 @@ func init() {
 func newRepoCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "repo",
-		Short: "Управление репозиториями шаблонов",
-		Long: "Добавляет, обновляет и удаляет git-репозитории шаблонов (helm-модель). " +
-			"См. документацию.",
+		Short: "Manage template repositories",
+		Long: "Add, update, and delete git repositories for templates (helm model). " +
+			"See documentation.",
 	}
 	c.AddCommand(
 		newRepoAddCmd(),
@@ -78,7 +78,7 @@ func newRepoAddCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "add <alias> <url>",
-		Short: "Добавить репозиторий шаблонов",
+		Short: "Add a template repository",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mgr, st, err := newManager(cmd)
@@ -96,15 +96,15 @@ func newRepoAddCmd() *cobra.Command {
 		},
 	}
 	f := c.Flags()
-	f.StringVar(&branch, "branch", "", "ветка по умолчанию")
-	f.BoolVar(&tokenStdin, "token-stdin", false, "прочитать токен из stdin (неинтерактивный auth)")
+	f.StringVar(&branch, "branch", "", "default branch")
+	f.BoolVar(&tokenStdin, "token-stdin", false, "read token from stdin (non-interactive auth)")
 	return c
 }
 
 func newRepoListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "Список репозиториев (ALIAS/URL/TYPE/TEMPLATES/UPDATED)",
+		Short: "List repositories (ALIAS/URL/TYPE/TEMPLATES/UPDATED)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			mgr, st, err := newManager(cmd)
@@ -136,7 +136,7 @@ func newRepoListCmd() *cobra.Command {
 func newRepoRemoveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove <alias>",
-		Short: "Удалить репозиторий",
+		Short: "Delete a repository",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mgr, st, err := newManager(cmd)
@@ -158,7 +158,7 @@ func newRepoUpdateCmd() *cobra.Command {
 		Annotations: prerunAnnotations(prerunTrustOwned),
 
 		Use:   "update [alias]",
-		Short: "git fetch + переиндексация всех репозиториев или одного",
+		Short: "git fetch + reindex all repositories or one",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mgr, st, err := newManager(cmd)

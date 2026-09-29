@@ -51,12 +51,12 @@ func SyncCurrent(home, cwd string, now time.Time) error {
 		if errors.Is(err, project.ErrNotInProject) {
 			return nil
 		}
-		return fmt.Errorf("projectsync: поиск корня проекта: %w", err)
+		return fmt.Errorf("projectsync: finding project root: %w", err)
 	}
 
 	baselineSHA, err := hashFile(filepath.Join(root, engine.BaselineRelPath))
 	if err != nil {
-		return fmt.Errorf("projectsync: хеш %s: %w", engine.BaselineRelPath, err)
+		return fmt.Errorf("projectsync: hash %s: %w", engine.BaselineRelPath, err)
 	}
 
 	ref := state.ProjectRef{

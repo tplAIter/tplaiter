@@ -114,7 +114,7 @@ func compilePostReplace(rules []manifest.PostReplace, ctx *Context) ([]compiledP
 	for _, rule := range rules {
 		value, ok := ctx.lookup(rule.ContextKey)
 		if !ok {
-			return nil, fmt.Errorf("engine: postReplace: неизвестный contextKey %q", rule.ContextKey)
+			return nil, fmt.Errorf("engine: postReplace: unknown contextKey %q", rule.ContextKey)
 		}
 		out = append(out, compiledPostReplace{
 			matcher:     newGlobSet([]string{rule.Glob}),

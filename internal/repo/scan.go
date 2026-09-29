@@ -60,12 +60,12 @@ func (m *Manager) scanRepo(ctx context.Context, dir, branch string, strict bool)
 			for _, tr := range r.Templates {
 				p := strings.TrimSpace(tr.Path)
 				if p == "" {
-					return nil, fmt.Errorf("repo: %s: пустой templates[].path", repoManifestName)
+					return nil, fmt.Errorf("repo: %s: empty templates[].path", repoManifestName)
 				}
 				rel := filepath.Clean(p)
 				manifestPath := filepath.Join(dir, rel, templateManifestName)
 				if !fileExists(manifestPath) {
-					return nil, fmt.Errorf("repo: %s: шаблон %q не содержит %s", repoManifestName, p, templateManifestName)
+					return nil, fmt.Errorf("repo: %s: template %q does not contain %s", repoManifestName, p, templateManifestName)
 				}
 				relPaths = append(relPaths, rel)
 			}
@@ -76,7 +76,7 @@ func (m *Manager) scanRepo(ctx context.Context, dir, branch string, strict bool)
 		multi = true // Auto-scanned subdirectories are treated as multi (namespaced tags).
 		relPaths = autoScan(dir)
 		if len(relPaths) == 0 {
-			return nil, fmt.Errorf("repo: не найдено ни %s в корне, ни */%s (глубина 2)", templateManifestName, templateManifestName)
+			return nil, fmt.Errorf("repo: found neither %s at root nor */%s (depth 2)", templateManifestName, templateManifestName)
 		}
 	}
 
@@ -90,7 +90,7 @@ func (m *Manager) scanRepo(ctx context.Context, dir, branch string, strict bool)
 			if strict {
 				return nil, err
 			}
-			m.warnf("%s — пропускаю шаблон: %v\n", rel, err)
+			m.warnf("%s — skipping template: %v\n", rel, err)
 			continue
 		}
 		entries = append(entries, entry)
@@ -107,7 +107,7 @@ func buildEntry(manifestPath, rel, ref string, allTags []string, multi bool) (st
 		return state.TemplateEntry{}, fmt.Errorf("repo: %s: %w", manifestPath, err)
 	}
 	if err := tmpl.Validate(); err != nil {
-		return state.TemplateEntry{}, fmt.Errorf("repo: %s невалиден: %w", manifestPath, err)
+		return state.TemplateEntry{}, fmt.Errorf("repo: %s is invalid: %w", manifestPath, err)
 	}
 
 	name := tmpl.Metadata.Name

@@ -197,7 +197,7 @@ func processMarkers(path string, data []byte, values settings.Values) ([]byte, e
 
 		switch m.kind {
 		case markerKindUnknown:
-			return nil, fmt.Errorf("engine: %s:%d: неизвестный tplater-маркер в строке %q", path, lineNo, line)
+			return nil, fmt.Errorf("engine: %s:%d: unknown tplater marker in line %q", path, lineNo, line)
 
 		case markerKindBegin:
 			expr := extractMarkerArg(line[m.argIdx:])
@@ -211,7 +211,7 @@ func processMarkers(path string, data []byte, values settings.Values) ([]byte, e
 
 		case markerKindEnd:
 			if len(stack) == 0 {
-				return nil, fmt.Errorf("engine: %s:%d: tplater:end без соответствующего tplater:begin", path, lineNo)
+				return nil, fmt.Errorf("engine: %s:%d: tplater:end without matching tplater:begin", path, lineNo)
 			}
 			top := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
@@ -241,7 +241,7 @@ func processMarkers(path string, data []byte, values settings.Values) ([]byte, e
 
 	if len(stack) > 0 {
 		top := stack[len(stack)-1]
-		return nil, fmt.Errorf("engine: %s:%d: непарный tplater:begin %s (нет соответствующего tplater:end)", path, top.line, top.expr)
+		return nil, fmt.Errorf("engine: %s:%d: unmatched tplater:begin %s (no matching tplater:end)", path, top.line, top.expr)
 	}
 
 	result := []byte(strings.Join(out, "\n"))
@@ -250,7 +250,7 @@ func processMarkers(path string, data []byte, values settings.Values) ([]byte, e
 		// either handled or returned an error. If "tplater:" remains in the output,
 		// it is a marker-processing bug, not a template-author typo (already caught
 		// as markerKindUnknown).
-		return nil, fmt.Errorf("engine: %s: маркер tplater: остался в обработанном выводе (внутренняя ошибка)", path)
+		return nil, fmt.Errorf("engine: %s: tplater marker remained in processed output (internal error)", path)
 	}
 	return result, nil
 }

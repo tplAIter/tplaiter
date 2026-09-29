@@ -141,7 +141,7 @@ func TestRunSelfUpgrade_AlreadyLatest(t *testing.T) {
 	if err := runSelfUpgrade(cmd, nil); err != nil {
 		t.Fatalf("runSelfUpgrade() error = %v", err)
 	}
-	if !strings.Contains(out.String(), "уже установлена последняя версия") {
+	if !strings.Contains(out.String(), "latest version is already installed") {
 		t.Errorf("runSelfUpgrade() output = %q, want up-to-date message", out.String())
 	}
 	// No "go install" should have run.
@@ -236,7 +236,7 @@ func TestRootRunE_UpgradeFlag(t *testing.T) {
 	if err := rootCmd.RunE(cmd, nil); err != nil {
 		t.Fatalf("rootCmd.RunE() error = %v", err)
 	}
-	if !strings.Contains(out.String(), "уже установлена последняя версия") {
+	if !strings.Contains(out.String(), "latest version is already installed") {
 		t.Errorf("rootCmd.RunE() with --upgrade output = %q, want it to have dispatched to runSelfUpgrade", out.String())
 	}
 }

@@ -4,7 +4,7 @@ metadata:
   name: go-service
   displayName: "Go Service"
   version: 1.4.0
-  description: "HTTP/Kafka/Temporal сервис на gocore"
+  description: "HTTP/Kafka/Temporal service on gocore"
   maintainers:
     - { name: "Example Maintainer", email: "maintainer@example.test", telegram: "@example_maintainer" }
   labels:
@@ -30,24 +30,24 @@ requires:
 
 settings:
   - group: database
-    title: "База данных"
+    title: "Database"
     type: select
     default: none
     options:
       - id: none
-        title: "Без БД"
+        title: "No DB"
       - id: postgres
         title: "PostgreSQL (GORM + goose)"
         settings:
           - group: idempotency
-            title: "Идемпотентность запросов (advisory-lock + кэш ответов)"
+            title: "Request idempotency (advisory-lock + response cache)"
             type: toggle
             default: false
       - id: mysql
         title: "MySQL"
         status: planned
   - group: brokers
-    title: "Брокеры сообщений"
+    title: "Message brokers"
     type: multiselect
     default: []
     options:
@@ -57,11 +57,11 @@ settings:
             type: toggle
             default: false
           - group: kafka_cdc
-            title: "CDC (Debezium-совместимые топики)"
+            title: "CDC (Debezium-compatible topics)"
             type: toggle
             default: false
           - group: kafka_topics
-            title: "Преднастроенные топики (через запятую)"
+            title: "Pre-configured topics (comma-separated)"
             type: string
             default: ""
       - id: rabbitmq
@@ -83,18 +83,18 @@ files:
 constraints:
   - if: "idempotency=true"
     require: "database=postgres"
-    message: "Идемпотентность требует PostgreSQL"
+    message: "Idempotency requires PostgreSQL"
 
 commands:
   dev: { run: "make dev", description: "live-reload (air)" }
-  start: { run: "make run", description: "запуск http" }
+  start: { run: "make run", description: "HTTP start" }
   build: { run: "make build" }
-  migrate-up: { run: "make migrate-up", description: "миграции", when: "database=postgres" }
+  migrate-up: { run: "make migrate-up", description: "migrations", when: "database=postgres" }
 
 generators:
   # Single form: snippet+target — backward-compatible; do not change.
   - kind: use-case
-    description: "Сценарий (Request/Result/Code/Response)"
+    description: "Use case (Request/Result/Code/Response)"
     snippet: generators/use-case.go.tmpl
     target: "internal/usecase/{{ .Name.Snake }}.go"
     anchors:
@@ -104,9 +104,9 @@ generators:
   # target.when gate (activity only when workflow=temporal). Demonstrates the
   # full extended Generator contract.
   - kind: crud
-    description: "CRUD-разворот сущности (entity + usecase + миграция + activity)"
+    description: "CRUD expansion of entity (entity + usecase + migration + activity)"
     params:
-      - { name: fields, type: fields, required: true, description: "поля сущности name:type,..." }
+      - { name: fields, type: fields, required: true, description: "entity fields name:type,..." }
       - { name: with-list, type: bool, default: true }
     targets:
       - { snippet: generators/crud/entity.go.tmpl, target: "internal/domain/{{ .Name.Snake }}.go" }
@@ -121,8 +121,8 @@ aiConfig:
 
 environment:
   playbooks:
-    - { name: setup, file: environment/setup.yml, description: "базовая настройка окружения" }
-    - { name: kafka, file: environment/kafka.yml, description: "локальная kafka", when: "brokers=kafka" }
+    - { name: setup, file: environment/setup.yml, description: "basic environment setup" }
+    - { name: kafka, file: environment/kafka.yml, description: "local kafka", when: "brokers=kafka" }
 
 hooks:
   postCreate:
