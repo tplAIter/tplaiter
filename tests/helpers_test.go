@@ -100,7 +100,7 @@ func run(t *testing.T, home, dir string, args ...string) runResult {
 // code (for scenario steps that must succeed cleanly).
 func mustRun(t *testing.T, home, dir string, args ...string) runResult {
 	t.Helper()
-	res := run(t, home, "", args...)
+	res := run(t, home, dir, args...)
 	if res.ExitCode != 0 {
 		t.Fatalf("tplater %v: exit=%d\nstdout:\n%s\nstderr:\n%s", args, res.ExitCode, res.Stdout, res.Stderr)
 	}
