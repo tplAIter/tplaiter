@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 )
 
 // ── gen ──────────────────────────────────────────────────────────────────
@@ -31,12 +33,13 @@ func (s *Server) addGenTools() {
 		mcp.WithString("name", mcp.Required(), mcp.Description("Name of entity to create")),
 		mcp.WithObject("params", mcp.Description("Generator parameters: key→string value (serialized as dynamic CLI flags --<param>)")),
 		mcp.WithBoolean("noBuild", mcp.Description("Skip build-gate after generation (--no-build)"), mcp.DefaultBool(false)),
+		outputSchema(resultdto.OperationGenRun),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a genArgs) (*mcp.CallToolResult, error) {
-		cwd, err := resolveWorkDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		cwd, failure := s.workDir(resultdto.OperationGenRun, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		return s.exec(ctx, cwd, argvGen(a.Kind, a.Name, a.Params, a.NoBuild), longTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationGenRun, cwd, argvGen(a.Kind, a.Name, a.Params, a.NoBuild), longCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
@@ -72,16 +75,16 @@ func (s *Server) addGenTools() {
 			}),
 		),
 		mcp.WithBoolean("noBuild", mcp.Description("Skip the final build-gate"), mcp.DefaultBool(false)),
+		outputSchema(resultdto.OperationGenBatch),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a genBatchArgs) (*mcp.CallToolResult, error) {
 		if len(a.Operations) == 0 {
-			return mcp.NewToolResultError("gen_batch: operations must contain at least one operation"), nil
+			return s.argumentFailure(resultdto.OperationGenBatch, "operations"), nil
 		}
-		cwd, err := resolveWorkDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		cwd, failure := s.workDir(resultdto.OperationGenBatch, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		argv := argvGenBatch(a.Operations, a.NoBuild)
-		return s.exec(ctx, cwd, argv, longTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationGenBatch, cwd, argvGenBatch(a.Operations, a.NoBuild), longCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
@@ -89,11 +92,12 @@ func (s *Server) addGenTools() {
 		mcp.WithDescription("List of available scaffold types from project template manifest (dir)."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithReadOnlyHintAnnotation(true),
+		outputSchema(resultdto.OperationGenList),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a dirArgs) (*mcp.CallToolResult, error) {
-		cwd, err := resolveWorkDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		cwd, failure := s.workDir(resultdto.OperationGenList, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		return s.exec(ctx, cwd, argvGenList(), defaultTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationGenList, cwd, argvGenList(), shortCall), nil
 	}))
 }

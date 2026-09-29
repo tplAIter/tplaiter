@@ -11,6 +11,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/newcmd"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 )
 
 // newRunner — runner for the deps-check/hooks/ansible steps of `tplater new`.
@@ -82,6 +83,10 @@ func newNewCmd() *cobra.Command {
 			if !prepared.ValidFor(runtime.TrustRuntime()) {
 				return errors.New("TRUST_RUNTIME_INVALID")
 			}
+			if jsonMode(cmd) {
+				// Nothing is created by a dry run, so the envelope names no project.
+				return emitData(cmd, resultdto.OperationProjectNew, nil, resultdto.ProjectNewData{DryRun: true, Ref: args[0], Name: args[1]})
+			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "dry-run prepared")
 			return nil
 		},
@@ -103,7 +108,7 @@ func newNewCmd() *cobra.Command {
 	f.IntVar(&port, "port", 0, "project port (.Runtime.Port, defaults to 8080)")
 	f.BoolVar(&dryRun, "dry-run", false, "prepare result without changing files")
 	f.StringVar(&sourceInput, "source-input", "", "sealed JSON immutable source selection")
-	return c
+	return withResult(c, resultdto.OperationProjectNew)
 }
 
 // envSetupTriState converts --env-setup/--no-env-setup into the orchestrator's

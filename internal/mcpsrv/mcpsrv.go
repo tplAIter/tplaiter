@@ -14,6 +14,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/mark3labs/mcp-go/server"
@@ -25,9 +26,12 @@ import (
 // runner, mockable in tests through execx.RecordingRunner.
 type Server struct {
 	exe       string
+	version   string
 	runner    execx.Runner
 	mcp       *server.MCPServer
 	installed bool
+	direct    bool
+	limits    Limits
 	stage     *heldStage
 	childEnv  []string
 	mu        sync.Mutex
@@ -51,8 +55,14 @@ func New(exe, version string, runner execx.Runner) *Server {
 		server.WithToolCapabilities(true),
 		server.WithResourceCapabilities(false, false),
 		server.WithRecovery(),
+		// Every tool declares a result/v1 outputSchema; the server refuses to
+		// return structured content that violates it.
+		server.WithOutputSchemaValidation(),
 	)
-	s := &Server{exe: exe, runner: runner, mcp: m, closeDone: make(chan struct{})}
+	if version == "" {
+		version = "dev"
+	}
+	s := &Server{exe: exe, version: version, runner: runner, mcp: m, limits: DefaultLimits(), closeDone: make(chan struct{})}
 	s.registerTools()
 	s.registerResources()
 	return s
@@ -95,7 +105,7 @@ func (s *Server) ServeStdio() error {
 // Close releases the verified staged image after all active children have
 // been reaped by runCLI. It is safe to call more than once.
 func (s *Server) Close() error {
-	if s == nil || s.stage == nil {
+	if s == nil || (s.stage == nil && !s.direct) {
 		return nil
 	}
 	s.mu.Lock()
@@ -108,7 +118,10 @@ func (s *Server) Close() error {
 	s.closed = true
 	s.mu.Unlock()
 	s.children.Wait()
-	err := s.stage.Close()
+	var err error
+	if s.stage != nil {
+		err = s.stage.Close()
+	}
 	if err != nil {
 		err = errTransportUnavailable
 	}
@@ -117,4 +130,19 @@ func (s *Server) Close() error {
 	close(s.closeDone)
 	s.mu.Unlock()
 	return err
+}
+
+// NewDirect constructs a server whose tools execute exe directly, without
+// the installed held-stage image. Children still run with the fixed,
+// sanitized environment, in their own process group, with bounded output.
+// It exists for the stdio contract harness and tests; the production
+// `tplaiter mcp-server` always uses [NewInstalled].
+func NewDirect(exe, version string) *Server {
+	if !filepath.IsAbs(exe) {
+		return nil
+	}
+	s := New(exe, version, nil)
+	s.direct = true
+	s.childEnv = capturedChildEnvironment()
+	return s
 }

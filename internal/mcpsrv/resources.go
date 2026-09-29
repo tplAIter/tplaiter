@@ -3,6 +3,7 @@ package mcpsrv
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +19,8 @@ import (
 //	                          tokens (`repo list` output; tokens are stored
 //	                          separately in the keyring and never appear here).
 //	tplaiter://project/{dir} — the .tplaiter/project.yaml content for project
-//	                          directory dir (a path-parameterized resource template).
+//	                          directory dir, the percent-encoded absolute path
+//	                          ("/" as %2F; a path-parameterized resource template).
 func (s *Server) registerResources() {
 	s.mcp.AddResource(
 		mcp.NewResource(
@@ -32,7 +34,7 @@ func (s *Server) registerResources() {
 	s.mcp.AddResourceTemplate(
 		mcp.NewResourceTemplate(
 			"tplaiter://project/{dir}", "tplaiter project manifest",
-			mcp.WithTemplateDescription("Contents of .tplaiter/project.yaml for a project at absolute path dir."),
+			mcp.WithTemplateDescription("Contents of .tplaiter/project.yaml for the project at absolute path dir, percent-encoded as one URI segment (\"/\" as %2F)."),
 			mcp.WithTemplateMIMEType("application/yaml"),
 		),
 		s.readProjectResource,
@@ -42,9 +44,13 @@ func (s *Server) registerResources() {
 // readConfigResource returns `repo list` as text. By construction this output
 // contains no tokens (ALIAS/URL/TYPE/TEMPLATES/UPDATED), so it is safe for an agent.
 func (s *Server) readConfigResource(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	res, runErr := s.runCLI(ctx, "", argvRepoList(), defaultTimeout)
+	res, runErr := s.runCLI(ctx, "", argvRepoList(), s.timeout(shortCall))
 	if failed(res, runErr) {
-		return nil, fmt.Errorf("tplaiter://config: %s", formatFailure(res, runErr))
+		code := transportCode(res, runErr)
+		if code == "" {
+			code = "MCP_CLI_FAILED"
+		}
+		return nil, fmt.Errorf("tplaiter://config: %s", code)
 	}
 	return []mcp.ResourceContents{
 		mcp.TextResourceContents{URI: req.Params.URI, MIMEType: "text/plain", Text: res.Stdout},
@@ -59,6 +65,12 @@ func (s *Server) readProjectResource(_ context.Context, req mcp.ReadResourceRequ
 	if dir == "" || dir == req.Params.URI {
 		return nil, fmt.Errorf("tplaiter://project: project directory not specified in URI %q", req.Params.URI)
 	}
+	// {dir} is one URI segment, so an absolute path arrives percent-encoded.
+	decoded, err := url.PathUnescape(dir)
+	if err != nil {
+		return nil, fmt.Errorf("tplaiter://project: invalid percent-encoding in URI %q", req.Params.URI)
+	}
+	dir = decoded
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("tplaiter://project: invalid path %q: %w", dir, err)

@@ -7,7 +7,7 @@ import (
 
 // TestArgvBuilders is a table-driven test of tool-to-argv mapping: key cases
 // from the specification (project_new set map to correct --set pairs; stats
-// adds --json; gen params/noBuild to flags; env_setup forces --yes; settings_set
+// gets --json from the structured path; gen params/noBuild to flags; env_setup forces --yes; settings_set
 // adds --yes).
 func TestArgvBuilders(t *testing.T) {
 	tests := []struct {
@@ -71,9 +71,19 @@ func TestArgvBuilders(t *testing.T) {
 			want: []string{"update", "--to", "v2.0.0", "--dry-run", "--check"},
 		},
 		{
-			name: "stats always --json",
+			name: "stats (the structured path adds --json)",
 			got:  argvStats(),
-			want: []string{"stats", "--json"},
+			want: []string{"stats"},
+		},
+		{
+			name: "--json is appended",
+			got:  withJSONFlag([]string{"repo", "list"}),
+			want: []string{"repo", "list", "--json"},
+		},
+		{
+			name: "--json goes before the child separator",
+			got:  withJSONFlag(argvRun("build", []string{"--json", "x"})),
+			want: []string{"run", "build", "--json", "--", "--json", "x"},
 		},
 		{
 			name: "gen params to dynamic flags (sorted)",

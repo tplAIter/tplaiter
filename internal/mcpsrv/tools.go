@@ -1,15 +1,11 @@
 package mcpsrv
 
-import (
-	"context"
-	"time"
-
-	"github.com/mark3labs/mcp-go/mcp"
-)
-
-// All tool and parameter descriptions are IN RUSSIAN: AI agents, the intended
-// users of this server, read them. Schemas are typed (mcp.NewTypedToolHandler
-// binds JSON arguments to a structure).
+// Tool and parameter descriptions are written for AI agents, the intended
+// users of this server. Input schemas are typed (mcp.NewTypedToolHandler binds
+// JSON arguments to a structure). Every tool declares a result/v1
+// outputSchema (see result.go) and returns the envelope of its CLI command
+// (`tplaiter <command> --json`) as structured content, with a compact text
+// summary for clients that read only text.
 //
 // Deliberately NOT exposed (see the decisions in docs and the final report):
 //   - auth_* / repo add with a token: passing secrets through an agent is a bad
@@ -43,11 +39,4 @@ func (s *Server) registerTools() {
 	for _, register := range toolRegistrars {
 		register(s)
 	}
-}
-
-// exec is the common tool execution path: it starts a child process and
-// returns a fixed failure code without exposing child diagnostics.
-func (s *Server) exec(ctx context.Context, cwd string, argv []string, timeout time.Duration) *mcp.CallToolResult {
-	res, runErr := s.runCLI(ctx, cwd, argv, timeout)
-	return toolResult(res, runErr)
 }

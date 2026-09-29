@@ -1,0 +1,6214 @@
+[
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Generate AI artifacts (CLAUDE.md, .cursor/**, AGENTS.md, GEMINI.md) to project root (dir).",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Project directory",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir"
+      ],
+      "type": "object"
+    },
+    "name": "ai_gen",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "ai.gen"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "skippedProtected": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "written": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "written",
+            "skippedProtected"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "AIGen"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "ai.gen"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Check environment and tools of the active template. dir is optional (default is server's cwd).",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Project directory (optional)",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "doctor",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "critical": {
+              "type": "boolean"
+            },
+            "sections": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "rows": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "detail": {
+                          "type": "string"
+                        },
+                        "hint": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "status"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "null",
+                      "array"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title",
+                  "rows"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "critical",
+            "sections"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "DoctorCheck"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "doctor.check"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Execute an Ansible playbook for the project environment (dir). Ansible setup is confirmed automatically (yes is always true).",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Project directory",
+          "type": "string"
+        },
+        "name": {
+          "description": "Playbook name (default: setup)",
+          "type": "string"
+        },
+        "yes": {
+          "default": true,
+          "description": "Force confirmation — always true",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "dir",
+        "yes"
+      ],
+      "type": "object"
+    },
+    "name": "env_setup",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "env.setup"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "childExitCode": {
+              "type": "integer"
+            },
+            "playbook": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "playbook",
+            "childExitCode"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "EnvSetup"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "env.setup"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Scaffolder: create file(s) of type kind with name according to project manifest generators (dir). After writing, commands.build.run or legacy Go fallback is executed; error rolls back changes. noBuild=true skips build-gate and saves changes.",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Project directory",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Type of scaffold (see gen_list)",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of entity to create",
+          "type": "string"
+        },
+        "noBuild": {
+          "default": false,
+          "description": "Skip build-gate after generation (--no-build)",
+          "type": "boolean"
+        },
+        "params": {
+          "description": "Generator parameters: key→string value (serialized as dynamic CLI flags --<param>)",
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "dir",
+        "kind",
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "gen",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "gen.run"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "created": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "edited": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "noBuild": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "created",
+            "edited",
+            "noBuild"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "GenRun"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "gen.run"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Atomically generate multiple scaffolds. All operations are planned before writing, then a single build-gate from manifest commands.build.run (legacy Go fallback: go build ./...) is executed; on error, all batch changes are rolled back.",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Project directory",
+          "type": "string"
+        },
+        "noBuild": {
+          "default": false,
+          "description": "Skip the final build-gate",
+          "type": "boolean"
+        },
+        "operations": {
+          "description": "Operations {kind, name, params}; params are string values of generator parameters",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "description": "Generator type from template.manifest.yaml",
+                "minLength": 1,
+                "type": "string"
+              },
+              "name": {
+                "description": "Name of entity/vertical to create",
+                "minLength": 1,
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Generator parameters in string CLI representation",
+                "type": "object"
+              }
+            },
+            "required": [
+              "kind",
+              "name"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "dir",
+        "operations"
+      ],
+      "type": "object"
+    },
+    "name": "gen_batch",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "gen.batch"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "created": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "edited": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "noBuild": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "created",
+            "edited",
+            "noBuild"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "GenBatch"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "gen.batch"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "List of available scaffold types from project template manifest (dir).",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Project directory",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir"
+      ],
+      "type": "object"
+    },
+    "name": "gen_list",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "gen.list"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "generators": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "available": {
+                    "type": "boolean"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "available"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "generators"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "GenList"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "gen.list"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Create a template repository with full tooling (manifest, files/, generators, ai-config, CI).",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Target repository directory (created; default ./<name>)",
+          "type": "string"
+        },
+        "multi": {
+          "default": false,
+          "description": "Multi-repository (repo.manifest.yaml + template in subdirectory)",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Name of new template",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "init_template",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "dir": {
+              "type": "string"
+            },
+            "multi": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "dir",
+            "multi"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "TemplateInit"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "template.init"
+        },
+        "project": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Self-test template repository for edge case combinations. Failure returns a non-zero exit code (isError).",
+    "inputSchema": {
+      "properties": {
+        "combo": {
+          "description": "Filter by combination name (exact match)",
+          "type": "string"
+        },
+        "path": {
+          "description": "Template repository root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "lint_template",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "failed": {
+              "type": "boolean"
+            },
+            "rows": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "combo": {
+                    "type": "string"
+                  },
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "template": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "template",
+                  "combo",
+                  "ok"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "failed",
+            "rows"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "TemplateLint"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "template.lint"
+        },
+        "project": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Create a project from a template (always non-interactive). The project is created as <dir>/<slug>. If set is incomplete, the tool will return an error about required groups — or set defaults=true.",
+    "inputSchema": {
+      "properties": {
+        "defaults": {
+          "default": false,
+          "description": "Use default values for unspecified groups",
+          "type": "boolean"
+        },
+        "dir": {
+          "description": "Directory INSIDE which the project is created (must exist); default is the server's cwd",
+          "type": "string"
+        },
+        "dryRun": {
+          "default": false,
+          "description": "Prepare a plan without changing files",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Name of the new project",
+          "type": "string"
+        },
+        "noDepsCheck": {
+          "default": false,
+          "description": "Skip environment tools check (--no-deps-check)",
+          "type": "boolean"
+        },
+        "noEnvSetup": {
+          "default": false,
+          "description": "Don't offer or run env setup after creation (--no-env-setup)",
+          "type": "boolean"
+        },
+        "noHooks": {
+          "default": false,
+          "description": "Skip hooks.postCreate (--no-hooks)",
+          "type": "boolean"
+        },
+        "port": {
+          "description": "Project port (.Runtime.Port); 0 — don't set",
+          "type": "number"
+        },
+        "ref": {
+          "description": "Template reference: repo/name@version or short name",
+          "type": "string"
+        },
+        "set": {
+          "description": "Settings values: group→value (serialized as --set pairs)",
+          "properties": {},
+          "type": "object"
+        },
+        "sourceInput": {
+          "description": "Path to the closed JSON source selection",
+          "type": "string"
+        },
+        "yes": {
+          "default": false,
+          "description": "Automatically confirm CLI actions (--yes), including missing tools installation and env setup",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ref",
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "project_new",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "dryRun": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "dryRun",
+            "ref",
+            "name"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "ProjectNew"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "project.new"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "List of projects in the local registry (path, template, time, status).",
+    "inputSchema": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "projects_list",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "projects": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "lastSeenAt": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "template": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "path",
+                  "template",
+                  "status"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "projects"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "ProjectsList"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "projects.list"
+        },
+        "project": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Add a git repository for templates (Helm-style). Token is NOT passed through the agent: private repositories must be authorized by a person in advance.",
+    "inputSchema": {
+      "properties": {
+        "alias": {
+          "description": "Short repository alias",
+          "type": "string"
+        },
+        "branch": {
+          "description": "Default branch (optional)",
+          "type": "string"
+        },
+        "url": {
+          "description": "Git repository URL",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alias",
+        "url"
+      ],
+      "type": "object"
+    },
+    "name": "repo_add",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "repositories": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "alias": {
+                    "type": "string"
+                  },
+                  "templates": {
+                    "type": "integer"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "alias",
+                  "url",
+                  "type",
+                  "templates"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "repositories"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "RepoAdd"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "repo.add"
+        },
+        "project": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "List of added template repositories (alias, URL, type, number of templates, update time).",
+    "inputSchema": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "repo_list",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "repositories": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "alias": {
+                    "type": "string"
+                  },
+                  "templates": {
+                    "type": "integer"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "alias",
+                  "url",
+                  "type",
+                  "templates"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "repositories"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "RepoList"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "repo.list"
+        },
+        "project": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Remove a template repository from local state.",
+    "inputSchema": {
+      "properties": {
+        "alias": {
+          "description": "Alias of repository to remove",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alias"
+      ],
+      "type": "object"
+    },
+    "name": "repo_remove",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "alias": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "alias"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "RepoRemove"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "repo.remove"
+        },
+        "project": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "git fetch + reindexing all template repositories or one by alias.",
+    "inputSchema": {
+      "properties": {
+        "alias": {
+          "description": "Repository alias; empty — update all",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "repo_update",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "repositories": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "alias": {
+                    "type": "string"
+                  },
+                  "templates": {
+                    "type": "integer"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "alias",
+                  "url",
+                  "type",
+                  "templates"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "repositories"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "RepoUpdate"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "repo.update"
+        },
+        "project": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Execute a template manifest command at the project root (dir). WARNING: long-running commands (dev servers) will be interrupted on timeout.",
+    "inputSchema": {
+      "properties": {
+        "args": {
+          "description": "Additional arguments passed to the command after --",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "description": "Manifest command name",
+          "type": "string"
+        },
+        "dir": {
+          "description": "Project directory (working directory)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir",
+        "command"
+      ],
+      "type": "object"
+    },
+    "name": "run",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "project.run"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "childExitCode": {
+              "type": "integer"
+            },
+            "command": {
+              "type": "string"
+            },
+            "commands": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "when": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "childExitCode"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "ProjectRun"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "project.run"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Show current values of project settings (dir) as result/v1 settings.show.",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Project directory",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir"
+      ],
+      "type": "object"
+    },
+    "name": "settings_list",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "settings.show"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "settings": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "template": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "repo": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "repo",
+                "name",
+                "version"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "template",
+            "settings"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "SettingsShow"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "settings.show"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Change project (dir) settings using 3-way merge on current template version. Applied without confirmation (--yes).",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Project directory",
+          "type": "string"
+        },
+        "values": {
+          "description": "New values: group→value",
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "dir",
+        "values"
+      ],
+      "type": "object"
+    },
+    "name": "settings_set",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "settings.set"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "dryRun": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "dryRun"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "SettingsSet"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "settings.set"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Report of project (dir) drift from template (drift-score, file statuses, updateability classes) in data.report.",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Project directory",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir"
+      ],
+      "type": "object"
+    },
+    "name": "stats",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "project.stats"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "report": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
+          "required": [
+            "report"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "ProjectStats"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "project.stats"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Catalog of templates from added repositories with filters.",
+    "inputSchema": {
+      "properties": {
+        "labels": {
+          "description": "Filters by labels group=value (AND semantics)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "Filter by template name substring",
+          "type": "string"
+        },
+        "repo": {
+          "description": "Filter by repository alias (exact match)",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "template_list",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "templates": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "labels": {
+                    "additionalProperties": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "type": "object"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "repo": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "repo",
+                  "version",
+                  "labels"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "templates"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "TemplateList"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "template.list"
+        },
+        "project": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Metadata, settings groups, commands, and documentation of template by reference (repo/name@version or short name).",
+    "inputSchema": {
+      "properties": {
+        "ref": {
+          "description": "Template reference: repo/name@version or short name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "type": "object"
+    },
+    "name": "template_show",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "commands": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "when": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "description": {
+              "type": "string"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "docs": {
+              "type": "string"
+            },
+            "labels": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maintainers": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "repo": {
+              "type": "string"
+            },
+            "settings": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "version": {
+              "type": "string"
+            },
+            "versions": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "repo",
+            "name",
+            "version",
+            "versions",
+            "maintainers",
+            "labels",
+            "settings",
+            "commands"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "TemplateShow"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "template.show"
+        },
+        "project": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Check and return the pinned trust-profile binding (result/v1 trust.inspect; the binding is in data.binding).",
+    "inputSchema": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "trust_inspect",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "binding": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
+          "required": [
+            "binding"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "TrustInspect"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "trust.inspect"
+        },
+        "project": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Update project (dir) to a new template version using 3-way merge. Conflicts produce markers and a non-zero exit (isError). operation is update.check with check=true, update.plan with dryRun=true, otherwise update.apply.",
+    "inputSchema": {
+      "properties": {
+        "check": {
+          "default": false,
+          "description": "Check tree for conflict markers (exit code 1 if found)",
+          "type": "boolean"
+        },
+        "dir": {
+          "description": "Project directory",
+          "type": "string"
+        },
+        "dryRun": {
+          "default": false,
+          "description": "Show plan without modifying files",
+          "type": "boolean"
+        },
+        "sourceInput": {
+          "description": "Path to the closed JSON source selection",
+          "type": "string"
+        },
+        "to": {
+          "description": "Target template version; empty — latest stable tag",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir"
+      ],
+      "type": "object"
+    },
+    "name": "update",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "update.apply"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "UpdateApply"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "update.check"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "UpdateCheck"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "update.plan"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "UpdatePlan"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "update.apply",
+                  "update.plan"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "conflictMarkers": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "to": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "dryRun",
+            "conflictMarkers"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "enum": [
+            "UpdateApply",
+            "UpdateCheck",
+            "UpdatePlan"
+          ]
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "enum": [
+            "update.apply",
+            "update.check",
+            "update.plan"
+          ]
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Add a Temporal service-action to a go-workspace project and register it in go.work. Executed completely non-interactively.",
+    "inputSchema": {
+      "properties": {
+        "defaults": {
+          "default": true,
+          "description": "Use default values for unspecified groups",
+          "type": "boolean"
+        },
+        "dir": {
+          "description": "Root of workspace-project or a nested directory inside it",
+          "type": "string"
+        },
+        "module": {
+          "description": "Go module of service; default <workspace module>/services/<slug>",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of new service-action",
+          "type": "string"
+        },
+        "noDepsCheck": {
+          "default": false,
+          "description": "Don't check environment tools",
+          "type": "boolean"
+        },
+        "noHooks": {
+          "default": false,
+          "description": "Don't run hooks.postCreate",
+          "type": "boolean"
+        },
+        "port": {
+          "description": "Service port; 0 — use template value",
+          "type": "number"
+        },
+        "set": {
+          "description": "Service template settings: group→value; workflow=true is forced by CLI",
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "dir",
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "workspace_add_service",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "workspace.add-service"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "dir": {
+              "type": "string"
+            },
+            "module": {
+              "type": "string"
+            },
+            "service": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "service"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "WorkspaceAddService"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "workspace.add-service"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  }
+]

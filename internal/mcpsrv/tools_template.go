@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 )
 
 // ── template ─────────────────────────────────────────────────────────────
@@ -27,16 +29,18 @@ func (s *Server) addTemplateTools() {
 		mcp.WithArray("labels", mcp.Description("Filters by labels group=value (AND semantics)"),
 			mcp.Items(map[string]any{"type": "string"})),
 		mcp.WithReadOnlyHintAnnotation(true),
+		outputSchema(resultdto.OperationTemplateList),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a templateListArgs) (*mcp.CallToolResult, error) {
-		return s.exec(ctx, "", argvTemplateList(a.Repo, a.Name, a.Labels), defaultTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationTemplateList, "", argvTemplateList(a.Repo, a.Name, a.Labels), shortCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
 		"template_show",
-		mcp.WithDescription("Metadata, settings tree, commands, and documentation of template by reference (repo/name@version or short name)."),
+		mcp.WithDescription("Metadata, settings groups, commands, and documentation of template by reference (repo/name@version or short name)."),
 		mcp.WithString("ref", mcp.Required(), mcp.Description("Template reference: repo/name@version or short name")),
 		mcp.WithReadOnlyHintAnnotation(true),
+		outputSchema(resultdto.OperationTemplateShow),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a templateShowArgs) (*mcp.CallToolResult, error) {
-		return s.exec(ctx, "", argvTemplateShow(a.Ref), defaultTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationTemplateShow, "", argvTemplateShow(a.Ref), shortCall), nil
 	}))
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 	"github.com/tplAIter/tplaiter/internal/update"
@@ -58,6 +59,14 @@ func newUpdateCmd() *cobra.Command {
 			"for remaining conflict markers (exit code 1); --all processes all registry projects.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			switch {
+			case check:
+				setResultOperation(cmd, resultdto.OperationUpdateCheck)
+			case dryRun:
+				setResultOperation(cmd, resultdto.OperationUpdatePlan)
+			default:
+				setResultOperation(cmd, resultdto.OperationUpdateApply)
+			}
 			if all {
 				return update.ErrLifecycleUnavailable
 			}
@@ -98,6 +107,10 @@ func newUpdateCmd() *cobra.Command {
 			if !prepared.ValidFor(runtime.TrustRuntime()) {
 				return errors.New("TRUST_RUNTIME_INVALID")
 			}
+			if jsonMode(cmd) {
+				return emitData(cmd, resultdto.OperationUpdatePlan, trustProject(runtime.ProjectContext()),
+					resultdto.UpdateData{DryRun: true, To: to, ConflictMarkers: []string{}})
+			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "dry-run prepared")
 			return nil
 		},
@@ -109,7 +122,17 @@ func newUpdateCmd() *cobra.Command {
 	f.BoolVar(&dryRun, "dry-run", false, "show plan without modifying files")
 	f.BoolVar(&check, "check", false, "check tree for conflict markers (exit code 1 if found)")
 	f.StringVar(&sourceInput, "source-input", "", "sealed JSON of target source selection")
-	return c
+	return withResult(c, resultdto.OperationUpdateApply)
+}
+
+// trustProject identifies the project of a trust runtime for a result
+// envelope: the project id and root pinned by the runtime configuration, or
+// the project marker at that root when the configuration names no id.
+func trustProject(pc trustload.ProjectContext) *resultdto.Project {
+	if pc.ProjectID != "" && pc.RootPath != "" {
+		return &resultdto.Project{ID: pc.ProjectID, Root: pc.RootPath}
+	}
+	return projectAt(pc.RootPath)
 }
 
 // registeredSourceInput reads the existing project pair at its fixed metadata
@@ -222,11 +245,29 @@ func checkLocalConflicts(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	markersErr := errors.New("conflict markers found")
+	if jsonMode(cmd) {
+		env := newResult(resultdto.OperationUpdateCheck)
+		env.Project = projectAt(root)
+		env.Summary.Conflicts = len(found)
+		if err := env.SetData(resultdto.UpdateData{ConflictMarkers: nonNil(found)}); err != nil {
+			return err
+		}
+		if len(found) == 0 {
+			return emitResult(cmd, env, resultdto.ExitSuccess, nil)
+		}
+		// Markers left in the tree are a finding (exit 1), not a failure.
+		env.Status = resultdto.StatusConflicted
+		for _, path := range found {
+			env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-E-CONFLICT-MARKER", Severity: "error", Message: "conflict markers remain in the file", Path: path, Details: map[string]any{}})
+		}
+		return emitResult(cmd, env, resultdto.ExitFinding, markersErr)
+	}
 	for _, path := range found {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), path)
 	}
 	if len(found) != 0 {
-		return &ExitError{Code: 1, Err: errors.New("conflict markers found")}
+		return &ExitError{Code: 1, Err: markersErr}
 	}
 	return nil
 }

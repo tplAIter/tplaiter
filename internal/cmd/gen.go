@@ -11,6 +11,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/gen"
 	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
@@ -55,7 +56,9 @@ func newGenCmd() *cobra.Command {
 	}
 	c.AddCommand(newGenListCmd())
 	c.AddCommand(newGenBatchCmd())
-	return c
+	// DisableFlagParsing: --json is recognized from the raw arguments by the
+	// exit registry (jsonRequested); the flag is declared for help and parity.
+	return withResult(c, resultdto.OperationGenRun)
 }
 
 // runGen — manual parsing of `gen` arguments (DisableFlagParsing=true).
@@ -146,7 +149,7 @@ func paramUsage(p *manifest.Param) string {
 
 // newGenListCmd creates `tplater gen list`.
 func newGenListCmd() *cobra.Command {
-	return &cobra.Command{
+	return withResult(&cobra.Command{
 		Annotations: prerunAnnotations(prerunReadonly),
 
 		Use:   "list",
@@ -158,9 +161,24 @@ func newGenListCmd() *cobra.Command {
 				return err
 			}
 			values := settingsValues(proj.Settings)
-			return printGenList(cmd, gen.List(tpl, values))
+			statuses := gen.List(tpl, values)
+			if jsonMode(cmd) {
+				return emitGenList(cmd, statuses)
+			}
+			return printGenList(cmd, statuses)
 		},
+	}, resultdto.OperationGenList)
+}
+
+// emitGenList prints the generators of the project template as gen.list
+// data, sorted by kind.
+func emitGenList(cmd *cobra.Command, statuses []gen.Status) error {
+	sort.Slice(statuses, func(i, j int) bool { return statuses[i].Kind < statuses[j].Kind })
+	data := resultdto.GenListData{Generators: []resultdto.GeneratorInfo{}}
+	for _, st := range statuses {
+		data.Generators = append(data.Generators, resultdto.GeneratorInfo{Kind: st.Kind, Description: st.Description, Available: st.Available, Reason: st.Reason})
 	}
+	return emitData(cmd, resultdto.OperationGenList, currentProject(), data)
 }
 
 // genBatchInput — JSON representation of one CLI/MCP batch operation. Parameters
@@ -259,7 +277,7 @@ func newGenBatchCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&operationsJSON, "operations", "", "JSON array of operations {kind,name,params}")
 	c.Flags().BoolVar(&noBuild, "no-build", false, "skip the single final build-gate")
-	return c
+	return withResult(c, resultdto.OperationGenBatch)
 }
 
 func validateGenBatchParams(declared []manifest.Param, provided map[string]string) error {

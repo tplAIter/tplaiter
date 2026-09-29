@@ -50,8 +50,7 @@ func TestBoundedTransportOutputDoesNotExposeCanary(t *testing.T) {
 	if !b.overflow || len(b.b) != maxToolOutput {
 		t.Fatalf("bounded writer overflow=%v len=%d", b.overflow, len(b.b))
 	}
-	res := toolResult(execx.Result{Stdout: "secret-canary", ExitCode: 1}, errTransportUnavailable)
-	if text := resultText(t, res); text != "MCP_UNAVAILABLE" {
+	if text := legacyOutcome(execx.Result{Stdout: "secret-canary", ExitCode: 1}, errTransportUnavailable); text != "MCP_UNAVAILABLE" {
 		t.Fatalf("unsafe failure text: %q", text)
 	}
 	for _, tc := range []struct{ stderr, want string }{
@@ -61,7 +60,7 @@ func TestBoundedTransportOutputDoesNotExposeCanary(t *testing.T) {
 		{"error: trustload: TRUST_ANCHOR_MISSING\nsecret-canary", "MCP_CLI_FAILED"},
 		{"secret-canary TRUST_ANCHOR_MISSING", "MCP_CLI_FAILED"},
 	} {
-		got := resultText(t, toolResult(execx.Result{ExitCode: 1, Stderr: tc.stderr}, &execx.ExitError{ExitCode: 1}))
+		got := legacyOutcome(execx.Result{ExitCode: 1, Stderr: tc.stderr}, &execx.ExitError{ExitCode: 1})
 		if got != tc.want {
 			t.Fatalf("diagnostic %q => %q, want %q", tc.stderr, got, tc.want)
 		}
@@ -140,41 +139,41 @@ func helperArgs(mode string) []string {
 
 func TestInstalledTransportBoundsOutputAndDiagnostics(t *testing.T) {
 	s := installedTestServer(t)
-	res, err := s.runCLI(context.Background(), "", helperArgs("stdout"), 10*time.Second)
+	res, err := s.runCLI(context.Background(), "", helperArgs("stdout"), helperBudget(t))
 	if err != nil || res.Stdout != "verified-output\n" || res.Stderr != "stderr-canary" {
 		t.Fatalf("success result=%+v err=%v", res, err)
 	}
-	if text := resultText(t, toolResult(res, err)); text != "verified-output\n" {
+	if text := legacyOutcome(res, err); text != "verified-output\n" {
 		t.Fatalf("successful stderr leaked: %q", text)
 	}
-	res, err = s.runCLI(context.Background(), "", helperArgs("empty"), 10*time.Second)
-	if err != nil || resultText(t, toolResult(res, err)) != "(command completed successfully, output is empty)" {
+	res, err = s.runCLI(context.Background(), "", helperArgs("empty"), helperBudget(t))
+	if err != nil || legacyOutcome(res, err) != "(command completed successfully, output is empty)" {
 		t.Fatalf("empty result=%+v err=%v", res, err)
 	}
 	for _, tc := range []struct{ mode, want string }{{"stderr", "MCP_CLI_FAILED"}, {"overflow", "MCP_OUTPUT_LIMIT"}} {
-		res, err = s.runCLI(context.Background(), "", helperArgs(tc.mode), 10*time.Second)
-		text := resultText(t, toolResult(res, err))
+		res, err = s.runCLI(context.Background(), "", helperArgs(tc.mode), helperBudget(t))
+		text := legacyOutcome(res, err)
 		if err == nil || text != tc.want || strings.Contains(text, "canary") {
 			t.Fatalf("%s exposed failure result=%+v err=%v text=%q", tc.mode, res, err, text)
 		}
 	}
 	res, err = s.runCLI(context.Background(), "", helperArgs("block"), 30*time.Millisecond)
-	if err == nil || resultText(t, toolResult(res, err)) != "MCP_TIMEOUT" {
+	if err == nil || legacyOutcome(res, err) != "MCP_TIMEOUT" {
 		t.Fatalf("timeout category result=%+v err=%v", res, err)
 	}
 	stagePath := filepath.Join(heldStageRoot(s.stage), "tplaiter")
 	if err := os.Chmod(stagePath, 0o400); err != nil {
 		t.Fatal(err)
 	}
-	res, err = s.runCLI(context.Background(), "", helperArgs("stdout"), 10*time.Second)
-	if err == nil || resultText(t, toolResult(res, err)) != "MCP_UNAVAILABLE" {
+	res, err = s.runCLI(context.Background(), "", helperArgs("stdout"), helperBudget(t))
+	if err == nil || legacyOutcome(res, err) != "MCP_UNAVAILABLE" {
 		t.Fatalf("start failure category result=%+v err=%v", res, err)
 	}
 	if err := s.stage.Close(); err != nil {
 		t.Fatal(err)
 	}
-	res, err = s.runCLI(context.Background(), "", helperArgs("stdout"), 10*time.Second)
-	if err == nil || resultText(t, toolResult(res, err)) != "MCP_UNAVAILABLE" {
+	res, err = s.runCLI(context.Background(), "", helperArgs("stdout"), helperBudget(t))
+	if err == nil || legacyOutcome(res, err) != "MCP_UNAVAILABLE" {
 		t.Fatalf("closed stage accepted new launch result=%+v err=%v", res, err)
 	}
 }
@@ -189,7 +188,7 @@ func TestInstalledTransportCloseDrainsAndRejectsNewCalls(t *testing.T) {
 		_, err := s.runCLI(ctx, "", helperArgs("block"), time.Minute)
 		done <- err
 	}()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(helperBudget(t))
 	for {
 		if _, err := os.Stat(ready); err == nil {
 			break
@@ -213,8 +212,8 @@ func TestInstalledTransportCloseDrainsAndRejectsNewCalls(t *testing.T) {
 		t.Fatalf("concurrent Close returned before drain: %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
-	res, err := s.runCLI(context.Background(), "", helperArgs("stdout"), 10*time.Second)
-	if err == nil || resultText(t, toolResult(res, err)) != "MCP_UNAVAILABLE" {
+	res, err := s.runCLI(context.Background(), "", helperArgs("stdout"), helperBudget(t))
+	if err == nil || legacyOutcome(res, err) != "MCP_UNAVAILABLE" {
 		t.Fatalf("Close permitted a new call result=%+v err=%v", res, err)
 	}
 	cancel()
@@ -288,4 +287,39 @@ func TestDarwinHeldStageRejectsFIFOWithoutBlocking(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("FIFO executable blocked stage construction")
 	}
+}
+
+// legacyOutcome reduces a transport outcome to the single fixed string the
+// pre-envelope transport returned, so the installed-transport assertions stay
+// focused on process handling: a transport code, a whole known trust line, a
+// generic failure, or the child's stdout.
+func legacyOutcome(res execx.Result, err error) string {
+	if code := transportCode(res, err); code != "" {
+		return code
+	}
+	if failed(res, err) {
+		if known := knownCLIError(res.Stderr); known != "" {
+			return known
+		}
+		return "MCP_CLI_FAILED"
+	}
+	if strings.TrimSpace(res.Stdout) == "" {
+		return "(command completed successfully, output is empty)"
+	}
+	return res.Stdout
+}
+
+// helperBudget bounds a helper child call by the test binary's deadline
+// instead of a fixed wall-clock budget: staging and starting a race-enabled
+// helper under a scheduler clamp and heavy load can take well over ten
+// seconds. It is capped so a real hang still fails promptly.
+func helperBudget(t *testing.T) time.Duration {
+	t.Helper()
+	budget := 2 * time.Minute
+	if deadline, ok := t.Deadline(); ok {
+		if left := time.Until(deadline) / 4; left < budget {
+			budget = left
+		}
+	}
+	return budget
 }

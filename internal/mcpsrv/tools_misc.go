@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 )
 
 // ── miscellaneous (projects / env) ───────────────────────────────────────────
@@ -19,8 +21,9 @@ func (s *Server) addMiscTools() {
 		"projects_list",
 		mcp.WithDescription("List of projects in the local registry (path, template, time, status)."),
 		mcp.WithReadOnlyHintAnnotation(true),
+		outputSchema(resultdto.OperationProjectsList),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, error) {
-		return s.exec(ctx, "", argvProjectsList(), defaultTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationProjectsList, "", argvProjectsList(), shortCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
@@ -29,11 +32,12 @@ func (s *Server) addMiscTools() {
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithString("name", mcp.Description("Playbook name (default: setup)")),
 		mcp.WithBoolean("yes", mcp.Required(), mcp.Description("Force confirmation — always true"), mcp.DefaultBool(true)),
+		outputSchema(resultdto.OperationEnvSetup),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a envSetupArgs) (*mcp.CallToolResult, error) {
-		cwd, err := resolveWorkDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		cwd, failure := s.workDir(resultdto.OperationEnvSetup, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		return s.exec(ctx, cwd, argvEnvSetup(a.Name), longTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationEnvSetup, cwd, argvEnvSetup(a.Name), longCall), nil
 	}))
 }

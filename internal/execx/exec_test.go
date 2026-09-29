@@ -140,7 +140,7 @@ func (w *markerWaiter) Write(p []byte) (int, error) {
 }
 
 // TestExec_Run_SignalForwarding checks that a signal sent through Options.Signals
-// reaches the child process (see [runWithSignalForwarding]). The child sh script
+// reaches the child process (see [RunGroup]). The child sh script
 // traps SIGINT and exits with code 7; observing ExitError{ExitCode: 7} proves delivery.
 //
 // Synchronization is based on readiness, not a timer: the script prints the
@@ -149,7 +149,7 @@ func (w *markerWaiter) Write(p []byte) (int, error) {
 // loaded parallel suite, the signal therefore cannot precede trap installation
 // (previously sleep 200ms caused flakes: ExitCode -1 instead of 7). The script
 // sleeps in a loop of short intervals rather than one long sleep: some shells
-// (system /bin/sh — bash 3.2; see [runWithSignalForwarding]) defer trapped-signal
+// (system /bin/sh — bash 3.2; see [RunGroup]) defer trapped-signal
 // handling until the current foreground command ends, so a signal arriving
 // between sleeps could otherwise hang until the next sleep ended. Short sleeps
 // cap the delay at ~100ms. The 5s timeouts are generous for CI load without

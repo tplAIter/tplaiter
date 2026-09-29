@@ -16,6 +16,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/newcmd"
 	"github.com/tplAIter/tplaiter/internal/project"
 	"github.com/tplAIter/tplaiter/internal/repo"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/survey"
@@ -168,9 +169,9 @@ func newWorkspaceAddServiceCmd() *cobra.Command {
 				Manager:  mgr,
 				Runner:   newRunner,
 				Home:     home,
-				Prompter: survey.HuhPrompter{In: cmd.InOrStdin(), Out: cmd.OutOrStdout()},
+				Prompter: survey.HuhPrompter{In: cmd.InOrStdin(), Out: humanOut(cmd)},
 				Confirm:  confirmFunc(cmd, interactive),
-				Out:      cmd.OutOrStdout(),
+				Out:      humanOut(cmd),
 				Err:      cmd.ErrOrStderr(),
 				Palette:  pal,
 			}
@@ -197,7 +198,11 @@ func newWorkspaceAddServiceCmd() *cobra.Command {
 				return fmt.Errorf("workspace add-service: service created in %s, but registration in go.work failed (add manually: use ./services/%s): %w", targetDir, slug, err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "\nService action %s registered in go.work (./services/%s). Run `tplater run sync` at the workspace root.\n", slug, slug)
+			fmt.Fprintf(humanOut(cmd), "\nService action %s registered in go.work (./services/%s). Run `tplater run sync` at the workspace root.\n", slug, slug)
+			if jsonMode(cmd) {
+				return emitData(cmd, resultdto.OperationWorkspaceAddService, projectAt(root),
+					resultdto.WorkspaceAddServiceData{Service: slug, Module: mod, Dir: "services/" + slug})
+			}
 			return nil
 		},
 	}
@@ -213,7 +218,7 @@ func newWorkspaceAddServiceCmd() *cobra.Command {
 	f.BoolVar(&noEnvSetup, "no-env-setup", false, "do not offer env setup after creation")
 	f.BoolVar(&yes, "yes", false, "auto-confirm (tool installation and env setup)")
 	f.IntVar(&port, "port", 0, "service port (.Runtime.Port)")
-	return c
+	return withResult(c, resultdto.OperationWorkspaceAddService)
 }
 
 // findWorkspaceRoot finds the nearest tplater project while walking upward from

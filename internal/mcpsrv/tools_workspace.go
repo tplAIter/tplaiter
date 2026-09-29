@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 )
 
 // ── workspace ─────────────────────────────────────────────────────────────
@@ -31,11 +33,12 @@ func (s *Server) addWorkspaceTools() {
 		mcp.WithBoolean("noHooks", mcp.Description("Don't run hooks.postCreate"), mcp.DefaultBool(false)),
 		mcp.WithBoolean("noDepsCheck", mcp.Description("Don't check environment tools"), mcp.DefaultBool(false)),
 		mcp.WithNumber("port", mcp.Description("Service port; 0 — use template value")),
+		outputSchema(resultdto.OperationWorkspaceAddService),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a workspaceAddServiceArgs) (*mcp.CallToolResult, error) {
-		cwd, err := resolveWorkDir(a.Dir)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		cwd, failure := s.workDir(resultdto.OperationWorkspaceAddService, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
 		}
-		return s.exec(ctx, cwd, argvWorkspaceAddService(a.Name, a.Module, a.Set, a.Defaults, a.NoHooks, a.NoDepsCheck, a.Port), longTimeout), nil
+		return s.callStructured(ctx, resultdto.OperationWorkspaceAddService, cwd, argvWorkspaceAddService(a.Name, a.Module, a.Set, a.Defaults, a.NoHooks, a.NoDepsCheck, a.Port), longCall), nil
 	}))
 }

@@ -1,0 +1,1176 @@
+{
+  "$defs": {
+    "absolutePath": {
+      "anyOf": [
+        {
+          "pattern": "^/"
+        },
+        {
+          "pattern": "^[A-Za-z]:[/\\\\]"
+        },
+        {
+          "pattern": "^\\\\\\\\"
+        }
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "project": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "root": {
+          "$ref": "#/$defs/absolutePath"
+        }
+      },
+      "required": [
+        "id",
+        "root"
+      ],
+      "type": "object"
+    },
+    "relativePath": {
+      "minLength": 1,
+      "not": {
+        "pattern": "(^|/)\\.{1,2}(/|$)"
+      },
+      "pattern": "^[^/\\\\]+(/[^/\\\\]+)*$",
+      "type": "string"
+    }
+  },
+  "$id": "https://tplaiter.dev/schema/result.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "ai.gen"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "AIGen"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "deps.verify"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DepsVerify"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "doctor.check"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DoctorCheck"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "env.setup"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "EnvSetup"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "gen.batch"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "GenBatch"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "gen.list"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "GenList"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "gen.run"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "GenRun"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "new.abort"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "NewAbort"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "new.continue"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "NewContinue"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "new.status"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "NewStatus"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "project.adopt"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ProjectAdopt"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "project.check"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ProjectCheck"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "project.diff"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ProjectDiff"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "project.link"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ProjectLink"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "project.new"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ProjectNew"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "project.rebaseline"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ProjectRebaseline"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "project.recopy"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ProjectRecopy"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "project.run"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ProjectRun"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "project.stats"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ProjectStats"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "project.verify"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ProjectVerify"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "projects.list"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ProjectsList"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "repo.add"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "RepoAdd"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "repo.list"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "RepoList"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "repo.remove"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "RepoRemove"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "repo.update"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "RepoUpdate"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "settings.reanswer"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "SettingsReanswer"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "settings.set"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "SettingsSet"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "settings.show"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "SettingsShow"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "template.init"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "TemplateInit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "template.lint"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "TemplateLint"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "template.list"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "TemplateList"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "template.show"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "TemplateShow"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "trust.inspect"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "TrustInspect"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "update.abort"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UpdateAbort"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "update.apply"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UpdateApply"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "update.check"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UpdateCheck"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "update.continue"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UpdateContinue"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "update.plan"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UpdatePlan"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "update.status"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UpdateStatus"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "workspace.add-service"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "WorkspaceAddService"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "enum": [
+              "new.status",
+              "projects.list",
+              "repo.add",
+              "repo.list",
+              "repo.remove",
+              "repo.update",
+              "template.init",
+              "template.lint",
+              "template.list",
+              "template.show",
+              "trust.inspect"
+            ]
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "project": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "enum": [
+              "ai.gen",
+              "deps.verify",
+              "env.setup",
+              "gen.batch",
+              "gen.list",
+              "gen.run",
+              "project.adopt",
+              "project.check",
+              "project.diff",
+              "project.link",
+              "project.rebaseline",
+              "project.recopy",
+              "project.run",
+              "project.stats",
+              "project.verify",
+              "settings.reanswer",
+              "settings.set",
+              "settings.show",
+              "update.abort",
+              "update.apply",
+              "update.continue",
+              "update.plan",
+              "update.status",
+              "workspace.add-service"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "changes",
+              "conflicted"
+            ]
+          }
+        },
+        "required": [
+          "operation",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "project": {
+            "$ref": "#/$defs/project"
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/result/v1"
+    },
+    "artifacts": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "path": {
+            "$ref": "#/$defs/relativePath"
+          },
+          "sha256": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "changes": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "action": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "blockId": {
+            "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "path": {
+            "$ref": "#/$defs/relativePath"
+          },
+          "provider": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "action"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "currentRef": {
+      "type": "string"
+    },
+    "data": {
+      "type": "object"
+    },
+    "diagnostics": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "blockId": {
+            "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "code": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "details": {
+            "type": "object"
+          },
+          "hint": {
+            "type": "string"
+          },
+          "message": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "path": {
+            "$ref": "#/$defs/relativePath"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning",
+              "info"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message",
+          "details"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "kind": {
+      "enum": [
+        "AIGen",
+        "DepsVerify",
+        "DoctorCheck",
+        "EnvSetup",
+        "GenBatch",
+        "GenList",
+        "GenRun",
+        "NewAbort",
+        "NewContinue",
+        "NewStatus",
+        "ProjectAdopt",
+        "ProjectCheck",
+        "ProjectDiff",
+        "ProjectLink",
+        "ProjectNew",
+        "ProjectRebaseline",
+        "ProjectRecopy",
+        "ProjectRun",
+        "ProjectStats",
+        "ProjectVerify",
+        "ProjectsList",
+        "RepoAdd",
+        "RepoList",
+        "RepoRemove",
+        "RepoUpdate",
+        "SettingsReanswer",
+        "SettingsSet",
+        "SettingsShow",
+        "TemplateInit",
+        "TemplateLint",
+        "TemplateList",
+        "TemplateShow",
+        "TrustInspect",
+        "UpdateAbort",
+        "UpdateApply",
+        "UpdateCheck",
+        "UpdateContinue",
+        "UpdatePlan",
+        "UpdateStatus",
+        "WorkspaceAddService"
+      ]
+    },
+    "meta": {
+      "additionalProperties": true,
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "tplaiterVersion": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "tplaiterVersion",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "operation": {
+      "enum": [
+        "ai.gen",
+        "deps.verify",
+        "doctor.check",
+        "env.setup",
+        "gen.batch",
+        "gen.list",
+        "gen.run",
+        "new.abort",
+        "new.continue",
+        "new.status",
+        "project.adopt",
+        "project.check",
+        "project.diff",
+        "project.link",
+        "project.new",
+        "project.rebaseline",
+        "project.recopy",
+        "project.run",
+        "project.stats",
+        "project.verify",
+        "projects.list",
+        "repo.add",
+        "repo.list",
+        "repo.remove",
+        "repo.update",
+        "settings.reanswer",
+        "settings.set",
+        "settings.show",
+        "template.init",
+        "template.lint",
+        "template.list",
+        "template.show",
+        "trust.inspect",
+        "update.abort",
+        "update.apply",
+        "update.check",
+        "update.continue",
+        "update.plan",
+        "update.status",
+        "workspace.add-service"
+      ]
+    },
+    "planSha256": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "project": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/project"
+        }
+      ]
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "changes",
+        "conflicted",
+        "blocked",
+        "failed",
+        "not-applicable"
+      ]
+    },
+    "summary": {
+      "additionalProperties": true,
+      "properties": {
+        "blocksChanged": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "conflicts": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesChanged": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "filesChanged",
+        "blocksChanged",
+        "conflicts"
+      ],
+      "type": "object"
+    },
+    "targetRef": {
+      "type": "string"
+    },
+    "transactionId": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "operation",
+    "status",
+    "project",
+    "transactionId",
+    "summary",
+    "changes",
+    "diagnostics",
+    "artifacts",
+    "meta"
+  ],
+  "title": "tplaiter result/v1 envelope",
+  "type": "object"
+}

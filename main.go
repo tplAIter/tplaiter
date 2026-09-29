@@ -3,21 +3,13 @@
 package main
 
 import (
-	"errors"
-	"fmt"
 	"os"
 
 	"github.com/tplAIter/tplaiter/internal/cmd"
-	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
+// main delegates to cmd.Main, which owns the exit-code registry
+// (docs/exit-codes.md) and the --json failure envelope.
 func main() {
-	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, ui.ErrorPrefix(ui.Default()), err)
-		var exit *cmd.ExitError
-		if errors.As(err, &exit) && exit.Code != 0 {
-			os.Exit(exit.Code)
-		}
-		os.Exit(1)
-	}
+	os.Exit(cmd.Main())
 }

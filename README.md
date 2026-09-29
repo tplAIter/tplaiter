@@ -106,3 +106,12 @@ MCP tools are registered per domain in `internal/mcpsrv/tools_<domain>.go` and l
 ## Template discovery
 
 A template repository may hold a root template plus nested templates (the provider shape); `repo add`, `template list`, `lint-template` and `init-template` share one recursive, symlink-confined discovery with typed errors (`TPL-E-REPO-PATH-ESCAPE`, `TPL-E-REPO-DUP-NAME`, `TPL-E-REPO-DUP-PATH`). See [template discovery](./docs/template-discovery.md); `schema/repository.manifest.schema.json` describes `repo.manifest.yaml`.
+
+## Machine-readable output
+
+Every command behind an MCP tool accepts `--json` and prints exactly one
+`tplaiter.dev/result/v1` envelope on stdout; MCP tools return the same
+envelope as structured content and declare it as their `outputSchema`. Exit
+codes come from one registry: 0 success, 1 findings, 2 usage, 3 and above
+typed failures. See [docs/exit-codes.md](docs/exit-codes.md) and
+[schema/result.v1.schema.json](schema/result.v1.schema.json).

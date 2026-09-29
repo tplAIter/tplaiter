@@ -13,6 +13,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/project"
 	"github.com/tplAIter/tplaiter/internal/projectsync"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
@@ -87,7 +88,7 @@ func newProjectsCmd() *cobra.Command {
 }
 
 func newProjectsListCmd() *cobra.Command {
-	return &cobra.Command{
+	return withResult(&cobra.Command{
 		Use:   "list",
 		Short: "List registry projects (PATH/TEMPLATE/LAST SEEN/STATUS)",
 		Long: "STATUS column:\n" +
@@ -110,6 +111,21 @@ func newProjectsListCmd() *cobra.Command {
 				return err
 			}
 
+			if jsonMode(cmd) {
+				data := resultdto.ProjectsListData{Projects: []resultdto.ProjectEntry{}}
+				for _, ref := range projects.Items {
+					status := "ok"
+					if !projectRefExists(ref) {
+						status = "missing"
+					}
+					data.Projects = append(data.Projects, resultdto.ProjectEntry{
+						ID: ref.ID, Path: ref.Path, Template: formatTemplateSelection(ref.Template),
+						LastSeenAt: rfc3339(ref.LastSeenAt), Status: status,
+					})
+				}
+				return emitData(cmd, resultdto.OperationProjectsList, nil, data)
+			}
+
 			pal := ui.Default()
 			t := ui.NewTable("PATH", "TEMPLATE", "LAST SEEN", "STATUS")
 			for _, ref := range projects.Items {
@@ -118,7 +134,7 @@ func newProjectsListCmd() *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), t.RenderStyled(pal))
 			return nil
 		},
-	}
+	}, resultdto.OperationProjectsList)
 }
 
 func newProjectsPruneCmd() *cobra.Command {
