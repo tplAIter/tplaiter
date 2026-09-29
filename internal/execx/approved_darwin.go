@@ -69,6 +69,7 @@ func validDarwinNativeEnvelope(b []byte, allowLibresolv bool) bool {
 	}
 	return off == end && dyld && lib && (allowLibresolv || !resolv)
 }
+
 func machoName(c []byte, at int) (string, bool) {
 	if len(c) < at+4 {
 		return "", false

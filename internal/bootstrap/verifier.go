@@ -5,9 +5,10 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
-	"time"
 )
 
 var (
@@ -25,8 +26,10 @@ var (
 
 const maxEvidenceSize = 16 << 20
 
-type Clock interface{ Now() time.Time }
-type ClockFunc func() time.Time
+type (
+	Clock     interface{ Now() time.Time }
+	ClockFunc func() time.Time
+)
 
 func (f ClockFunc) Now() time.Time { return f() }
 
@@ -94,24 +97,28 @@ func (a *Authority) Snapshot() AuthoritySnapshot {
 	}
 	return AuthoritySnapshot{a.receipt.AuthorityID, a.receipt.HighestAcceptedSequence, a.receipt.EnvelopePayloadSHA256, a.receipt.ReceiptDigest, a.receipt.RevocationEpoch, a.receipt.TreeSize, a.receipt.CheckpointDigest}
 }
+
 func (a *Authority) Binding() ProfileBinding {
 	if a == nil {
 		return ProfileBinding{}
 	}
 	return a.binding
 }
+
 func (a *DevelopmentContext) Binding() ProfileBinding {
 	if a == nil {
 		return ProfileBinding{}
 	}
 	return a.binding
 }
+
 func (a *DevelopmentContext) Snapshot() AuthoritySnapshot {
 	if a == nil {
 		return AuthoritySnapshot{}
 	}
 	return a.snapshot
 }
+
 func (a *Authority) AllowsPolicyOrigin(s string) bool {
 	if a == nil {
 		return false
@@ -144,6 +151,7 @@ func (v *Verifier) verifyOSSUnchecked(ctx context.Context, d Descriptor, b Bundl
 	}
 	return v.verify(ctx, d, b, nil, ProfileOSS, EvidenceProduction)
 }
+
 func (v *Verifier) verifyOrganizationUnchecked(ctx context.Context, d Descriptor, b ProtectedReader) (*Authority, error) {
 	if e := d.validate(); e != nil {
 		return nil, e
@@ -154,6 +162,7 @@ func (v *Verifier) verifyOrganizationUnchecked(ctx context.Context, d Descriptor
 	}
 	return v.verify(ctx, d, Bundle{Envelope: s.Envelope, Receipt: s.Receipt, Transparency: s.Transparency}, &s, ProfileOrganization, EvidenceProduction)
 }
+
 func (v *Verifier) VerifyDevelopment(ctx context.Context, in DevelopmentInputs) (*DevelopmentContext, error) {
 	if ctx == nil || v == nil || v.store == nil || v.clock == nil {
 		return nil, errors.New("bootstrap: development verifier, evidence store, clock, and context are required")
@@ -286,6 +295,7 @@ func (v *Verifier) verifyConsistency(ctx context.Context, old, next Checkpoint, 
 	}
 	return VerifyConsistency(old.TreeSize, next.TreeSize, a, b, hashes)
 }
+
 func (v *Verifier) verify(ctx context.Context, d Descriptor, b Bundle, protected *ProtectedSnapshot, id ProfileID, class EvidenceClass) (*Authority, error) {
 	e, r, err := v.decode(b)
 	if err != nil {
@@ -327,6 +337,7 @@ func (v *Verifier) verify(ctx context.Context, d Descriptor, b Bundle, protected
 	p := ProfileBinding{ProfileBindingAPIVersion, id, 1, d.Digest, e.PayloadSHA256, ad, a, class}
 	return &Authority{envelope: *e, receipt: *r, checkpoint: c, keys: eligible(*e, keys), binding: p}, nil
 }
+
 func (v *Verifier) decode(b Bundle) (*Envelope, *Receipt, error) {
 	e, x := DecodeEnvelope(b.Envelope)
 	if x != nil {
@@ -358,6 +369,7 @@ func (v *Verifier) decode(b Bundle) (*Envelope, *Receipt, error) {
 	}
 	return e, r, nil
 }
+
 func mapAnchors(a []Anchor) map[string]ed25519.PublicKey {
 	m := map[string]ed25519.PublicKey{}
 	for _, x := range a {
@@ -365,6 +377,7 @@ func mapAnchors(a []Anchor) map[string]ed25519.PublicKey {
 	}
 	return m
 }
+
 func (v *Verifier) loadKeys(ctx context.Context, e *Envelope) (map[string]ed25519.PublicKey, error) {
 	m := map[string]ed25519.PublicKey{}
 	for _, x := range e.RootKeys {
@@ -380,6 +393,7 @@ func (v *Verifier) loadKeys(ctx context.Context, e *Envelope) (map[string]ed2551
 	}
 	return m, nil
 }
+
 func (v *Verifier) threshold(ctx context.Context, e *Envelope, keys map[string]ed25519.PublicKey, want uint32) error {
 	msg, err := rawDigest(e.PayloadSHA256)
 	if err != nil {
@@ -437,6 +451,7 @@ func readEvidence(ctx context.Context, store evidencecas.Reader, digest string) 
 	}
 	return raw, nil
 }
+
 func eligible(e Envelope, keys map[string]ed25519.PublicKey) map[string]ed25519.PublicKey {
 	out := map[string]ed25519.PublicKey{}
 	for f, k := range keys {
@@ -446,6 +461,7 @@ func eligible(e Envelope, keys map[string]ed25519.PublicKey) map[string]ed25519.
 	}
 	return out
 }
+
 func revoked(e Envelope, f string) bool {
 	for _, r := range e.Revocations {
 		if r.Fingerprint == f && r.EffectiveSequence <= e.Sequence {

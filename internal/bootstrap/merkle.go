@@ -44,6 +44,7 @@ func VerifyInclusion(leaf []byte, index, size uint64, root MerkleHash, proof []M
 	}
 	return nil
 }
+
 func VerifyConsistency(old, new uint64, oldRoot, newRoot MerkleHash, proof []MerkleHash) error {
 	if old == 0 || old > new {
 		return fmt.Errorf("bootstrap: invalid consistency proof bounds")
@@ -91,6 +92,7 @@ func VerifyConsistency(old, new uint64, oldRoot, newRoot MerkleHash, proof []Mer
 	}
 	return nil
 }
+
 func merkleHash(v string) (MerkleHash, error) {
 	b, e := rawDigest(v)
 	if e != nil {

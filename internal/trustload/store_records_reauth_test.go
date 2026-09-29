@@ -108,7 +108,8 @@ func testStoreRecordsAcceptedRows(t *testing.T) {
 			return err
 		}})
 	}
-	cases = append(cases,
+	cases = append(
+		cases,
 		recordsMutation{"missing-accepted", "load", ErrProvenanceUnavailable, func(c *sql.Conn) error {
 			_, err := c.ExecContext(context.Background(), `DELETE FROM accepted WHERE singleton=1`)
 			return err

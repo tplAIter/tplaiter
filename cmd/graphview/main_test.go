@@ -2,19 +2,20 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/tplAIter/tplaiter/internal/canonicaljson"
-	"github.com/tplAIter/tplaiter/internal/contextpack"
-	"github.com/tplAIter/tplaiter/internal/exports"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextpack"
+	"github.com/tplAIter/tplaiter/internal/exports"
 )
 
 func TestReadBoundedRejectsNonRegularAndOversized(t *testing.T) {
 	dir := t.TempDir()
 	small := filepath.Join(dir, "small.json")
-	if err := os.WriteFile(small, []byte(`{}`), 0600); err != nil {
+	if err := os.WriteFile(small, []byte(`{}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := readBounded(small); err != nil {
@@ -24,13 +25,14 @@ func TestReadBoundedRejectsNonRegularAndOversized(t *testing.T) {
 		t.Fatal("directory accepted")
 	}
 	big := filepath.Join(dir, "big.json")
-	if err := os.WriteFile(big, []byte(strings.Repeat("x", (1<<20)+1)), 0600); err != nil {
+	if err := os.WriteFile(big, []byte(strings.Repeat("x", (1<<20)+1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := readBounded(big); err == nil {
 		t.Fatal("oversize accepted")
 	}
 }
+
 func TestStrictInputRejectsDuplicateUnknownAndTrailing(t *testing.T) {
 	var r struct {
 		From     string `json:"from"`
@@ -46,6 +48,7 @@ func TestStrictInputRejectsDuplicateUnknownAndTrailing(t *testing.T) {
 		}
 	}
 }
+
 func TestExportTopologyAndCompactPackBoundary(t *testing.T) {
 	g := exports.ExportGraph{Selected: []exports.SelectedExport{{ID: "a", Name: "a"}, {ID: "a", Name: "b"}}}
 	if validateExportGraph(g) == nil {

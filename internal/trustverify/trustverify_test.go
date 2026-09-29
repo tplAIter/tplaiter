@@ -106,6 +106,7 @@ func runtimeKey(label string) ed25519.PrivateKey {
 	h := sha256.Sum256([]byte(label))
 	return ed25519.NewKeyFromSeed(h[:])
 }
+
 func runtimeRawDigest(t *testing.T, d string) []byte {
 	t.Helper()
 	b, e := hex.DecodeString(d[len("sha256:"):])
@@ -353,6 +354,7 @@ func (s *mutationStore) Read(ctx context.Context, d string) ([]byte, error) {
 	}
 	return b, err
 }
+
 func TestRuntimeRejectsPostProofFreshBindingMutation(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -1302,6 +1304,7 @@ func copyStaged(m StagedMaterial) StagedMaterial {
 	m.Environment.Variables = append([]EnvironmentVariable(nil), m.Environment.Variables...)
 	return m
 }
+
 func rebuildStaged(t *testing.T, m *StagedMaterial) {
 	t.Helper()
 	var err error

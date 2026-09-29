@@ -3,10 +3,11 @@ package deps
 import (
 	"context"
 	"errors"
-	"github.com/tplAIter/tplaiter/internal/manifest"
-	"github.com/tplAIter/tplaiter/internal/ui"
 	"io"
 	"testing"
+
+	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
 func TestInstallForIsExecutionClosed(t *testing.T) {

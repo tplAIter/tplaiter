@@ -413,7 +413,8 @@ func (s *Store) Read(ctx context.Context, ref string) ([]byte, error) {
 
 func bundleFromStored(ctx context.Context, reader interface {
 	Read(context.Context, string) ([]byte, error)
-}, stored StoredBundle) (bootstrap.Bundle, error) {
+}, stored StoredBundle,
+) (bootstrap.Bundle, error) {
 	envelope, err := reader.Read(ctx, stored.EnvelopeCAS)
 	if err != nil {
 		return bootstrap.Bundle{}, ErrProvenanceUnavailable
@@ -510,6 +511,7 @@ func beginImmediate(ctx context.Context, conn *sql.Conn) error {
 	}
 	return nil
 }
+
 func rollback(conn *sql.Conn) {
 	if conn != nil {
 		_, _ = conn.ExecContext(context.Background(), "ROLLBACK")

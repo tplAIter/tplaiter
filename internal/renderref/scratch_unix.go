@@ -116,6 +116,7 @@ func (s *scratchDirectory) Check() error {
 	}
 	return nil
 }
+
 func (s *scratchDirectory) ReadFile(name string) ([]byte, error) {
 	if s == nil || s.child < 0 || !validScratchPath(name) {
 		return nil, errors.New("renderref: unsafe rendered path")
@@ -146,6 +147,7 @@ func (s *scratchDirectory) ReadFile(name string) ([]byte, error) {
 	}
 	return data, nil
 }
+
 func (s *scratchDirectory) Close() error {
 	if s == nil || s.child < 0 || s.parent < 0 {
 		return nil
@@ -158,6 +160,7 @@ func (s *scratchDirectory) Close() error {
 	s.child, s.parent = -1, -1
 	return errors.Join(err, closeErr)
 }
+
 func removeChildren(fd int) error {
 	dup, err := unix.Dup(fd)
 	if err != nil {
@@ -200,6 +203,7 @@ func removeChildren(fd int) error {
 	}
 	return nil
 }
+
 func validScratchPath(name string) bool {
 	if name == "" || filepath.IsAbs(name) || strings.Contains(name, "\\") {
 		return false
@@ -211,6 +215,7 @@ func validScratchPath(name string) bool {
 	}
 	return true
 }
+
 func identity(stat unix.Stat_t) scratchIdentity {
 	return scratchIdentity{dev: uint64(stat.Dev), ino: uint64(stat.Ino), uid: stat.Uid, mode: uint32(stat.Mode)}
 }

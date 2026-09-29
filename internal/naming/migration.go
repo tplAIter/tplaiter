@@ -101,12 +101,14 @@ func digestBytes(domain string, v any) (string, error) {
 	_, _ = h.Write(b)
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
+
 func (p Plan) seal() (Plan, error) {
 	p.Digest = ""
 	d, e := digestBytes(PlanSchema, p)
 	p.Digest = d
 	return p, e
 }
+
 func (p Plan) normalizedRoots() ([]Root, error) {
 	if len(p.Roots) == 0 && p.SourceRoot != "" {
 		return []Root{{Kind: "home", SourceRoot: p.SourceRoot, DestinationRoot: p.DestinationRoot, Entries: p.Entries, SourceDigest: p.SourceDigest}}, nil
@@ -119,6 +121,7 @@ func (p Plan) normalizedRoots() ([]Root, error) {
 	}
 	return p.Roots, nil
 }
+
 func (p Plan) Verify() error {
 	if p.Schema != PlanSchema || p.Algorithm != algorithm || p.Profile != "oss" || p.WriterFloor != supportedLegacyWriter || p.Digest == "" {
 		return errors.New("naming: invalid plan identity")
@@ -176,6 +179,7 @@ func (p Plan) Verify() error {
 	}
 	return nil
 }
+
 func validateEntries(es []Entry) error {
 	seen := map[string]bool{}
 	for _, e := range es {
@@ -196,6 +200,7 @@ func validateEntries(es []Entry) error {
 	}
 	return nil
 }
+
 func credentialPath(path string) bool {
 	switch strings.ToLower(filepath.Base(path)) {
 	case "tplater.db", "auth.json", "credentials.json", "credentials.db":
@@ -534,6 +539,7 @@ func verifyRelocations(roots []Root) error {
 	}
 	return nil
 }
+
 func entryNamed(entries []Entry, path string) (Entry, bool) {
 	for _, e := range entries {
 		if e.Path == path {
@@ -542,10 +548,12 @@ func entryNamed(entries []Entry, path string) (Entry, bool) {
 	}
 	return Entry{}, false
 }
+
 func rootsOverlap(a, b string) bool {
 	a, b = filepath.Clean(a), filepath.Clean(b)
 	return a == b || strings.HasPrefix(a, b+string(filepath.Separator)) || strings.HasPrefix(b, a+string(filepath.Separator))
 }
+
 func PlanHome(source, destination string) (Plan, error) {
 	return PlanRoots([]Root{{Kind: "home", SourceRoot: source, DestinationRoot: destination}})
 }
@@ -609,6 +617,7 @@ func destinationEntries(r Root) ([]Entry, error) {
 	}
 	return nil, errors.New("naming: project after-image missing project.yaml")
 }
+
 func capture(source string) ([]Entry, error) {
 	var es []Entry
 	e := filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
@@ -645,6 +654,7 @@ func capture(source string) ([]Entry, error) {
 	sort.Slice(es, func(i, j int) bool { return es[i].Path < es[j].Path })
 	return es, nil
 }
+
 func activeTransaction(root string) error {
 	for _, rel := range []string{".lock", "update.lock", filepath.Join("update", "active.json"), filepath.Join("transactions", "new.lock")} {
 		if _, e := os.Stat(filepath.Join(root, rel)); e == nil {
@@ -662,15 +672,17 @@ func activeTransaction(root string) error {
 	}
 	return nil
 }
+
 func (p Plan) writeCanonical(path string, v any) error {
 	b, e := json.MarshalIndent(v, "", "  ")
 	if e != nil {
 		return e
 	}
-	return writeDurable(path, append(b, '\n'), 0600)
+	return writeDurable(path, append(b, '\n'), 0o600)
 }
+
 func writeDurable(path string, b []byte, mode os.FileMode) error {
-	if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
+	if e := os.MkdirAll(filepath.Dir(path), 0o700); e != nil {
 		return e
 	}
 	f, e := os.CreateTemp(filepath.Dir(path), ".naming-*")
@@ -770,7 +782,7 @@ func Apply(p Plan) (Receipt, error) {
 		}
 		for _, x := range entries {
 			dst := filepath.Join(stages[i], x.Path)
-			if e := os.MkdirAll(filepath.Dir(dst), 0700); e != nil {
+			if e := os.MkdirAll(filepath.Dir(dst), 0o700); e != nil {
 				return Receipt{}, e
 			}
 			if e := os.WriteFile(dst, x.Bytes, os.FileMode(x.Mode)); e != nil {
@@ -854,7 +866,7 @@ func sealLegacyRoot(source, digest string) error {
 		if !archiveInfo.IsDir() {
 			return fmt.Errorf("naming: legacy archive is not a directory: %s", archive)
 		}
-		if err := writeDurable(source, legacyTombstone, 0600); err != nil {
+		if err := writeDurable(source, legacyTombstone, 0o600); err != nil {
 			return fmt.Errorf("naming: finish legacy tombstone: %w", err)
 		}
 		return nil
@@ -868,11 +880,12 @@ func sealLegacyRoot(source, digest string) error {
 	if err := syncDir(filepath.Dir(source)); err != nil {
 		return err
 	}
-	if err := writeDurable(source, legacyTombstone, 0600); err != nil {
+	if err := writeDurable(source, legacyTombstone, 0o600); err != nil {
 		return fmt.Errorf("naming: write legacy tombstone: %w", err)
 	}
 	return nil
 }
+
 func matchingReceipt(root Root, p Plan) (Receipt, bool) {
 	r, err := receiptAtDestination(root, p)
 	if err != nil {
@@ -921,10 +934,12 @@ func expectedReceipt(p Plan) (Receipt, error) {
 		roots[i].ArchiveRoot = legacyArchive(roots[i].SourceRoot, p.Digest)
 	}
 	first := roots[0]
-	return Receipt{Schema: ReceiptSchema, Algorithm: algorithm, PlanDigest: p.Digest,
+	return Receipt{
+		Schema: ReceiptSchema, Algorithm: algorithm, PlanDigest: p.Digest,
 		SourceRoot: first.SourceRoot, DestinationRoot: first.DestinationRoot,
 		SourceDigest: first.SourceDigest, DestinationDigest: first.DestinationDigest,
-		TransactionID: p.Digest[:16], Roots: roots}, nil
+		TransactionID: p.Digest[:16], Roots: roots,
+	}, nil
 }
 
 func receiptForPlan(p Plan, committedAt string) (Receipt, error) {
@@ -1248,6 +1263,7 @@ func verifyStage(stage string, root Root, p Plan) error {
 	}
 	return nil
 }
+
 func lockRoots(roots []Root) ([]*os.File, error) {
 	set := map[string]bool{}
 	for _, r := range roots {
@@ -1263,7 +1279,7 @@ func lockRoots(roots []Root) ([]*os.File, error) {
 	sort.Strings(paths)
 	fs := []*os.File{}
 	for _, p := range paths {
-		f, e := os.OpenFile(p, os.O_CREATE|os.O_RDWR, 0600)
+		f, e := os.OpenFile(p, os.O_CREATE|os.O_RDWR, 0o600)
 		if e != nil {
 			unlockRoots(fs)
 			return nil, e
@@ -1277,12 +1293,14 @@ func lockRoots(roots []Root) ([]*os.File, error) {
 	}
 	return fs, nil
 }
+
 func unlockRoots(fs []*os.File) {
 	for i := len(fs) - 1; i >= 0; i-- {
 		_ = syscall.Flock(int(fs[i].Fd()), syscall.LOCK_UN)
 		_ = fs[i].Close()
 	}
 }
+
 func syncTree(root string) error {
 	return filepath.Walk(root, func(path string, i os.FileInfo, err error) error {
 		if err != nil {
@@ -1300,6 +1318,7 @@ func syncTree(root string) error {
 		return e
 	})
 }
+
 func syncDir(path string) error {
 	f, e := os.Open(path)
 	if e != nil {

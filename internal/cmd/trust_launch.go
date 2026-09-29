@@ -15,8 +15,10 @@ import (
 // These are installation-time linker pins. Empty values deliberately leave
 // stock trust-dependent commands unavailable; flags and environment never
 // participate in selecting them.
-var installedRegistrationPath string
-var installedRegistrationSHA256 string
+var (
+	installedRegistrationPath   string
+	installedRegistrationSHA256 string
+)
 
 type installedRegistration struct {
 	APIVersion     string              `json:"apiVersion"`

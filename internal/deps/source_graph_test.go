@@ -134,8 +134,15 @@ func TestDecodePinnedSourceRejectsRawNonIntegerScalarLexemes(t *testing.T) {
 		lexeme string
 		valid  bool
 	}{
-		{"0", true}, {"-1", true}, {"9007199254740991", true}, {"-9007199254740991", true},
-		{"1.0", false}, {"1e0", false}, {"-0", false}, {"9007199254740992", false}, {"-9007199254740992", false},
+		{"0", true},
+		{"-1", true},
+		{"9007199254740991", true},
+		{"-9007199254740991", true},
+		{"1.0", false},
+		{"1e0", false},
+		{"-0", false},
+		{"9007199254740992", false},
+		{"-9007199254740992", false},
 	} {
 		t.Run(tc.lexeme, func(t *testing.T) {
 			candidate := []byte(strings.Replace(string(raw), `"value":0`, `"value":`+tc.lexeme, 1))
@@ -338,4 +345,5 @@ func errorsAs(err error, target **Error) bool {
 	}
 	return false
 }
+
 func hasCode(err error, code string) bool { var e *Error; return errorsAs(err, &e) && e.Code == code }

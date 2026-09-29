@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/tplAIter/tplaiter/internal/auth"
 	"github.com/tplAIter/tplaiter/internal/engine"
 	"github.com/tplAIter/tplaiter/internal/execx"
@@ -20,7 +22,6 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/ui"
-	"gopkg.in/yaml.v3"
 )
 
 // --- git infrastructure (real git, file:// repository; as in internal/stats) ---

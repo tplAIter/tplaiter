@@ -309,8 +309,16 @@ func TestStoreVFSObservedSQLiteTransactionCallbacks(t *testing.T) {
 		name string
 		kind int
 	}{
-		{"open", callbackOpen}, {"read", callbackRead}, {"write", callbackWrite}, {"sync", callbackSync},
-		{"delete", callbackDelete}, {"lock", callbackLock}, {"unlock", callbackUnlock}, {"filesize", callbackFileSize}, {"control", callbackFileControl}, {"close", callbackClose},
+		{"open", callbackOpen},
+		{"read", callbackRead},
+		{"write", callbackWrite},
+		{"sync", callbackSync},
+		{"delete", callbackDelete},
+		{"lock", callbackLock},
+		{"unlock", callbackUnlock},
+		{"filesize", callbackFileSize},
+		{"control", callbackFileControl},
+		{"close", callbackClose},
 	} {
 		if got := atomic.LoadInt64(&c.callbackCounts[tc.kind]); got == 0 {
 			t.Errorf("transaction did not invoke %s callback", tc.name)

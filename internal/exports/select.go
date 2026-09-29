@@ -390,6 +390,7 @@ func readySelectLess(a, b selectKey) bool {
 func selectNodeKey(source, provider string, entry ExportEntry) string {
 	return source + "\x00" + provider + "\x00" + entry.Domain + "\x00" + entry.ID
 }
+
 func cloneChains(in [][]string) [][]string {
 	out := make([][]string, len(in))
 	for i := range in {
@@ -397,6 +398,7 @@ func cloneChains(in [][]string) [][]string {
 	}
 	return out
 }
+
 func splitSelector(s string) (string, string, string) {
 	p := strings.Split(s, ".")
 	if len(p) != 3 {

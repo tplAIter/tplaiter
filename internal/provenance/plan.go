@@ -160,6 +160,7 @@ func validateStableLockInput(runtime *trustverify.Runtime, binding bootstrap.Pro
 	}
 	return nil
 }
+
 func planLockBinding(in StablePlanLockInput) PlanLockBinding {
 	return PlanLockBinding{RootLockSHA256: in.Root.RootLockSHA256, TemplateLockSHA256: in.Dependencies.LockSHA256}
 }
@@ -229,10 +230,12 @@ func updatePlanSeal(p UpdatePlan) (string, error) {
 func validPlanRequest(v PlanRequest) bool {
 	return validDigest(v.RequestSHA256) && validDigest(v.GrantSHA256) && validDigest(v.ApprovalCAS)
 }
+
 func validCreatedAt(v string) bool {
 	t, err := time.Parse(time.RFC3339, v)
 	return err == nil && t.UTC().Format(time.RFC3339) == v
 }
+
 func validatePlanAction(v PlanAction) error {
 	if !validDigest(v.RequestSHA256) || !validDigest(v.OperationInputsSHA256) || !tokenRE.MatchString(v.Provider.Origin) || !safePath(v.Provider.TemplatePath) || !commitRE.MatchString(v.Provider.Commit) || !validDigest(v.Provider.TreeSHA256) || !validDigest(v.Provider.ContractSHA256) || !tokenRE.MatchString(v.Action.ID) || !validPlanActionKind(v.Action.Kind) || (v.Action.Phase != "before" && v.Action.Phase != "after" && v.Action.Phase != "standalone") || len(v.Action.Argv) == 0 || len(v.Action.Argv) > 256 || !validDigest(v.Action.ContentClosureSHA256) || !tokenRE.MatchString(v.Tool.ID) || !tokenRE.MatchString(v.Tool.Version) || !validDigest(v.Tool.BinarySHA256) || !validDigest(v.Tool.OptionsSHA256) || (v.WorkingDirectoryScope.Root != "project" && v.WorkingDirectoryScope.Root != "provider") || !safePath(v.WorkingDirectoryScope.Path) || !validDigest(v.EnvironmentPolicySHA256) || v.TimeoutMillis < 1 || v.TimeoutMillis > 3600000 || !validPlanMigration(v.Migration) {
 		return errInvalidPlan
@@ -244,6 +247,7 @@ func validatePlanAction(v PlanAction) error {
 	}
 	return nil
 }
+
 func validPlanActionKind(v string) bool {
 	switch v {
 	case "hook", "command", "shell", "ansible", "codegen", "formatter", "tool-install", "migration":
@@ -251,12 +255,14 @@ func validPlanActionKind(v string) bool {
 	}
 	return false
 }
+
 func validPlanMigration(v PlanMigration) bool {
 	if v.Kind == "none" {
 		return v.From == "" && v.To == ""
 	}
 	return v.Kind == "version-transition" && tokenRE.MatchString(v.From) && tokenRE.MatchString(v.To)
 }
+
 func clonePlanActions(in []PlanAction) []PlanAction {
 	out := append([]PlanAction(nil), in...)
 	for i := range out {

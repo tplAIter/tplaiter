@@ -117,7 +117,8 @@ func newUpdateCmd() *cobra.Command {
 func registeredSourceInput(ctx context.Context, runtime interface {
 	ProjectContext() trustload.ProjectContext
 	TrustRuntime() *trustverify.Runtime
-}) ([]byte, error) {
+},
+) ([]byte, error) {
 	if ctx == nil || runtime == nil || runtime.TrustRuntime() == nil {
 		return nil, errors.New("TRUST_RUNTIME_INVALID")
 	}

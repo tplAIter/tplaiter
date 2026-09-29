@@ -291,9 +291,18 @@ func TestStoreBindingModeLeaseMatrix(t *testing.T) {
 		requestMode storeMode
 		deny        bool
 	}{
-		{storeRead, storeRead, false}, {storeRead, storeEnroll, true}, {storeRead, storeRefresh, true}, {storeRead, storeRecover, true},
-		{storeEnroll, storeRead, false}, {storeEnroll, storeEnroll, false}, {storeEnroll, storeRefresh, false}, {storeEnroll, storeRecover, false},
-		{storeRead, 0, true}, {storeRead, storeMode(99), true}, {storeEnroll, 0, true}, {storeEnroll, storeMode(99), true},
+		{storeRead, storeRead, false},
+		{storeRead, storeEnroll, true},
+		{storeRead, storeRefresh, true},
+		{storeRead, storeRecover, true},
+		{storeEnroll, storeRead, false},
+		{storeEnroll, storeEnroll, false},
+		{storeEnroll, storeRefresh, false},
+		{storeEnroll, storeRecover, false},
+		{storeRead, 0, true},
+		{storeRead, storeMode(99), true},
+		{storeEnroll, 0, true},
+		{storeEnroll, storeMode(99), true},
 	} {
 		t.Run(fmt.Sprintf("lease-%d-request-%d", tc.leaseMode, tc.requestMode), func(t *testing.T) {
 			base, err := filepath.EvalSymlinks(t.TempDir())

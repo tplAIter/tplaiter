@@ -122,11 +122,13 @@ func Parse(data []byte) (Modifier, error) {
 	return m, nil
 }
 
-var tokenRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
-var aliasRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,127}$`)
-var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-var semverRE = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
-var selectorRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,127}\.(block|skill|approach|package)\.[A-Za-z][A-Za-z0-9_-]{0,127}$`)
+var (
+	tokenRE    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
+	aliasRE    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,127}$`)
+	digestRE   = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	semverRE   = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
+	selectorRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,127}\.(block|skill|approach|package)\.[A-Za-z][A-Za-z0-9_-]{0,127}$`)
+)
 
 func Validate(m Modifier) error {
 	if m.APIVersion != "tplaiter.dev/modifier/v1" || m.Kind != "Modifier" {
@@ -220,6 +222,7 @@ func validateSource(s SourcePin) error {
 	}
 	return nil
 }
+
 func validateOperation(op Operation) error {
 	if !tokenRE.MatchString(op.ID) || op.Op == "" || (op.Export != "" && !aliasRE.MatchString(strings.Split(op.Export, ".")[0])) {
 		return fmt.Errorf("modifier: invalid operation %q", op.ID)

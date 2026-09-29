@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
+	"strings"
+
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/contextpack"
 	"github.com/tplAIter/tplaiter/internal/deps"
@@ -13,8 +16,6 @@ import (
 	"github.com/tplAIter/tplaiter/internal/graphdoc"
 	"github.com/tplAIter/tplaiter/internal/graphview"
 	"github.com/tplAIter/tplaiter/internal/semanticgraph"
-	"os"
-	"strings"
 )
 
 func main() {
@@ -103,7 +104,7 @@ func main() {
 				fmt.Fprintln(os.Stderr, "contextpack: emitted serialization exceeds accounting")
 				os.Exit(2)
 			}
-			if e = os.WriteFile(*contextOut, b, 0600); e != nil {
+			if e = os.WriteFile(*contextOut, b, 0o600); e != nil {
 				fmt.Fprintln(os.Stderr, e)
 				os.Exit(2)
 			}
@@ -114,12 +115,13 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	if err = os.WriteFile(*output, html, 0600); err != nil {
+	if err = os.WriteFile(*output, html, 0o600); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
 	fmt.Printf("wrote %s (%d bytes)\n", *output, len(html))
 }
+
 func split(s string) []string {
 	var out []string
 	for _, v := range strings.Split(s, ",") {
@@ -140,6 +142,7 @@ func readBounded(path string) ([]byte, error) {
 	}
 	return os.ReadFile(path)
 }
+
 func validateExportGraph(g exports.ExportGraph) error {
 	if len(g.Selected) == 0 || len(g.Selected) > 4096 || len(g.Edges) > 4096 {
 		return fmt.Errorf("limit")

@@ -3,9 +3,10 @@ package operationtrust
 import (
 	"context"
 	"errors"
+	"testing"
+
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
-	"testing"
 )
 
 func TestExecutionMaterialZeroFails(t *testing.T) {

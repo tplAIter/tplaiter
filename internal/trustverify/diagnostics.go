@@ -32,6 +32,7 @@ func (e *Diagnostic) Code() ErrorCode {
 	}
 	return e.code
 }
+
 func diagnostic(code ErrorCode, err error) error {
 	if err == nil {
 		return &Diagnostic{code: code}

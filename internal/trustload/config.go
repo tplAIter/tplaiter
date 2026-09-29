@@ -199,6 +199,7 @@ func validFilePin(v FilePin) bool { return absolutePath(v.Path) && digest(v.SHA2
 func validProfile(v bootstrap.ProfileID) bool {
 	return v == bootstrap.ProfileOSS || v == bootstrap.ProfileOrganization
 }
+
 func digest(v string) bool {
 	if len(v) != 71 || !strings.HasPrefix(v, "sha256:") {
 		return false
@@ -206,12 +207,15 @@ func digest(v string) bool {
 	_, err := hex.DecodeString(v[7:])
 	return err == nil && strings.ToLower(v[7:]) == v[7:]
 }
+
 func token(v string) bool {
 	return v != "" && utf8.ValidString(v) && !strings.ContainsAny(v, "\x00\r\n\t /\\")
 }
+
 func absolutePath(v string) bool {
 	return utf8.ValidString(v) && len(v) > 0 && len([]byte(v)) <= maxPathBytes && filepath.IsAbs(v) && filepath.Clean(v) == v && v != "/" && !strings.Contains(v, "\x00")
 }
+
 func origin(v string) bool {
 	if !utf8.ValidString(v) || v == "" || strings.ContainsAny(v, "\x00\r\n \t\\") {
 		return false

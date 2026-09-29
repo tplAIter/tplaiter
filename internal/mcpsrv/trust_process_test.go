@@ -11,8 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tplAIter/tplaiter/internal/execx"
 	"golang.org/x/sys/unix"
+
+	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
 func TestInstalledTransportRejectsUnsafeExecutableAndSanitizesChildren(t *testing.T) {

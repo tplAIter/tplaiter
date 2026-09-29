@@ -34,8 +34,10 @@ type TypeScriptReport struct {
 	Comments       []TypeScriptComment `json:"comments"`
 }
 
-var tsReportDigest = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-var tsReportPathPart = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+var (
+	tsReportDigest   = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	tsReportPathPart = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+)
 
 // ParseTypeScriptReport decodes an untrusted, transient provider report. It
 // creates no authority and performs no I/O.
@@ -149,6 +151,7 @@ func validTypeScriptPath(language, p string) bool {
 	}
 	return language == "tsx" && strings.HasSuffix(p, ".tsx") || language == "typescript" && (strings.HasSuffix(p, ".ts") || strings.HasSuffix(p, ".mts") || strings.HasSuffix(p, ".cts"))
 }
+
 func scanReportJSON(r io.Reader) error {
 	d := json.NewDecoder(r)
 	if err := scanReportValue(d); err != nil {
@@ -156,6 +159,7 @@ func scanReportJSON(r io.Reader) error {
 	}
 	return requireReportEOF(d)
 }
+
 func scanReportValue(d *json.Decoder) error {
 	t, err := d.Token()
 	if err != nil {
@@ -193,6 +197,7 @@ func scanReportValue(d *json.Decoder) error {
 	}
 	return nil
 }
+
 func requireReportEOF(d *json.Decoder) error {
 	var extra any
 	if err := d.Decode(&extra); err != io.EOF {

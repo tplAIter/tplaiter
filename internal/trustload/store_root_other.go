@@ -26,15 +26,19 @@ func (r *rootLease) hasLeaf(string) (bool, error)      { return false, ErrProven
 func (r *rootLease) readMarker(context.Context, string, int) ([]byte, error) {
 	return nil, ErrProvenanceUnavailable
 }
+
 func (r *rootLease) readMarkerSnapshot(context.Context, string, int) ([]byte, markerSnapshot, error) {
 	return nil, markerSnapshot{}, ErrProvenanceUnavailable
 }
+
 func (r *rootLease) writePendingMarker(context.Context, []byte) error {
 	return ErrProvenanceUnavailable
 }
+
 func (r *rootLease) activatePendingMarker(context.Context, []byte) error {
 	return ErrProvenanceUnavailable
 }
+
 func recoverStoreColdJournal(context.Context, *rootLease) error {
 	return ErrProvenanceUnavailable
 }

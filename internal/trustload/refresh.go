@@ -12,8 +12,10 @@ import (
 // storeEnrollmentPhaseHook is a private test synchronization seam. It never
 // returns data or approval and is nil in production; subprocess tests use it
 // only to stop a child after a durable lifecycle boundary.
-var storeEnrollmentPhaseHook func(string)
-var storeRefreshPhaseHook func(string)
+var (
+	storeEnrollmentPhaseHook func(string)
+	storeRefreshPhaseHook    func(string)
+)
 
 func observeStoreEnrollmentPhase(stage string) {
 	if storeEnrollmentPhaseHook != nil {
@@ -373,6 +375,7 @@ func cloneEvidence(in map[string][]byte) map[string][]byte {
 	}
 	return out
 }
+
 func validateEvidenceSubset(evidence map[string][]byte) error {
 	if len(evidence) > maxRefreshEvidence {
 		return ErrConfigInvalid
@@ -389,6 +392,7 @@ func validateEvidenceSubset(evidence map[string][]byte) error {
 	}
 	return nil
 }
+
 func insertEvidenceDirect(ctx context.Context, conn *sql.Conn, evidence map[string][]byte) error {
 	for ref, raw := range evidence {
 		var previous []byte
@@ -405,6 +409,7 @@ func insertEvidenceDirect(ctx context.Context, conn *sql.Conn, evidence map[stri
 	}
 	return nil
 }
+
 func stateDigest(raw []byte) string {
 	state, err := bootstrap.DecodeOSSAcceptedState(raw)
 	if err != nil {

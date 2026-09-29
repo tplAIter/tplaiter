@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
 	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
@@ -177,6 +178,7 @@ func knownCLIError(stderr string) string {
 	}
 	return ""
 }
+
 func resolveWorkDir(dir string) (string, error) {
 	if dir == "" {
 		return "", nil
@@ -191,6 +193,7 @@ func resolveWorkDir(dir string) (string, error) {
 	}
 	return abs, nil
 }
+
 func resolveTargetDir(dir string) (string, error) {
 	if dir == "" {
 		return "", nil
@@ -205,6 +208,7 @@ func resolveTargetDir(dir string) (string, error) {
 	}
 	return abs, nil
 }
+
 func capturedChildEnvironment() []string {
 	env := []string{"PATH=/usr/bin:/bin", "LANG=C", "LC_ALL=C", "TERM=dumb", "NO_COLOR=1"}
 	for _, key := range []string{"HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "TPLAITER_HOME", "TMPDIR"} {
@@ -214,6 +218,7 @@ func capturedChildEnvironment() []string {
 	}
 	return env
 }
+
 func validLocation(v string) bool {
 	return len([]byte(v)) > 0 && len([]byte(v)) <= 4096 && filepath.IsAbs(v) && filepath.Clean(v) == v && v != "/" && !strings.ContainsAny(v, "\x00\n\r")
 }

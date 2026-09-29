@@ -182,6 +182,7 @@ func TestPlanFileGapMatrixG06G07G09G10G15G16G18G19G20G21G22(t *testing.T) {
 		}
 	})
 }
+
 func TestPlanFileTombstoneAndDeleteResolution(t *testing.T) {
 	base := managed("a", "root", "old\n")
 	b, err := BuildBaseline(map[string][]byte{"a.go": base}, []ProviderSource{{Provider: "root", Source: baselineSource()}}, nil)
@@ -208,12 +209,14 @@ func TestPlanFileTombstoneAndDeleteResolution(t *testing.T) {
 		t.Fatal("keep failed")
 	}
 }
+
 func TestMerge3OverlapDeterministic(t *testing.T) {
 	a, c := Merge3([]byte("a\nb\n"), []byte("a\nours\n"), []byte("a\ntheirs\n"))
 	if !c || len(a) == 0 {
 		t.Fatal("overlap conflict missing")
 	}
 }
+
 func TestPlanFileRenameResolutionAndCRLF(t *testing.T) {
 	base := managed("old", "root", "old\n")
 	b, err := BuildBaseline(map[string][]byte{"a.go": base}, []ProviderSource{{Provider: "root", Source: baselineSource()}}, nil)

@@ -9,9 +9,11 @@ import (
 func fixture(blocks ...Block) BlockExport {
 	return BlockExport{APIVersion: APIVersion, Kind: Kind, Metadata: Metadata{ID: "base.security", Version: "1.0.0"}, Compatibility: Compatibility{Tplater: ">=0.3.0", MarkerSchema: MarkerSchema}, MergeStrategy: MergeStrategy, Formatter: Formatter{Adapter: "gofmt", OptionsDigest: "sha256:" + strings.Repeat("0", 64)}, Targets: []Target{{Path: "internal/service/services.go", Blocks: blocks}}}
 }
+
 func mk(id string, n int) Block {
 	return Block{ID: id, Provider: "base", Layout: "layer_files", Body: "managed/service.tmpl", Order: n}
 }
+
 func TestResolveDeterministicAndPermutation(t *testing.T) {
 	a, b, c := mk("a", 20), mk("b", 10), mk("c", 10)
 	c.Anchor.After = "b"
@@ -27,6 +29,7 @@ func TestResolveDeterministicAndPermutation(t *testing.T) {
 		}
 	}
 }
+
 func TestParseStrictRejectsUnsafeAndMalformed(t *testing.T) {
 	valid := `apiVersion: tplater.dev/block-export/v1
 kind: BlockExport
@@ -51,6 +54,7 @@ targets:
 		t.Fatal("empty anchor accepted")
 	}
 }
+
 func TestResolveRejectsCollisionsAnchorsAndReplacements(t *testing.T) {
 	a, b := mk("a", 1), mk("b", 2)
 	a.Anchor.Before = "missing"
@@ -70,6 +74,7 @@ func TestResolveRejectsCollisionsAnchorsAndReplacements(t *testing.T) {
 		t.Fatal("cycle")
 	}
 }
+
 func TestValidateBoundsAndAnchors(t *testing.T) {
 	e := fixture(mk("a", 1))
 	e.Targets = make([]Target, MaxTargets+1)

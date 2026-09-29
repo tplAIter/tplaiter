@@ -112,7 +112,8 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	unpinnedDigest := sha256.Sum256(unpinnedRaw)
 	t.Logf("T7_PROOF unpinned_binary_sha256=%x", unpinnedDigest)
 
-	env := append(testProcessEnv(home),
+	env := append(
+		testProcessEnv(home),
 		"PATH="+shadow+":/usr/bin:/bin", "TPLAITER_PROFILE=development",
 		"TPLAITER_REGISTRATION_PATH="+filepath.Join(home, ".tplaiter", "trust-profile.json"),
 	)
@@ -643,6 +644,7 @@ func snapshotTree(t *testing.T, root string) map[string]string {
 	}
 	return out
 }
+
 func equalStringMap(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false
@@ -681,7 +683,8 @@ func testBuildEnv(home string) []string {
 	if moduleRoot == "" {
 		moduleRoot = filepath.Join(os.Getenv("HOME"), "go", "pkg", "mod")
 	}
-	return append(testProcessEnv(home),
+	return append(
+		testProcessEnv(home),
 		"GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GOWORK=off",
 		"GOMODCACHE="+moduleRoot, "GOCACHE="+cacheRoot,
 	)

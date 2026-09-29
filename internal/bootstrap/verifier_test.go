@@ -62,6 +62,7 @@ type memoryEvidence map[string][]byte
 func (m memoryEvidence) Read(_ context.Context, digest string) ([]byte, error) {
 	return append([]byte(nil), m[digest]...), nil
 }
+
 func put(m memoryEvidence, value any) string {
 	raw, _ := json.Marshal(value)
 	d := evidencecas.Digest(raw)
@@ -105,6 +106,7 @@ func TestVerifyOSSUsesExternalAnchor(t *testing.T) {
 		t.Fatal("not OSS")
 	}
 }
+
 func mustRaw(t *testing.T, value string) []byte {
 	t.Helper()
 	v, err := rawDigest(value)

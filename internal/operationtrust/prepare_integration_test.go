@@ -369,6 +369,7 @@ func t5DTree(add func(string, []byte) string, entries []t5DTreeEntry) string {
 	}
 	return add("tree", raw)
 }
+
 func strconvItoa(v int) string {
 	if v == 0 {
 		return "0"
@@ -382,6 +383,7 @@ func strconvItoa(v int) string {
 	}
 	return string(b[i:])
 }
+
 func t5DJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, e := json.Marshal(v)
@@ -390,6 +392,7 @@ func t5DJSON(t *testing.T, v any) []byte {
 	}
 	return b
 }
+
 func t5DPin(path string, raw []byte) trustload.FilePin {
 	return trustload.FilePin{Path: path, SHA256: evidencecas.Digest(raw)}
 }
@@ -408,12 +411,15 @@ func t5DPublisherEvidence(t *testing.T, store map[string][]byte, key ed25519.Pri
 	signature := put([]byte(bootstrap.EncodeSignature(ed25519.Sign(key, hash))))
 	return trustverify.EvidenceRefs{Format: bootstrap.PublisherStatementAPIVersion, StatementCAS: statementCAS, SignatureCAS: signature, KeyFingerprint: bootstrap.Fingerprint(key.Public().(ed25519.PublicKey))}
 }
+
 func t5DSelection(s trustverify.Subject, e trustverify.EvidenceRefs) []byte {
 	return []byte(`{"apiVersion":"tplaiter.dev/source-selection-input/v1","subject":{"origin":"` + s.Origin + `","templatePath":"` + s.TemplatePath + `","requestedRef":"` + s.RequestedRef + `","commit":"` + s.Commit + `","treeSHA256":"` + s.TreeSHA256 + `","contractSHA256":"` + s.ContractSHA256 + `"},"evidence":{"format":"` + e.Format + `","statementCAS":"` + e.StatementCAS + `","signatureCAS":"` + e.SignatureCAS + `","keyFingerprint":"` + e.KeyFingerprint + `","checkpointCAS":"` + e.CheckpointCAS + `","inclusionProofCAS":"` + e.InclusionProofCAS + `"},"dependencies":[]}`)
 }
+
 func t5DRenderInput() renderref.Input {
 	return renderref.Input{Values: renderref.Values(map[string]any{}), Repo: "t5d"}
 }
+
 func t5DAssertEmptyDir(t *testing.T, path string) {
 	t.Helper()
 	entries, err := os.ReadDir(path)
@@ -467,6 +473,7 @@ func t5DActionInputs(t *testing.T, b bootstrap.ProfileBinding, source, target tr
 	}
 	return op, req, trustverify.StagedMaterial{Operation: op, Request: req, Content: entries, ContentBytes: [][]byte{content}, ToolBytes: tool, ToolOptions: opts, Environment: env}
 }
+
 func t5DPersistentApproval(t *testing.T, f *t5DIntegrationFixture, req trustverify.ExecutionRequest) trustverify.ApprovalRefs {
 	t.Helper()
 	a := trustverify.ExecutionApproval{APIVersion: trustverify.ExecutionApprovalAPIVersion, Kind: "persistent-signed", RequestSHA256: req.RequestSHA256, ProfileBindingSHA256: req.ProfileBindingSHA256, OperationInputsSHA256: req.OperationInputsSHA256, ProjectID: req.ProjectID, Scope: req.Scope, ApproverID: f.policy.Approvers[0].ID, IdentityClass: f.policy.Approvers[0].IdentityClass, ExecutionPolicySHA256: f.policy.PolicySHA256, Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, KeyFingerprint: f.policy.Approvers[0].KeyFingerprint}
@@ -483,6 +490,7 @@ func t5DPersistentApproval(t *testing.T, f *t5DIntegrationFixture, req trustveri
 	t5DWriteCAS(t, f.evidence, approval, raw)
 	return trustverify.ApprovalRefs{Kind: "persistent-signed", ApprovalCAS: approval}
 }
+
 func t5DWriteCAS(t *testing.T, root, digest string, raw []byte) {
 	t.Helper()
 	hexPart := strings.TrimPrefix(digest, "sha256:")

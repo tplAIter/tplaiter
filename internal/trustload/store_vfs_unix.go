@@ -25,11 +25,13 @@ const storeVirtualPrefix = "/tplaiter-store/"
 // result is identical and -race checkptr still validates it.
 func libcPtr(addr uintptr) unsafe.Pointer { return unsafe.Add(nil, addr) }
 
-var storeVFSSequence atomic.Uint64
-var storeVFSObserverRegistry = struct {
-	sync.RWMutex
-	byToken map[uint64]*storeProofObserver
-}{byToken: make(map[uint64]*storeProofObserver)}
+var (
+	storeVFSSequence         atomic.Uint64
+	storeVFSObserverRegistry = struct {
+		sync.RWMutex
+		byToken map[uint64]*storeProofObserver
+	}{byToken: make(map[uint64]*storeProofObserver)}
+)
 
 func storeVFSObserverFor(c *vfsContext) *storeProofObserver {
 	if c == nil {
@@ -396,24 +398,28 @@ func storeContext(pVFS uintptr) *vfsContext {
 	}
 	return (*vfsContext)(libcPtr((*sqlite3.Tsqlite3_vfs)(libcPtr(pVFS)).FpAppData))
 }
+
 func storeFile(p uintptr) *vfsFile {
 	if p == 0 {
 		return nil
 	}
 	return (*vfsFile)(libcPtr(p))
 }
+
 func storeFileContext(f *vfsFile) *vfsContext {
 	if f == nil || f.ctx == 0 {
 		return nil
 	}
 	return (*vfsContext)(libcPtr(f.ctx))
 }
+
 func vfsName(p uintptr) string {
 	if p == 0 {
 		return ""
 	}
 	return libc.GoString(p)
 }
+
 func vfsPathFor(pVFS, zPath uintptr) int64 {
 	ctx := storeContext(pVFS)
 	if ctx == nil {
@@ -564,6 +570,7 @@ func validatePrivateJournalAt(rootFD int, ownerUID uint32) error {
 	}
 	return nil
 }
+
 func storeVFSAccess(tls *libc.TLS, pVFS, zPath uintptr, flags int32, pRes uintptr) int32 {
 	if pRes != 0 {
 		*(*int32)(libcPtr(pRes)) = 0
@@ -599,6 +606,7 @@ func storeVFSAccess(tls *libc.TLS, pVFS, zPath uintptr, flags int32, pRes uintpt
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeVFSFullPathname(tls *libc.TLS, pVFS, zPath uintptr, n int32, out uintptr) int32 {
 	observeCallback(storeContext(pVFS), callbackFullPathname)
 	if n <= 0 || out == 0 || vfsPathFor(pVFS, zPath) == 0 {
@@ -710,6 +718,7 @@ func storeFileRead(tls *libc.TLS, p, out uintptr, n int32, off sqlite3.Tsqlite3_
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileWrite(tls *libc.TLS, p, in uintptr, n int32, off sqlite3.Tsqlite3_int64) int32 {
 	f := storeFile(p)
 	c := storeFileContext(f)
@@ -748,6 +757,7 @@ func storeFileWrite(tls *libc.TLS, p, in uintptr, n int32, off sqlite3.Tsqlite3_
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileTruncate(tls *libc.TLS, p uintptr, size sqlite3.Tsqlite3_int64) int32 {
 	f := storeFile(p)
 	c := storeFileContext(f)
@@ -767,6 +777,7 @@ func storeFileTruncate(tls *libc.TLS, p uintptr, size sqlite3.Tsqlite3_int64) in
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileSync(tls *libc.TLS, p uintptr, flags int32) int32 {
 	f := storeFile(p)
 	c := storeFileContext(f)
@@ -796,6 +807,7 @@ func storeFileSync(tls *libc.TLS, p uintptr, flags int32) int32 {
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileSize(tls *libc.TLS, p, out uintptr) int32 {
 	f := storeFile(p)
 	observeCallback(storeFileContext(f), callbackFileSize)
@@ -809,6 +821,7 @@ func storeFileSize(tls *libc.TLS, p, out uintptr) int32 {
 	*(*sqlite3.Tsqlite3_int64)(libcPtr(out)) = sqlite3.Tsqlite3_int64(st.Size)
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileLock(tls *libc.TLS, p uintptr, level int32) int32 {
 	f := storeFile(p)
 	c := storeFileContext(f)
@@ -824,6 +837,7 @@ func storeFileLock(tls *libc.TLS, p uintptr, level int32) int32 {
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileUnlock(tls *libc.TLS, p uintptr, level int32) int32 {
 	f := storeFile(p)
 	observeCallback(storeFileContext(f), callbackUnlock)
@@ -835,6 +849,7 @@ func storeFileUnlock(tls *libc.TLS, p uintptr, level int32) int32 {
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileCheckReserved(tls *libc.TLS, p, out uintptr) int32 {
 	f := storeFile(p)
 	observeCallback(storeFileContext(f), callbackCheckReserved)
@@ -848,6 +863,7 @@ func storeFileCheckReserved(tls *libc.TLS, p, out uintptr) int32 {
 	}
 	return sqlite3.SQLITE_OK
 }
+
 func storeFileControl(tls *libc.TLS, p uintptr, op int32, arg uintptr) int32 {
 	f := storeFile(p)
 	observeCallback(storeFileContext(f), callbackFileControl)

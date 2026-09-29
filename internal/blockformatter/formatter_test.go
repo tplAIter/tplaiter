@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	js "github.com/santhosh-tekuri/jsonschema/v6"
+
 	"github.com/tplAIter/tplaiter/internal/exports"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
@@ -32,6 +33,7 @@ func formatterTool(t *testing.T, opts []string) trustverify.Tool {
 	}
 	return trustverify.Tool{ID: "gofmt", Version: "1.26.0", BinarySHA256: "sha256:" + strings.Repeat("1", 64), OptionsSHA256: d}
 }
+
 func formatterInput(t *testing.T) PlanInput {
 	return PlanInput{Path: "main.go", Language: "go", Adapter: "gofmt-stdin-v1", Tool: formatterTool(t, []string{}), Options: []string{}, InputMode: "100644", Markers: []Marker{}, TimeoutMillis: 10000, OutputLimitBytes: 1 << 20, Input: []byte("package main\n")}
 }
@@ -230,7 +232,8 @@ func TestD4FixedAdapterLanguageOptions(t *testing.T) {
 	}{
 		{"go", "gofmt-stdin-v1", nil},
 		{"rust", "rustfmt-stdin-v1", []string{"--emit", "stdout", "--edition", "2021", "--config-path", "formatter/rustfmt.toml"}},
-		{"typescript", TypeScriptAdapterID, nil}, {"tsx", TypeScriptAdapterID, nil},
+		{"typescript", TypeScriptAdapterID, nil},
+		{"tsx", TypeScriptAdapterID, nil},
 	}
 	for _, tc := range valid {
 		if !adapterAllowed(tc.language, tc.adapter, tc.options) {
@@ -807,14 +810,20 @@ func TestD4FormatPlanOrderAndPreimageDomains(t *testing.T) {
 		name string
 		fn   func(*Plan)
 	}{
-		{"apiVersion", func(p *Plan) { p.APIVersion = "other" }}, {"path", func(p *Plan) { p.Path = "other.go" }},
-		{"language", func(p *Plan) { p.Language = "rust" }}, {"adapter", func(p *Plan) { p.Adapter = "other" }},
-		{"tool.id", func(p *Plan) { p.Tool.ID = "other" }}, {"tool.version", func(p *Plan) { p.Tool.Version = "1.26.1" }},
+		{"apiVersion", func(p *Plan) { p.APIVersion = "other" }},
+		{"path", func(p *Plan) { p.Path = "other.go" }},
+		{"language", func(p *Plan) { p.Language = "rust" }},
+		{"adapter", func(p *Plan) { p.Adapter = "other" }},
+		{"tool.id", func(p *Plan) { p.Tool.ID = "other" }},
+		{"tool.version", func(p *Plan) { p.Tool.Version = "1.26.1" }},
 		{"tool.binarySHA256", func(p *Plan) { p.Tool.BinarySHA256 = "sha256:" + strings.Repeat("3", 64) }},
 		{"tool.optionsSHA256", func(p *Plan) { p.Tool.OptionsSHA256 = "sha256:" + strings.Repeat("4", 64) }},
-		{"options", func(p *Plan) { p.Options = []string{"changed"} }}, {"inputSHA256", func(p *Plan) { p.InputSHA256 = digest([]byte("changed")) }},
-		{"inputMode", func(p *Plan) { p.InputMode = "100755" }}, {"markers", func(p *Plan) { p.Markers = []Marker{{Kind: "begin", ID: "x", Provider: "p"}} }},
-		{"timeoutMillis", func(p *Plan) { p.TimeoutMillis++ }}, {"outputLimitBytes", func(p *Plan) { p.OutputLimitBytes++ }},
+		{"options", func(p *Plan) { p.Options = []string{"changed"} }},
+		{"inputSHA256", func(p *Plan) { p.InputSHA256 = digest([]byte("changed")) }},
+		{"inputMode", func(p *Plan) { p.InputMode = "100755" }},
+		{"markers", func(p *Plan) { p.Markers = []Marker{{Kind: "begin", ID: "x", Provider: "p"}} }},
+		{"timeoutMillis", func(p *Plan) { p.TimeoutMillis++ }},
+		{"outputLimitBytes", func(p *Plan) { p.OutputLimitBytes++ }},
 	}
 	for _, tc := range mutations {
 		q := clonePlan(p1)

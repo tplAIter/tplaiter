@@ -36,6 +36,7 @@ func DecodeOSSAcceptedState(raw []byte) (*OSSAcceptedState, error) {
 	}
 	return &s, nil
 }
+
 func (s OSSAcceptedState) Validate() error {
 	if s.APIVersion != OSSAcceptedStateAPIVersion || !validDigest(s.DescriptorSHA256) || !validDigest(s.ProvisioningSHA256) || !validDescriptorToken(s.AuthorityID, 256) || s.Sequence == 0 || s.Sequence > maxSafeInteger || !validDigest(s.EnvelopePayloadSHA256) || s.RevocationEpoch > maxSafeInteger || !validDigest(s.ReceiptDigest) || s.TreeSize == 0 || s.TreeSize > maxSafeInteger || !validDigest(s.CheckpointDigest) || !validDigest(s.StateSHA256) {
 		return fmt.Errorf("bootstrap: invalid accepted state")

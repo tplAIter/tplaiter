@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"io"
 	"path"
 	"regexp"
@@ -13,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -80,6 +81,7 @@ func (a *Anchor) UnmarshalJSON(data []byte) error {
 	a.Before, a.After, a.Present = w.Before, w.After, true
 	return nil
 }
+
 func (a *Anchor) UnmarshalYAML(value *yaml.Node) error {
 	type wire struct {
 		Before string `yaml:"before"`
@@ -131,6 +133,7 @@ func Parse(data []byte) (BlockExport, error) {
 	}
 	return e, Validate(e)
 }
+
 func normalizeWire(data []byte) ([]byte, error) {
 	trim := bytes.TrimSpace(data)
 	if len(trim) > 0 && (trim[0] == '{' || trim[0] == '[') {
@@ -157,6 +160,7 @@ func normalizeWire(data []byte) ([]byte, error) {
 	}
 	return json.Marshal(v)
 }
+
 func yamlJSONCheck(data []byte) (any, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
@@ -170,6 +174,7 @@ func yamlJSONCheck(data []byte) (any, error) {
 	}
 	return v, nil
 }
+
 func validateYAMLNode(n *yaml.Node) error {
 	if n.Anchor != "" || n.Kind == yaml.AliasNode {
 		return fmt.Errorf("block export: YAML anchors and aliases are forbidden")
@@ -218,6 +223,7 @@ func validateYAMLNode(n *yaml.Node) error {
 	}
 	return nil
 }
+
 func yamlNodeValue(n *yaml.Node) (any, error) {
 	if n.Kind == yaml.DocumentNode {
 		return yamlNodeValue(n.Content[0])
@@ -264,6 +270,7 @@ func yamlNodeValue(n *yaml.Node) (any, error) {
 	}
 	return nil, fmt.Errorf("block export: unsupported YAML node")
 }
+
 func validateWire(data []byte) error {
 	v, err := yamlJSONCheck(data)
 	if err != nil {
@@ -321,6 +328,7 @@ func validateWire(data []byte) error {
 	}
 	return nil
 }
+
 func obj(m map[string]any, allowed ...string) error {
 	set := map[string]bool{}
 	for _, k := range allowed {
@@ -347,6 +355,7 @@ func validateMetadata(v any) error {
 	}
 	return nil
 }
+
 func validateCompat(v any) error {
 	m, ok := v.(map[string]any)
 	if !ok {
@@ -360,6 +369,7 @@ func validateCompat(v any) error {
 	}
 	return nil
 }
+
 func validateFormatter(v any) error {
 	m, ok := v.(map[string]any)
 	if !ok {
@@ -373,6 +383,7 @@ func validateFormatter(v any) error {
 	}
 	return nil
 }
+
 func validateBlockWire(v any) error {
 	m, ok := v.(map[string]any)
 	if !ok {
@@ -419,6 +430,7 @@ func validateBlockWire(v any) error {
 	}
 	return nil
 }
+
 func Validate(e BlockExport) error {
 	if e.APIVersion != APIVersion || e.Kind != Kind {
 		return fmt.Errorf("block export: invalid apiVersion/kind")
@@ -452,6 +464,7 @@ func Validate(e BlockExport) error {
 	}
 	return nil
 }
+
 func validateTarget(t Target) error {
 	if !safePath(t.Path) || len(t.Blocks) < 1 || len(t.Blocks) > MaxBlocksPerTarget {
 		return fmt.Errorf("block export: invalid target %q", t.Path)
@@ -477,6 +490,7 @@ func validateTarget(t Target) error {
 	}
 	return nil
 }
+
 func safePath(p string) bool {
 	if p == "" || utf8.RuneCountInString(p) > MaxPathLength || strings.ContainsAny(p, "\r\n\\\x00") || path.IsAbs(p) || strings.Contains(p, "//") || strings.Contains(p, "/./") || p == "." || p == ".." || strings.HasPrefix(p, "../") || strings.Contains(p, "/../") {
 		return false
@@ -488,6 +502,7 @@ func safePath(p string) bool {
 	}
 	return true
 }
+
 func strictSemver(v string) bool {
 	if !semverRE.MatchString(v) {
 		return false
@@ -559,6 +574,7 @@ func Resolve(in []BlockExport) ([]ResolvedTarget, error) {
 	}
 	return out, nil
 }
+
 func validateReplacements(b []Block) error {
 	ids := map[string]bool{}
 	for _, x := range b {
@@ -585,6 +601,7 @@ func validateReplacements(b []Block) error {
 	}
 	return nil
 }
+
 func order(in []Block) ([]Block, error) {
 	by := map[string]Block{}
 	indeg := map[string]int{}

@@ -126,6 +126,7 @@ func (r *recoveryFaultRows) Close() error {
 	r.closed = true
 	return r.config.closeErr
 }
+
 func (r *recoveryFaultRows) Next(dest []driver.Value) error {
 	if r.index < len(r.config.rows) {
 		copy(dest, r.config.rows[r.index])

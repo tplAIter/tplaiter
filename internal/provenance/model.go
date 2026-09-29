@@ -93,9 +93,11 @@ type DependencySubject struct {
 func (s RootSubject) trustSubject() trustverify.Subject {
 	return trustverify.Subject{Origin: s.Origin, TemplatePath: s.TemplatePath, RequestedRef: s.RequestedRef, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256}
 }
+
 func (s RootSubject) dependency() DependencySubject {
 	return DependencySubject{s.Origin, s.TemplatePath, s.RequestedRef, s.Commit, s.TreeSHA256, s.ContractSHA256, s.StatementCAS, s.SignatureCAS, s.KeyFingerprint, s.CheckpointCAS, s.InclusionProofCAS}
 }
+
 func (s DependencySubject) trustSubject() trustverify.Subject {
 	return trustverify.Subject{Origin: s.Origin, TemplatePath: s.TemplatePath, RequestedRef: s.RequestedRef, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256}
 }
@@ -248,6 +250,7 @@ func validDigest(s string) bool { return digestRE.MatchString(s) }
 func validRoot(s RootSubject) bool {
 	return tokenRE.MatchString(s.Origin) && safePath(s.TemplatePath) && tokenRE.MatchString(s.RequestedRef) && commitRE.MatchString(s.Commit) && validDigest(s.TreeSHA256) && validDigest(s.ContractSHA256) && validDigest(s.StatementCAS) && validDigest(s.SignatureCAS) && validDigest(s.KeyFingerprint) && validDigest(s.CheckpointCAS) && validDigest(s.InclusionProofCAS)
 }
+
 func validDependencies(xs []DependencySubject) bool {
 	for _, s := range xs {
 		if !tokenRE.MatchString(s.Origin) || !safePath(s.TemplatePath) || !tokenRE.MatchString(s.RequestedRef) || !commitRE.MatchString(s.Commit) || !validDigest(s.TreeSHA256) || !validDigest(s.ContractSHA256) || !validDigest(s.StatementCAS) || !validDigest(s.SignatureCAS) || !validDigest(s.KeyFingerprint) || !validDigest(s.CheckpointCAS) || !validDigest(s.InclusionProofCAS) {
@@ -256,9 +259,11 @@ func validDependencies(xs []DependencySubject) bool {
 	}
 	return true
 }
+
 func validRenderer(r RendererIdentity) bool {
 	return tokenRE.MatchString(r.Name) && tokenRE.MatchString(r.Version)
 }
+
 func safePath(s string) bool {
 	if s == "" || strings.HasPrefix(s, "/") || strings.Contains(s, "\\") || strings.Contains(s, "..") {
 		return false

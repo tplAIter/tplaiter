@@ -34,8 +34,10 @@ type FormatterInput struct {
 	PlanJSON   []byte
 }
 
-const formatterToolRecordPath = "formatter/tool.json"
-const formatterToolBinaryPath = "formatter/native-tool"
+const (
+	formatterToolRecordPath = "formatter/tool.json"
+	formatterToolBinaryPath = "formatter/native-tool"
+)
 
 // formatterToolRecord is deliberately a closed, signed source record. The
 // executable bytes are never selected by a host path or a caller callback.
@@ -212,6 +214,7 @@ func actionToolOptions(a trustverify.ActionMaterial) []string {
 	}
 	return append([]string(nil), a.Action.Argv[1:]...)
 }
+
 func cloneActionMaterial(a trustverify.ActionMaterial) trustverify.ActionMaterial {
 	a.Action.Argv = append([]string(nil), a.Action.Argv...)
 	return a

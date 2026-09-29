@@ -5,8 +5,9 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
-	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"regexp"
+
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 )
 
 const PublisherStatementAPIVersion = "tplaiter.dev/publisher-statement/v1"
@@ -22,15 +23,18 @@ type PublisherExpectation struct {
 	PolicyOrigin, Issuer, Predicate, Usage string
 	Subject                                SubjectIdentity
 }
-type PublisherEvidence struct{ StatementCAS, SignatureCAS, KeyFingerprint string }
-type PublisherStatement struct {
-	APIVersion   string          `json:"apiVersion"`
-	PolicyOrigin string          `json:"policyOrigin"`
-	Issuer       string          `json:"issuer"`
-	Predicate    string          `json:"predicate"`
-	Usage        string          `json:"usage"`
-	Subject      SubjectIdentity `json:"subject"`
-}
+type (
+	PublisherEvidence  struct{ StatementCAS, SignatureCAS, KeyFingerprint string }
+	PublisherStatement struct {
+		APIVersion   string          `json:"apiVersion"`
+		PolicyOrigin string          `json:"policyOrigin"`
+		Issuer       string          `json:"issuer"`
+		Predicate    string          `json:"predicate"`
+		Usage        string          `json:"usage"`
+		Subject      SubjectIdentity `json:"subject"`
+	}
+)
+
 type VerifiedPublisherClaim struct {
 	expected  PublisherExpectation
 	authority string
@@ -42,12 +46,14 @@ func (c *VerifiedPublisherClaim) Expectation() PublisherExpectation {
 	}
 	return c.expected
 }
+
 func (c *VerifiedPublisherClaim) AuthoritySHA256() string {
 	if c == nil {
 		return ""
 	}
 	return c.authority
 }
+
 func DecodePublisherStatement(raw []byte) (*PublisherStatement, error) {
 	if _, e := rawObject(raw, []string{"apiVersion", "policyOrigin", "issuer", "predicate", "usage", "subject"}); e != nil {
 		return nil, e
@@ -61,9 +67,11 @@ func DecodePublisherStatement(raw []byte) (*PublisherStatement, error) {
 	}
 	return &s, nil
 }
+
 func validStatement(s PublisherStatement) bool {
 	return s.APIVersion == PublisherStatementAPIVersion && validOrigin(s.PolicyOrigin) && validDescriptorToken(s.Issuer, 256) && validOrigin(s.Predicate) && s.Usage == "template-source" && validOrigin(s.Subject.Origin) && validPathIdentity(s.Subject.TemplatePath) && regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`).MatchString(s.Subject.Commit) && validDigest(s.Subject.TreeSHA256) && validDigest(s.Subject.ContractSHA256)
 }
+
 func (v *Verifier) VerifyPublisherClaim(ctx context.Context, a *Authority, x PublisherExpectation, r PublisherEvidence) (*VerifiedPublisherClaim, error) {
 	if v == nil || ctx == nil || a == nil || !validStatement(PublisherStatement{PublisherStatementAPIVersion, x.PolicyOrigin, x.Issuer, x.Predicate, x.Usage, x.Subject}) {
 		return nil, errors.New("bootstrap: publisher authority required")
@@ -126,9 +134,11 @@ func (v *Verifier) VerifyPublisherClaim(ctx context.Context, a *Authority, x Pub
 	}
 	return &VerifiedPublisherClaim{x, a.binding.AuthoritySHA256}, nil
 }
+
 func VerifyArtifactTransparency(ctx context.Context, a *Authority, store interface {
 	Read(context.Context, string) ([]byte, error)
-}, leaf string, refs TransparencyEvidence) error {
+}, leaf string, refs TransparencyEvidence,
+) error {
 	if a == nil || leaf == "" {
 		return errors.New("bootstrap: stable authority and leaf required")
 	}

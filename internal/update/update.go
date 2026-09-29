@@ -35,7 +35,7 @@ type Options struct {
 	// DryRun computes the plan and report without changing anything (`--dry-run`).
 	DryRun bool
 	// Check only scans the work tree for conflict markers
-    // (`--check`); exits 1 when a marker is found.
+	// (`--check`); exits 1 when a marker is found.
 	Check bool
 	// All updates all registry projects with status ok (`--all`).
 	All bool

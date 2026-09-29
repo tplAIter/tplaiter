@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/spf13/cobra"
+
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/gen"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/ui"
-	"github.com/spf13/cobra"
 )
 
 // genRunner — runner for formatter/build-gate post-steps of [gen.Generate].

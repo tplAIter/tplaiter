@@ -15,8 +15,10 @@ import (
 	"github.com/tplAIter/tplaiter/internal/graphdoc"
 )
 
-const DefaultLimit = 8192
-const HardLimit = 32768
+const (
+	DefaultLimit = 8192
+	HardLimit    = 32768
+)
 
 var ErrBudget = errors.New("contextpack: minimum envelope exceeds byte limit")
 
@@ -147,6 +149,7 @@ func Build(d graphdoc.Document, req Request) (Pack, error) {
 	}
 	return p, nil
 }
+
 func serializedSize(p Pack) int {
 	raw, err := json.Marshal(p)
 	if err != nil {
@@ -154,6 +157,7 @@ func serializedSize(p Pack) int {
 	}
 	return len(raw)
 }
+
 func fits(p *Pack, limit int) bool {
 	for i := 0; i < 64; i++ {
 		raw, err := json.Marshal(p)
@@ -196,6 +200,7 @@ func Verify(d graphdoc.Document, root string, p Pack) error {
 	}
 	return nil
 }
+
 func excerpt(root string, n graphdoc.Node) (SourceExcerpt, bool) {
 	rel := n.Path
 	if root == "" || filepath.IsAbs(rel) || strings.Contains(rel, ".."+string(filepath.Separator)) {

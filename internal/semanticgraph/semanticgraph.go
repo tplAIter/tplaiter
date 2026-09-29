@@ -102,6 +102,7 @@ func addFile(d *graphdoc.Document, lang, rel string, src []byte) {
 		parseRust(d, file, rel, src)
 	}
 }
+
 func parseGo(d *graphdoc.Document, file, rel string, src []byte) {
 	fs := token.NewFileSet()
 	f, err := parser.ParseFile(fs, rel, src, parser.ParseComments)
@@ -131,6 +132,7 @@ func parseGo(d *graphdoc.Document, file, rel string, src []byte) {
 		d.Edges = append(d.Edges, graphdoc.Edge{From: file, To: id, Kind: "declares", Provenance: []graphdoc.Provenance{{Source: "go/parser", Evidence: "syntax", Detected: true}}})
 	}
 }
+
 func parseRust(d *graphdoc.Document, file, rel string, src []byte) {
 	for i, line := range strings.Split(string(src), "\n") {
 		n := i + 1
@@ -160,6 +162,7 @@ func parseRust(d *graphdoc.Document, file, rel string, src []byte) {
 		}
 	}
 }
+
 func language(p string) string {
 	switch strings.ToLower(filepath.Ext(p)) {
 	case ".go":

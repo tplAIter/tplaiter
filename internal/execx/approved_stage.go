@@ -18,8 +18,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/tplAIter/tplaiter/internal/trustverify"
 	"golang.org/x/sys/unix"
+
+	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
 const (
@@ -33,16 +34,19 @@ var errApprovedOverflow = errors.New("approved output limit")
 // Test-only package-private seams let the owned Darwin tests observe failure
 // handling after the real material/recheck boundary. They create no exported
 // runner, permit, path, or callback capability.
-type approvedHookKey struct{}
-type approvedHooks struct {
-	start  func(*exec.Cmd) error
-	close  func() error
-	stdout func([]byte)
-}
+type (
+	approvedHookKey struct{}
+	approvedHooks   struct {
+		start  func(*exec.Cmd) error
+		close  func() error
+		stdout func([]byte)
+	}
+)
 
 func withApprovedHooks(ctx context.Context, h approvedHooks) context.Context {
 	return context.WithValue(ctx, approvedHookKey{}, h)
 }
+
 func approvedHooksFor(ctx context.Context) approvedHooks {
 	h, _ := ctx.Value(approvedHookKey{}).(approvedHooks)
 	return h
@@ -109,6 +113,7 @@ func executeApproved(ctx context.Context, scratch string, m trustverify.StagedMa
 	}
 	return append([]byte(nil), out.b...), nil
 }
+
 func validApprovedMaterial(m trustverify.StagedMaterial) bool {
 	return len(m.ToolBytes) > 0 && len(m.ToolBytes) <= 16<<20 && len(m.Content) == 1 && len(m.ContentBytes) == 1 && m.Content[0].Root == "provider" && m.Content[0].Path == ".tplaiter-execution/stdin" && m.Content[0].Mode == "100644" && len(m.Request.Action.Argv) == 1 && m.Request.Action.Argv[0] == "native-snapshot-tool-v1" && len(m.ToolOptions) == 0 && !m.Environment.Inherit && len(m.Environment.Variables) == 1 && m.Environment.Variables[0].Name == "LANG" && m.Environment.Variables[0].Value == "C" && len(m.Environment.Capabilities) == 0
 }
@@ -171,6 +176,7 @@ func (w *limitedBuffer) Write(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
 func outputOverflow(a, b *limitedBuffer) (<-chan struct{}, func()) {
 	ch, stop := make(chan struct{}), make(chan struct{})
 	go func() {
@@ -350,6 +356,7 @@ func (s *approvedStage) project(path string, data []byte, mode string) error {
 	}
 	return errors.New("invalid projection path")
 }
+
 func openApprovedRoot(root string) (int, error) {
 	if root == "" || root[0] != '/' {
 		return -1, errors.New("invalid root")
@@ -377,6 +384,7 @@ func openApprovedRoot(root string) (int, error) {
 	}
 	return fd, nil
 }
+
 func writeApprovedFile(dir int, name string, data []byte, mode uint32) (int, error) {
 	fd, e := unix.Openat(dir, name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, mode)
 	if e != nil {
@@ -396,6 +404,7 @@ func writeApprovedFile(dir int, name string, data []byte, mode uint32) (int, err
 	}
 	return fd, nil
 }
+
 func verifyApprovedTool(fd int, want []byte, requestDigest string) error {
 	var st unix.Stat_t
 	if err := unix.Fstat(fd, &st); err != nil || st.Mode&unix.S_IFMT != unix.S_IFREG || st.Mode&0o777 != 0o500 || st.Size < 1 || st.Size > 16<<20 || int64(len(want)) != st.Size {
@@ -423,6 +432,7 @@ func verifyApprovedTool(fd int, want []byte, requestDigest string) error {
 	}
 	return nil
 }
+
 func approvedPathForFD(fd int) (string, error) {
 	var raw [1024]byte
 	_, _, eno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_GETPATH), uintptr(unsafe.Pointer(&raw[0])))
@@ -438,6 +448,7 @@ func approvedPathForFD(fd int) (string, error) {
 	}
 	return string(raw[:n]), nil
 }
+
 func (s *approvedStage) Close() error {
 	if s == nil {
 		return nil

@@ -244,6 +244,7 @@ func t5DTree(add func(string, []byte) string, entries []t5DTreeEntry) string {
 	}
 	return add("tree", raw)
 }
+
 func strconvItoa(v int) string {
 	if v == 0 {
 		return "0"
@@ -257,6 +258,7 @@ func strconvItoa(v int) string {
 	}
 	return string(b[i:])
 }
+
 func t5DJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, e := json.Marshal(v)
@@ -265,6 +267,7 @@ func t5DJSON(t *testing.T, v any) []byte {
 	}
 	return b
 }
+
 func t5DPin(path string, raw []byte) trustload.FilePin {
 	return trustload.FilePin{Path: path, SHA256: evidencecas.Digest(raw)}
 }
@@ -283,12 +286,15 @@ func t5DPublisherEvidence(t *testing.T, store map[string][]byte, key ed25519.Pri
 	signature := put([]byte(bootstrap.EncodeSignature(ed25519.Sign(key, hash))))
 	return trustverify.EvidenceRefs{Format: bootstrap.PublisherStatementAPIVersion, StatementCAS: statementCAS, SignatureCAS: signature, KeyFingerprint: bootstrap.Fingerprint(key.Public().(ed25519.PublicKey))}
 }
+
 func t5DSelection(s trustverify.Subject, e trustverify.EvidenceRefs) []byte {
 	return []byte(`{"apiVersion":"tplaiter.dev/source-selection-input/v1","subject":{"origin":"` + s.Origin + `","templatePath":"` + s.TemplatePath + `","requestedRef":"` + s.RequestedRef + `","commit":"` + s.Commit + `","treeSHA256":"` + s.TreeSHA256 + `","contractSHA256":"` + s.ContractSHA256 + `"},"evidence":{"format":"` + e.Format + `","statementCAS":"` + e.StatementCAS + `","signatureCAS":"` + e.SignatureCAS + `","keyFingerprint":"` + e.KeyFingerprint + `","checkpointCAS":"` + e.CheckpointCAS + `","inclusionProofCAS":"` + e.InclusionProofCAS + `"},"dependencies":[]}`)
 }
+
 func t5DRenderInput() renderref.Input {
 	return renderref.Input{Values: renderref.Values(map[string]any{}), Repo: "t5d"}
 }
+
 func t5DAssertEmptyDir(t *testing.T, path string) {
 	t.Helper()
 	entries, err := os.ReadDir(path)

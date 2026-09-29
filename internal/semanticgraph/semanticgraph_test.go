@@ -9,7 +9,7 @@ import (
 
 func TestAnalyzeReportsSyntaxFactsWithoutCalls(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\nimport \"fmt\"\nfunc main() { fmt.Println(1) }\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\nimport \"fmt\"\nfunc main() { fmt.Println(1) }\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	d, err := Analyze(context.Background(), root, Options{})
@@ -29,7 +29,7 @@ func TestAnalyzeReportsSyntaxFactsWithoutCalls(t *testing.T) {
 func TestAnalyzeRustVisibilityAndModifiers(t *testing.T) {
 	root := t.TempDir()
 	src := "pub fn public() {}\npub async fn asynchronous() {}\npub unsafe fn dangerous() {}\nfn plain() {}\nfn\n"
-	if err := os.WriteFile(filepath.Join(root, "lib.rs"), []byte(src), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "lib.rs"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	d, err := Analyze(context.Background(), root, Options{})

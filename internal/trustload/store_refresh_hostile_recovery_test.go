@@ -41,18 +41,18 @@ func TestRefreshHostileRecoverySB06Composition(t *testing.T) {
 		make func(*testing.T, string)
 	}{
 		{"wal", func(t *testing.T, r string) {
-			if err := os.WriteFile(filepath.Join(r, storeDBName+"-wal"), []byte("hostile"), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(r, storeDBName+"-wal"), []byte("hostile"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{"shm", func(t *testing.T, r string) {
-			if err := os.WriteFile(filepath.Join(r, storeDBName+"-shm"), []byte("hostile"), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(r, storeDBName+"-shm"), []byte("hostile"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{"journal-symlink", func(t *testing.T, r string) {
 			outside := filepath.Join(t.TempDir(), "outside")
-			if err := os.WriteFile(outside, []byte("sentinel"), 0600); err != nil {
+			if err := os.WriteFile(outside, []byte("sentinel"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.Symlink(outside, filepath.Join(r, storeDBName+"-journal")); err != nil {
@@ -61,7 +61,7 @@ func TestRefreshHostileRecoverySB06Composition(t *testing.T) {
 		}},
 		{"journal-permission", func(t *testing.T, r string) {
 			p := filepath.Join(r, storeDBName+"-journal")
-			if err := os.WriteFile(p, []byte("bad"), 0644); err != nil {
+			if err := os.WriteFile(p, []byte("bad"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}},

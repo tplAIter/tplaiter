@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 )
 
@@ -23,6 +24,7 @@ func bootstrapDigest(version string, payload any) string {
 	d, _ := DomainDigest(version, payload)
 	return d
 }
+
 func (e Envelope) ComputePayloadSHA256() (string, error) {
 	return DomainDigest(TrustRootsAPIVersion, struct {
 		APIVersion           string       `json:"apiVersion"`
@@ -37,6 +39,7 @@ func (e Envelope) ComputePayloadSHA256() (string, error) {
 		Rotation             *Rotation    `json:"rotation,omitempty"`
 	}{e.APIVersion, e.AuthorityID, e.Sequence, e.Validity, e.AllowedPolicyOrigins, e.RootKeys, e.Threshold, e.RevocationEpoch, e.Revocations, e.Rotation})
 }
+
 func (e Envelope) VerifyPayloadSHA256() error {
 	d, x := e.ComputePayloadSHA256()
 	if x != nil {
@@ -47,6 +50,7 @@ func (e Envelope) VerifyPayloadSHA256() error {
 	}
 	return nil
 }
+
 func (r Receipt) ComputeDigest() (string, error) {
 	return DomainDigest(TrustReceiptAPIVersion, struct {
 		APIVersion              string `json:"apiVersion"`
@@ -59,6 +63,7 @@ func (r Receipt) ComputeDigest() (string, error) {
 		PreviousReceiptDigest   string `json:"previousReceiptDigest"`
 	}{r.APIVersion, r.AuthorityID, r.HighestAcceptedSequence, r.EnvelopePayloadSHA256, r.RevocationEpoch, r.TreeSize, r.CheckpointDigest, r.PreviousReceiptDigest})
 }
+
 func (r Receipt) VerifyDigest() error {
 	d, e := r.ComputeDigest()
 	if e != nil {
@@ -69,6 +74,7 @@ func (r Receipt) VerifyDigest() error {
 	}
 	return nil
 }
+
 func rawDigest(v string) ([]byte, error) {
 	if !validDigest(v) {
 		return nil, fmt.Errorf("bootstrap: invalid digest")

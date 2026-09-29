@@ -18,11 +18,13 @@ import (
 
 const ExportPayloadAPIVersion = "tplaiter.dev/export-payload/v1"
 
-var materialDigestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-var materialIDRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
-var materialProviderRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._/-]{0,127}$`)
-var materialAliasRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,127}$`)
-var materialVersionRE = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+][0-9A-Za-z.-]+)?$`)
+var (
+	materialDigestRE   = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	materialIDRE       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
+	materialProviderRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._/-]{0,127}$`)
+	materialAliasRE    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,127}$`)
+	materialVersionRE  = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+][0-9A-Za-z.-]+)?$`)
+)
 
 type ExportPayload struct {
 	APIVersion string         `json:"apiVersion"`
@@ -66,6 +68,7 @@ func (e *FormatError) Error() string {
 }
 
 func ferr(code, path, ptr string) error { return &FormatError{Code: code, Path: path, Pointer: ptr} }
+
 func merr(code, path, ptr string) error { return &MaterialError{Code: code, Path: path, Pointer: ptr} }
 
 func ParseExportPayload(raw []byte) (ExportPayload, error) {
@@ -190,6 +193,7 @@ func foldPath(s string) string {
 		return min
 	}, s)
 }
+
 func slotPointer(s string) error {
 	if len(s) == 0 || len(s) > 4096 || !utf8.ValidString(s) || !strings.HasPrefix(s, "/") {
 		return ferr("MATERIAL_PATH", "", s)
@@ -224,6 +228,7 @@ func slotPointer(s string) error {
 	}
 	return nil
 }
+
 func decodePointer(s string) (string, error) {
 	if len(s) == 0 || len(s) > 4096 || !utf8.ValidString(s) || !strings.HasPrefix(s, "/") {
 		return "", ferr("MATERIAL_PATH", "", s)
@@ -273,13 +278,16 @@ type MaterialBlob struct {
 	Path, Mode string
 	Content    []byte
 }
-type MaterialOwner struct{ Provider, RuleID, ExportID string }
-type FileState struct {
-	Path                string
-	Present             bool
-	Mode, ContentSHA256 string
-	Content             []byte
-}
+type (
+	MaterialOwner struct{ Provider, RuleID, ExportID string }
+	FileState     struct {
+		Path                string
+		Present             bool
+		Mode, ContentSHA256 string
+		Content             []byte
+	}
+)
+
 type OwnedPreimage struct {
 	Path, Pointer       string
 	Owner               MaterialOwner
@@ -297,15 +305,18 @@ type ManagedCandidate struct {
 	BeforeOwners, AfterOwners []MaterialOwner
 	DesiredMode               string
 }
-type InventoryEntry struct{ Path, Kind string }
-type MaterializeInput struct {
-	Sources         []MaterialSource
-	TargetInventory []InventoryEntry
-	Current         []FileState
-	Owned           []OwnedPreimage
-	Operations      []MaterialOperation
-	Managed         []ManagedCandidate
-}
+type (
+	InventoryEntry   struct{ Path, Kind string }
+	MaterializeInput struct {
+		Sources         []MaterialSource
+		TargetInventory []InventoryEntry
+		Current         []FileState
+		Owned           []OwnedPreimage
+		Operations      []MaterialOperation
+		Managed         []ManagedCandidate
+	}
+)
+
 type FileImage struct {
 	Path                      string
 	Before, After             FileState
@@ -313,12 +324,15 @@ type FileImage struct {
 	Reason                    string
 	FormattingOnly            bool
 }
-type MaterialConflict struct{ Code, Path, Pointer string }
-type Materialization struct {
-	Images    []FileImage
-	Conflicts []MaterialConflict
-	Managed   []managedblocks.FilePlan
-}
+type (
+	MaterialConflict struct{ Code, Path, Pointer string }
+	Materialization  struct {
+		Images    []FileImage
+		Conflicts []MaterialConflict
+		Managed   []managedblocks.FilePlan
+	}
+)
+
 type JSONSlotMutation struct {
 	Kind, Pointer                       string
 	BeforeOwner, AfterOwner             MaterialOwner
@@ -713,9 +727,11 @@ func cloneManagedPlan(p managedblocks.FilePlan) managedblocks.FilePlan {
 func validOwner(o MaterialOwner) bool {
 	return exportTokenRE.MatchString(o.Provider) && exportAliasRE.MatchString(o.RuleID) && exportTokenRE.MatchString(o.ExportID)
 }
+
 func materialPreimage(op MaterialOperation) bool {
 	return (op.ExpectedMode == "100644" || op.ExpectedMode == "100755") && materialDigestRE.MatchString(op.ExpectedSHA256)
 }
+
 func conflictImage(op MaterialOperation, before FileState, code string) FileImage {
 	return FileImage{Path: op.Path, Before: cloneState(before), After: cloneState(before), BeforeOwners: cloneOwners(op.BeforeOwner), AfterOwners: cloneOwners(op.BeforeOwner), Reason: code}
 }
@@ -745,6 +761,7 @@ func validateSelected(s SelectedExport) error {
 func VersionMatches(version, constraint string) bool { return versionMatches(version, constraint) }
 func ValidatePortablePath(path string) error         { return payloadPath(path) }
 func cloneState(s FileState) FileState               { s.Content = append([]byte(nil), s.Content...); return s }
+
 func cloneOwners(o MaterialOwner) []MaterialOwner {
 	if o == (MaterialOwner{}) {
 		return []MaterialOwner{}

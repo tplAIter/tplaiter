@@ -184,6 +184,7 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 	}
 	return b
 }
+
 func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant string) trustverify.Subject {
 	t.Helper()
 	manifest := []byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata:\n  name: t6b\n  version: 1.0.0\n  description: fixture\nengine:\n  type: gotemplate\n  root: files\nsettings:\n  - group: label\n    title: Label\n    type: string\n    default: ok\n")
@@ -280,6 +281,7 @@ func t6BWriteSource(t *testing.T, root string, tool, stdin []byte, variant strin
 	}
 	return trustverify.Subject{Origin: "https://example.test/source", TemplatePath: ".", RequestedRef: commit, Commit: commit, TreeSHA256: treeDigest, ContractSHA256: contractDigest}
 }
+
 func (f *Fixture) formatterRecord() ([]byte, bool) {
 	info, err := buildinfo.Read(bytes.NewReader(f.tool))
 	if err != nil {
@@ -288,6 +290,7 @@ func (f *Fixture) formatterRecord() ([]byte, bool) {
 	record, err := canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(f.tool), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": "darwin-arm64-dyld-libsystem-libresolv-v1"})
 	return record, err == nil
 }
+
 func (f *Fixture) persistentApproval(t *testing.T, r trustverify.ExecutionRequest) trustverify.ApprovalRefs {
 	t.Helper()
 	a := trustverify.ExecutionApproval{APIVersion: trustverify.ExecutionApprovalAPIVersion, Kind: "persistent-signed", RequestSHA256: r.RequestSHA256, ProfileBindingSHA256: r.ProfileBindingSHA256, OperationInputsSHA256: r.OperationInputsSHA256, ProjectID: r.ProjectID, Scope: r.Scope, ApproverID: f.policy.Approvers[0].ID, IdentityClass: f.policy.Approvers[0].IdentityClass, ExecutionPolicySHA256: f.policy.PolicySHA256, Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, KeyFingerprint: f.policy.Approvers[0].KeyFingerprint}
@@ -317,6 +320,7 @@ func t6BTree(add func(string, []byte) string, entries []t6BTreeEntry) string {
 	}
 	return add("tree", raw)
 }
+
 func t6BItoa(v int) string {
 	if v == 0 {
 		return "0"
@@ -330,6 +334,7 @@ func t6BItoa(v int) string {
 	}
 	return string(b[i:])
 }
+
 func t6BJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, e := json.Marshal(v)
@@ -338,9 +343,11 @@ func t6BJSON(t *testing.T, v any) []byte {
 	}
 	return b
 }
+
 func t6BPin(path string, raw []byte) trustload.FilePin {
 	return trustload.FilePin{Path: path, SHA256: evidencecas.Digest(raw)}
 }
+
 func t6BWriteCAS(t *testing.T, root, digest string, raw []byte) {
 	t.Helper()
 	x := strings.TrimPrefix(digest, "sha256:")
@@ -352,6 +359,7 @@ func t6BWriteCAS(t *testing.T, root, digest string, raw []byte) {
 		t.Fatal(e)
 	}
 }
+
 func t6BPublisherEvidence(t *testing.T, store map[string][]byte, key ed25519.PrivateKey, s trustverify.Subject) trustverify.EvidenceRefs {
 	t.Helper()
 	put := func(b []byte) string { d := evidencecas.Digest(b); store[d] = append([]byte(nil), b...); return d }

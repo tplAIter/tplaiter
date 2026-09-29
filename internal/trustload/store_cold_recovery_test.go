@@ -25,8 +25,11 @@ func TestStoreColdRecoveryBoundsAndHotRetention(t *testing.T) {
 		want   error
 		absent bool
 	}{
-		{"cold-zero", 0, 0, nil, true}, {"cold-one", 1, 0, nil, true}, {"cold-page", 4096, 0, nil, true},
-		{"cold-budget", coldJournalInspectBudget, 0, nil, true}, {"cold-oversize", coldJournalInspectBudget + 1, 0, ErrPending, false},
+		{"cold-zero", 0, 0, nil, true},
+		{"cold-one", 1, 0, nil, true},
+		{"cold-page", 4096, 0, nil, true},
+		{"cold-budget", coldJournalInspectBudget, 0, nil, true},
+		{"cold-oversize", coldJournalInspectBudget + 1, 0, ErrPending, false},
 		{"hot-oversize-real-sqlite-control", coldJournalInspectBudget + 1, 1, nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -16,8 +16,10 @@ import (
 	"github.com/tplAIter/tplaiter/internal/provenance"
 )
 
-var baselineDigestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-var baselineProviderRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._/-]{0,127}$`)
+var (
+	baselineDigestRE   = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	baselineProviderRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._/-]{0,127}$`)
+)
 
 func BuildBaseline(files map[string][]byte, providers []ProviderSource, prior *Baseline) (Baseline, error) {
 	providerMap := make(map[string]ProviderSource, len(providers))
@@ -86,6 +88,7 @@ func (b Baseline) Clone() Baseline {
 	}
 	return out
 }
+
 func cloneFileBaseline(f FileBaseline) FileBaseline {
 	out := FileBaseline{Skeleton: SkeletonBaseline{Body: f.Skeleton.Body, BodySHA256: f.Skeleton.BodySHA256}, Blocks: make(map[string]BlockBaseline, len(f.Blocks))}
 	for id, v := range f.Blocks {
@@ -128,6 +131,7 @@ func (b Baseline) Validate() error {
 	}
 	return nil
 }
+
 func validBlockState(block BlockBaseline) bool {
 	if block.State == StatePresent {
 		return block.Tombstone == nil
@@ -143,12 +147,14 @@ func validBlockState(block BlockBaseline) bool {
 	}
 	return (block.State == StateLocalDeleted && block.Tombstone.Side == TombstoneLocal) || (block.State == StateUpstreamDeletedLocalRetained && block.Tombstone.Side == TombstoneUpstream)
 }
+
 func validateSkeleton(s SkeletonBaseline) error {
 	if !utf8.ValidString(s.Body) || strings.IndexByte(s.Body, 0) >= 0 || s.BodySHA256 != bodyDigest([]byte(s.Body)) {
 		return fmt.Errorf("invalid skeleton")
 	}
 	return nil
 }
+
 func validSource(s provenance.RootSubject) bool {
 	return s.Validate() == nil
 }
@@ -183,7 +189,9 @@ func ParseBaseline(data []byte) (Baseline, error) {
 	}
 	return b, nil
 }
+
 func bodyDigest(b []byte) string { h := sha256.Sum256(b); return "sha256:" + hex.EncodeToString(h[:]) }
+
 func validatePath(p string) error {
 	if p == "" || path.IsAbs(p) || strings.Contains(p, "\\") || strings.ContainsRune(p, 0) || strings.Contains(p, ":") {
 		return fmt.Errorf("managed blocks: invalid path %q", p)

@@ -18,8 +18,10 @@ import (
 //go:embed adapters/typescript.cjs
 var typeScriptHelper []byte
 
-const TypeScriptProviderAPIVersion = "tplaiter.dev/typescript-provider/v1"
-const TypeScriptAdapterID = "prettier-typescript-standalone-v1"
+const (
+	TypeScriptProviderAPIVersion = "tplaiter.dev/typescript-provider/v1"
+	TypeScriptAdapterID          = "prettier-typescript-standalone-v1"
+)
 
 type TypeScriptProviderFile struct {
 	Path          string `json:"path"`
@@ -58,9 +60,11 @@ type TypeScriptProvider struct {
 	FormatOptions       TypeScriptFormatOptions  `json:"formatOptions"`
 }
 
-var tsDigest = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-var tsPath = regexp.MustCompile(`^(adapter/typescript\.cjs|tool/standalone\.cjs|tool/plugins/(estree|typescript)\.cjs)$`)
-var tsNodeVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
+var (
+	tsDigest      = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	tsPath        = regexp.MustCompile(`^(adapter/typescript\.cjs|tool/standalone\.cjs|tool/plugins/(estree|typescript)\.cjs)$`)
+	tsNodeVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
+)
 
 func (p TypeScriptProvider) Validate() error {
 	if p.APIVersion != TypeScriptProviderAPIVersion || p.Adapter != TypeScriptAdapterID || p.PrettierVersion != "3.9.6" || p.CompilerVersion != "6.0.3" || p.EstreeVersion != "8.65.0" || p.CommentUtilsVersion != "2.5.0" || !tsNodeVersion.MatchString(p.NodeVersion) || !tsDigest.MatchString(p.NodeBinarySHA256) || len(p.Files) != 4 {
@@ -78,6 +82,7 @@ func (p TypeScriptProvider) Validate() error {
 	}
 	return nil
 }
+
 func TypeScriptHelperSHA256() string {
 	h := sha256.Sum256(typeScriptHelper)
 	return "sha256:" + hex.EncodeToString(h[:])
@@ -180,6 +185,7 @@ func decodeField(m map[string]json.RawMessage, key string, dst any) error {
 	}
 	return nil
 }
+
 func exactKeys(m map[string]json.RawMessage, want []string) error {
 	set := make(map[string]bool, len(want))
 	for _, k := range want {
@@ -195,6 +201,7 @@ func exactKeys(m map[string]json.RawMessage, want []string) error {
 	}
 	return nil
 }
+
 func requireEOF(dec *json.Decoder) error {
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
@@ -202,6 +209,7 @@ func requireEOF(dec *json.Decoder) error {
 	}
 	return nil
 }
+
 func scanJSON(r io.Reader) error {
 	d := json.NewDecoder(r)
 	d.UseNumber()
@@ -210,6 +218,7 @@ func scanJSON(r io.Reader) error {
 	}
 	return requireEOF(d)
 }
+
 func scanValue(d *json.Decoder) error {
 	t, err := d.Token()
 	if err != nil {
@@ -278,6 +287,7 @@ func ValidateTypeScriptRequest(language, logicalPath string) error {
 	}
 	return nil
 }
+
 func SortedProviderFiles(files []TypeScriptProviderFile) []TypeScriptProviderFile {
 	out := append([]TypeScriptProviderFile(nil), files...)
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })

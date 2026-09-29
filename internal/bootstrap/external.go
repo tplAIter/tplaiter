@@ -233,6 +233,7 @@ func (p *OSSRefreshProposal) ExpectedStateSHA256() string {
 	}
 	return string(p.expected)
 }
+
 func (p *OSSRefreshProposal) NextStateJSON() []byte {
 	if p == nil {
 		return nil

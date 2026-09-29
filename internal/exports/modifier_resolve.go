@@ -32,13 +32,16 @@ type RuleSet struct {
 	Exports    map[string]ExportFact
 	Tools      map[string]ToolFact
 }
-type ExportFact struct{ ContractDigest, Version string }
-type ToolFact struct{ Version, OptionsDigest string }
-type Tombstone struct {
-	ID, Digest, Provider, Version, ReplacedBy, Reason string
-	Chain                                             []string
-	Capabilities                                      []Capability
-}
+type (
+	ExportFact struct{ ContractDigest, Version string }
+	ToolFact   struct{ Version, OptionsDigest string }
+	Tombstone  struct {
+		ID, Digest, Provider, Version, ReplacedBy, Reason string
+		Chain                                             []string
+		Capabilities                                      []Capability
+	}
+)
+
 type Composition struct {
 	Rules      []Rule
 	Tombstones []Tombstone
@@ -171,6 +174,7 @@ func cloneTombstone(t Tombstone) Tombstone {
 	t.Capabilities = cloneCapabilities(t.Capabilities)
 	return t
 }
+
 func validateExternalFacts(base RuleSet, m Modifier) error {
 	for _, r := range m.Requires.Exports {
 		if base.Exports == nil {
@@ -232,6 +236,7 @@ func versionMatches(version, constraint string) bool {
 	}
 	return true
 }
+
 func compareSemver(a, b string) int {
 	coreAndPre := func(s string) (core, pre []string) {
 		withoutBuild := strings.SplitN(s, "+", 2)[0]
@@ -437,9 +442,11 @@ func closedCyclePath(adj []map[int]bool, indeg []int, in []operationRef) []strin
 	}
 	return []string{"unknown", "unknown"}
 }
+
 func operationKey(r operationRef) string {
 	return r.m.SelfSource + "\x00" + r.op.Export + "\x00" + r.op.ID
 }
+
 func toOps(in []operationRef) []Operation {
 	out := make([]Operation, len(in))
 	for i, r := range in {
@@ -447,6 +454,7 @@ func toOps(in []operationRef) []Operation {
 	}
 	return out
 }
+
 func ruleFor(r operationRef, base RuleSet) (Rule, error) {
 	caps := []Capability{}
 	for _, p := range r.m.Provides {
@@ -471,12 +479,15 @@ func ruleFor(r operationRef, base RuleSet) (Rule, error) {
 	if err != nil {
 		return Rule{}, fmt.Errorf("RULE_IDENTITY: %w", err)
 	}
-	return Rule{ID: r.op.ID, Digest: digest, Version: r.m.Metadata.Version, Provider: r.m.SelfSource,
+	return Rule{
+		ID: r.op.ID, Digest: digest, Version: r.m.Metadata.Version, Provider: r.m.SelfSource,
 		Capabilities: cloneCapabilities(caps), Sources: cloneSources(context.Sources), Export: r.op.Export,
 		Bindings: cloneBindings(context.Bindings), Tools: cloneTools(context.ToolConstraints),
 		ExportFacts: cloneExportFacts(exportFacts), ToolFacts: cloneToolFacts(toolFacts),
-		Requirements: cloneRequires(context.Requires), Operation: normalizedOperation(r.op)}, nil
+		Requirements: cloneRequires(context.Requires), Operation: normalizedOperation(r.op),
+	}, nil
 }
+
 func selectedFacts(base RuleSet, m Modifier) (map[string]ExportFact, map[string]ToolFact) {
 	exports := make(map[string]ExportFact, len(m.Requires.Exports))
 	for _, r := range m.Requires.Exports {
@@ -488,6 +499,7 @@ func selectedFacts(base RuleSet, m Modifier) (map[string]ExportFact, map[string]
 	}
 	return exports, tools
 }
+
 func cloneRule(r Rule) Rule {
 	r.Capabilities = cloneCapabilities(r.Capabilities)
 	r.Sources = cloneSources(r.Sources)
@@ -499,6 +511,7 @@ func cloneRule(r Rule) Rule {
 	r.Operation = cloneOperation(r.Operation)
 	return r
 }
+
 func validateConstraints(active map[string]Rule, tomb []Tombstone, required []Capability, mods []Modifier) error {
 	counts := map[string]int{}
 	values := map[string]map[string]int{}
@@ -547,6 +560,7 @@ func validateConstraints(active map[string]Rule, tomb []Tombstone, required []Ca
 	}
 	return nil
 }
+
 func hasCapability(values []Capability, name, value string) bool {
 	for _, v := range values {
 		if v.Name == name && v.Value == value {
@@ -555,6 +569,7 @@ func hasCapability(values []Capability, name, value string) bool {
 	}
 	return false
 }
+
 func hasCapabilityName(values []Capability, name string) bool {
 	for _, v := range values {
 		if v.Name == name {
@@ -563,6 +578,7 @@ func hasCapabilityName(values []Capability, name string) bool {
 	}
 	return false
 }
+
 func cloneOperation(op Operation) Operation {
 	op.Before = cloneStrings(op.Before)
 	op.After = cloneStrings(op.After)
@@ -578,11 +594,13 @@ func normalizedOperation(op Operation) Operation {
 	op.After = sortedStrings(op.After)
 	return op
 }
+
 func cloneSources(in []SourcePin) []SourcePin {
 	out := make([]SourcePin, len(in))
 	copy(out, in)
 	return out
 }
+
 func cloneBindings(in []Binding) []Binding {
 	out := make([]Binding, len(in))
 	for i := range in {
@@ -591,11 +609,13 @@ func cloneBindings(in []Binding) []Binding {
 	}
 	return out
 }
+
 func cloneTools(in []ToolConstraint) []ToolConstraint {
 	out := make([]ToolConstraint, len(in))
 	copy(out, in)
 	return out
 }
+
 func cloneExportFacts(in map[string]ExportFact) map[string]ExportFact {
 	out := make(map[string]ExportFact, len(in))
 	for k, v := range in {
@@ -603,6 +623,7 @@ func cloneExportFacts(in map[string]ExportFact) map[string]ExportFact {
 	}
 	return out
 }
+
 func cloneToolFacts(in map[string]ToolFact) map[string]ToolFact {
 	out := make(map[string]ToolFact, len(in))
 	for k, v := range in {
@@ -610,6 +631,7 @@ func cloneToolFacts(in map[string]ToolFact) map[string]ToolFact {
 	}
 	return out
 }
+
 func cloneRequires(in Requires) Requires {
 	exports := make([]ExportRequirement, len(in.Exports))
 	capabilities := make([]Capability, len(in.Capabilities))
@@ -617,22 +639,27 @@ func cloneRequires(in Requires) Requires {
 	copy(capabilities, in.Capabilities)
 	return Requires{Exports: exports, Capabilities: capabilities}
 }
+
 func cloneCapabilities(in []Capability) []Capability {
 	out := make([]Capability, len(in))
 	copy(out, in)
 	return out
 }
+
 func cloneStrings(in []string) []string { out := make([]string, len(in)); copy(out, in); return out }
+
 func cloneProvided(in []ProvidedCapability) []ProvidedCapability {
 	out := make([]ProvidedCapability, len(in))
 	copy(out, in)
 	return out
 }
+
 func cloneReplacements(in []Replacement) []Replacement {
 	out := make([]Replacement, len(in))
 	copy(out, in)
 	return out
 }
+
 func cloneRenames(in []Rename) []Rename { out := make([]Rename, len(in)); copy(out, in); return out }
 
 // normalizedModifier materializes the order-independent authoring sets before
@@ -676,9 +703,11 @@ func exportRequirementKey(r ExportRequirement) string {
 }
 func capabilityKey(c Capability) string       { return c.Name + "\x00" + c.Value }
 func providedKey(c ProvidedCapability) string { return c.Name + "\x00" + c.Value + "\x00" + c.RuleID }
+
 func replacementKey(r Replacement) string {
 	return r.Name + "\x00" + r.Value + "\x00" + r.ProviderRule + "\x00" + r.WithRule
 }
+
 func toolKey(t ToolConstraint) string {
 	return t.ID + "\x00" + t.CompatibleRange + "\x00" + t.OptionsDigest
 }
@@ -708,6 +737,7 @@ func compositionDigest(base RuleSet, modifiers []Modifier, rules []Rule, tombsto
 	}{"tplaiter.dev/composition-graph/v1", baseCopy, normalizedModifiers, normalizedRules(rules), cloneTombstones(tombstones), normalizedOperations(ordered)}
 	return canonicalDigest("tplaiter.dev/composition-graph/v1", payload)
 }
+
 func canonicalDigest(domain string, payload any) (string, error) {
 	b, err := canonicaljson.Canonical(payload)
 	if err != nil {
@@ -716,6 +746,7 @@ func canonicalDigest(domain string, payload any) (string, error) {
 	s := sha256.Sum256(append([]byte(domain+"\x00"), b...))
 	return "sha256:" + hex.EncodeToString(s[:]), nil
 }
+
 func cloneRules(in []Rule) []Rule {
 	out := make([]Rule, len(in))
 	for i := range in {
@@ -723,6 +754,7 @@ func cloneRules(in []Rule) []Rule {
 	}
 	return out
 }
+
 func cloneTombstones(in []Tombstone) []Tombstone {
 	out := make([]Tombstone, len(in))
 	for i := range in {
@@ -730,6 +762,7 @@ func cloneTombstones(in []Tombstone) []Tombstone {
 	}
 	return out
 }
+
 func cloneOperations(in []Operation) []Operation {
 	out := make([]Operation, len(in))
 	for i := range in {
@@ -737,6 +770,7 @@ func cloneOperations(in []Operation) []Operation {
 	}
 	return out
 }
+
 func normalizedOperations(in []Operation) []Operation {
 	out := make([]Operation, len(in))
 	for i := range in {
@@ -744,6 +778,7 @@ func normalizedOperations(in []Operation) []Operation {
 	}
 	return out
 }
+
 func normalizedRules(in []Rule) []Rule {
 	out := cloneRules(in)
 	for i := range out {
@@ -751,6 +786,7 @@ func normalizedRules(in []Rule) []Rule {
 	}
 	return out
 }
+
 func cloneRuleSet(in RuleSet) RuleSet {
 	out := in
 	out.Rules = cloneRules(in.Rules)

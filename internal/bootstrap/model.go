@@ -118,6 +118,7 @@ func decodeEnvelope(raw []byte, requireSignatures bool) (*Envelope, error) {
 	}
 	return &e, nil
 }
+
 func DecodeReceipt(raw []byte) (*Receipt, error) {
 	if err := requireFields(raw, receiptFields); err != nil {
 		return nil, err
@@ -155,6 +156,7 @@ func DecodeCheckpoint(raw []byte) (*Checkpoint, error) {
 	}
 	return &v, nil
 }
+
 func DecodeInclusionProof(raw []byte) (*InclusionProof, error) {
 	var v InclusionProof
 	if err := requireFields(raw, inclusionFields); err != nil {
@@ -168,6 +170,7 @@ func DecodeInclusionProof(raw []byte) (*InclusionProof, error) {
 	}
 	return &v, nil
 }
+
 func DecodeConsistencyProof(raw []byte) (*ConsistencyProof, error) {
 	var v ConsistencyProof
 	if err := requireFields(raw, consistencyFields); err != nil {
@@ -213,6 +216,7 @@ func requireEnvelopeFields(raw []byte) error {
 }
 
 func requireFields(raw []byte, fields []string) error { _, err := rawObject(raw, fields); return err }
+
 func rawObject(raw []byte, fields []string) (map[string]json.RawMessage, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	var v map[string]json.RawMessage
@@ -230,6 +234,7 @@ func rawObject(raw []byte, fields []string) (map[string]json.RawMessage, error) 
 	}
 	return v, nil
 }
+
 func rawArray(raw []byte) ([]json.RawMessage, error) {
 	var v []json.RawMessage
 	if err := json.Unmarshal(raw, &v); err != nil || v == nil {
@@ -237,6 +242,7 @@ func rawArray(raw []byte) ([]json.RawMessage, error) {
 	}
 	return v, nil
 }
+
 func (e Envelope) Validate() error {
 	return e.validate(true)
 }
@@ -299,6 +305,7 @@ func (e Envelope) validate(requireSignatures bool) error {
 	}
 	return nil
 }
+
 func (r Receipt) Validate() error {
 	if r.APIVersion != TrustReceiptAPIVersion || !validToken(r.AuthorityID) || r.HighestAcceptedSequence == 0 || r.TreeSize == 0 || r.HighestAcceptedSequence > maxSafeInteger || r.TreeSize > maxSafeInteger || r.RevocationEpoch > maxSafeInteger {
 		return errors.New("bootstrap: invalid receipt")
@@ -313,6 +320,7 @@ func (r Receipt) Validate() error {
 	}
 	return nil
 }
+
 func (v Validity) bounds() (time.Time, time.Time, error) {
 	a, e := parseTime(v.NotBefore)
 	if e != nil {
@@ -324,6 +332,7 @@ func (v Validity) bounds() (time.Time, time.Time, error) {
 	}
 	return a, b, nil
 }
+
 func parseTime(s string) (time.Time, error) {
 	v, e := time.Parse(time.RFC3339, s)
 	if e != nil || !strings.HasSuffix(s, "Z") || v.Format(time.RFC3339) != s {
@@ -331,6 +340,7 @@ func parseTime(s string) (time.Time, error) {
 	}
 	return v, nil
 }
+
 func DecodePublicKey(v []byte) (ed25519.PublicKey, error) {
 	if strings.ContainsAny(string(v), "= \t\r\n") {
 		return nil, errors.New("bootstrap: invalid public key encoding")
@@ -341,6 +351,7 @@ func DecodePublicKey(v []byte) (ed25519.PublicKey, error) {
 	}
 	return ed25519.PublicKey(b), nil
 }
+
 func DecodeSignature(v []byte) ([]byte, error) {
 	if strings.ContainsAny(string(v), "= \t\r\n") {
 		return nil, errors.New("bootstrap: invalid signature encoding")
@@ -365,9 +376,11 @@ func validDigest(s string) bool {
 	_, e := hex.DecodeString(s[7:])
 	return e == nil
 }
+
 func validToken(s string) bool {
 	return s != "" && len(s) <= 256 && !strings.ContainsAny(s, "\x00\r\n\t ")
 }
+
 func sortedUnique(x []string) bool {
 	for i := 1; i < len(x); i++ {
 		if x[i-1] >= x[i] {

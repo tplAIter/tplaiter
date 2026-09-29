@@ -109,6 +109,7 @@ func ResolveFixedComposition(ctx context.Context, runtime *trustverify.Runtime, 
 	}
 	return &FixedCompositionSelection{runtime: runtime, resolution: resolution, operation: cloneOperation(operation), request: cloneRequest(request), tool: append([]byte(nil), tool...), stdin: append([]byte(nil), stdin...)}, nil
 }
+
 func BindExecutionMaterial(ctx context.Context, runtime *trustverify.Runtime, resolution *trustverify.VerifiedResolution, operation trustverify.OperationInputs, request trustverify.ExecutionRequest, s *FixedCompositionSelection) (*ExecutionMaterial, error) {
 	if s == nil || s.runtime != runtime || s.resolution != resolution || !reflect.DeepEqual(s.operation, operation) || !reflect.DeepEqual(s.request, request) {
 		return nil, ErrExecutionMaterialUnavailable
@@ -119,6 +120,7 @@ func BindExecutionMaterial(ctx context.Context, runtime *trustverify.Runtime, re
 	}
 	return &ExecutionMaterial{selection: s}, nil
 }
+
 func (m *ExecutionMaterial) StagedFor(ctx context.Context, runtime *trustverify.Runtime, request trustverify.ExecutionRequest) (trustverify.StagedMaterial, error) {
 	if m != nil && m.formatter != nil {
 		return m.stagedFormatter(ctx, runtime, request)
@@ -129,19 +131,24 @@ func (m *ExecutionMaterial) StagedFor(ctx context.Context, runtime *trustverify.
 	s := m.selection
 	return trustverify.StagedMaterial{Operation: cloneOperation(s.operation), Request: cloneRequest(s.request), Content: []trustverify.ContentEntry{{Root: "provider", Path: stdinPath, Mode: "100644", ContentSHA256: evidencecas.Digest(s.stdin)}}, ContentBytes: [][]byte{append([]byte(nil), s.stdin...)}, ToolBytes: append([]byte(nil), s.tool...), ToolOptions: []string{}, Environment: fixedEnvironment()}, nil
 }
+
 func fixedEnvironment() trustverify.EnvironmentPolicy {
 	return trustverify.EnvironmentPolicy{APIVersion: "tplaiter.dev/execution-environment/v1", Variables: []trustverify.EnvironmentVariable{{Name: "LANG", Value: "C"}}, Capabilities: []string{}}
 }
+
 func provider(s trustverify.Subject) trustverify.Provider {
 	return trustverify.Provider{Origin: s.Origin, TemplatePath: s.TemplatePath, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256}
 }
+
 func actionMaterial(r trustverify.ExecutionRequest) trustverify.ActionMaterial {
 	return trustverify.ActionMaterial{Provider: r.Provider, Action: r.Action, Tool: r.Tool, WorkingDirectoryScope: r.WorkingDirectoryScope, EnvironmentPolicySHA256: r.EnvironmentPolicySHA256, TimeoutMillis: r.TimeoutMillis, Migration: r.Migration}
 }
+
 func cloneRequest(r trustverify.ExecutionRequest) trustverify.ExecutionRequest {
 	r.Action.Argv = append([]string(nil), r.Action.Argv...)
 	return r
 }
+
 func cloneOperation(o trustverify.OperationInputs) trustverify.OperationInputs {
 	o.Subjects = append([]trustverify.Provider(nil), o.Subjects...)
 	o.Actions = append([]trustverify.ActionMaterial(nil), o.Actions...)

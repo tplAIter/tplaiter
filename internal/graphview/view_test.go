@@ -1,9 +1,10 @@
 package graphview
 
 import (
-	"github.com/tplAIter/tplaiter/internal/graphdoc"
 	"strings"
 	"testing"
+
+	"github.com/tplAIter/tplaiter/internal/graphdoc"
 )
 
 func TestRenderContainsDirectedTraversalAndEscapedData(t *testing.T) {

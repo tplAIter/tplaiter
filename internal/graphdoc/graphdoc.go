@@ -224,6 +224,7 @@ func validMap(m map[string]string) bool {
 	}
 	return true
 }
+
 func validProvenance(ps []Provenance) bool {
 	if len(ps) > MaxProvenance {
 		return false
@@ -235,6 +236,7 @@ func validProvenance(ps []Provenance) bool {
 	}
 	return true
 }
+
 func copyMap(in map[string]string) map[string]string {
 	if len(in) == 0 {
 		return nil

@@ -49,8 +49,10 @@ type ProvisioningRecord struct {
 	ProvisioningSHA256           string        `json:"provisioningSHA256"`
 }
 
-var descriptorFields = []string{"apiVersion", "profile", "authorityId", "anchors", "threshold", "allowedPolicyOrigins", "publisherScopes", "descriptorSHA256"}
-var provisioningFields = []string{"apiVersion", "mode", "descriptorSHA256", "authenticationEvidenceSHA256", "evidenceClass", "provisioningSHA256"}
+var (
+	descriptorFields   = []string{"apiVersion", "profile", "authorityId", "anchors", "threshold", "allowedPolicyOrigins", "publisherScopes", "descriptorSHA256"}
+	provisioningFields = []string{"apiVersion", "mode", "descriptorSHA256", "authenticationEvidenceSHA256", "evidenceClass", "provisioningSHA256"}
+)
 
 func DecodeDescriptorDocument(raw []byte) (*DescriptorDocument, error) {
 	if len(raw) > maxBootstrapDocument {
@@ -68,6 +70,7 @@ func DecodeDescriptorDocument(raw []byte) (*DescriptorDocument, error) {
 	}
 	return &d, nil
 }
+
 func DecodeProvisioningRecord(raw []byte) (*ProvisioningRecord, error) {
 	if len(raw) > maxBootstrapDocument {
 		return nil, fmt.Errorf("bootstrap: provisioning exceeds size limit")
@@ -84,6 +87,7 @@ func DecodeProvisioningRecord(raw []byte) (*ProvisioningRecord, error) {
 	}
 	return &p, nil
 }
+
 func decodeBootstrapDocument(raw []byte, fields []string, dst any) error {
 	if !utf8.Valid(raw) {
 		return fmt.Errorf("bootstrap: invalid UTF-8")
@@ -131,16 +135,20 @@ func (d DescriptorDocument) Validate() error {
 	}
 	return nil
 }
+
 func validAnchor(a DescriptorAnchor) bool {
 	b, err := base64.StdEncoding.Strict().DecodeString(a.PublicKeyBase64)
 	return err == nil && len(b) == 32 && a.Fingerprint == Fingerprint(b)
 }
+
 func (s PublisherScope) valid(allowed map[string]bool) bool {
 	return allowed[s.PolicyOrigin] && validOrigin(s.PolicyOrigin) && validDescriptorToken(s.Issuer, 256) && validOrigin(s.SourceOrigin) && validPathIdentity(s.TemplatePath) && validOrigin(s.Predicate) && s.Usage == "template-source"
 }
+
 func (s PublisherScope) tuple() string {
 	return strings.Join([]string{s.PolicyOrigin, s.Issuer, s.SourceOrigin, s.TemplatePath, s.Predicate, s.Usage}, "\x00")
 }
+
 func validDescriptorToken(s string, max int) bool {
 	if s == "" || !utf8.ValidString(s) || utf8.RuneCountInString(s) > max {
 		return false
@@ -152,6 +160,7 @@ func validDescriptorToken(s string, max int) bool {
 	}
 	return true
 }
+
 func validPathIdentity(s string) bool {
 	if s == "." {
 		return true
@@ -171,6 +180,7 @@ func validPathIdentity(s string) bool {
 	}
 	return true
 }
+
 func validOrigin(s string) bool {
 	if s == "" || !utf8.ValidString(s) || utf8.RuneCountInString(s) > 2048 || strings.ContainsAny(s, "\\ \t\r\n\x00") {
 		return false
@@ -216,6 +226,7 @@ func descriptorDigest(d DescriptorDocument) string {
 		Scopes      []PublisherScope   `json:"publisherScopes"`
 	}{d.APIVersion, d.Profile, d.AuthorityID, d.Anchors, d.Threshold, d.AllowedPolicyOrigins, d.PublisherScopes})
 }
+
 func provisioningDigest(p ProvisioningRecord) string {
 	return bootstrapDigest(ProvisioningAPIVersion, struct {
 		APIVersion string        `json:"apiVersion"`

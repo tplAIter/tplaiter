@@ -12,8 +12,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"gopkg.in/yaml.v3"
+
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 )
 
 func normalizeDocument(data []byte) ([]byte, error) {
@@ -188,6 +189,7 @@ func strictSemver(v string) bool {
 	}
 	return true
 }
+
 func allDigits(s string) bool {
 	if s == "" {
 		return false
@@ -260,6 +262,7 @@ func wireObject(raw json.RawMessage) (map[string]json.RawMessage, error) {
 	}
 	return m, nil
 }
+
 func wireKeys(m map[string]json.RawMessage, required, allowed []string) error {
 	set := map[string]bool{}
 	for _, k := range allowed {
@@ -277,6 +280,7 @@ func wireKeys(m map[string]json.RawMessage, required, allowed []string) error {
 	}
 	return nil
 }
+
 func wireRawString(raw json.RawMessage, min, max int, re *regexp.Regexp) error {
 	var s string
 	if json.Unmarshal(raw, &s) != nil || utf8.RuneCountInString(s) < min || (max > 0 && utf8.RuneCountInString(s) > max) || (re != nil && !re.MatchString(s)) {
@@ -284,6 +288,7 @@ func wireRawString(raw json.RawMessage, min, max int, re *regexp.Regexp) error {
 	}
 	return nil
 }
+
 func wireArray(raw json.RawMessage, min, max int) ([]json.RawMessage, error) {
 	var a []json.RawMessage
 	if json.Unmarshal(raw, &a) != nil || a == nil || len(a) < min || len(a) > max {
@@ -302,6 +307,7 @@ func wireArray(raw json.RawMessage, min, max int) ([]json.RawMessage, error) {
 	}
 	return a, nil
 }
+
 func wireMetadata(raw json.RawMessage) error {
 	m, e := wireObject(raw)
 	if e != nil {
@@ -315,6 +321,7 @@ func wireMetadata(raw json.RawMessage) error {
 	}
 	return wireRawString(m["version"], 0, 0, semverRE)
 }
+
 func wireCompatibility(raw json.RawMessage) error {
 	m, e := wireObject(raw)
 	if e != nil {
@@ -343,6 +350,7 @@ func wireCompatibility(raw json.RawMessage) error {
 	}
 	return nil
 }
+
 func wireSources(raw json.RawMessage) error {
 	a, e := wireArray(raw, 1, 256)
 	if e != nil {
@@ -389,6 +397,7 @@ func wireSources(raw json.RawMessage) error {
 	}
 	return nil
 }
+
 func wireRequires(raw json.RawMessage) error {
 	m, e := wireObject(raw)
 	if e != nil {
@@ -422,6 +431,7 @@ func wireRequires(raw json.RawMessage) error {
 	}
 	return wireNamedArrays(m["capabilities"], 0, 256, []string{"name", "value"})
 }
+
 func wireNamedArrays(raw json.RawMessage, min, max int, keys []string) error {
 	a, e := wireArray(raw, min, max)
 	if e != nil {
@@ -447,6 +457,7 @@ func wireNamedArrays(raw json.RawMessage, min, max int, keys []string) error {
 	}
 	return nil
 }
+
 func wireBindings(raw json.RawMessage) error {
 	a, e := wireArray(raw, 0, 256)
 	if e != nil {
@@ -486,6 +497,7 @@ func wireBindings(raw json.RawMessage) error {
 	}
 	return nil
 }
+
 func wireOperations(raw json.RawMessage) error {
 	a, e := wireArray(raw, 1, 4096)
 	if e != nil {
@@ -553,6 +565,7 @@ func wireOperations(raw json.RawMessage) error {
 	}
 	return nil
 }
+
 func wireTools(raw json.RawMessage) error {
 	a, e := wireArray(raw, 0, 256)
 	if e != nil {
@@ -579,6 +592,7 @@ func wireTools(raw json.RawMessage) error {
 	}
 	return nil
 }
+
 func wireRenames(raw json.RawMessage) error {
 	a, e := wireArray(raw, 0, 4096)
 	if e != nil {
@@ -789,6 +803,7 @@ func uniqueStrings(values []string) bool {
 	}
 	return true
 }
+
 func sourceAlias(m Modifier, alias string) bool {
 	for _, s := range m.Sources {
 		if s.Alias == alias {

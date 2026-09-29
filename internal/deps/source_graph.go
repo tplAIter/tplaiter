@@ -53,11 +53,13 @@ type SourceGraphInput struct {
 	Root              *PinnedSource
 	DependencyClosure *SourceDependencyClosure
 }
-type SourceDependencyClosure struct{ Pins []PinnedSource }
-type SourceGraphResult struct {
-	Graph         SourceGraph
-	ClosureStatus SourceClosureStatus
-}
+type (
+	SourceDependencyClosure struct{ Pins []PinnedSource }
+	SourceGraphResult       struct {
+		Graph         SourceGraph
+		ClosureStatus SourceClosureStatus
+	}
+)
 
 // Parameter is a scalar input retained in the immutable source identity.
 // Value is raw only at the wire boundary; Validate canonicalizes and checks it.
@@ -676,6 +678,7 @@ func validateOrigin(origin string) error {
 	}
 	return nil
 }
+
 func validTemplatePath(v string) bool {
 	return v == "." || (!strings.HasPrefix(v, "/") && !strings.Contains(v, "\\") && path.Clean(v) == v && !strings.HasPrefix(v, "../") && v != "..")
 }
@@ -691,6 +694,7 @@ func validAlias(v string) bool {
 	}
 	return true
 }
+
 func validProviderID(v string) bool {
 	if len(v) == 0 || len(v) > 128 || !isASCIIAlpha(v[0]) {
 		return false
@@ -706,6 +710,7 @@ func isASCIIAlpha(v byte) bool { return v >= 'A' && v <= 'Z' || v >= 'a' && v <=
 func validDigest(v string) bool {
 	return strings.HasPrefix(v, "sha256:") && isLowerHex(v[len("sha256:"):], 64)
 }
+
 func isLowerHex(v string, n int) bool {
 	if len(v) != n {
 		return false

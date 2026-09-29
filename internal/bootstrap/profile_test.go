@@ -33,6 +33,7 @@ func TestDecodeProfileBindingRequiresAllFields(t *testing.T) {
 		t.Fatal("missing zero-valued required definitionVersion accepted")
 	}
 }
+
 func TestOrganizationCannotDowngrade(t *testing.T) {
 	if RequireProfile(ProfileOrganization, ProfileOSS) != ErrDowngradeDenied {
 		t.Fatal("downgrade accepted")

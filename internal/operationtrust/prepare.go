@@ -17,8 +17,10 @@ import (
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
-var rendererToken = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$`)
-var digestToken = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+var (
+	rendererToken = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$`)
+	digestToken   = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+)
 
 // PrepareNewInput contains only untrusted source transport and non-authority
 // render settings. Scratch and project roots come exclusively from Runtime.
@@ -60,36 +62,42 @@ type PreparedUpdate struct {
 func (p *PreparedUpdate) ValidFor(runtime *trustverify.Runtime) bool {
 	return p != nil && runtime != nil && runtime == p.runtime && p.sourceResolution.ValidFor(runtime, runtime.Binding()) && p.targetResolution.ValidFor(runtime, runtime.Binding()) && provenance.ValidateLockPair(p.source, p.sourceDeps) == nil && provenance.ValidateLockPair(p.target, p.targetDeps) == nil && p.source.TrustProfile.Equal(runtime.Binding()) && p.target.TrustProfile.Equal(runtime.Binding()) && p.operation != ""
 }
+
 func (p *PreparedUpdate) SourceRootLock() provenance.RootTemplateLock {
 	if p == nil {
 		return provenance.RootTemplateLock{}
 	}
 	return p.source
 }
+
 func (p *PreparedUpdate) TargetRootLock() provenance.RootTemplateLock {
 	if p == nil {
 		return provenance.RootTemplateLock{}
 	}
 	return p.target
 }
+
 func (p *PreparedUpdate) SourceDependencyLock() provenance.TemplateLock {
 	if p == nil {
 		return provenance.TemplateLock{}
 	}
 	return p.sourceDeps
 }
+
 func (p *PreparedUpdate) TargetDependencyLock() provenance.TemplateLock {
 	if p == nil {
 		return provenance.TemplateLock{}
 	}
 	return p.targetDeps
 }
+
 func (p *PreparedUpdate) OperationInputsSHA256() string {
 	if p == nil {
 		return ""
 	}
 	return p.operation
 }
+
 func (p *PreparedUpdate) Rendered() *renderref.Result {
 	if p == nil || p.rendered == nil {
 		return nil
@@ -100,24 +108,28 @@ func (p *PreparedUpdate) Rendered() *renderref.Result {
 func (p *PreparedNew) ValidFor(runtime *trustverify.Runtime) bool {
 	return p != nil && runtime != nil && runtime == p.runtime && p.resolution.ValidFor(runtime, runtime.Binding()) && provenance.ValidateLockPair(p.root, p.deps) == nil && p.root.TrustProfile.Equal(runtime.Binding()) && p.operation != ""
 }
+
 func (p *PreparedNew) RootLock() provenance.RootTemplateLock {
 	if p == nil {
 		return provenance.RootTemplateLock{}
 	}
 	return p.root
 }
+
 func (p *PreparedNew) DependencyLock() provenance.TemplateLock {
 	if p == nil {
 		return provenance.TemplateLock{}
 	}
 	return p.deps
 }
+
 func (p *PreparedNew) OperationInputsSHA256() string {
 	if p == nil {
 		return ""
 	}
 	return p.operation
 }
+
 func (p *PreparedNew) Rendered() *renderref.Result {
 	if p == nil || p.rendered == nil {
 		return nil
@@ -350,9 +362,11 @@ func emptyUpdateOperation(runtime *trustverify.Runtime, source, target *trustver
 	op := trustverify.OperationInputs{APIVersion: "tplaiter.dev/operation-inputs/v1", ProfileBindingSHA256: digestWithDomain(bootstrap.ProfileBindingAPIVersion, bindingRaw), ProjectID: projectID, Scope: "update", PreimageSHA256: preimage, AnswersSHA256: rawDigest(valuesRaw), Subjects: providers, Actions: []trustverify.ActionMaterial{}}
 	return trustverify.ComputeOperationInputsSHA256(op)
 }
+
 func providerFromSubject(s trustverify.Subject) trustverify.Provider {
 	return trustverify.Provider{Origin: s.Origin, TemplatePath: s.TemplatePath, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256}
 }
+
 func providerKey(p trustverify.Provider) string {
 	return p.Origin + "\x00" + p.TemplatePath + "\x00" + p.Commit
 }
