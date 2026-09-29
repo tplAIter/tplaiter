@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/newcmd"
 	"github.com/tplAIter/tplaiter/internal/repo"
+	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
@@ -500,5 +502,27 @@ func TestAddWorkspaceUse_Idempotent(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "services/payments") {
 		t.Errorf("go.work does not contain new path services/payments:\n%s", data)
+	}
+}
+
+// TestIsUnknownForcedGroupError checks that only the typed ParseSet error for the
+// same group triggers the add-service fallback; other "unknown group" messages
+// (condition evaluation, settings edit) and other groups must not.
+func TestIsUnknownForcedGroupError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"parse set, same group", &settings.UnknownSetGroupError{Group: "workflow"}, true},
+		{"wrapped parse set", fmt.Errorf("new: %w", &settings.UnknownSetGroupError{Group: "workflow"}), true},
+		{"parse set, other group", &settings.UnknownSetGroupError{Group: "database"}, false},
+		{"condition error", &settings.UnknownGroupError{Group: "workflow"}, false},
+		{"settings edit text", errors.New(`settings edit: unknown group "workflow"`), false},
+	}
+	for _, tc := range tests {
+		if got := isUnknownForcedGroupError(tc.err, "workflow"); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }

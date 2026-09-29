@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/mod/modfile"
@@ -250,12 +249,14 @@ func findWorkspaceRoot(home, startDir string) (root string, proj *manifest.Proje
 
 // isUnknownForcedGroupError reports whether an error (settings.ParseSet directly
 // in [serviceTemplateHasGroup] or a failed newcmd.Run) is caused by group being
-// absent from the service template manifest. settings.ParseSet uses this text
-// for every unknown group and has no sentinel error, so compare the text. This
-// distinguishes a failed forced --set (added by tplater) from an error in the
-// user's --set/--answers for the same command.
+// absent from the service template manifest. It matches the typed
+// [settings.UnknownSetGroupError] so that other "unknown group" messages (condition
+// evaluation, settings edit, conditional paths) do not trigger the fallback.
+// This distinguishes a failed forced --set (added by tplaiter) from an error in
+// the user's --set/--answers for the same command.
 func isUnknownForcedGroupError(err error, group string) bool {
-	return strings.Contains(err.Error(), fmt.Sprintf("unknown group %q", group))
+	var ug *settings.UnknownSetGroupError
+	return errors.As(err, &ug) && ug.Group == group
 }
 
 // serviceTemplateHasGroup reports whether the service template manifest at ref

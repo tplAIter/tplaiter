@@ -43,10 +43,10 @@ func TestParseSet_Errors(t *testing.T) {
 	}{
 		{"database", "group=value format"},
 		{"nosuch=x", "unknown group"},
-		{"database=oracle", "allowed:"},
+		{"database=oracle", "allowed: none, postgres, mysql"},
 		{"idempotency=maybe", "not boolean"},
 		{"pg_shards=many", "not an integer"},
-		{"brokers=kafka,nats", "allowed:"},
+		{"brokers=kafka,nats", "allowed: kafka, rabbitmq"},
 	}
 	for _, tc := range tests {
 		_, _, err := ParseSet(tpl, tc.expr)

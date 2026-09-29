@@ -12,6 +12,17 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 
+// UnknownSetGroupError is returned by [ParseSet] when the group is not declared
+// in the template manifest. Callers match it with errors.As instead of
+// comparing error text.
+type UnknownSetGroupError struct {
+	Group string
+}
+
+func (e *UnknownSetGroupError) Error() string {
+	return fmt.Sprintf("unknown group %q", e.Group)
+}
+
 // ParseSet parses one CLI value in the form "group=value" (--set flag), typing it
 // according to the manifest:
 //   - select: value must be the id of an existing selectable, non-planned option;
@@ -36,7 +47,7 @@ func ParseSet(tpl *manifest.Template, expr string) (group string, value any, err
 	idx := indexGroups(tpl)
 	m, ok := idx[group]
 	if !ok {
-		return "", nil, fmt.Errorf("unknown group %q", group)
+		return "", nil, &UnknownSetGroupError{Group: group}
 	}
 
 	value, err = typeString(m.g, raw)

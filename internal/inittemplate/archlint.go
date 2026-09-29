@@ -64,7 +64,11 @@ func checkArchLint(tpl *manifest.Template, outDir string, files []string) error 
 	for i, v := range violations {
 		parts[i] = v.String()
 	}
-	return fmt.Errorf("arch-lint: %d violations:\n    - %s", len(violations), strings.Join(parts, "\n    - "))
+	noun := "violations"
+	if len(violations) == 1 {
+		noun = "violation"
+	}
+	return fmt.Errorf("arch-lint: %d %s:\n    - %s", len(violations), noun, strings.Join(parts, "\n    - "))
 }
 
 // runLintRule applies one rule to the already filtered (paths/exclude) list of

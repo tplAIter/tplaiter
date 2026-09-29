@@ -221,7 +221,7 @@
     },
     "lint": {
       "type": "object",
-      "description": "Opt-in arch-lint rules checked by `tplater lint-template` on the test render AST (implementation check). Empty/missing section does not change behavior.",
+      "description": "Opt-in arch-lint rules checked by `tplater lint-template` on the test render AST. Empty/missing section does not change behavior.",
       "additionalProperties": false,
       "properties": {
         "rules": {
