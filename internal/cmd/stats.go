@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/stats"
 	"github.com/tplAIter/tplaiter/internal/ui"
@@ -50,19 +53,35 @@ func newStatsCmd() *cobra.Command {
 				return fmt.Errorf("cmd: stats: determining working directory: %w", err)
 			}
 
-			return stats.Run(cmd.Context(), stats.Deps{
+			if !asJSON {
+				return stats.Run(cmd.Context(), stats.Deps{
+					Manager: mgr,
+					Home:    home,
+					Out:     cmd.OutOrStdout(),
+					Err:     cmd.ErrOrStderr(),
+					Palette: ui.Default(),
+				}, stats.Options{StartDir: cwd})
+			}
+			// --json: the drift report becomes data.report of a project.stats
+			// envelope.
+			var report bytes.Buffer
+			if err := stats.Run(cmd.Context(), stats.Deps{
 				Manager: mgr,
 				Home:    home,
-				Out:     cmd.OutOrStdout(),
+				Out:     &report,
 				Err:     cmd.ErrOrStderr(),
 				Palette: ui.Default(),
-			}, stats.Options{
-				StartDir: cwd,
-				JSON:     asJSON,
-			})
+			}, stats.Options{StartDir: cwd, JSON: true}); err != nil {
+				return err
+			}
+			var parsed map[string]any
+			if err := json.Unmarshal(report.Bytes(), &parsed); err != nil || parsed == nil {
+				return fmt.Errorf("cmd: stats: drift report is not a JSON object: %w", err)
+			}
+			return emitData(cmd, resultdto.OperationProjectStats, projectAt(cwd), resultdto.ProjectStatsData{Report: parsed})
 		},
 	}
 
-	c.Flags().BoolVar(&asJSON, "json", false, "machine-readable JSON report")
-	return c
+	c.Flags().BoolVar(&asJSON, "json", false, jsonFlagUsage+"; data.report is the drift report")
+	return withResult(c, resultdto.OperationProjectStats)
 }

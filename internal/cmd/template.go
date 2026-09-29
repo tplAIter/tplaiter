@@ -14,6 +14,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/repo"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/templateview"
 	"github.com/tplAIter/tplaiter/internal/ui"
@@ -84,7 +85,7 @@ func newTemplateListCmd() *cobra.Command {
 	f.StringVar(&nameSub, "name", "", "filter by template name substring (case-insensitive)")
 	f.StringArrayVarP(&labels, "label", "l", nil,
 		"filter by label group=value (repeatable flag, AND semantics)")
-	return c
+	return withResult(c, resultdto.OperationTemplateList)
 }
 
 func runTemplateList(cmd *cobra.Command, mgr *repo.Manager, repoAlias, nameSub string, rawLabels []string) error {
@@ -98,6 +99,20 @@ func runTemplateList(cmd *cobra.Command, mgr *repo.Manager, repoAlias, nameSub s
 		return err
 	}
 	rows := filterTemplateRows(all, repoAlias, nameSub, filters)
+	if jsonMode(cmd) {
+		data := resultdto.TemplateListData{Templates: []resultdto.TemplateSummary{}}
+		for _, r := range rows {
+			labels := r.entry.LabelsFlat
+			if labels == nil {
+				labels = map[string][]string{}
+			}
+			data.Templates = append(data.Templates, resultdto.TemplateSummary{
+				Name: r.entry.Name, Repo: r.alias, Version: r.entry.Version,
+				Description: r.entry.Description, Labels: labels,
+			})
+		}
+		return emitData(cmd, resultdto.OperationTemplateList, nil, data)
+	}
 
 	out := cmd.OutOrStdout()
 	if len(rows) == 0 {
@@ -196,7 +211,7 @@ func reportEmptyTemplateList(out io.Writer, mgr *repo.Manager) error {
 }
 
 func newTemplateShowCmd() *cobra.Command {
-	return &cobra.Command{
+	return withResult(&cobra.Command{
 		Use:   "show <ref>",
 		Short: "Template metadata, settings tree, and documentation",
 		Long: "Resolves reference <ref> (full `repo/name@version` or short `name`), " +
@@ -213,7 +228,7 @@ func newTemplateShowCmd() *cobra.Command {
 
 			return runTemplateShow(cmd, mgr, args[0])
 		},
-	}
+	}, resultdto.OperationTemplateShow)
 }
 
 func runTemplateShow(cmd *cobra.Command, mgr *repo.Manager, ref string) error {
@@ -241,6 +256,10 @@ func runTemplateShow(cmd *cobra.Command, mgr *repo.Manager, ref string) error {
 		return fmt.Errorf("cmd: template show: %w", err)
 	}
 
+	if jsonMode(cmd) {
+		return emitData(cmd, resultdto.OperationTemplateShow, nil, templateShowData(resolved.RepoAlias, resolved.Version, versionSuffixes(resolved.Entry), tpl))
+	}
+
 	out := cmd.OutOrStdout()
 	pal := ui.Default()
 
@@ -264,6 +283,42 @@ func runTemplateShow(cmd *cobra.Command, mgr *repo.Manager, ref string) error {
 	fmt.Fprintln(out)
 
 	return renderTemplateDocs(out, pal, fsys, tpl.Metadata.Docs)
+}
+
+// templateShowData projects a parsed manifest into the template.show data.
+func templateShowData(repoAlias, version string, versions []string, tpl *manifest.Template) resultdto.TemplateShowData {
+	data := resultdto.TemplateShowData{
+		Repo: repoAlias, Name: tpl.Metadata.Name, DisplayName: tpl.Metadata.DisplayName,
+		Version: version, Versions: nonNil(versions), Description: tpl.Metadata.Description,
+		Maintainers: []string{}, Labels: map[string]any{}, Settings: []string{},
+		Commands: []resultdto.TemplateCommand{}, Docs: tpl.Metadata.Docs,
+	}
+	for _, m := range tpl.Metadata.Maintainers {
+		data.Maintainers = append(data.Maintainers, m.Name)
+	}
+	for k, v := range tpl.Metadata.Labels {
+		data.Labels[k] = v
+	}
+	var groups func([]manifest.SettingGroup)
+	groups = func(gs []manifest.SettingGroup) {
+		for _, g := range gs {
+			data.Settings = append(data.Settings, g.Group)
+			for _, o := range g.Options {
+				groups(o.Settings)
+			}
+		}
+	}
+	groups(tpl.Settings)
+	names := make([]string, 0, len(tpl.Commands))
+	for name := range tpl.Commands {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		c := tpl.Commands[name]
+		data.Commands = append(data.Commands, resultdto.TemplateCommand{Name: name, Description: c.Description, When: c.When})
+	}
+	return data
 }
 
 // versionSuffixes converts full template git tags (`v1.2.0` for single,

@@ -11,6 +11,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/project"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/ui"
@@ -28,7 +29,7 @@ func init() {
 
 // newRunCmd creates `tplater run` (SPEC-01 §5, SPEC-04 §4).
 func newRunCmd() *cobra.Command {
-	return &cobra.Command{
+	return withResult(&cobra.Command{
 		Annotations: prerunAnnotations(prerunLegacyAction, prerunReadonly),
 
 		Use:   "run [name] [-- args...]",
@@ -52,10 +53,29 @@ func newRunCmd() *cobra.Command {
 				return err
 			}
 			values := settingsValues(proj.Settings)
+			if jsonMode(cmd) {
+				return emitRunCommands(cmd, tpl.Commands)
+			}
 
 			return listRunCommands(cmd, tpl.Commands, values)
 		},
+	}, resultdto.OperationProjectRun)
+}
+
+// emitRunCommands prints the manifest commands as project.run data (the
+// no-argument listing mode of `run`).
+func emitRunCommands(cmd *cobra.Command, commands map[string]manifest.Command) error {
+	names := make([]string, 0, len(commands))
+	for name := range commands {
+		names = append(names, name)
 	}
+	sort.Strings(names)
+	data := resultdto.ProjectRunData{Commands: []resultdto.TemplateCommand{}}
+	for _, name := range names {
+		c := commands[name]
+		data.Commands = append(data.Commands, resultdto.TemplateCommand{Name: name, Description: c.Description, When: c.When})
+	}
+	return emitData(cmd, resultdto.OperationProjectRun, currentProject(), data)
 }
 
 // loadRunContext finds the project root from the current working directory and

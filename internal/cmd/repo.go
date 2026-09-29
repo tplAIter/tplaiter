@@ -11,6 +11,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/auth"
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/repo"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
@@ -55,7 +56,7 @@ func newManager(cmd *cobra.Command) (*repo.Manager, *auth.Store, error) {
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
 	u := repo.UI{
 		In:          cmd.InOrStdin(),
-		Out:         cmd.OutOrStdout(),
+		Out:         humanOut(cmd),
 		Err:         cmd.ErrOrStderr(),
 		Palette:     ui.Default(),
 		Interactive: interactive,
@@ -87,22 +88,48 @@ func newRepoAddCmd() *cobra.Command {
 			}
 			defer func() { _ = st.Close() }()
 
-			return mgr.Add(cmd.Context(), repo.AddOptions{
+			if err := mgr.Add(cmd.Context(), repo.AddOptions{
 				Alias:      args[0],
 				URL:        args[1],
 				Branch:     branch,
 				TokenStdin: tokenStdin,
-			})
+			}); err != nil {
+				return err
+			}
+			if !jsonMode(cmd) {
+				return nil
+			}
+			return emitRepoInfos(cmd, mgr, resultdto.OperationRepoAdd, args[0])
 		},
 	}
 	f := c.Flags()
 	f.StringVar(&branch, "branch", "", "default branch")
 	f.BoolVar(&tokenStdin, "token-stdin", false, "read token from stdin (non-interactive auth)")
-	return c
+	return withResult(c, resultdto.OperationRepoAdd)
+}
+
+// emitRepoInfos prints the repositories (all, or only alias) as the data of
+// op.
+func emitRepoInfos(cmd *cobra.Command, mgr *repo.Manager, op resultdto.Operation, alias string) error {
+	infos, err := mgr.List()
+	if err != nil {
+		return err
+	}
+	data := resultdto.RepoListData{Repositories: []resultdto.RepoInfo{}}
+	for _, in := range infos {
+		if alias != "" && in.Ref.Alias != alias {
+			continue
+		}
+		data.Repositories = append(data.Repositories, resultdto.RepoInfo{
+			Alias: in.Ref.Alias, URL: in.Ref.URL, Type: string(in.Ref.Type),
+			Templates: in.Templates, UpdatedAt: rfc3339(in.UpdatedAt),
+		})
+	}
+	return emitData(cmd, op, nil, data)
 }
 
 func newRepoListCmd() *cobra.Command {
-	return &cobra.Command{
+	return withResult(&cobra.Command{
 		Use:   "list",
 		Short: "List repositories (ALIAS/URL/TYPE/TEMPLATES/UPDATED)",
 		Args:  cobra.NoArgs,
@@ -112,6 +139,9 @@ func newRepoListCmd() *cobra.Command {
 				return err
 			}
 			defer func() { _ = st.Close() }()
+			if jsonMode(cmd) {
+				return emitRepoInfos(cmd, mgr, resultdto.OperationRepoList, "")
+			}
 
 			infos, err := mgr.List()
 			if err != nil {
@@ -130,11 +160,11 @@ func newRepoListCmd() *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), t.RenderStyled(ui.Default()))
 			return nil
 		},
-	}
+	}, resultdto.OperationRepoList)
 }
 
 func newRepoRemoveCmd() *cobra.Command {
-	return &cobra.Command{
+	return withResult(&cobra.Command{
 		Use:   "remove <alias>",
 		Short: "Delete a repository",
 		Args:  cobra.ExactArgs(1),
@@ -145,13 +175,19 @@ func newRepoRemoveCmd() *cobra.Command {
 			}
 			defer func() { _ = st.Close() }()
 
-			return mgr.Remove(args[0])
+			if err := mgr.Remove(args[0]); err != nil {
+				return err
+			}
+			if !jsonMode(cmd) {
+				return nil
+			}
+			return emitData(cmd, resultdto.OperationRepoRemove, nil, resultdto.RepoRemoveData{Alias: args[0]})
 		},
-	}
+	}, resultdto.OperationRepoRemove)
 }
 
 func newRepoUpdateCmd() *cobra.Command {
-	return &cobra.Command{
+	return withResult(&cobra.Command{
 		// Preserved from the former name-based switch, which matched every command
 		// named "update": the root hooks do not run for `repo update`. Revisit when
 		// the live lifecycle returns (U07).
@@ -171,7 +207,13 @@ func newRepoUpdateCmd() *cobra.Command {
 			if len(args) == 1 {
 				alias = args[0]
 			}
-			return mgr.Update(cmd.Context(), alias)
+			if err := mgr.Update(cmd.Context(), alias); err != nil {
+				return err
+			}
+			if !jsonMode(cmd) {
+				return nil
+			}
+			return emitRepoInfos(cmd, mgr, resultdto.OperationRepoUpdate, alias)
 		},
-	}
+	}, resultdto.OperationRepoUpdate)
 }

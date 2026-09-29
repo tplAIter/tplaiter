@@ -13,6 +13,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/deps"
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
@@ -53,7 +54,7 @@ var doctorCriticalTools = map[string]bool{
 
 // newDoctorCmd creates `tplater doctor`.
 func newDoctorCmd() *cobra.Command {
-	return &cobra.Command{
+	return withResult(&cobra.Command{
 		Annotations: prerunAnnotations(prerunReadonly),
 
 		Use:   "doctor",
@@ -61,14 +62,51 @@ func newDoctorCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sections, critical := buildDoctorReport(cmd.Context(), nil, "", "")
+			criticalErr := errors.New("cmd: doctor: critical environment tools are not available — see report above")
+			if jsonMode(cmd) {
+				return emitDoctorResult(cmd, sections, critical, criticalErr)
+			}
 			renderDoctorReport(cmd.OutOrStdout(), ui.Default(), sections)
 
 			if critical {
-				return errors.New("cmd: doctor: critical environment tools are not available — see report above")
+				// Exit 1: the check found problems (a finding, not a failure to run).
+				return &ExitError{Code: 1, Err: criticalErr}
 			}
 			return nil
 		},
+	}, resultdto.OperationDoctorCheck)
+}
+
+// emitDoctorResult prints the doctor report as doctor.check data. A critical
+// finding is status changes with exit 1, as in text mode.
+func emitDoctorResult(cmd *cobra.Command, sections []doctorSection, critical bool, criticalErr error) error {
+	data := resultdto.DoctorData{Critical: critical, Sections: []resultdto.DoctorSection{}}
+	for _, section := range sections {
+		out := resultdto.DoctorSection{Title: section.Title, Rows: []resultdto.DoctorRow{}}
+		for _, row := range section.Rows {
+			status := "ok"
+			switch row.Status {
+			case rowWarn:
+				status = "warn"
+			case rowFail:
+				status = "fail"
+			case rowOK:
+			}
+			out.Rows = append(out.Rows, resultdto.DoctorRow{Name: row.Name, Status: status, Detail: row.Detail, Hint: row.Hint})
+		}
+		data.Sections = append(data.Sections, out)
 	}
+	env := newResult(resultdto.OperationDoctorCheck)
+	env.Project = currentProject()
+	if err := env.SetData(data); err != nil {
+		return err
+	}
+	if !critical {
+		return emitResult(cmd, env, resultdto.ExitSuccess, nil)
+	}
+	env.Status = resultdto.StatusChanges
+	env.Diagnostics = []resultdto.Diagnostic{{Code: "DOCTOR_CRITICAL_TOOL", Severity: "error", Message: "critical environment tools are not available", Details: map[string]any{}}}
+	return emitResult(cmd, env, resultdto.ExitFinding, criticalErr)
 }
 
 // buildDoctorReport assembles all report sections. critical is true if at least

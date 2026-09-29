@@ -10,6 +10,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/envsetup"
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
@@ -111,7 +112,7 @@ func newEnvSetupCmd() *cobra.Command {
 		},
 	}
 	c.Flags().BoolVar(&envAutoYes, "yes", false, "confirm ansible installation without interactive prompt")
-	return c
+	return withResult(c, resultdto.OperationEnvSetup)
 }
 
 // findPlaybook finds the playbook named name among the manifest playbooks.

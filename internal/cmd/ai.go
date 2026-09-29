@@ -10,6 +10,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/aiconfig"
 	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
@@ -86,12 +87,33 @@ func newAIGenCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if jsonMode(cmd) {
+				return emitAIResult(cmd, root, res)
+			}
 			return printAIResult(cmd, res)
 		},
 	}
 	c.Flags().StringSliceVar(&aiTargetsFlag, "targets", nil,
 		"limit generation to list of targets (default — all config.targets from source)")
-	return c
+	return withResult(c, resultdto.OperationAIGen)
+}
+
+// emitAIResult prints the written and skipped AI artifacts as ai.gen data;
+// written files are also the envelope changes.
+func emitAIResult(cmd *cobra.Command, root string, res *aiconfig.Result) error {
+	env := newResult(resultdto.OperationAIGen)
+	env.Project = projectAt(root)
+	for _, f := range res.Written {
+		env.Changes = append(env.Changes, resultdto.Change{Path: f, Action: "write"})
+	}
+	env.Summary.FilesChanged = len(res.Written)
+	if len(res.Written) > 0 {
+		env.Status = resultdto.StatusChanges
+	}
+	if err := env.SetData(resultdto.AIGenData{Written: nonNil(res.Written), SkippedProtected: nonNil(res.SkippedProtected)}); err != nil {
+		return err
+	}
+	return emitResult(cmd, env, resultdto.ExitSuccess, nil)
 }
 
 // printAIResult prints written and skipped (protected 99-*) files.

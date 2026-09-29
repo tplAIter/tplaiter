@@ -8,6 +8,10 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/tplAIter/tplaiter/internal/project"
+	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
+	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/settingscmd"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/survey"
@@ -41,7 +45,7 @@ func newSettingsCmd() *cobra.Command {
 
 // newSettingsListCmd creates `tplater settings list`.
 func newSettingsListCmd() *cobra.Command {
-	return &cobra.Command{
+	return withResult(&cobra.Command{
 		Use:   "list",
 		Short: "Show current project settings values",
 		Args:  cobra.NoArgs,
@@ -55,9 +59,38 @@ func newSettingsListCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("cmd: settings: working directory: %w", err)
 			}
+			if jsonMode(cmd) {
+				return emitSettingsShow(cmd, d.Home, cwd)
+			}
 			return settingscmd.List(d, settingscmd.Options{StartDir: cwd})
 		},
+	}, resultdto.OperationSettingsShow)
+}
+
+// emitSettingsShow prints the resolved project settings as settings.show
+// data (the same values `settings list` renders as a table).
+func emitSettingsShow(cmd *cobra.Command, home, cwd string) error {
+	root, proj, err := project.FindRoot(cwd)
+	if err != nil {
+		return err
 	}
+	tpl, _, err := project.LoadManifestForProject(root, proj, home)
+	if err != nil {
+		return err
+	}
+	resolved, err := settings.Resolve(tpl, renderref.Values(proj.Settings))
+	if err != nil {
+		return fmt.Errorf("settings list: %w", err)
+	}
+	values := map[string]any{}
+	for k, v := range resolved.Values {
+		values[k] = v
+	}
+	data := resultdto.SettingsShowData{
+		Template: resultdto.TemplateRef{Repo: proj.Template.Repo, Name: proj.Template.Name, Version: proj.Template.Version},
+		Settings: values,
+	}
+	return emitData(cmd, resultdto.OperationSettingsShow, projectAt(root), data)
 }
 
 // newSettingsSetCmd creates `tplater settings set group=value [...]`.
@@ -87,13 +120,19 @@ func newSettingsSetCmd() *cobra.Command {
 				Yes:      yes,
 				Verbose:  verbose,
 			}
-			return mapExit(settingscmd.Set(cmd.Context(), d, opts))
+			if err := mapExit(settingscmd.Set(cmd.Context(), d, opts)); err != nil {
+				return err
+			}
+			if !jsonMode(cmd) {
+				return nil
+			}
+			return emitData(cmd, resultdto.OperationSettingsSet, projectAt(cwd), resultdto.SettingsSetData{DryRun: dryRun})
 		},
 	}
 	f := c.Flags()
 	f.BoolVar(&dryRun, "dry-run", false, "show plan without modifying files")
 	f.BoolVar(&yes, "yes", false, "do not ask for confirmation before applying")
-	return c
+	return withResult(c, resultdto.OperationSettingsSet)
 }
 
 // newSettingsEditCmd creates `tplater settings edit [group]`.
@@ -149,21 +188,23 @@ func settingsDeps(cmd *cobra.Command) (settingscmd.Deps, func(), error) {
 	d := settingscmd.Deps{
 		Manager:     mgr,
 		Home:        home,
-		Out:         cmd.OutOrStdout(),
+		Out:         humanOut(cmd),
 		Err:         cmd.ErrOrStderr(),
 		Palette:     ui.Default(),
-		Prompter:    survey.HuhPrompter{In: cmd.InOrStdin(), Out: cmd.OutOrStdout()},
+		Prompter:    survey.HuhPrompter{In: cmd.InOrStdin(), Out: humanOut(cmd)},
 		Interactive: interactive,
 	}
 	return d, func() { _ = st.Close() }, nil
 }
 
-// mapExit translates [update.ExitCodeError] (through settingscmd) into
-// [ExitError] for the process exit code (2 means remaining conflict markers).
+// mapExit translates [update.ExitCodeError] (through settingscmd) into the
+// exit-code registry: its code 2 ("conflicts remain") becomes exit 4
+// (conflict) and code 1 ("markers found") exit 1 (finding); see
+// docs/exit-codes.md.
 func mapExit(err error) error {
 	var ece *update.ExitCodeError
 	if errors.As(err, &ece) {
-		return &ExitError{Code: ece.Code, Err: ece.Err}
+		return &resultExitError{code: updateExit(ece.Code), err: ece.Err}
 	}
 	return err
 }
