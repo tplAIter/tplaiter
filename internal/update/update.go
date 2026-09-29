@@ -313,7 +313,7 @@ func runPostUpdateHooks(
 		if err == nil {
 			continue
 		}
-		if h.Optional {
+		if h.Optional && ctx.Err() == nil && !errors.Is(err, execx.ErrInterrupted) {
 			warnf(d, "postUpdate hook skipped (optional): %v", err)
 			continue
 		}
@@ -329,12 +329,13 @@ func runShellHook(ctx context.Context, d Deps, root, script string) error {
 	}
 	infof(d, "postUpdate: %s\n", script)
 	// Hooks run in their own process group so that cancellation stops the
-	// whole `$SHELL -c` tree (SIGTERM, grace, SIGKILL).
-	_, err := d.Runner.Run(ctx, shell, []string{"-c", script}, execx.Options{
-		Dir:          root,
-		Stdout:       d.Out,
-		Stderr:       d.Err,
-		ProcessGroup: true,
+	// whole `$SHELL -c` tree (SIGTERM, grace, SIGKILL). RunInterruptible also
+	// turns SIGINT/SIGTERM received by tplaiter into that cancellation, so a
+	// Ctrl+C never leaves the hook group running as an orphan.
+	_, err := execx.RunInterruptible(ctx, d.Runner, shell, []string{"-c", script}, execx.Options{
+		Dir:    root,
+		Stdout: d.Out,
+		Stderr: d.Err,
 	})
 	return err
 }

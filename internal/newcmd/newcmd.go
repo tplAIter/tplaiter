@@ -442,13 +442,20 @@ func (r *run) runHooks(
 		if err == nil {
 			continue
 		}
-		if h.Optional {
+		if h.Optional && !interrupted(ctx, err) {
 			r.warnf("postCreate hook skipped (optional): %v", err)
 			continue
 		}
 		return fmt.Errorf("newcmd: postCreate hook: %w", err)
 	}
 	return nil
+}
+
+// interrupted reports whether a hook failed because the operation was
+// cancelled or tplaiter received SIGINT/SIGTERM. Such a failure aborts the
+// hook sequence even for an optional hook.
+func interrupted(ctx context.Context, err error) bool {
+	return ctx.Err() != nil || errors.Is(err, execx.ErrInterrupted)
 }
 
 // runShellHook executes a run hook through $SHELL -c in the project directory.
@@ -459,12 +466,13 @@ func (r *run) runShellHook(ctx context.Context, target, script string) error {
 	}
 	r.infof("postCreate: %s\n", script)
 	// Hooks run in their own process group so that cancellation stops the
-	// whole `$SHELL -c` tree (SIGTERM, grace, SIGKILL).
-	_, err := r.d.Runner.Run(ctx, shell, []string{"-c", script}, execx.Options{
-		Dir:          target,
-		Stdout:       r.d.Out,
-		Stderr:       r.d.Err,
-		ProcessGroup: true,
+	// whole `$SHELL -c` tree (SIGTERM, grace, SIGKILL). RunInterruptible also
+	// turns SIGINT/SIGTERM received by tplaiter into that cancellation, so a
+	// Ctrl+C never leaves the hook group running as an orphan.
+	_, err := execx.RunInterruptible(ctx, r.d.Runner, shell, []string{"-c", script}, execx.Options{
+		Dir:    target,
+		Stdout: r.d.Out,
+		Stderr: r.d.Err,
 	})
 	return err
 }

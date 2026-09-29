@@ -116,3 +116,23 @@ receives `SIGTERM`, has a grace period (2 s by default) to exit, then receives
 processes (git helpers, `$SHELL -c` pipelines) therefore never outlive a
 stopped call. `durationMs` is measured until the group is gone. The same
 graceful stop applies to hooks run by the CLI.
+
+Hooks (`postCreate`, `postUpdate` run steps) run in their own process group,
+so an interactive Ctrl+C does not reach them directly. While a hook runs,
+`tplaiter` turns `SIGINT`/`SIGTERM` into the same stop sequence for the hook's
+group (`SIGTERM`, a 1 s grace, `SIGKILL`) and then fails with an interrupt
+error; an interrupted hook is never downgraded to an optional-hook warning
+and the remaining hooks do not run. The 1 s grace is shorter than the MCP
+server's 2 s, so a stopped tool call cannot leave a hook group behind.
+
+## Changes from earlier builds
+
+The result/v1 contract changed several observable CLI outcomes. Scripts that
+relied on the old behaviour must be updated:
+
+| Surface | Before | Now |
+|---|---|---|
+| `tplaiter stats --json` | bare report object | result/v1 envelope; the report is `data.report` |
+| `update` / `settings` conflicts | exit 2 | exit 4 (`conflict`) |
+| Untyped command errors | exit 1 | exit 3 (`operational`); exit 1 now means findings only |
+| `run` / `env setup` child failure with `--json` | child's exit status | exit 10 (`child`); `data` carries the child's status. Text mode still passes the child's status through, which can overlap registry codes. |
