@@ -1,0 +1,17 @@
+apiVersion: tplater.dev/v1alpha1
+kind: Project
+id: 123e4567-e89b-12d3-a456-426614174000
+template:
+    repo: example
+    name: service
+    version: v1.0.0
+project:
+    name: fixture
+    slug: fixture
+    module: example.test/fixture
+    system: ""
+    domain: ""
+settings: {}
+runtime:
+    port: 8080
+baseline: .tplaiter/baseline.json

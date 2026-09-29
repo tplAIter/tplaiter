@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/state-migration-plan/v1",
+  "title": "tplaiter state-ledger migration plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "projectID", "from", "to", "entries", "mutations", "planSHA256"],
+  "properties": {
+    "apiVersion": {"const": "tplaiter.dev/state-migration-plan/v1"},
+    "projectID": {"type": "string", "minLength": 1},
+    "from": {"enum": ["tplater.dev/v1alpha1", "tplaiter.dev/project/v2"]},
+    "to": {"const": "tplaiter.dev/project/v2"},
+    "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+    "mutations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "action"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "action": {"enum": ["migrate", "preserve", "synthesize", "invalidate"]},
+          "beforeSHA256": {"$ref": "#/$defs/digest"},
+          "afterSHA256": {"$ref": "#/$defs/digest"}
+        }
+      }
+    },
+    "planSHA256": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "path", "classification", "owner", "kind", "mode", "sha256", "retention", "exists"],
+      "properties": {
+        "scope": {"enum": ["project", "home", "protected"]},
+        "path": {"type": "string", "minLength": 1},
+        "classification": {"type": "string", "minLength": 1},
+        "owner": {"type": "string", "minLength": 1},
+        "wireVersion": {"type": "string"},
+        "kind": {"enum": ["file", "symlink", "external"]},
+        "mode": {"type": "integer", "minimum": 0},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "retention": {"type": "string", "minLength": 1},
+        "exists": {"type": "boolean"},
+        "target": {"type": "string"}
+      }
+    }
+  }
+}

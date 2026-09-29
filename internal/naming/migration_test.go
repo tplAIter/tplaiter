@@ -1017,3 +1017,25 @@ func TestPlanRejectsUnknownLegacyStateMajorBeforeWrites(t *testing.T) {
 		})
 	}
 }
+
+// TestActiveTransactionUsesLedgerClassification pins migrate-state to the
+// shared state-ledger probe list: every lock, journal or pending marker the
+// ledger classifies as transaction state blocks planning.
+func TestActiveTransactionUsesLedgerClassification(t *testing.T) {
+	for _, rel := range []string{".lock", "update.lock", "update/active.json", "transactions/new.lock", "new-transaction.pending", "transactions/new/tx-1/active.json"} {
+		root := t.TempDir()
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := activeTransaction(root); err == nil || !strings.Contains(err.Error(), filepath.FromSlash(rel)) {
+			t.Fatalf("%s: activeTransaction=%v", rel, err)
+		}
+	}
+	if err := activeTransaction(t.TempDir()); err != nil {
+		t.Fatalf("clean root refused: %v", err)
+	}
+}
