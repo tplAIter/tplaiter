@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -161,12 +162,22 @@ func checkMCPTrustInspect(t *testing.T, home, direct string) {
 	if result["isError"] == true {
 		t.Fatalf("trust_inspect returned an error: %v", call)
 	}
-	content, _ := result["content"].([]any)
-	if len(content) != 1 {
-		t.Fatalf("trust_inspect content: %v", call)
+	// trust_inspect returns a result/v1 envelope whose data.binding is the
+	// binding `trust inspect --json` prints.
+	structured, _ := result["structuredContent"].(map[string]any)
+	if structured["operation"] != "trust.inspect" || structured["status"] != "ok" {
+		t.Fatalf("trust_inspect envelope: %v", call)
 	}
-	item, _ := content[0].(map[string]any)
-	if text, _ := item["text"].(string); text != direct {
-		t.Fatalf("trust_inspect over MCP differs from the CLI:\ncli %s\nmcp %s", direct, text)
+	data, _ := structured["data"].(map[string]any)
+	binding, ok := data["binding"]
+	if !ok {
+		t.Fatalf("trust_inspect: no data.binding: %v", call)
+	}
+	var want any
+	if err := json.Unmarshal([]byte(direct), &want); err != nil {
+		t.Fatalf("trust inspect --json: %v", err)
+	}
+	if !reflect.DeepEqual(binding, want) {
+		t.Fatalf("trust_inspect over MCP differs from the CLI:\ncli %s\nmcp %v", direct, binding)
 	}
 }
