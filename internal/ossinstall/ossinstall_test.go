@@ -264,6 +264,29 @@ func TestGenerateRefusesForeignOrDamagedRoot(t *testing.T) {
 		}
 		assertTestFile(t, filepath.Join(root, OwnershipMarker), ownershipMarkerContent)
 	})
+	t.Run("legacy_install_with_non_marker_entry", func(t *testing.T) {
+		// A legacy installation whose marker name holds a directory is
+		// refused before rotation removes any generated entry.
+		root := tempRoot(t)
+		if _, err := Generate(Options{Root: root}); err != nil {
+			t.Fatal(err)
+		}
+		marker := filepath.Join(root, OwnershipMarker)
+		if err := os.Remove(marker); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(marker, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, filepath.Join(marker, "keep"), "user data")
+		if _, err := Generate(Options{Root: root, Rotate: true}); !errors.Is(err, ErrInstallRootForeign) {
+			t.Fatalf("rotation over a non-marker entry: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(root, RegistrationFile)); err != nil {
+			t.Fatalf("refused rotation removed the registration: %v", err)
+		}
+		assertTestFile(t, filepath.Join(marker, "keep"), "user data")
+	})
 	t.Run("marker_only_root", func(t *testing.T) {
 		root := tempRoot(t)
 		writeTestFile(t, filepath.Join(root, OwnershipMarker), ownershipMarkerContent)

@@ -253,7 +253,16 @@ func checkOwnership(root string) (bool, error) {
 			return false, ErrInstallRootForeign
 		}
 	}
-	if hasOwnershipMarker(root) || hasLegacyRegistration(root) {
+	if hasOwnershipMarker(root) {
+		return false, nil
+	}
+	// The marker name holding anything but a valid marker is never ours,
+	// even next to a legacy registration: refuse before rotation removes
+	// anything, instead of failing later in writeOwnershipMarker.
+	if _, err := os.Lstat(filepath.Join(root, OwnershipMarker)); err == nil {
+		return false, ErrInstallRootForeign
+	}
+	if hasLegacyRegistration(root) {
 		return false, nil
 	}
 	return false, ErrInstallRootForeign
