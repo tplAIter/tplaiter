@@ -139,19 +139,19 @@ func helperArgs(mode string) []string {
 
 func TestInstalledTransportBoundsOutputAndDiagnostics(t *testing.T) {
 	s := installedTestServer(t)
-	res, err := s.runCLI(context.Background(), "", helperArgs("stdout"), 10*time.Second)
+	res, err := s.runCLI(context.Background(), "", helperArgs("stdout"), helperBudget(t))
 	if err != nil || res.Stdout != "verified-output\n" || res.Stderr != "stderr-canary" {
 		t.Fatalf("success result=%+v err=%v", res, err)
 	}
 	if text := legacyOutcome(res, err); text != "verified-output\n" {
 		t.Fatalf("successful stderr leaked: %q", text)
 	}
-	res, err = s.runCLI(context.Background(), "", helperArgs("empty"), 10*time.Second)
+	res, err = s.runCLI(context.Background(), "", helperArgs("empty"), helperBudget(t))
 	if err != nil || legacyOutcome(res, err) != "(command completed successfully, output is empty)" {
 		t.Fatalf("empty result=%+v err=%v", res, err)
 	}
 	for _, tc := range []struct{ mode, want string }{{"stderr", "MCP_CLI_FAILED"}, {"overflow", "MCP_OUTPUT_LIMIT"}} {
-		res, err = s.runCLI(context.Background(), "", helperArgs(tc.mode), 10*time.Second)
+		res, err = s.runCLI(context.Background(), "", helperArgs(tc.mode), helperBudget(t))
 		text := legacyOutcome(res, err)
 		if err == nil || text != tc.want || strings.Contains(text, "canary") {
 			t.Fatalf("%s exposed failure result=%+v err=%v text=%q", tc.mode, res, err, text)
@@ -165,14 +165,14 @@ func TestInstalledTransportBoundsOutputAndDiagnostics(t *testing.T) {
 	if err := os.Chmod(stagePath, 0o400); err != nil {
 		t.Fatal(err)
 	}
-	res, err = s.runCLI(context.Background(), "", helperArgs("stdout"), 10*time.Second)
+	res, err = s.runCLI(context.Background(), "", helperArgs("stdout"), helperBudget(t))
 	if err == nil || legacyOutcome(res, err) != "MCP_UNAVAILABLE" {
 		t.Fatalf("start failure category result=%+v err=%v", res, err)
 	}
 	if err := s.stage.Close(); err != nil {
 		t.Fatal(err)
 	}
-	res, err = s.runCLI(context.Background(), "", helperArgs("stdout"), 10*time.Second)
+	res, err = s.runCLI(context.Background(), "", helperArgs("stdout"), helperBudget(t))
 	if err == nil || legacyOutcome(res, err) != "MCP_UNAVAILABLE" {
 		t.Fatalf("closed stage accepted new launch result=%+v err=%v", res, err)
 	}
@@ -188,7 +188,7 @@ func TestInstalledTransportCloseDrainsAndRejectsNewCalls(t *testing.T) {
 		_, err := s.runCLI(ctx, "", helperArgs("block"), time.Minute)
 		done <- err
 	}()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(helperBudget(t))
 	for {
 		if _, err := os.Stat(ready); err == nil {
 			break
@@ -212,7 +212,7 @@ func TestInstalledTransportCloseDrainsAndRejectsNewCalls(t *testing.T) {
 		t.Fatalf("concurrent Close returned before drain: %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
-	res, err := s.runCLI(context.Background(), "", helperArgs("stdout"), 10*time.Second)
+	res, err := s.runCLI(context.Background(), "", helperArgs("stdout"), helperBudget(t))
 	if err == nil || legacyOutcome(res, err) != "MCP_UNAVAILABLE" {
 		t.Fatalf("Close permitted a new call result=%+v err=%v", res, err)
 	}
@@ -307,4 +307,19 @@ func legacyOutcome(res execx.Result, err error) string {
 		return "(command completed successfully, output is empty)"
 	}
 	return res.Stdout
+}
+
+// helperBudget bounds a helper child call by the test binary's deadline
+// instead of a fixed wall-clock budget: staging and starting a race-enabled
+// helper under a scheduler clamp and heavy load can take well over ten
+// seconds. It is capped so a real hang still fails promptly.
+func helperBudget(t *testing.T) time.Duration {
+	t.Helper()
+	budget := 2 * time.Minute
+	if deadline, ok := t.Deadline(); ok {
+		if left := time.Until(deadline) / 4; left < budget {
+			budget = left
+		}
+	}
+	return budget
 }
