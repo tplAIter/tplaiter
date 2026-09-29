@@ -81,6 +81,9 @@ func Init(ctx context.Context, opts InitOptions) (string, error) {
 	if err := ensureVacant(repoDir); err != nil {
 		return "", err
 	}
+	if err := checkEnclosingProvider(opts, repoDir); err != nil {
+		return "", err
+	}
 
 	ctxData := skelContext{Name: opts.Name}
 
@@ -97,6 +100,10 @@ func Init(ctx context.Context, opts InitOptions) (string, error) {
 			return "", err
 		}
 	} else if err := renderSubtree(skeletonTpl, repoDir, ctxData); err != nil {
+		return "", err
+	}
+
+	if err := verifyGenerated(opts, repoDir); err != nil {
 		return "", err
 	}
 
