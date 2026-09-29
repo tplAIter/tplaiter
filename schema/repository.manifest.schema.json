@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplater.dev/schema/repository.manifest.schema.json",
+  "title": "tplater Repository manifest",
+  "description": "tplater repo.manifest.yaml schema. Manual, for IDE hints. Filesystem confinement (symlinks, existence) is enforced by discovery; see docs/template-discovery.md.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "tplater.dev/v1alpha1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "Repository"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "maintainers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "email": { "type": "string" },
+              "telegram": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "templates": {
+      "description": "Discovery roots. Each root is searched recursively for template.manifest.yaml. Omitted or empty: the repository root.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Repository-relative, '/'-separated directory. Absolute paths and '..' segments are rejected (TPL-E-REPO-PATH-ESCAPE); duplicates are rejected (TPL-E-REPO-DUP-PATH).",
+            "type": "string",
+            "minLength": 1,
+            "not": {
+              "anyOf": [
+                { "pattern": "^/" },
+                { "pattern": "^[A-Za-z]:" },
+                { "pattern": "(^|/)\\.\\.(/|$)" },
+                { "pattern": "\\\\" }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

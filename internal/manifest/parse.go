@@ -31,7 +31,10 @@ func LoadTemplate(path string) (*Template, error) {
 	return &t, nil
 }
 
-// LoadRepository reads and parses a multi-template repository manifest.
+// LoadRepository reads, parses and validates a multi-template repository
+// manifest. Path-level validation ([Repository.Validate]) runs here so that
+// every consumer (repository indexing, lint) rejects absolute, ".." and
+// duplicate templates[].path entries with the same typed error.
 func LoadRepository(path string) (*Repository, error) {
 	data, err := readFile(path)
 	if err != nil {
@@ -42,6 +45,9 @@ func LoadRepository(path string) (*Repository, error) {
 		return nil, fmt.Errorf("parsing repository manifest %s: %w", path, err)
 	}
 	if err := checkKind(r.APIVersion, r.Kind, KindRepository); err != nil {
+		return nil, err
+	}
+	if err := r.Validate(); err != nil {
 		return nil, err
 	}
 	return &r, nil
