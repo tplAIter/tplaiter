@@ -1,10 +1,11 @@
-//go:build !darwin
+//go:build !darwin && !linux
 
 package mcpsrv
 
 import "context"
 
-// heldStage is the non-Darwin placeholder for the held child-executable copy.
+// heldStage is the placeholder for the held child-executable copy on hosts
+// other than Darwin and Linux.
 // Hosts without a verified held-stage transport report errTransportUnavailable
 // (surfaced to clients as MCP_UNAVAILABLE) instead of failing to compile.
 type heldStage struct{}
@@ -14,8 +15,8 @@ func (*heldStage) launchPath() (string, error) { return "", errTransportUnavaila
 func (*heldStage) Close() error { return nil }
 
 // stageChildExecutable keeps unsupported hosts explicit while preserving the
-// existing lower-level transport tests. Production Darwin uses the held-copy
-// implementation in child_stage_darwin.go.
+// existing lower-level transport tests. Darwin and Linux use the held-copy
+// implementation in child_stage_unix.go.
 func stageChildExecutable(context.Context, string) (string, func(), error) {
 	return "", func() {}, errTransportUnavailable
 }

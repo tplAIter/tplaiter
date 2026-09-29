@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || linux
 
 package mcpsrv
 
@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -123,6 +122,12 @@ func (s *heldStage) launchPath() (string, error) {
 	if err != nil || filepath.Dir(path) != s.root {
 		return "", errTransportUnavailable
 	}
+	// The launch path must still name the exact held inode: a same-named
+	// replacement or a symlink planted in the private directory is refused.
+	var entry unix.Stat_t
+	if unix.Lstat(path, &entry) != nil || entry.Mode&unix.S_IFMT != unix.S_IFREG || entry.Dev != st.Dev || entry.Ino != st.Ino {
+		return "", errTransportUnavailable
+	}
 	if _, err = s.file.Seek(0, 0); err != nil {
 		return "", errTransportUnavailable
 	}
@@ -212,20 +217,4 @@ func openNoFollowFile(path string) (int, error) {
 		fd = next
 	}
 	return fd, nil
-}
-
-func pathFromFD(fd int) (string, error) {
-	var raw [1024]byte
-	_, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(fd), uintptr(unix.F_GETPATH), uintptr(unsafe.Pointer(&raw[0]))) //nolint:staticcheck // x/sys/unix has no F_GETPATH wrapper
-	if errno != 0 {
-		return "", errno
-	}
-	n := 0
-	for n < len(raw) && raw[n] != 0 {
-		n++
-	}
-	if n == 0 {
-		return "", errors.New("empty path")
-	}
-	return string(raw[:n]), nil
 }
