@@ -51,7 +51,7 @@ Published template repositories are intended to use the shared checker, then run
 
 This is a development preview. It has no published release, compatibility promise, production support commitment, or production-installed trust anchors.
 
-The ordinary live `new` and `update` paths are unavailable until their fixed adapters are complete. A stock CLI stops those paths with `TRUST_ANCHOR_MISSING`; registering an anchor does not make the live lifecycle available and still leads to `TRUST_LIFECYCLE_UNAVAILABLE`. Fixed simulated registration tests cover dry-run and maintenance behavior, but they do not establish production provisioning or an end-to-end lifecycle.
+The ordinary live `new` and `update` paths are unavailable until their fixed adapters are complete. A stock `make build` binary stops trust-gated commands with `TRUST_ANCHOR_MISSING`. A `make install` binary is linked against an operator-pinned OSS registration and, after `tplaiter trust provision`, runs `trust inspect` and `mcp-server`; the live lifecycle still returns `TRUST_LIFECYCLE_UNAVAILABLE`. See [installation](./docs/install.md).
 
 Focused internal package checks cover template initialization, contribution, settings, statistics, repositories, and table rendering. The separate black-box lifecycle module remains a known limitation. Windows builds also require platform work for existing Unix-specific references in `execx` and `naming`.
 
@@ -72,7 +72,8 @@ The `Makefile` is the single entry point for local runs and CI (`.github/workflo
 
 | Target | What it checks |
 | --- | --- |
-| `make build` / `make install PREFIX=<dir>` | Builds `bin/tplaiter`; installs it into `<dir>/bin`. `REGISTRATION_PATH` and `REGISTRATION_SHA256` are empty by default, so a stock binary refuses trust-gated commands with `TRUST_ANCHOR_MISSING`. |
+| `make build` | Builds a stock `bin/tplaiter`. `REGISTRATION_PATH` and `REGISTRATION_SHA256` are empty by default, so it refuses trust-gated commands with `TRUST_ANCHOR_MISSING`. |
+| `make install PREFIX=<dir>` | Generates the operator-pinned OSS trust registration under `TRUST_ROOT` (default `<dir>/lib/tplaiter/trust`), links the binary against it, and installs it into `<dir>/bin`. Run `tplaiter trust provision` once afterwards ([installation](./docs/install.md)). |
 | `make build-linux`, `make cross` | Compiles every package for linux/amd64 and linux/arm64 (`cross` adds darwin; windows is informational only). |
 | `make vet` | `go vet` for both modules, plus the root module for `GOOS=linux`. |
 | `make fmt-check`, `make tidy-check` | gofumpt on tracked and untracked Go files; `go mod tidy -diff` for both modules. |
@@ -88,7 +89,7 @@ docker run --rm -v "$PWD":/src -v "$(go env GOMODCACHE)":/go/pkg/mod:ro -w /src 
   -e GOWORK=off -e GOFLAGS=-mod=readonly -e GOPROXY=off golang:1.27 make verify-linux
 ```
 
-The `tests/` e2e module still fails with `TRUST_ANCHOR_MISSING` until the OSS installation registration lands, so `make verify` and `make verify-linux` are not green yet.
+The `tests/` e2e module builds its binary exactly like `make install` and provisions it in `TestMain`. Scenarios that need the live lifecycle end at a tracked `requires U07` skip after proving the step fails only with `TRUST_LIFECYCLE_UNAVAILABLE`. On Linux the trust store is not available yet, so trust-dependent e2e cases skip with a `requires U03` marker.
 
 ### Platform support (trust store, MCP transport, approved runner)
 
