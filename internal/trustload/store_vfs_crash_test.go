@@ -19,7 +19,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -575,7 +574,7 @@ func observeCrash01Recovery(t *testing.T, root string, before crash01JournalObse
 		}
 	}
 	if binding.vfs != nil && binding.vfs.ctx != 0 {
-		vc := (*vfsContext)(unsafe.Pointer(binding.vfs.ctx))
+		vc := (*vfsContext)(libcPtr(binding.vfs.ctx))
 		for i := range obs.CallbackCounts {
 			obs.CallbackCounts[i] = atomic.LoadInt64(&vc.callbackCounts[i])
 		}

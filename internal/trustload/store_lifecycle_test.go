@@ -94,12 +94,12 @@ func TestStoreLifecycleLIFE03SuccessfulWorkloadGCAndTwoSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	gcBaseline := gcCompleted.Load()
-	callbackBefore := atomic.LoadInt64(&(*vfsContext)(unsafe.Pointer(bindingA.vfs.ctx)).callbackCounts[callbackRead]) + atomic.LoadInt64(&(*vfsContext)(unsafe.Pointer(bindingA.vfs.ctx)).callbackCounts[callbackWrite])
+	callbackBefore := atomic.LoadInt64(&(*vfsContext)(libcPtr(bindingA.vfs.ctx)).callbackCounts[callbackRead]) + atomic.LoadInt64(&(*vfsContext)(libcPtr(bindingA.vfs.ctx)).callbackCounts[callbackWrite])
 	if _, err := tx.ExecContext(ctx, "INSERT INTO lifecycle_state(id,payload) VALUES(?,?)", 1, []byte("committed-A")); err != nil {
 		_ = tx.Rollback()
 		t.Fatal(err)
 	}
-	callbackDuringTransaction := atomic.LoadInt64(&(*vfsContext)(unsafe.Pointer(bindingA.vfs.ctx)).callbackCounts[callbackRead]) + atomic.LoadInt64(&(*vfsContext)(unsafe.Pointer(bindingA.vfs.ctx)).callbackCounts[callbackWrite])
+	callbackDuringTransaction := atomic.LoadInt64(&(*vfsContext)(libcPtr(bindingA.vfs.ctx)).callbackCounts[callbackRead]) + atomic.LoadInt64(&(*vfsContext)(libcPtr(bindingA.vfs.ctx)).callbackCounts[callbackWrite])
 	if callbackDuringTransaction <= callbackBefore {
 		_ = tx.Rollback()
 		t.Fatalf("transaction did not advance VFS callbacks: before=%d after=%d", callbackBefore, callbackDuringTransaction)
@@ -254,7 +254,7 @@ func testLifecycleExtraLiveFile(t *testing.T) {
 	if binding.closed {
 		t.Fatal("binding marked closed with live file")
 	}
-	if binding.closeErr == nil || atomic.LoadInt64(&(*vfsContext)(unsafe.Pointer(binding.vfs.ctx)).openFiles) != 1 {
+	if binding.closeErr == nil || atomic.LoadInt64(&(*vfsContext)(libcPtr(binding.vfs.ctx)).openFiles) != 1 {
 		t.Fatal("terminal live-file state was not retained")
 	}
 	if !lifecycleVFSFound(t, binding.vfs, name) {
@@ -266,7 +266,7 @@ func testLifecycleExtraLiveFile(t *testing.T) {
 	if got := storeFileClose(binding.vfs.tls, file); got != sqlite3.SQLITE_OK {
 		t.Fatalf("extra xClose=%d", got)
 	}
-	if got := storeFileClose(binding.vfs.tls, file); got == sqlite3.SQLITE_OK || atomic.LoadInt64(&(*vfsContext)(unsafe.Pointer(binding.vfs.ctx)).openFiles) != 0 {
+	if got := storeFileClose(binding.vfs.tls, file); got == sqlite3.SQLITE_OK || atomic.LoadInt64(&(*vfsContext)(libcPtr(binding.vfs.ctx)).openFiles) != 0 {
 		t.Fatal("repeat xClose changed terminal file state")
 	}
 	libc.Xfree(binding.vfs.tls, file)
@@ -285,7 +285,7 @@ func testLifecycleExtraLiveFile(t *testing.T) {
 
 func testLifecyclePostNativeCloseError(t *testing.T) {
 	lease, binding, observer := newTerminalBinding(t)
-	c := (*vfsContext)(unsafe.Pointer(binding.vfs.ctx))
+	c := (*vfsContext)(libcPtr(binding.vfs.ctx))
 	atomic.StoreInt64(&c.fault, storeFaultClose)
 	rootFD := lease.fd
 	session := &storeSession{lease: lease, binding: binding}
@@ -473,7 +473,7 @@ func assertTerminalRetained(t *testing.T, lease *rootLease, binding *sqlBinding,
 
 func captureTerminalSnapshot(t *testing.T, lease *rootLease, binding *sqlBinding, observer *storeProofObserver, name string) terminalSnapshot {
 	t.Helper()
-	c := (*vfsContext)(unsafe.Pointer(binding.vfs.ctx))
+	c := (*vfsContext)(libcPtr(binding.vfs.ctx))
 	observer.mu.Lock()
 	snapshot := terminalSnapshot{
 		tlsCreates: observer.tlsCreates, tlsCloses: observer.tlsCloses,
@@ -824,7 +824,7 @@ func TestStoreLifecycleJournalOpenBoundaries(t *testing.T) {
 				t.Fatal("journal-open fault was not observed")
 			}
 			assertLifecycleCheckpoint(t, observer, "journal-open", 1, boolInt(after), boolInt(after))
-			vctx := (*vfsContext)(unsafe.Pointer(binding.vfs.ctx))
+			vctx := (*vfsContext)(libcPtr(binding.vfs.ctx))
 			if err := binding.Close(); err != nil {
 				t.Fatal(err)
 			}

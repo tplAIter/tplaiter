@@ -16,7 +16,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 	"modernc.org/libc"
@@ -330,7 +329,7 @@ func life05ChildTerminal(t *testing.T, report *life05Report, phase string, lease
 	report.Owned = fdDifference(report.Worked, report.Baseline)
 	if phase == "terminal-live-file" {
 		file, name := lifecycleOpenExtraFile(t, binding)
-		report.Owned = appendUniqueFD(report.Owned, int((*vfsFile)(unsafe.Pointer(file)).fd))
+		report.Owned = appendUniqueFD(report.Owned, int((*vfsFile)(libcPtr(file)).fd))
 		rootFD := lease.fd
 		if err := (&storeSession{lease: lease, binding: binding}).Close(); !errors.Is(err, ErrProvenanceUnavailable) {
 			report.ErrText = fmt.Sprintf("live-file close=%v", err)
@@ -354,7 +353,7 @@ func life05ChildTerminal(t *testing.T, report *life05Report, phase string, lease
 		return
 	}
 	if phase == "terminal-post-native-close" {
-		c := (*vfsContext)(unsafe.Pointer(binding.vfs.ctx))
+		c := (*vfsContext)(libcPtr(binding.vfs.ctx))
 		atomic.StoreInt64(&c.fault, storeFaultClose)
 		rootFD := lease.fd
 		session := &storeSession{lease: lease, binding: binding}

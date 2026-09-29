@@ -109,7 +109,7 @@ func TestStoreVFSRejectsForeignCallbackWithoutOpeningLeaf(t *testing.T) {
 	if rc := storeVFSOpen(v.tls, v.vfs, foreign, pfile, sqlite3.SQLITE_OPEN_MAIN_DB|sqlite3.SQLITE_OPEN_READWRITE, 0); rc != sqlite3.SQLITE_CANTOPEN {
 		t.Fatalf("foreign rc=%d", rc)
 	}
-	if got := (*vfsContext)(unsafe.Pointer(v.ctx)).deniedOpens; got != 1 {
+	if got := (*vfsContext)(libcPtr(v.ctx)).deniedOpens; got != 1 {
 		t.Fatalf("denied=%d", got)
 	}
 	if _, err := os.Stat(filepath.Join(root, storeDBName)); !errors.Is(err, os.ErrNotExist) {
@@ -197,7 +197,7 @@ func TestStoreVFSInjectedIOFaultsReturnSQLiteErrors(t *testing.T) {
 	if rc := storeVFSOpen(v.tls, v.vfs, name, pfile, sqlite3.SQLITE_OPEN_MAIN_DB|sqlite3.SQLITE_OPEN_READWRITE, 0); rc != sqlite3.SQLITE_OK {
 		t.Fatalf("open rc=%d", rc)
 	}
-	ctx := (*vfsContext)(unsafe.Pointer(v.ctx))
+	ctx := (*vfsContext)(libcPtr(v.ctx))
 	buf := libc.Xmalloc(v.tls, 8)
 	if buf == 0 {
 		t.Fatal("malloc buffer")
@@ -252,7 +252,7 @@ func TestStoreVFSInjectedIOFaultsReturnSQLiteErrors(t *testing.T) {
 	if reads < 2 {
 		t.Fatal("Pread EINTR was not retried")
 	}
-	gotBytes := unsafe.Slice((*byte)(unsafe.Pointer(buf)), 8)
+	gotBytes := unsafe.Slice((*byte)(libcPtr(buf)), 8)
 	if gotBytes[6] != 0 || gotBytes[7] != 0 {
 		t.Fatalf("short-read tail was not zero-filled: %v", gotBytes)
 	}
@@ -266,7 +266,7 @@ func TestStoreVFSInjectedIOFaultsReturnSQLiteErrors(t *testing.T) {
 		return oldPwrite(fd, b, off)
 	}
 	defer func() { storePwrite = oldPwrite }()
-	*(*byte)(unsafe.Pointer(buf)) = 'z'
+	*(*byte)(libcPtr(buf)) = 'z'
 	if got := storeFileWrite(v.tls, pfile, buf, 1, 0); got != sqlite3.SQLITE_OK || writes < 2 {
 		t.Fatalf("EINTR write rc=%d writes=%d", got, writes)
 	}
