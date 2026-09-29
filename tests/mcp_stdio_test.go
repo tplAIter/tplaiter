@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -334,21 +335,13 @@ func TestMCPStdioUnprovisionedServerFailsClosed(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
-	exitErr := &exec.ExitError{}
-	if !asExitError(err, &exitErr) || exitErr.ExitCode() != 5 {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 5 {
 		t.Fatalf("unprovisioned mcp-server: err=%v stdout=%q stderr=%q, want exit 5 (trust)", err, stdout.String(), stderr.String())
 	}
 	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "TRUST_ANCHOR_MISSING") {
 		t.Fatalf("unprovisioned mcp-server must refuse before serving: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
-}
-
-func asExitError(err error, target **exec.ExitError) bool {
-	e, ok := err.(*exec.ExitError)
-	if ok {
-		*target = e
-	}
-	return ok
 }
 
 // TestMCPStdioContract is the full contract suite: initialize, tools/list
