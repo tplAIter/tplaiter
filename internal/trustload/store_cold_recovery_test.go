@@ -562,7 +562,7 @@ INSERT INTO hot_large SELECT x, zeroblob(4096) FROM seq`)
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 	}()
-	deadline := time.Now().Add(120 * time.Second)
+	deadline := childReadinessDeadline(t, 120*time.Second)
 	for {
 		if _, err := os.Stat(ready); err == nil {
 			stageValue, stageErr := os.ReadFile(stage)
@@ -1251,4 +1251,20 @@ func newColdRecoveryRoot(t *testing.T, size int64, first byte) string {
 		t.Fatal(err)
 	}
 	return root
+}
+
+// childReadinessDeadline returns how long to wait for a helper child to reach
+// its interrupted state. It never waits less than floor, and under a longer
+// go test -timeout it extends to the test binary's own deadline (minus a
+// margin to report the failure), so a slow -race run on a loaded host does not
+// fail on a fixed wall-clock budget.
+func childReadinessDeadline(t *testing.T, floor time.Duration) time.Time {
+	t.Helper()
+	deadline := time.Now().Add(floor)
+	if testDeadline, ok := t.Deadline(); ok {
+		if extended := testDeadline.Add(-30 * time.Second); extended.After(deadline) {
+			deadline = extended
+		}
+	}
+	return deadline
 }

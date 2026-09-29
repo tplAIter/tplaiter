@@ -2,5 +2,10 @@
 .tplaiter/
 
 # Build outputs
-tplaiter
+/tplaiter
+/bin/
+/dist/
 coverage.out
+
+# In-tree Go caches (for example GOPATH or GOCACHE under .cache/)
+.cache/
