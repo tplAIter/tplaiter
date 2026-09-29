@@ -30,6 +30,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
+	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
@@ -145,7 +146,7 @@ func buildApprovedHelper(t *testing.T, source string) []byte {
 	if err := os.WriteFile(src, []byte(source), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	c := exec.Command("/opt/homebrew/bin/go", "build", "-trimpath", "-o", out, src)
+	c := exec.Command(testfixture.GoBinary(t), "build", "-trimpath", "-o", out, src)
 	c.Env = []string{"HOME=" + filepath.Join(d, "home"), "GOMODCACHE=" + filepath.Join(d, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "GOOS=darwin", "GOARCH=arm64", "PATH=/usr/bin:/bin"}
 	if err := c.Run(); err != nil {
 		t.Fatal(err)
@@ -288,6 +289,7 @@ func fatFixture() []byte { b := make([]byte, 32); binary.BigEndian.PutUint32(b, 
 // This exercises the installed-loader path with raw Git objects, signed
 // publisher/transparency evidence, an enrolled store and a persistent permit.
 func TestApprovedRunnerExecutesSignedNativeSnapshotMaterial(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	p := newT6BPrepared(t, "normal")
 	defer p.runtime.Close()
 	t.Setenv("T6B_EXEC_CANARY", "must-not-reach-approved-process")
@@ -560,6 +562,7 @@ func t6BAssertEmptyScratch(t *testing.T, scratch string) {
 }
 
 func TestApprovedRunnerRejectsClosedZeroForeignAndMismatchedMaterialBeforeStage(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	t.Run("closed-runtime", func(t *testing.T) {
 		p := newT6BPrepared(t, "normal")
 		if err := p.runtime.Close(); err != nil {
@@ -610,6 +613,7 @@ func TestApprovedRunnerRejectsClosedZeroForeignAndMismatchedMaterialBeforeStage(
 }
 
 func TestSignedSnapshotConventionRejectsBeforeStage(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	variants := []string{"absent", "extra", "nested", "alias", "tool-mode", "stdin-mode", "dir-mode", "symlink", "missing-tool", "missing-stdin", "oversize-tool", "oversize-stdin"}
 	for _, variant := range variants {
 		t.Run(variant, func(t *testing.T) {
@@ -633,6 +637,7 @@ func TestSignedSnapshotConventionRejectsBeforeStage(t *testing.T) {
 }
 
 func TestApprovedRunnerNoReceiptOnFailureTimeoutCancelOrOverflow(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	for _, mode := range []string{"fail", "overflow", "stderr", "hang", "cancel"} {
 		t.Run(mode, func(t *testing.T) {
 			toolMode := mode
@@ -816,7 +821,7 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 	if mode == "gofmt" {
 		args = []string{"build", "-trimpath", "-o", out, "cmd/gofmt"}
 	}
-	cmd := exec.Command("/opt/homebrew/bin/go", args...)
+	cmd := exec.Command(testfixture.GoBinary(t), args...)
 	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "gomodcache"), "GOCACHE=" + testGOCACHE(t), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "GOOS=darwin", "GOARCH=arm64", "PATH=/usr/bin:/bin"}
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("helper build: %v", err)

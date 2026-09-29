@@ -19,6 +19,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 	"github.com/tplAIter/tplaiter/internal/update"
@@ -46,6 +47,7 @@ func TestRunDeniesLegacyCreationBeforeInputsOrFilesystem(t *testing.T) {
 }
 
 func TestPrepareWrappersUseConcreteAuthenticatedRuntime(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	f := t5DNewIntegrationFixture(t)
 	runtime, err := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: t5DClock{}})
 	if err != nil {

@@ -23,6 +23,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 	"github.com/tplAIter/tplaiter/internal/update"
@@ -74,6 +75,7 @@ func TestTrustFactoryLeavesDescriptiveAndLocalRoutesAvailable(t *testing.T) {
 }
 
 func TestTrustFactoryVersionAndUntrustedInputErrorsStaySafe(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	cmd := newTrustRootCommand(invocation{})
 	cmd.SetArgs([]string{"--version"})
 	if err := cmd.Execute(); err != nil {
@@ -99,6 +101,7 @@ func TestTrustFactoryVersionAndUntrustedInputErrorsStaySafe(t *testing.T) {
 }
 
 func TestTrustCobraRejectsUntrustedOverridesWithoutMutatingAuthority(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	f := t5FTrustFixture(t)
 	provision := newTrustRootCommand(invocation{Selection: f.selection, ProjectKey: "project", Clock: f.clock})
 	provision.SetArgs([]string{"trust", "provision"})
@@ -213,6 +216,7 @@ func TestRegisteredProjectPreimageUsesAggregateBoundedRegularReads(t *testing.T)
 }
 
 func TestTrustProvisionThenInspectUsesActualStoreAuthority(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	f := t5FTrustFixture(t)
 	runtimeRaw, err := readFixedTrustDocument(context.Background(), f.selection.RuntimeConfig.Path)
 	if err != nil {

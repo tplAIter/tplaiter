@@ -29,6 +29,7 @@ import (
 // TestInstalledRegistrationRealCLIAndMCP uses the signed disk fixture through
 // a freshly built main binary. No command authority is injected in-process.
 func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	_, anchor, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)

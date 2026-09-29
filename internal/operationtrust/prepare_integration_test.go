@@ -19,6 +19,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
@@ -37,6 +38,7 @@ type t5DIntegrationFixture struct {
 }
 
 func TestT5DConcreteRuntimePrepareAndActionfulPlan(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	f := t5DNewIntegrationFixture(t)
 	runtime, err := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: t5DClock{}})
 	if err != nil {
@@ -144,6 +146,7 @@ func TestT5DConcreteRuntimePrepareAndActionfulPlan(t *testing.T) {
 }
 
 func TestT5DConcreteRuntimeRejectsTamperedSelectionBeforeScratch(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	f := t5DNewIntegrationFixture(t)
 	runtime, err := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: t5DClock{}})
 	if err != nil {
@@ -162,6 +165,7 @@ func TestT5DConcreteRuntimeRejectsTamperedSelectionBeforeScratch(t *testing.T) {
 }
 
 func TestT5DConcreteRuntimeRejectsVerifiedUnsupportedActionsBeforeScratch(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	newCases := []struct {
 		name, manifest string
 	}{

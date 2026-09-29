@@ -15,6 +15,9 @@ import (
 )
 
 func TestOpenRuntimeComposesAuthenticatedOSSReaders(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := runtimeFixture(t)
 	runtime, err := OpenRuntime(context.Background(), RuntimeOptions{
 		Selection: fixture.selection, ProjectKey: "project", Clock: fixedRuntimeClock{},
@@ -66,6 +69,9 @@ func TestOpenRuntimeComposesAuthenticatedOSSReaders(t *testing.T) {
 }
 
 func TestRuntimeReadersReloadFixedPolicyAndProject(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := runtimeFixture(t)
 	store, err := OpenReadOnly(context.Background(), fixture.selection)
 	if err != nil {
@@ -93,6 +99,9 @@ func TestRuntimeReadersReloadFixedPolicyAndProject(t *testing.T) {
 }
 
 func TestRuntimeEvidenceReaderRehashesStoreAndFixedCASBytes(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := runtimeFixture(t)
 	store, err := OpenReadOnly(context.Background(), fixture.selection)
 	if err != nil {

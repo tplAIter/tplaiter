@@ -150,6 +150,9 @@ func TestStoredBundleClosedWireAndDigest(t *testing.T) {
 }
 
 func TestEnrollReadOnlyExternalAndFixedPins(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatalf("Enroll() error = %v", err)
@@ -192,6 +195,9 @@ func TestEnrollReadOnlyExternalAndFixedPins(t *testing.T) {
 // TestOpenReadOnlySB09CompositionMatrix exercises production publication,
 // rather than marker helpers: each hostile state must deny a usable Store.
 func TestOpenReadOnlySB09CompositionMatrix(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	for _, tc := range []struct {
 		name   string
 		mutate func(t *testing.T, root string)
@@ -261,6 +267,9 @@ func TestOpenReadOnlySB09CompositionMatrix(t *testing.T) {
 }
 
 func TestStoreLoadSB09RechecksMarkerPublication(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)
@@ -280,6 +289,9 @@ func TestStoreLoadSB09RechecksMarkerPublication(t *testing.T) {
 }
 
 func TestStoreLoadSB09RejectsValidMarkerAndRootReplacement(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	for _, tc := range []struct {
 		name   string
 		mutate func(t *testing.T, root string)
@@ -406,6 +418,9 @@ func rotateBundle(t *testing.T, fixture bootstrapFixture) ([]byte, map[string][]
 }
 
 func TestRefreshCommitsOnlyPreparedStateAndReloads(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)
@@ -439,6 +454,9 @@ func TestRefreshCommitsOnlyPreparedStateAndReloads(t *testing.T) {
 }
 
 func TestRecoverPendingEnrollmentOnly(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	failing := func(evidencecas.Reader) (*bootstrap.Verifier, error) {
 		return nil, errors.New("injected verifier construction failure")

@@ -3,9 +3,12 @@ package testfixture
 import (
 	"os/exec" //nolint:depguard // tests locate the local Go toolchain
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/tplAIter/tplaiter/internal/trustload"
 )
 
 var goRoot = sync.OnceValues(func() (string, error) {
@@ -36,4 +39,14 @@ func GoRoot(tb testing.TB) string {
 func GoBinary(tb testing.TB) string {
 	tb.Helper()
 	return filepath.Join(GoRoot(tb), "bin", "go")
+}
+
+// RequireTrustStore skips the test when the secure trust store is unavailable
+// on this platform. Remove the skip for a platform once its store support and
+// proofs land (Linux: work package U03).
+func RequireTrustStore(tb testing.TB) {
+	tb.Helper()
+	if !trustload.StorePlatformAvailable() {
+		tb.Skip("unsupported platform: trust store unavailable on " + runtime.GOOS + " (requires U03)")
+	}
 }

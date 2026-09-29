@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
@@ -19,6 +20,7 @@ func TestExecutionMaterialZeroFails(t *testing.T) {
 // identity fields must agree with each other and with the live runtime before
 // snapshot convention processing can select anything.
 func TestExecutionMaterialRejectsOperationIdentityMismatch(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	f := t5DNewIntegrationFixture(t)
 	r, err := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: t5DClock{}})
 	if err != nil {
@@ -66,6 +68,7 @@ func structRequest() trustverify.ExecutionRequest  { return trustverify.Executio
 // Runtime.  Its signed native snapshot has no execution convention and must
 // therefore fail before any stage can exist.
 func TestExecutionMaterialRejectsSignedSnapshotWithoutConvention(t *testing.T) {
+	testfixture.RequireTrustStore(t)
 	f := t5DNewIntegrationFixture(t)
 	r, err := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: t5DClock{}})
 	if err != nil {

@@ -16,6 +16,9 @@ import (
 // boundary. The mutation is held through Refresh's result, then restored only
 // so the same persisted root can be inspected with ordinary APIs.
 func TestRefreshSB04ReauthBoundaries(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	for _, boundary := range []string{"proposal-sh-close-before-ex", "ex-post-lock", "commit-before", "commit"} {
 		for _, target := range []string{"root", "active-marker", "descriptor", "provisioning", "policy"} {
 			t.Run(boundary+"/"+target, func(t *testing.T) {

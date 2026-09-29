@@ -147,7 +147,7 @@ func (s *heldStage) Close() error {
 	if s.dir != nil {
 		_ = s.dir.Close()
 	}
-	if e := os.RemoveAll(s.root); err == nil { //nolint:gosec // s.root is the private stage directory created by newHeldStage
+	if e := os.RemoveAll(s.root); err == nil {
 		err = e
 	}
 	return err

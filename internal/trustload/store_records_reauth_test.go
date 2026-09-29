@@ -19,6 +19,9 @@ import (
 // fixed external inputs are reloaded after a Store is opened, while persisted
 // rows are read only through the exclusive root/binding capability.
 func TestStoreRecordsReauthSB09(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	t.Run("external-pins", testStoreRecordsExternalPins)
 	t.Run("accepted-records", testStoreRecordsAcceptedRows)
 }

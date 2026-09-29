@@ -350,6 +350,9 @@ func refreshSB06HeadsEqual(a, b refreshSB06Head) bool {
 }
 
 func TestEnrollSB05BoundarySequence(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	old := storeEnrollmentPhaseHook
 	defer func() { storeEnrollmentPhaseHook = old }()
@@ -374,6 +377,9 @@ func TestEnrollSB05BoundarySequence(t *testing.T) {
 // proposal, commits it, and a fresh Store/LoadExternal/VerifyOSS view sees a
 // complete retained head. Unsupported WAL/SHM evidence remains fail closed.
 func TestRefreshSB06ActualPreparedPath(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)
@@ -406,6 +412,9 @@ func TestRefreshSB06ActualPreparedPath(t *testing.T) {
 }
 
 func TestOrdinaryReaderNeverInitializesOrRecovers(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	root := fixture.loaded.Install.OSS.StorePath
 	if _, err := OpenReadOnly(context.Background(), fixture.selection); !errors.Is(err, ErrAnchorMissing) {
@@ -435,6 +444,9 @@ func TestOrdinaryReaderNeverInitializesOrRecovers(t *testing.T) {
 }
 
 func TestConcurrentRefreshHasOneCASWinner(t *testing.T) {
+	if !storePlatformAvailable() {
+		t.Skip("unsupported platform")
+	}
 	fixture := newBootstrapFixture(t)
 	if err := Enroll(context.Background(), fixture.selection, fixture.factory, fixture.stateJSON, fixture.bundleJSON, fixture.evidence); err != nil {
 		t.Fatal(err)
