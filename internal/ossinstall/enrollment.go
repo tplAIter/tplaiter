@@ -138,13 +138,16 @@ func rawObject(id string, raw []byte) (trustverify.GitObject, error) {
 	return trustverify.GitObject{Kind: parts[0], Data: data}, nil
 }
 
-func validatePackages(packages []SourcePackage, publishers []publisherScope) error {
+func validatePackagesWithContext(ctx context.Context, packages []SourcePackage, publishers []publisherScope) error {
 	if packages != nil && len(packages) == 0 || len(packages) > 32 {
 		return errors.New("ossinstall: package count limit")
 	}
 	total := 0
 	seen := map[string]bool{}
 	for _, p := range packages {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if p.APIVersion != SourcePackageAPIVersion || len(p.Statement) > 1<<20 || len(p.Signature) > 128 || len(p.Objects) == 0 || len(p.Objects) > 8192 {
 			return errors.New("ossinstall: invalid source package bounds")
 		}
@@ -168,6 +171,9 @@ func validatePackages(packages []SourcePackage, publishers []publisherScope) err
 		}
 		reader := &packageObjects{origin: statement.Subject.Origin, objects: map[string]trustverify.GitObject{}, used: map[string]bool{}}
 		for id, raw := range p.Objects {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			total += len(raw)
 			if total > 64<<20 {
 				return errors.New("ossinstall: aggregate object byte limit")
@@ -178,33 +184,40 @@ func validatePackages(packages []SourcePackage, publishers []publisherScope) err
 			}
 			reader.objects[id] = o
 		}
-		snapshot, err := trustverify.VerifySource(context.Background(), reader, statementSubject(statement))
+		snapshot, err := trustverify.VerifySource(ctx, reader, statementSubject(statement))
 		if err != nil {
 			return err
 		}
 		if len(reader.used) != len(p.Objects) {
 			return errors.New("ossinstall: package contains objects outside the selected closure")
 		}
-		manifestRaw, ok := snapshot.Blob("template.manifest.yaml")
-		if !ok {
-			return errors.New("ossinstall: manifest missing")
-		}
-		if _, err := operationtrust.DecodeNativeContract(snapshot.ContractBytes(), manifestRaw); err != nil {
+		if err := validateNativeSnapshot(snapshot); err != nil {
 			return err
 		}
-		if err := validateManifestShape(manifestRaw); err != nil {
-			return err
-		}
-		tpl, err := manifest.ParseTemplate(manifestRaw)
-		if err != nil {
-			return err
-		}
-		if err := tpl.Validate(); err != nil {
-			return err
-		}
-		if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || len(tpl.Generators) != 0 || len(tpl.Commands) != 0 {
-			return errors.New("ossinstall: initial enrollment supports action-free native templates only")
-		}
+	}
+	return nil
+}
+
+func validateNativeSnapshot(snapshot *trustverify.SourceSnapshot) error {
+	manifestRaw, ok := snapshot.Blob("template.manifest.yaml")
+	if !ok {
+		return errors.New("ossinstall: manifest missing")
+	}
+	if _, err := operationtrust.DecodeNativeContract(snapshot.ContractBytes(), manifestRaw); err != nil {
+		return err
+	}
+	if err := validateManifestShape(manifestRaw); err != nil {
+		return err
+	}
+	tpl, err := manifest.ParseTemplate(manifestRaw)
+	if err != nil {
+		return err
+	}
+	if err := tpl.Validate(); err != nil {
+		return err
+	}
+	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || len(tpl.Generators) != 0 || len(tpl.Commands) != 0 {
+		return errors.New("ossinstall: initial enrollment supports action-free native templates only")
 	}
 	return nil
 }
@@ -287,14 +300,22 @@ func validateProjects(root string, projects []trustload.ProjectContext, pubs []p
 }
 
 type enrollmentContract struct {
-	APIVersion string `json:"apiVersion"`
-	Digest     string `json:"digest"`
+	APIVersion           string `json:"apiVersion"`
+	Digest               string `json:"digest"`
+	LocalPublisherSHA256 string `json:"localPublisherSHA256,omitempty"`
 }
 
 func contractFor(o Options) (enrollmentContract, error) {
+	return contractForWithContext(context.Background(), o)
+}
+
+func contractForWithContext(ctx context.Context, o Options) (enrollmentContract, error) {
 	// Source/context sets are order-independent; the selected default key is explicit.
 	sources := []string{}
 	for _, p := range o.SourcePackages {
+		if err := ctx.Err(); err != nil {
+			return enrollmentContract{}, err
+		}
 		d, err := bootstrap.DomainDigest(SourcePackageAPIVersion, struct {
 			Package      SourcePackage `json:"package"`
 			StatementCAS string        `json:"statementCAS"`
@@ -312,14 +333,18 @@ func contractFor(o Options) (enrollmentContract, error) {
 		defaultKey = o.ProjectContexts[0].Key
 	}
 	d, err := bootstrap.DomainDigest("tplaiter.dev/initial-enrollment-contract/v1", struct {
-		DefaultProjectKey string                     `json:"defaultProjectKey"`
-		Sources           []string                   `json:"sources"`
-		Projects          []trustload.ProjectContext `json:"projects"`
-	}{defaultKey, sources, projects})
-	return enrollmentContract{"tplaiter.dev/initial-enrollment-contract/v1", d}, err
+		LocalPublisherSHA256 string                     `json:"localPublisherSHA256,omitempty"`
+		DefaultProjectKey    string                     `json:"defaultProjectKey"`
+		Sources              []string                   `json:"sources"`
+		Projects             []trustload.ProjectContext `json:"projects"`
+	}{localRecordDigest(o.localRecord), defaultKey, sources, projects})
+	return enrollmentContract{APIVersion: "tplaiter.dev/initial-enrollment-contract/v1", Digest: d, LocalPublisherSHA256: localRecordDigest(o.localRecord)}, err
 }
 
-func generateEnrollment(o Options) (Result, error) {
+func generateEnrollment(ctx context.Context, o Options) (Result, error) {
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
 	if !filepath.IsAbs(o.Root) || filepath.Clean(o.Root) != o.Root {
 		return Result{}, errors.New("ossinstall: canonical absolute install root required")
 	}
@@ -336,26 +361,32 @@ func generateEnrollment(o Options) (Result, error) {
 			return Result{}, errors.New("ossinstall: initial enrollment uses generated fixed object roots only")
 		}
 	}
-	if err := validatePackages(o.SourcePackages, pubs); err != nil {
+	if err := validatePackagesWithContext(ctx, o.SourcePackages, pubs); err != nil {
 		return Result{}, err
 	}
 	if err := validateProjects(o.Root, o.ProjectContexts, pubs); err != nil {
 		return Result{}, err
 	}
-	contract, err := contractFor(o)
+	contract, err := contractForWithContext(ctx, o)
 	if err != nil {
 		return Result{}, err
 	}
 	if _, err := os.Stat(o.Root); err == nil {
+		if o.LocalSources != nil {
+			return Result{}, ErrInstallRootForeign
+		}
 		empty, err := checkOwnership(o.Root)
 		if err != nil {
 			return Result{}, err
+		}
+		if empty {
+			return Result{}, ErrInstallRootForeign
 		}
 		if !empty {
 			if o.Rotate {
 				return Result{}, ErrEnrollmentChanged
 			}
-			result, ok, err := reuse(o.Root, pubs)
+			result, ok, err := reuseWithContext(ctx, o.Root, pubs)
 			if errors.Is(err, ErrPublishersChanged) || errors.Is(err, ErrInstallRootConflict) {
 				return Result{}, ErrEnrollmentChanged
 			}
@@ -372,7 +403,10 @@ func generateEnrollment(o Options) (Result, error) {
 			if err != nil || regErr != nil || decodeErr != nil || reg.InitialEnrollmentSHA256 != contract.Digest || canonicaljson.DecodeStrict(raw, &old) != nil || old != contract {
 				return Result{}, ErrEnrollmentChanged
 			}
-			if err := verifyRetainedPackages(loadedInstall(result), o.SourcePackages); err != nil {
+			if err := verifyRetainedPackagesWithContext(ctx, loadedInstallWithContext(ctx, result), o.SourcePackages); err != nil {
+				return Result{}, err
+			}
+			if err := ctx.Err(); err != nil {
 				return Result{}, err
 			}
 			result.SelectionsPath = filepath.Join(o.Root, "config", "source-selections.json")
@@ -401,8 +435,8 @@ func generateEnrollment(o Options) (Result, error) {
 	if entropy == nil {
 		entropy = defaultEntropy()
 	}
-	g := &generator{root: o.Root, disk: stage, contractDigest: contract.Digest, sources: o.SourcePackages, projects: o.ProjectContexts, now: now.UTC().Truncate(time.Second), validity: validity, rand: entropy, evidence: map[string][]byte{}}
-	result, err := g.run(o.Publishers)
+	g := &generator{ctx: ctx, root: o.Root, disk: stage, contractDigest: contract.Digest, sources: o.SourcePackages, projects: o.ProjectContexts, now: now.UTC().Truncate(time.Second), validity: validity, rand: entropy, evidence: map[string][]byte{}}
+	result, err := g.run(ctx, o.Publishers)
 	if err != nil {
 		return Result{}, err
 	}
@@ -413,15 +447,41 @@ func generateEnrollment(o Options) (Result, error) {
 	if _, err := g.writeDocument(filepath.Join(o.Root, "config", "enrollment.json"), raw); err != nil {
 		return Result{}, err
 	}
+	if o.localRecord != nil {
+		if _, err := g.writeDocument(filepath.Join(o.Root, "config", "local-publisher.json"), o.localRecord); err != nil {
+			return Result{}, err
+		}
+	}
 	// Recheck vacancy and project parent constraints at the publication boundary.
 	if err := validateProjects(o.Root, o.ProjectContexts, pubs); err != nil {
 		return Result{}, err
 	}
-	if err := publishInstallation(stage, o.Root); err != nil {
-		return Result{}, err
+	committed, err := publishInstallationWithContext(ctx, stage, o.Root, func() error { return validateProjects(o.Root, o.ProjectContexts, pubs) })
+	if !committed {
+		if err != nil {
+			return Result{}, err
+		}
+		return Result{}, errors.New("ossinstall: publication did not commit")
 	}
-	if _, err := trustload.Load(context.Background(), mustSelection(result)); err != nil {
-		return Result{}, err
+	result.PublicationState = "committed"
+	if err != nil {
+		result.PublicationState = "committed-unconfirmed"
+		return result, &PublicationCommittedError{Cause: err}
+	}
+	// Rename has committed. Detach cancellation only here: the published tree
+	// must be synced/reauthenticated even when the caller cancels after commit.
+	// Keep context values and bound finalization independently to 30 seconds.
+	finalCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	if publicationFinalizationHook != nil {
+		if err := publicationFinalizationHook(); err != nil {
+			result.PublicationState = "committed-unconfirmed"
+			return result, &PublicationCommittedError{Cause: err}
+		}
+	}
+	if _, err := trustload.Load(finalCtx, mustSelection(result)); err != nil {
+		result.PublicationState = "committed-unconfirmed"
+		return result, &PublicationCommittedError{Cause: err}
 	}
 	return result, nil
 }
@@ -447,6 +507,9 @@ func (g *generator) path(path string) string {
 }
 
 func (g *generator) writeDocument(path string, raw []byte) (trustload.FilePin, error) {
+	if err := g.context().Err(); err != nil {
+		return trustload.FilePin{}, err
+	}
 	pin, err := writeDocument(g.path(path), raw)
 	pin.Path = path
 	return pin, err
@@ -471,7 +534,7 @@ func (r enrollmentExternal) Load(context.Context) (bootstrap.ProvisionedSnapshot
 	return r.snapshot, nil
 }
 
-func (g *generator) verifyEnrollment(d bootstrap.DescriptorDocument, p bootstrap.ProvisioningRecord, s bootstrap.OSSAcceptedState, envelope, receipt []byte, checkpoint string, proofs []string) error {
+func (g *generator) verifyEnrollment(ctx context.Context, d bootstrap.DescriptorDocument, p bootstrap.ProvisioningRecord, s bootstrap.OSSAcceptedState, envelope, receipt []byte, checkpoint string, proofs []string) error {
 	draw, err := marshal(d)
 	if err != nil {
 		return err
@@ -484,7 +547,7 @@ func (g *generator) verifyEnrollment(d bootstrap.DescriptorDocument, p bootstrap
 	if err != nil {
 		return err
 	}
-	ext, err := bootstrap.LoadExternal(context.Background(), enrollmentExternal{bootstrap.ProvisionedSnapshot{DescriptorJSON: draw, ProvisioningJSON: praw, ExpectedDescriptorSHA256: d.DescriptorSHA256, ExpectedProvisioningSHA256: p.ProvisioningSHA256, OSSStateJSON: sraw, ExpectedOSSStateSHA256: s.StateSHA256, InitialOSSStateSHA256: s.StateSHA256}})
+	ext, err := bootstrap.LoadExternal(ctx, enrollmentExternal{bootstrap.ProvisionedSnapshot{DescriptorJSON: draw, ProvisioningJSON: praw, ExpectedDescriptorSHA256: d.DescriptorSHA256, ExpectedProvisioningSHA256: p.ProvisioningSHA256, OSSStateJSON: sraw, ExpectedOSSStateSHA256: s.StateSHA256, InitialOSSStateSHA256: s.StateSHA256}})
 	if err != nil {
 		return err
 	}
@@ -492,7 +555,7 @@ func (g *generator) verifyEnrollment(d bootstrap.DescriptorDocument, p bootstrap
 	if err != nil {
 		return err
 	}
-	authority, err := verifier.VerifyOSS(context.Background(), ext, bootstrap.Bundle{Envelope: envelope, Receipt: receipt, Transparency: bootstrap.TransparencyEvidence{CheckpointCAS: checkpoint, InclusionProofCAS: proofs[0]}})
+	authority, err := verifier.VerifyOSS(ctx, ext, bootstrap.Bundle{Envelope: envelope, Receipt: receipt, Transparency: bootstrap.TransparencyEvidence{CheckpointCAS: checkpoint, InclusionProofCAS: proofs[0]}})
 	if err != nil {
 		return err
 	}
@@ -503,10 +566,10 @@ func (g *generator) verifyEnrollment(d bootstrap.DescriptorDocument, p bootstrap
 		}
 		refs := bootstrap.PublisherEvidence{StatementCAS: g.put(source.Statement), SignatureCAS: g.put([]byte(source.Signature)), KeyFingerprint: source.KeyFingerprint}
 		expected := bootstrap.PublisherExpectation{PolicyOrigin: localPolicyOrigin, Issuer: statement.Issuer, Predicate: localPredicate, Usage: "template-source", Subject: statement.Subject}
-		if _, err := verifier.VerifyPublisherClaim(context.Background(), authority, expected, refs); err != nil {
+		if _, err := verifier.VerifyPublisherClaim(ctx, authority, expected, refs); err != nil {
 			return err
 		}
-		if err := bootstrap.VerifyArtifactTransparency(context.Background(), authority, enrollmentEvidence(g.evidence), refs.StatementCAS, bootstrap.TransparencyEvidence{CheckpointCAS: checkpoint, InclusionProofCAS: proofs[i+1]}); err != nil {
+		if err := bootstrap.VerifyArtifactTransparency(ctx, authority, enrollmentEvidence(g.evidence), refs.StatementCAS, bootstrap.TransparencyEvidence{CheckpointCAS: checkpoint, InclusionProofCAS: proofs[i+1]}); err != nil {
 			return err
 		}
 		g.selections = append(g.selections, operationtrust.SourceSelection{APIVersion: operationtrust.SourceSelectionAPIVersion, Subject: operationtrust.SelectionSubject{Origin: statement.Subject.Origin, TemplatePath: statement.Subject.TemplatePath, RequestedRef: statement.Subject.Commit, Commit: statement.Subject.Commit, TreeSHA256: statement.Subject.TreeSHA256, ContractSHA256: statement.Subject.ContractSHA256}, Evidence: operationtrust.SelectionEvidence{Format: bootstrap.PublisherStatementAPIVersion, StatementCAS: refs.StatementCAS, SignatureCAS: refs.SignatureCAS, KeyFingerprint: refs.KeyFingerprint, CheckpointCAS: checkpoint, InclusionProofCAS: proofs[i+1]}, Dependencies: []string{}})
@@ -530,6 +593,9 @@ func (g *generator) publishSources(origins []trustload.ObjectOrigin) error {
 			return errors.New("ossinstall: fixed object origin missing")
 		}
 		for id, raw := range source.Objects {
+			if err := g.context().Err(); err != nil {
+				return err
+			}
 			if err := publishImmutable(root, id, raw); err != nil {
 				return err
 			}
@@ -601,15 +667,18 @@ func merkleProof(h []bootstrap.MerkleHash, i int) []bootstrap.MerkleHash {
 	return append(merkleProof(h[k:], i-k), merkleRoot(h[:k]))
 }
 
-func loadedInstall(result Result) *trustload.RuntimeInstall {
-	loaded, err := trustload.Load(context.Background(), mustSelection(result))
+func loadedInstallWithContext(ctx context.Context, result Result) *trustload.RuntimeInstall {
+	loaded, err := trustload.Load(ctx, mustSelection(result))
 	if err != nil {
 		return nil
 	}
 	return &loaded.Install
 }
 
-func verifyRetainedPackages(install *trustload.RuntimeInstall, packages []SourcePackage) error {
+func verifyRetainedPackagesWithContext(ctx context.Context, install *trustload.RuntimeInstall, packages []SourcePackage) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if install == nil {
 		return ErrInstallRootConflict
 	}
@@ -628,6 +697,9 @@ func verifyRetainedPackages(install *trustload.RuntimeInstall, packages []Source
 			return ErrInstallRootConflict
 		}
 		for id, raw := range p.Objects {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			previous, err := readConfined(root, id)
 			if err != nil || !bytes.Equal(previous, raw) {
 				return ErrInstallRootConflict

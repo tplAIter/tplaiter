@@ -34,6 +34,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
+	"github.com/tplAIter/tplaiter/internal/sourcepackage"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
@@ -111,6 +112,8 @@ type Publisher struct {
 
 // Options control Generate.
 type Options struct {
+	LocalSources []sourcepackage.CaptureInput
+	localRecord  []byte
 	// SourcePackages are untrusted public signatures and raw immutable objects.
 	// They are accepted only against Publishers, during a fresh installation.
 	SourcePackages []SourcePackage
@@ -140,6 +143,7 @@ type Options struct {
 
 // Result describes the registration the binary must be linked against.
 type Result struct {
+	PublicationState string
 	// SelectionsPath is an untrusted locator list, reverified by the installed runtime.
 	SelectionsPath string
 
@@ -185,8 +189,21 @@ var generatedEntries = []string{RegistrationFile, "config", "evidence", "objects
 // Generate creates (or reuses) the operator-pinned OSS installation under
 // options.Root and returns the registration pins for the linker.
 func Generate(options Options) (Result, error) {
+	return GenerateWithContext(context.Background(), options)
+}
+
+func GenerateWithContext(ctx context.Context, options Options) (Result, error) {
+	if ctx == nil {
+		return Result{}, errors.New("ossinstall: nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
+	if options.LocalSources != nil {
+		return generateLocal(ctx, options)
+	}
 	if options.SourcePackages != nil || options.ProjectContexts != nil {
-		return generateEnrollment(options)
+		return generateEnrollment(ctx, options)
 	}
 	if options.Root == "" || !filepath.IsAbs(options.Root) {
 		return Result{}, errors.New("ossinstall: install root must be an absolute path")
@@ -227,7 +244,7 @@ func Generate(options Options) (Result, error) {
 				return Result{}, fmt.Errorf("ossinstall: rotate: %w", err)
 			}
 		}
-	} else if existing, ok, err := reuse(root, requested); err != nil {
+	} else if existing, ok, err := reuseWithContext(ctx, root, requested); err != nil {
 		return Result{}, err
 	} else if ok {
 		return existing, nil
@@ -247,8 +264,8 @@ func Generate(options Options) (Result, error) {
 	if err := writeOwnershipMarker(root); err != nil {
 		return Result{}, err
 	}
-	g := &generator{root: root, now: now.UTC().Truncate(time.Second), validity: validity, rand: entropy, evidence: map[string][]byte{}}
-	return g.run(options.Publishers)
+	g := &generator{ctx: ctx, root: root, now: now.UTC().Truncate(time.Second), validity: validity, rand: entropy, evidence: map[string][]byte{}}
+	return g.run(ctx, options.Publishers)
 }
 
 // checkOwnership reports whether root is empty, and otherwise proves that it
@@ -354,7 +371,10 @@ func writeOwnershipMarker(root string) error {
 // requested, the installation is kept only if it trusts exactly that set;
 // otherwise ErrPublishersChanged is returned. With no requested publishers
 // the existing installation is kept as it is.
-func reuse(root string, requested []publisherScope) (Result, bool, error) {
+func reuseWithContext(ctx context.Context, root string, requested []publisherScope) (Result, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return Result{}, false, err
+	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return Result{}, false, fmt.Errorf("ossinstall: read install root: %w", err)
@@ -373,7 +393,10 @@ func reuse(root string, requested []publisherScope) (Result, bool, error) {
 	if err != nil {
 		return Result{}, false, ErrInstallRootConflict
 	}
-	loaded, err := trustload.Load(context.Background(), registration.Selection())
+	loaded, err := trustload.Load(ctx, registration.Selection())
+	if e := ctx.Err(); e != nil {
+		return Result{}, false, e
+	}
 	if err != nil || loaded.Install.OSS == nil || !strings.HasPrefix(registration.RuntimeConfig.Path, root+string(filepath.Separator)) {
 		return Result{}, false, ErrInstallRootConflict
 	}
@@ -390,6 +413,7 @@ func reuse(root string, requested []publisherScope) (Result, bool, error) {
 }
 
 type generator struct {
+	ctx            context.Context
 	root           string
 	disk           string
 	contractDigest string
@@ -402,6 +426,13 @@ type generator struct {
 	evidence       map[string][]byte
 }
 
+func (g *generator) context() context.Context {
+	if g.ctx == nil {
+		return context.Background()
+	}
+	return g.ctx
+}
+
 func (g *generator) put(raw []byte) string {
 	digest := evidencecas.Digest(raw)
 	g.evidence[digest] = append([]byte(nil), raw...)
@@ -409,17 +440,30 @@ func (g *generator) put(raw []byte) string {
 }
 
 func (g *generator) token(prefix string) (string, error) {
+	if err := g.context().Err(); err != nil {
+		return "", err
+	}
 	var b [12]byte
 	if _, err := io.ReadFull(g.rand, b[:]); err != nil {
 		return "", fmt.Errorf("ossinstall: entropy: %w", err)
+	}
+	if err := g.context().Err(); err != nil {
+		return "", err
 	}
 	return prefix + hex.EncodeToString(b[:]), nil
 }
 
 func (g *generator) key() (ed25519.PrivateKey, error) {
+	if err := g.context().Err(); err != nil {
+		return nil, err
+	}
 	_, private, err := ed25519.GenerateKey(g.rand)
 	if err != nil {
 		return nil, fmt.Errorf("ossinstall: generate key: %w", err)
+	}
+	if err := g.context().Err(); err != nil {
+		eraseKey(private)
+		return nil, err
 	}
 	return private, nil
 }
@@ -437,6 +481,7 @@ func (g *generator) publishers(configured []Publisher) ([]publisherScope, error)
 		if err != nil {
 			return nil, err
 		}
+		defer eraseKey(private)
 		configured = []Publisher{{Issuer: unconfiguredIssuer, PublicKeyBase64: base64.StdEncoding.EncodeToString(private.Public().(ed25519.PublicKey)), SourceOrigin: unconfiguredOrigin, TemplatePath: "."}}
 	}
 	return normalizePublishers(configured)
@@ -461,7 +506,7 @@ func normalizePublishers(configured []Publisher) ([]publisherScope, error) {
 	return out, nil
 }
 
-func (g *generator) run(configured []Publisher) (Result, error) {
+func (g *generator) run(ctx context.Context, configured []Publisher) (Result, error) {
 	publishers, err := g.publishers(configured)
 	if err != nil {
 		return Result{}, err
@@ -478,6 +523,7 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	defer eraseKey(anchor)
 	anchorPublic := anchor.Public().(ed25519.PublicKey)
 	window := bootstrap.Validity{NotBefore: g.now.Add(-time.Hour).Format(time.RFC3339), NotAfter: g.now.Add(g.validity).Format(time.RFC3339)}
 
@@ -500,6 +546,9 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 	payload, err := hex.DecodeString(strings.TrimPrefix(envelope.PayloadSHA256, "sha256:"))
 	if err != nil {
 		return Result{}, fmt.Errorf("ossinstall: envelope digest: %w", err)
+	}
+	if err := g.context().Err(); err != nil {
+		return Result{}, err
 	}
 	envelope.Signatures = []bootstrap.Signature{{KeyFingerprint: bootstrap.Fingerprint(anchorPublic), SignatureCAS: g.put([]byte(bootstrap.EncodeSignature(ed25519.Sign(anchor, payload))))}}
 	// The anchor private key is not needed after this point; drop it so it
@@ -577,12 +626,15 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 		return Result{}, fmt.Errorf("ossinstall: policy: %w", err)
 	}
 
-	if err := g.verifyEnrollment(descriptor, provisioning, state, envelopeRaw, receiptRaw, checkpointRef, proofs); err != nil {
+	if err := g.verifyEnrollment(ctx, descriptor, provisioning, state, envelopeRaw, receiptRaw, checkpointRef, proofs); err != nil {
 		return Result{}, err
 	}
 	// Lay out the install root.
 	dirs := map[string]string{"config": "config", "evidence": "evidence", "scratch": "scratch", "objects": "objects", "project": filepath.Join("projects", DefaultProjectKey)}
 	for _, rel := range dirs {
+		if err := g.context().Err(); err != nil {
+			return Result{}, err
+		}
 		if err := os.MkdirAll(g.path(filepath.Join(g.root, rel)), 0o700); err != nil {
 			return Result{}, fmt.Errorf("ossinstall: create %s: %w", rel, err)
 		}
@@ -615,6 +667,9 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 		return Result{}, err
 	}
 	for digest, raw := range g.evidence {
+		if err := g.context().Err(); err != nil {
+			return Result{}, err
+		}
 		if err := writeCAS(g.path(filepath.Join(g.root, "evidence")), digest, raw); err != nil {
 			return Result{}, err
 		}
@@ -622,6 +677,9 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 	origins := []trustload.ObjectOrigin{}
 	seenOrigins := map[string]bool{}
 	for i, p := range publishers {
+		if err := g.context().Err(); err != nil {
+			return Result{}, err
+		}
 		if seenOrigins[p.SourceOrigin] {
 			continue
 		}
@@ -678,7 +736,7 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 		return Result{}, err
 	}
 	if g.disk == "" {
-		if _, err := trustload.Load(context.Background(), registration.Selection()); err != nil {
+		if _, err := trustload.Load(ctx, registration.Selection()); err != nil {
 			return Result{}, fmt.Errorf("ossinstall: generated installation does not load: %w", err)
 		}
 	}

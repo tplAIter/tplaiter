@@ -29,6 +29,8 @@ const (
 	maxPathRunes        = 1024
 )
 
+var errObjectSizeLimit = errors.New("trustverify: object size limit exceeded")
+
 type (
 	SourceOrigin string
 	ObjectID     string
@@ -37,6 +39,12 @@ type (
 type GitObject struct {
 	Kind string
 	Data []byte
+}
+
+// BoundedGitObjectReader lets readers enforce the verifier's per-object limit
+// before allocation. Ordinary readers remain subject to the same checks.
+type BoundedGitObjectReader interface {
+	ReadObjectWithLimit(context.Context, SourceOrigin, ObjectID, int) (GitObject, error)
 }
 
 type GitObjectReader interface {
@@ -115,7 +123,40 @@ func VerifySourceWithLimits(ctx context.Context, reader GitObjectReader, subject
 	return verifySourceWithLimits(ctx, reader, subject, limits, false)
 }
 
+// CapturedSourceSnapshot contains computed public identity only. It is not a
+// verified SourceSnapshot and cannot be consumed by SnapshotFS or runtime APIs.
+type CapturedSourceSnapshot struct{ subject Subject }
+
+func (s CapturedSourceSnapshot) Subject() Subject { return s.subject }
+
+type SourceIdentity struct{ Origin, TemplatePath, Commit string }
+
+// CaptureSource computes the same strict closure and digest domains as verification.
+// No expected digest or authenticated publisher is implied by this result.
+func CaptureSource(ctx context.Context, reader GitObjectReader, identity SourceIdentity, limits SourceLimits) (CapturedSourceSnapshot, error) {
+	subject := Subject{Origin: identity.Origin, TemplatePath: identity.TemplatePath, RequestedRef: identity.Commit, Commit: identity.Commit}
+	snapshot, err := computeSource(ctx, reader, subject, limits, false)
+	if err != nil {
+		return CapturedSourceSnapshot{}, err
+	}
+	return CapturedSourceSnapshot{subject: snapshot.subject}, nil
+}
+
 func verifySourceWithLimits(ctx context.Context, reader GitObjectReader, subject Subject, limits SourceLimits, mutableRequestedRef bool) (*SourceSnapshot, error) {
+	if subject.TreeSHA256 == "" || subject.ContractSHA256 == "" {
+		return nil, errors.New("trustverify: incomplete subject")
+	}
+	snapshot, err := computeSource(ctx, reader, subject, limits, mutableRequestedRef)
+	if err != nil {
+		return nil, err
+	}
+	if subject.TreeSHA256 != snapshot.subject.TreeSHA256 || subject.ContractSHA256 != snapshot.subject.ContractSHA256 {
+		return nil, errors.New("trustverify: source digest mismatch")
+	}
+	return snapshot, nil
+}
+
+func computeSource(ctx context.Context, reader GitObjectReader, subject Subject, limits SourceLimits, mutableRequestedRef bool) (*SourceSnapshot, error) {
 	if reader == nil || ctx == nil {
 		return nil, errors.New("trustverify: nil reader or context")
 	}
@@ -138,15 +179,24 @@ func verifySourceWithLimits(ctx context.Context, reader GitObjectReader, subject
 			return GitObject{}, errors.New("trustverify: object read limit exceeded")
 		}
 		reads++
-		o, err := reader.ReadObject(ctx, SourceOrigin(subject.Origin), ObjectID(id))
+		var o GitObject
+		var err error
+		if bounded, ok := reader.(BoundedGitObjectReader); ok {
+			o, err = bounded.ReadObjectWithLimit(ctx, SourceOrigin(subject.Origin), ObjectID(id), limit)
+		} else {
+			o, err = reader.ReadObject(ctx, SourceOrigin(subject.Origin), ObjectID(id))
+		}
 		if err != nil {
+			if e := ctx.Err(); e != nil {
+				return GitObject{}, e
+			}
 			return GitObject{}, errors.New("trustverify: object unavailable")
 		}
 		if err := ctx.Err(); err != nil {
 			return GitObject{}, err
 		}
 		if len(o.Data) > limit {
-			return GitObject{}, errors.New("trustverify: object size limit exceeded")
+			return GitObject{}, errObjectSizeLimit
 		}
 		if o.Kind == "" {
 			return GitObject{}, errors.New("trustverify: malformed object")
@@ -197,14 +247,12 @@ func verifySourceWithLimits(ctx context.Context, reader GitObjectReader, subject
 	if err != nil {
 		return nil, err
 	}
-	if subject.TreeSHA256 != treeDigest || subject.ContractSHA256 != contractDigest {
-		return nil, errors.New("trustverify: source digest mismatch")
-	}
+	subject.TreeSHA256, subject.ContractSHA256 = treeDigest, contractDigest
 	return &SourceSnapshot{subject: subject, entries: entries, contract: append([]byte(nil), contract...), blobs: cloneBlobs(blobs)}, nil
 }
 
 func validateSubject(s Subject, mutableRequestedRef bool) (int, error) {
-	if s.Origin == "" || s.TemplatePath == "" || s.RequestedRef == "" || s.Commit == "" || s.TreeSHA256 == "" || s.ContractSHA256 == "" {
+	if s.Origin == "" || s.TemplatePath == "" || s.RequestedRef == "" || s.Commit == "" {
 		return 0, errors.New("trustverify: incomplete subject")
 	}
 	if !mutableRequestedRef && s.RequestedRef != s.Commit {
@@ -399,7 +447,14 @@ func walk(ctx context.Context, read func(string, int) (GitObject, error), data [
 }
 
 func readBlob(read func(string, int) (GitObject, error), r treeRecord, path string, width int, entries *[]SourceEntry, blobs map[string][]byte, total *int64, lim SourceLimits) error { //nolint:unparam // width mirrors walk; blobs are addressed by the recorded object ID
-	o, e := read(r.oid, maxBlobObject)
+	limit := maxBlobObject
+	if path == "template.contract.json" {
+		limit = maxContractObject
+	}
+	o, e := read(r.oid, limit)
+	if path == "template.contract.json" && errors.Is(e, errObjectSizeLimit) {
+		return errors.New("trustverify: contract size limit exceeded")
+	}
 	if e != nil {
 		return e
 	}

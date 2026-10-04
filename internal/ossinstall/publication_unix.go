@@ -4,6 +4,7 @@ package ossinstall
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -139,31 +140,60 @@ func publishImmutable(root, rel string, raw []byte) error {
 var installationPublicationHook func()
 
 func publishInstallation(stage, root string) error {
+	_, err := publishInstallationWithContext(context.Background(), stage, root)
+	return err
+}
+
+var (
+	installationCommittedHook  func()
+	installationParentSyncHook func() error
+)
+
+func publishInstallationWithContext(ctx context.Context, stage, root string, checks ...func() error) (bool, error) {
 	parent, err := openDirectory(filepath.Dir(root))
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer parent.Close()
 	if filepath.Dir(stage) != filepath.Dir(root) {
-		return errors.New("ossinstall: staging must share installation parent")
+		return false, errors.New("ossinstall: staging must share installation parent")
 	}
 	leaf := filepath.Base(root)
 	// The final native exclusive rename is the vacancy decision. No prior
 	// emptiness check can authorize replacing an inode created concurrently.
-	if err = syncTree(stage); err != nil {
-		return err
+	if err = syncTreeWithContext(ctx, stage); err != nil {
+		return false, err
 	}
 	if installationPublicationHook != nil {
 		installationPublicationHook()
 	}
-	if err = renameInstallationExclusive(int(parent.Fd()), filepath.Base(stage), leaf); err != nil {
-		return classifyPublicationRenameError(err)
+	for _, check := range checks {
+		if err := check(); err != nil {
+			return false, err
+		}
 	}
-	return parent.Sync()
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if err = renameInstallationExclusive(int(parent.Fd()), filepath.Base(stage), leaf); err != nil {
+		return false, classifyPublicationRenameError(err)
+	}
+	if installationCommittedHook != nil {
+		installationCommittedHook()
+	}
+	if installationParentSyncHook != nil {
+		if err := installationParentSyncHook(); err != nil {
+			return true, err
+		}
+	}
+	return true, parent.Sync()
 }
 
-func syncTree(root string) error {
+func syncTreeWithContext(ctx context.Context, root string) error {
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if e := ctx.Err(); e != nil {
+			return e
+		}
 		if err != nil {
 			return err
 		}

@@ -9,13 +9,16 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/ossinstall"
@@ -29,10 +32,17 @@ func main() {
 }
 
 func run(args []string, stdout io.Writer) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return runWithContext(ctx, args, stdout)
+}
+
+func runWithContext(ctx context.Context, args []string, stdout io.Writer) error {
 	flags := flag.NewFlagSet("tplaiter-oss-register", flag.ContinueOnError)
 	root := flags.String("root", "", "absolute install root for the trust material (required)")
 	publishers := flags.String("publishers", "", "optional JSON file with a list of trusted template publishers")
 	sources := flags.String("source-packages", "", "public initial signed-source package JSON (fresh source-built installation only)")
+	local := flags.String("local-sources", "", "explicit public local source JSON; one offline operator-attested source, fresh absent root only")
 	projects := flags.String("project-contexts", "", "finite operator-approved project context JSON")
 	rotate := flags.Bool("rotate", false, "discard an existing installation (and its trust store) and generate a new one")
 	output := flags.String("output", "", "write the linker pins to this file instead of stdout")
@@ -52,7 +62,20 @@ func run(args []string, stdout io.Writer) error {
 	if strings.ContainsAny(absRoot, linkerUnsafe) {
 		return fmt.Errorf("install root %q contains characters that cannot be passed to the linker", absRoot)
 	}
+	if *local != "" && (*sources != "" || *publishers != "" || *rotate || *projects == "") {
+		return errors.New("--local-sources requires --project-contexts and forbids --publishers, --source-packages and --rotate")
+	}
 	options := ossinstall.Options{Root: absRoot, Rotate: *rotate}
+	if *local != "" {
+		raw, err := readPublicInput(*local, ossinstall.MaxLocalSourceInputBytes)
+		if err != nil {
+			return err
+		}
+		options.LocalSources, err = ossinstall.DecodeLocalSources(raw)
+		if err != nil {
+			return err
+		}
+	}
 	if *publishers != "" {
 		raw, err := readPublicInput(*publishers, 1<<20)
 		if err != nil {
@@ -82,7 +105,7 @@ func run(args []string, stdout io.Writer) error {
 			return err
 		}
 	}
-	result, err := ossinstall.Generate(options)
+	result, err := ossinstall.GenerateWithContext(ctx, options)
 	if err != nil {
 		return err
 	}
@@ -99,9 +122,15 @@ func run(args []string, stdout io.Writer) error {
 	fmt.Fprintf(os.Stderr, "tplaiter-oss-register: %s OSS installation %s at %s\n", state, result.InstallationID, result.Root)
 	if *output == "" {
 		_, err = io.WriteString(stdout, pins)
-		return err
+		if err != nil {
+			return &ossinstall.PublicationCommittedError{Cause: err}
+		}
+		return nil
 	}
-	return os.WriteFile(*output, []byte(pins), 0o600)
+	if err := os.WriteFile(*output, []byte(pins), 0o600); err != nil {
+		return &ossinstall.PublicationCommittedError{Cause: err}
+	}
+	return nil
 }
 
 // linkerUnsafe lists characters that cannot travel through make variables and

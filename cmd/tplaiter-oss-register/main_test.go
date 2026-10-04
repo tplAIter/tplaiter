@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tplAIter/tplaiter/internal/ossinstall"
 )
 
 func TestRunWritesLinkerPins(t *testing.T) {
@@ -74,5 +77,51 @@ func TestRunFiniteProjectInputAndClosedPublicPackage(t *testing.T) {
 	}
 	if err := run([]string{"--root", filepath.Join(dir, "bad"), "--source-packages", packages}, &out); err == nil {
 		t.Fatal("package supplied key accepted")
+	}
+}
+
+func TestLocalSourceRouteConflictsProduceNoPins(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, extra := range [][]string{{"--publishers", "unused"}, {"--source-packages", "unused"}, {"--rotate"}, {}} {
+		root := filepath.Join(dir, "absent")
+		args := append([]string{"--root", root, "--local-sources", "unused"}, extra...)
+		var out bytes.Buffer
+		if err := run(args, &out); err == nil || out.Len() != 0 {
+			t.Fatal("conflicting local route emitted pins")
+		}
+		if _, err := os.Stat(root); !os.IsNotExist(err) {
+			t.Fatal("conflicting local route created destination")
+		}
+	}
+}
+
+type failingPinWriter struct{}
+
+func (failingPinWriter) Write([]byte) (int, error) { return 0, errors.New("test pin output failure") }
+
+func TestPinOutputFailurePreservesCommittedInstallation(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	contexts := filepath.Join(dir, "contexts.json")
+	raw := `[{"key":"a","projectID":"project-a","submitterPrincipalID":"principal:operator","minimumProfile":"oss","rootPath":"` + filepath.Join(dir, "target") + `"}]`
+	if err := os.WriteFile(contexts, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dir, "trust")
+	err = run([]string{"--root", root, "--project-contexts", contexts}, failingPinWriter{})
+	if !errors.Is(err, ossinstall.ErrPublicationCommitted) {
+		t.Fatal("pin output failure not reported as committed")
+	}
+	if _, err := os.Stat(filepath.Join(root, ossinstall.RegistrationFile)); err != nil {
+		t.Fatal("committed installation removed after pin output error")
+	}
+	var output bytes.Buffer
+	if err := run([]string{"--root", root, "--project-contexts", contexts}, &output); err != nil || output.Len() == 0 {
+		t.Fatal("external exact enrollment cannot reauthenticate after output failure")
 	}
 }

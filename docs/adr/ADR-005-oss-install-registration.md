@@ -56,3 +56,24 @@ Resulting properties:
   - **U13 (trusted actions):** add approvers to the generated execution policy; today it has none.
   - **U03 (Linux store):** landed (ADR-006). The e2e and package fixtures now require provisioning on Linux as well as macOS; only other platforms (Windows, deferred) skip trust-dependent cases.
 - `mcp-server` now resolves symlinks in its executable path before creating the held stage (after `--print-config`, so client snippets keep the launch path). Installs reached through a symlinked directory, such as macOS `/var` or `/tmp` or a package-manager shim, previously reported `MCP_UNAVAILABLE`.
+
+## Explicit initial local source publication
+
+Source builds may opt in to one offline captured source through `--local-sources`
+(`TRUST_LOCAL_SOURCES` in Make), together with explicit finite project contexts.
+The install process creates a distinct ephemeral operator source key only after
+bounded capture/native validation, signs the existing statement domain and feeds
+that ordinary public package through the initial enrollment importer. Its issuer
+is reserved `local-operator-<fingerprint-hex>`; it implies no upstream identity or
+fetch provenance. Public `config/local-publisher.json` is digest-bound in the
+registration's enrollment contract. No private key is stored or exported.
+
+Local mode requires an absent installation leaf and forbids external publishers,
+external packages and rotation. Existing external package enrollment remains
+available through `TRUST_SOURCE_PACKAGES` plus `TRUST_PUBLISHERS`; Make also forwards
+`TRUST_PROJECT_CONTEXTS`. Successful native exclusive rename is the publication
+commit point. Cancellation before it cleans staging; after it, finalization
+preserves the installation. Unconfirmed finalization/pin output reports committed
+status and requires verification of that exact installation before linking.
+See [source enrollment](../source-enrollment.md) for public inputs, limits and the
+separate resource-support prerequisite for the real Go template.

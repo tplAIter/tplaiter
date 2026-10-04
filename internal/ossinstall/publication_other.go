@@ -3,6 +3,7 @@
 package ossinstall
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"io"
@@ -23,4 +24,8 @@ func publishImmutable(string, string, []byte) error {
 
 func publishInstallation(string, string) error {
 	return ErrPublicationUnsupported
+}
+
+func publishInstallationWithContext(context.Context, string, string, ...func() error) (bool, error) {
+	return false, ErrPublicationUnsupported
 }
