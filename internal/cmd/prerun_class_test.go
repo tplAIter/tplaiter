@@ -25,6 +25,7 @@ var wantPrerunClass = map[string]prerunClass{
 	"tplaiter repo update":         prerunTrustOwned, // preserved name collision, see repo.go
 	"tplaiter run":                 prerunLegacyAction,
 	"tplaiter trust":               prerunTrustOwned,
+	"tplaiter trust contexts":      prerunTrustOwned,
 	"tplaiter trust inspect":       prerunTrustOwned,
 	"tplaiter trust provision":     prerunTrustOwned,
 	"tplaiter trust recover-state": prerunTrustOwned,

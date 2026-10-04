@@ -2202,7 +2202,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Create a project from a template (always non-interactive). The project is created as <dir>/<slug>. If set is incomplete, the tool will return an error about required groups — or set defaults=true.",
+    "description": "Create a project from a template (always non-interactive). Select an authenticated installed projectContext; targetDir must match its root. Omitted targetDir uses <dir>/<slug>. If set is incomplete, the tool will return an error about required groups — or set defaults=true.",
     "inputSchema": {
       "properties": {
         "defaults": {
@@ -2211,7 +2211,7 @@
           "type": "boolean"
         },
         "dir": {
-          "description": "Directory INSIDE which the project is created (must exist); default is the server's cwd",
+          "description": "Child working directory (must exist); default is the server's cwd. This is not target authority.",
           "type": "string"
         },
         "dryRun": {
@@ -2242,6 +2242,10 @@
           "description": "Project port (.Runtime.Port); 0 — don't set",
           "type": "number"
         },
+        "projectContext": {
+          "description": "Exact authenticated installed context key; omitted uses registration default",
+          "type": "string"
+        },
         "ref": {
           "description": "Template reference: repo/name@version or short name",
           "type": "string"
@@ -2253,6 +2257,10 @@
         },
         "sourceInput": {
           "description": "Path to the closed JSON source selection",
+          "type": "string"
+        },
+        "targetDir": {
+          "description": "Target locator forwarded as --dir; may be absent. Relative paths resolve against child dir. Must equal selected installed root.",
           "type": "string"
         },
         "yes": {
