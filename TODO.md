@@ -22,7 +22,7 @@ An overview of tplAIter work. Checked items describe implemented foundations; un
 | ☐ | Restore ordinary live `new` and `update` workflows, settings and workspace operations, diff, linking, adoption, recopy, rebaseline, and reanswer. |
 | ☑ | Provide the typed result envelope, MCP output schemas, cancellation and timeout separation with process cleanup, and the stdio JSON-RPC contract suite. |
 | ☑ | Provide the executor foundation for persistently approved native actions; ordinary `run` and `gen` workflows remain pending. |
-| ☑ | Check real `Generate` and `GenerateBatch` preparation for owned anchors, markers, and idempotency in `10eb614`; the checks reach the execution-unavailable gate without running hooks or claiming live generation completion. |
+| ☑ | Provide signed, sealed native generator plans and an existing-tree transaction writer with ownership checks, authenticated cold rollback, and recovery in `e9590a5`, following `Generate`/`GenerateBatch` preparation checks in `10eb614`. Actual CLI `gen`/batch, formatter/build/hook execution, and update apply remain pending. |
 | ☐ | Complete the CLI/MCP surface: restore `gen`, `run`, environment setup, hooks, batch generation, compact output, and full CLI-to-MCP parity. |
 | ☑ | Discover nested templates from a root manifest with path and symlink confinement and duplicate detection. |
 | ☑ | Add the public Go template's entity-centric controller, service, and repository scaffold with manual dependency injection and optional Temporal wiring; business logic remains out of scope. Commit `d017954` and [GitHub Actions run 37222404104](https://github.com/tplAIter/template-go/actions/runs/37222404104) are verified; full Base/Go/Rust/React/Next acceptance remains open. |
