@@ -22,8 +22,9 @@ import (
 )
 
 type renderRecord struct {
-	Combo string   `json:"combo"`
-	Files []string `json:"files"`
+	Combo      string            `json:"combo"`
+	Files      []string          `json:"files"`
+	Generators []generatorRecord `json:"generators,omitempty"`
 }
 
 type report struct {
@@ -37,14 +38,19 @@ func main() {
 	output := flag.String("output", "", "empty directory owned by the runner for rendered fixtures")
 	combo := flag.String("combo", "", "run one exact settings combination")
 	jsonOutput := flag.Bool("json", false, "write a machine-readable report")
+	generatorPreflight := flag.Bool("generator-preflight", false, "prepare available manifest generators with default parameters; never execute generation or build commands")
 	flag.Parse()
-	if err := run(*templateRoot, *output, *combo, *jsonOutput, os.Stdout, os.Stderr); err != nil {
+	if err := runWithPreflight(*templateRoot, *output, *combo, *jsonOutput, *generatorPreflight, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "templatecheck:", err)
 		os.Exit(1)
 	}
 }
 
 func run(root, output, combo string, asJSON bool, stdout, stderr io.Writer) error {
+	return runWithPreflight(root, output, combo, asJSON, false, stdout, stderr)
+}
+
+func runWithPreflight(root, output, combo string, asJSON, generatorPreflight bool, stdout, stderr io.Writer) error {
 	root, err := canonicalSourceRoot(root)
 	if err != nil {
 		return fmt.Errorf("template path: %w", err)
@@ -104,7 +110,14 @@ func run(root, output, combo string, asJSON bool, stdout, stderr io.Writer) erro
 		if err != nil {
 			return fmt.Errorf("render %s: %w", c.Name, err)
 		}
-		entries = append(entries, renderRecord{Combo: c.Name, Files: rendered.Files})
+		record := renderRecord{Combo: c.Name, Files: rendered.Files}
+		if generatorPreflight {
+			record.Generators, err = preflightGenerators(root, destination, tpl, resolved.ActiveValues)
+			if err != nil {
+				return fmt.Errorf("generator preflight %s: %w", c.Name, err)
+			}
+		}
+		entries = append(entries, record)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Combo < entries[j].Combo })
 	if asJSON {

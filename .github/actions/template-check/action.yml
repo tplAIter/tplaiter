@@ -1,21 +1,34 @@
 name: tplAIter template check
 description: Lint and render a template repository with the pinned tplAIter checker
+inputs:
+  generator-preflight:
+    description: Prepare available manifest generators with default parameters without executing generation
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
     - id: render
       name: Check template manifest and render fixtures
       shell: bash
+      env:
+        GENERATOR_PREFLIGHT: ${{ inputs.generator-preflight }}
       run: |
         set -euo pipefail
         action_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd -P)"
         output_root="$RUNNER_TEMP/tplater-template-check"
+        checker_flags=()
+        case "$GENERATOR_PREFLIGHT" in
+          true) checker_flags+=(--generator-preflight) ;;
+          false) ;;
+          *) echo "generator-preflight must be true or false" >&2; exit 1 ;;
+        esac
         (
           cd "$action_root"
           go run ./cmd/templatecheck \
             --template "$GITHUB_WORKSPACE" \
             --output "$output_root" \
-            --json
+            --json "${checker_flags[@]}"
         )
         printf 'root=%s\n' "$output_root" >> "$GITHUB_OUTPUT"
 outputs:
