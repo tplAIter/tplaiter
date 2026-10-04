@@ -103,11 +103,7 @@ func argvTemplateList(repo, name string, labels []string) []string {
 
 func argvTemplateShow(ref string) []string { return []string{"template", "show", ref} }
 
-// argvProjectNew builds argv for `tplater new`. Interaction is always excluded:
-// the child process has no stdin (see exec.go), and `new` reports missing required
-// groups when --set is incomplete. --defaults forces defaults. dir is NOT used
-// here: it becomes the child process working directory (cwd), and the project is
-// created as <dir>/<slug> (the uniform dir=cwd rule for all tools; see tools.go).
+// argvProjectNew preserves the legacy argv seam. dir is child CWD only.
 func argvProjectNew(ref, name string, set map[string]string, defaults, noHooks, noDepsCheck, noEnvSetup, yes bool, port int, extra ...string) []string {
 	argv := []string{"new", ref, name}
 	argv = append(argv, sortedSetPairs(set)...)
@@ -281,5 +277,24 @@ func argvEnvSetup(name string) []string {
 		argv = append(argv, name)
 	}
 	argv = append(argv, "--yes")
+	return argv
+}
+
+// projectNewInvocation separates the target locator from the child CWD.
+type projectNewInvocation struct {
+	Ref, Name, SourceInput, ProjectContext, TargetDir       string
+	Set                                                     map[string]string
+	Defaults, NoHooks, NoDepsCheck, NoEnvSetup, Yes, DryRun bool
+	Port                                                    int
+}
+
+func argvProjectNewInvocation(a projectNewInvocation) []string {
+	argv := argvProjectNew(a.Ref, a.Name, a.Set, a.Defaults, a.NoHooks, a.NoDepsCheck, a.NoEnvSetup, a.Yes, a.Port, strconv.FormatBool(a.DryRun), a.SourceInput)
+	if a.ProjectContext != "" {
+		argv = append(argv, "--project-context", a.ProjectContext)
+	}
+	if a.TargetDir != "" {
+		argv = append(argv, "--dir", a.TargetDir)
+	}
 	return argv
 }

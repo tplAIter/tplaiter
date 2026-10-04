@@ -2,28 +2,31 @@ package mcpsrv
 
 import (
 	"context"
-	"strconv"
+	"path/filepath"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
+	"github.com/tplAIter/tplaiter/internal/newcmd"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
 )
 
 // ── project (new / run / stats / update / doctor / ai) ─────────────────────
 
 type projectNewArgs struct {
-	Ref         string            `json:"ref"`
-	Name        string            `json:"name"`
-	Dir         string            `json:"dir"`
-	Set         map[string]string `json:"set"`
-	Defaults    bool              `json:"defaults"`
-	NoHooks     bool              `json:"noHooks"`
-	NoDepsCheck bool              `json:"noDepsCheck"`
-	NoEnvSetup  bool              `json:"noEnvSetup"`
-	Yes         bool              `json:"yes"`
-	Port        int               `json:"port"`
-	DryRun      bool              `json:"dryRun"`
-	SourceInput string            `json:"sourceInput"`
+	Ref            string            `json:"ref"`
+	Name           string            `json:"name"`
+	Dir            string            `json:"dir"`
+	TargetDir      string            `json:"targetDir"`
+	ProjectContext string            `json:"projectContext"`
+	Set            map[string]string `json:"set"`
+	Defaults       bool              `json:"defaults"`
+	NoHooks        bool              `json:"noHooks"`
+	NoDepsCheck    bool              `json:"noDepsCheck"`
+	NoEnvSetup     bool              `json:"noEnvSetup"`
+	Yes            bool              `json:"yes"`
+	Port           int               `json:"port"`
+	DryRun         bool              `json:"dryRun"`
+	SourceInput    string            `json:"sourceInput"`
 }
 
 type runArgs struct {
@@ -51,10 +54,12 @@ type doctorArgs struct {
 func (s *Server) addProjectTools() {
 	s.mcp.AddTool(mcp.NewTool(
 		"project_new",
-		mcp.WithDescription("Create a project from a template (always non-interactive). The project is created as <dir>/<slug>. If set is incomplete, the tool will return an error about required groups — or set defaults=true."),
+		mcp.WithDescription("Create a project from a template (always non-interactive). Select an authenticated installed projectContext; targetDir must match its root. Omitted targetDir uses <dir>/<slug>. If set is incomplete, the tool will return an error about required groups — or set defaults=true."),
 		mcp.WithString("ref", mcp.Required(), mcp.Description("Template reference: repo/name@version or short name")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Name of the new project")),
-		mcp.WithString("dir", mcp.Description("Directory INSIDE which the project is created (must exist); default is the server's cwd")),
+		mcp.WithString("dir", mcp.Description("Child working directory (must exist); default is the server's cwd. This is not target authority.")),
+		mcp.WithString("targetDir", mcp.Description("Target locator forwarded as --dir; may be absent. Relative paths resolve against child dir. Must equal selected installed root.")),
+		mcp.WithString("projectContext", mcp.Description("Exact authenticated installed context key; omitted uses registration default")),
 		mcp.WithObject("set", mcp.Description("Settings values: group→value (serialized as --set pairs)")),
 		mcp.WithBoolean("defaults", mcp.Description("Use default values for unspecified groups"), mcp.DefaultBool(false)),
 		mcp.WithBoolean("noHooks", mcp.Description("Skip hooks.postCreate (--no-hooks)"), mcp.DefaultBool(false)),
@@ -70,7 +75,18 @@ func (s *Server) addProjectTools() {
 		if failure != nil {
 			return failure, nil
 		}
-		argv := argvProjectNew(a.Ref, a.Name, a.Set, a.Defaults, a.NoHooks, a.NoDepsCheck, a.NoEnvSetup, a.Yes, a.Port, strconv.FormatBool(a.DryRun), a.SourceInput)
+		target := a.TargetDir
+		if target == "" {
+			slug, err := newcmd.Slugify(a.Name)
+			if err != nil {
+				return s.argumentFailure(resultdto.OperationProjectNew, "name"), nil //nolint:nilerr // MCP reports argument errors in the result envelope, not as transport errors.
+			}
+			target = filepath.Join(cwd, slug)
+		}
+		if target != "" && !filepath.IsAbs(target) {
+			target = filepath.Join(cwd, target)
+		}
+		argv := argvProjectNewInvocation(projectNewInvocation{Ref: a.Ref, Name: a.Name, Set: a.Set, Defaults: a.Defaults, NoHooks: a.NoHooks, NoDepsCheck: a.NoDepsCheck, NoEnvSetup: a.NoEnvSetup, Yes: a.Yes, Port: a.Port, DryRun: a.DryRun, SourceInput: a.SourceInput, ProjectContext: a.ProjectContext, TargetDir: target})
 		return s.callStructured(ctx, resultdto.OperationProjectNew, cwd, argv, longCall), nil
 	}))
 

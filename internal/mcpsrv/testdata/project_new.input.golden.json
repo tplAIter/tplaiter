@@ -1,0 +1,72 @@
+{
+  "properties": {
+    "defaults": {
+      "default": false,
+      "description": "Use default values for unspecified groups",
+      "type": "boolean"
+    },
+    "dir": {
+      "description": "Child working directory (must exist); default is the server's cwd. This is not target authority.",
+      "type": "string"
+    },
+    "dryRun": {
+      "default": false,
+      "description": "Prepare a plan without changing files",
+      "type": "boolean"
+    },
+    "name": {
+      "description": "Name of the new project",
+      "type": "string"
+    },
+    "noDepsCheck": {
+      "default": false,
+      "description": "Skip environment tools check (--no-deps-check)",
+      "type": "boolean"
+    },
+    "noEnvSetup": {
+      "default": false,
+      "description": "Don't offer or run env setup after creation (--no-env-setup)",
+      "type": "boolean"
+    },
+    "noHooks": {
+      "default": false,
+      "description": "Skip hooks.postCreate (--no-hooks)",
+      "type": "boolean"
+    },
+    "port": {
+      "description": "Project port (.Runtime.Port); 0 — don't set",
+      "type": "number"
+    },
+    "projectContext": {
+      "description": "Exact authenticated installed context key; omitted uses registration default",
+      "type": "string"
+    },
+    "ref": {
+      "description": "Template reference: repo/name@version or short name",
+      "type": "string"
+    },
+    "set": {
+      "description": "Settings values: group→value (serialized as --set pairs)",
+      "properties": {},
+      "type": "object"
+    },
+    "sourceInput": {
+      "description": "Path to the closed JSON source selection",
+      "type": "string"
+    },
+    "targetDir": {
+      "description": "Target locator forwarded as --dir; may be absent. Relative paths resolve against child dir. Must equal selected installed root.",
+      "type": "string"
+    },
+    "yes": {
+      "default": false,
+      "description": "Automatically confirm CLI actions (--yes), including missing tools installation and env setup",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ref",
+    "name"
+  ],
+  "type": "object"
+}

@@ -13,7 +13,8 @@ import (
 )
 
 // invocation carries only dependencies selected by the installed launcher.
-// It is deliberately per-command and never populated from CLI input.
+// The selection and clock are fixed; a request may select an authenticated
+// installed project key, never replace its context.
 type invocation struct {
 	Selection  trustload.LaunchSelection
 	ProjectKey string
@@ -36,9 +37,16 @@ func withInvocation(ctx context.Context, in invocation) context.Context {
 }
 
 func composeRuntime(ctx context.Context) (*trustload.Runtime, error) {
+	return composeRuntimeForProject(ctx, "")
+}
+
+func composeRuntimeForProject(ctx context.Context, key string) (*trustload.Runtime, error) {
 	in, err := commandInvocation(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if key != "" {
+		in.ProjectKey = key
 	}
 	return trustload.OpenRuntime(ctx, trustload.RuntimeOptions{Selection: in.Selection, ProjectKey: in.ProjectKey, Clock: in.Clock})
 }
@@ -56,8 +64,9 @@ func commandInvocation(ctx context.Context) (invocation, error) {
 
 // newTrustRootCommand is the explicit per-invocation composition seam. The
 // installed launcher supplies this value; command flags can never replace its
-// selection, project key, or clock. It builds the same command tree as rootCmd
-// from the registered command factories, so the seam cannot drift from the
+// selection or clock. Request keys only look up authenticated contexts.
+// It builds the same command tree as rootCmd from registered factories,
+// so the seam cannot drift from the
 // production CLI.
 func newTrustRootCommand(in invocation) *cobra.Command {
 	root := newRootCommand()

@@ -143,7 +143,7 @@ func TestProtocolListTools(t *testing.T) {
 func TestProjectNewAndGenLifecycleFlags(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	projectDir := t.TempDir()
-	projectArgv := withJSONFlag(argvProjectNew("go/service", "billing", nil, false, true, true, true, true, 0, "false", ""))
+	projectArgv := withJSONFlag(argvProjectNewInvocation(projectNewInvocation{Ref: "go/service", Name: "billing", NoHooks: true, NoDepsCheck: true, NoEnvSetup: true, Yes: true, TargetDir: projectDir + "/billing"}))
 	genArgv := withJSONFlag(argvGen("rust-module", "billing", nil, true))
 	runner.On(fakeExe, projectArgv, execx.Response{Result: execx.Result{Stdout: envelopeJSON(t, resultdto.OperationProjectNew, func(r *resultdto.Result) {
 		r.Project = &resultdto.Project{ID: "billing", Root: projectDir + "/billing"}

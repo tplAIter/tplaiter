@@ -19,7 +19,7 @@ const trustCommandDocumentLimit = 1 << 20
 // launcher selection per invocation and never borrow new/update's runtime.
 func newTrustCmd() *cobra.Command {
 	root := &cobra.Command{Use: "trust", Annotations: prerunAnnotations(prerunTrustOwned), Short: "Inspect and maintain the trust profile"}
-	root.AddCommand(newTrustInspectCmd(), newTrustProvisionCmd(), newTrustRefreshCmd(), newTrustRecoverCmd())
+	root.AddCommand(newTrustInspectCmd(), newTrustProvisionCmd(), newTrustRefreshCmd(), newTrustRecoverCmd(), newTrustContextsCmd())
 	return root
 }
 
@@ -230,4 +230,19 @@ func maintenanceError(err error) error {
 		return trustload.ErrAnchorMissing
 	}
 	return err
+}
+
+// newTrustContextsCmd lists only fully authenticated installation contexts.
+func newTrustContextsCmd() *cobra.Command {
+	return &cobra.Command{Use: "contexts", Args: cobra.NoArgs, Short: "List authenticated installed project contexts as JSON", RunE: func(cmd *cobra.Command, _ []string) error {
+		in, err := commandInvocation(cmd.Context())
+		if err != nil {
+			return err
+		}
+		loaded, err := trustload.Load(cmd.Context(), in.Selection)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(loaded.Install.ProjectContexts)
+	}}
 }

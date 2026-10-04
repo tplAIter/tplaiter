@@ -29,21 +29,22 @@ func init() {
 // newNewCmd composes the signed native live-new foundation and its preview.
 func newNewCmd() *cobra.Command {
 	var (
-		dir         string
-		module      string
-		system      string
-		domain      string
-		sets        []string
-		answers     string
-		defaults    bool
-		noHooks     bool
-		noDepsCheck bool
-		envSetup    bool
-		noEnvSetup  bool
-		yes         bool
-		port        int
-		dryRun      bool
-		sourceInput string
+		dir            string
+		module         string
+		system         string
+		domain         string
+		sets           []string
+		answers        string
+		defaults       bool
+		noHooks        bool
+		noDepsCheck    bool
+		envSetup       bool
+		noEnvSetup     bool
+		yes            bool
+		port           int
+		dryRun         bool
+		sourceInput    string
+		projectContext string
 	)
 
 	c := &cobra.Command{
@@ -57,7 +58,7 @@ func newNewCmd() *cobra.Command {
 			"environment, generators, AI resources and managed blocks require later lifecycle slices.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runtime, err := composeRuntime(cmd.Context())
+			runtime, err := composeRuntimeForProject(cmd.Context(), projectContext)
 			if err != nil {
 				return err
 			}
@@ -109,6 +110,7 @@ func newNewCmd() *cobra.Command {
 	f.BoolVar(&yes, "yes", false, "auto-confirm (install tools and env setup)")
 	f.IntVar(&port, "port", 0, "project port (.Runtime.Port, defaults to 8080)")
 	f.BoolVar(&dryRun, "dry-run", false, "prepare result without changing files")
+	f.StringVar(&projectContext, "project-context", "", "key of an authenticated installed project context (default: registration key)")
 	f.StringVar(&sourceInput, "source-input", "", "JSON pinned source selection and publisher evidence locators")
 	return withResult(c, resultdto.OperationProjectNew)
 }

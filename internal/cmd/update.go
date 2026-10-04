@@ -37,11 +37,12 @@ func init() {
 // template version with a five-category report and conflict markers.
 func newUpdateCmd() *cobra.Command {
 	var (
-		to          string
-		all         bool
-		dryRun      bool
-		check       bool
-		sourceInput string
+		to             string
+		all            bool
+		dryRun         bool
+		check          bool
+		sourceInput    string
+		projectContext string
 	)
 
 	c := &cobra.Command{
@@ -73,7 +74,7 @@ func newUpdateCmd() *cobra.Command {
 			if check {
 				return checkLocalConflicts(cmd)
 			}
-			runtime, err := composeRuntime(cmd.Context())
+			runtime, err := composeRuntimeForProject(cmd.Context(), projectContext)
 			if err != nil {
 				return err
 			}
@@ -121,6 +122,7 @@ func newUpdateCmd() *cobra.Command {
 	f.BoolVar(&all, "all", false, "update all registry projects with status ok")
 	f.BoolVar(&dryRun, "dry-run", false, "show plan without modifying files")
 	f.BoolVar(&check, "check", false, "check tree for conflict markers (exit code 1 if found)")
+	f.StringVar(&projectContext, "project-context", "", "key of an authenticated installed project context (default: registration key)")
 	f.StringVar(&sourceInput, "source-input", "", "sealed JSON of target source selection")
 	return withResult(c, resultdto.OperationUpdateApply)
 }
