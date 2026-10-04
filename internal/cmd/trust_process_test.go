@@ -20,9 +20,9 @@ import (
 	"time"
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
-	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/ossinstall"
-	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/state"
+	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 )
@@ -133,6 +133,20 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 		cmd.Env, cmd.Dir = env, filepath.Dir(bin)
 		return cmd.CombinedOutput()
 	}
+	// A linked registration does not authorize an unprovisioned runtime,
+	// even when the caller supplies genuine signed source evidence.
+	creationInput := filepath.Join(root, "creation-source-selection.json")
+	sourceRaw := t5FSelection(f.source, f.sourceRefs)
+	if err := os.WriteFile(creationInput, sourceRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unprovisionedBaseline := snapshotOwned(t, filepath.Dir(f.projectRoot), root)
+	if out, err := run("new", f.source.Commit, "project", "--dir", f.projectRoot, "--source-input", creationInput, "--defaults", "--no-hooks"); err == nil || !bytes.Contains(out, []byte("TRUST_ANCHOR_MISSING")) || bytes.Contains(out, []byte(f.projectRoot)) {
+		t.Fatalf("unprovisioned live new accepted or unsafe: exit=%v output=%q", err, out)
+	}
+	if after := snapshotOwned(t, filepath.Dir(f.projectRoot), root); !equalStringMap(unprovisionedBaseline, after) {
+		t.Fatalf("unprovisioned live new changed fixture: %v", changedSnapshotKeys(unprovisionedBaseline, after))
+	}
 	if out, err := run("trust", "provision"); err != nil {
 		t.Fatalf("provision: %v\n%s", err, out)
 	}
@@ -146,32 +160,54 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	}
 	directInspectDigest := sha256.Sum256(out)
 	t.Logf("T7_PROOF direct_inspect_sha256=%x", directInspectDigest)
-	// Fixture maintenance is separate from the later no-mutation baseline.
+	// Materialize the bounded action-free fixture through the installed CLI,
+	// rather than fabricating project lock files for the later previews.
+	created, err := run("new", f.source.Commit, "project", "--dir", f.projectRoot, "--source-input", creationInput, "--defaults", "--no-hooks", "--json")
+	if err != nil {
+		t.Fatalf("signed live new: %v %s", err, created)
+	}
+	var creationResult struct {
+		Status  string                    `json:"status"`
+		Project struct{ ID, Root string } `json:"project"`
+		Data    struct {
+			DryRun bool `json:"dryRun"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(created, &creationResult); err != nil || creationResult.Status != "ok" || creationResult.Data.DryRun || creationResult.Project.ID != "project-t5f" || creationResult.Project.Root != f.projectRoot {
+		t.Fatalf("signed live new result: %v %s", err, created)
+	}
+	materialized, err := os.ReadFile(filepath.Join(f.projectRoot, "hello.txt"))
+	if err != nil || string(materialized) != "hello source\n" {
+		t.Fatalf("signed live new output: %q %v", materialized, err)
+	}
 	runtime, err := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: f.clock})
 	if err != nil {
 		t.Fatalf("fixture runtime: %v", err)
 	}
-	prepared, err := operationtrust.PrepareNew(context.Background(), runtime, operationtrust.PrepareNewInput{SourceInput: t5FSelection(f.source, f.sourceRefs), Render: renderref.Input{}, RendererVersion: "v1"})
-	if err != nil {
-		t.Fatalf("fixture prepare: %v", err)
-	}
-	if err := os.Mkdir(filepath.Join(f.projectRoot, ".tplaiter"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	rootLock, _ := json.Marshal(prepared.RootLock())
-	depsLock, _ := json.Marshal(prepared.DependencyLock())
-	if err := os.WriteFile(filepath.Join(f.projectRoot, ".tplaiter", "root-template.lock.json"), rootLock, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(f.projectRoot, ".tplaiter", "template.lock.json"), depsLock, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	_, verifyErr := stateledger.VerifyStable(context.Background(), f.projectRoot, runtime.TrustRuntime(), stateledger.StableVerifyOptions{})
 	if err := runtime.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if verifyErr != nil {
+		t.Fatalf("signed live new ledger: %v", verifyErr)
+	}
+	projects, err := state.LoadProjects(filepath.Join(home, "tplaiter"))
+	if err != nil || len(projects.Items) != 1 || projects.Items[0].ID != creationResult.Project.ID || projects.Items[0].Path != f.projectRoot {
+		t.Fatalf("signed live new registry: %+v %v", projects, err)
+	}
+	rootLock, err := os.ReadFile(filepath.Join(f.projectRoot, ".tplaiter", "root-template.lock.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	depsLock, err := os.ReadFile(filepath.Join(f.projectRoot, ".tplaiter", "template.lock.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	creationDigest := sha256.Sum256(created)
+	t.Logf("T7_PROOF signed_live_new_sha256=%x", creationDigest)
+
 	sourceInput := filepath.Join(f.projectRoot, "source-selection.json")
 	targetInput := filepath.Join(f.projectRoot, "target-selection.json")
-	sourceRaw := t5FSelection(f.source, f.sourceRefs)
 	if err := os.WriteFile(sourceInput, sourceRaw, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +378,8 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 		cli  []string
 		code string
 	}{
-		{"project_new", map[string]any{"ref": f.source.Commit, "name": "project", "dir": filepath.Dir(f.projectRoot), "sourceInput": sourceInput}, []string{"new", f.source.Commit, "project", "--source-input", sourceInput}, "TRUST_LIFECYCLE_UNAVAILABLE"},
+		// A registered runtime and public-looking ref do not supply source authority.
+		{"project_new", map[string]any{"ref": f.source.Commit, "name": "project", "dir": filepath.Dir(f.projectRoot)}, []string{"new", f.source.Commit, "project"}, "TRUST_SOURCE_ADAPTER_UNSUPPORTED"},
 		{"update", map[string]any{"dir": f.projectRoot, "to": f.target.Commit, "sourceInput": targetInput}, []string{"update", "--source-input", targetInput, "--to", f.target.Commit}, "TRUST_LIFECYCLE_UNAVAILABLE"},
 		{"run", map[string]any{"dir": f.projectRoot, "command": "test"}, []string{"run", "test"}, "TRUST_ACTION_UNAVAILABLE"},
 		{"gen", map[string]any{"dir": f.projectRoot, "kind": "fixture", "name": "thing"}, []string{"gen", "fixture", "thing"}, "TRUST_ACTION_UNAVAILABLE"},
@@ -356,6 +393,15 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 		if after := snapshotOwned(t, filepath.Dir(f.projectRoot), root); !equalStringMap(liveBaseline, after) {
 			t.Fatalf("live %s changed fixture: %v", tc.name, changedSnapshotKeys(liveBaseline, after))
 		}
+	}
+	// Genuine evidence is not permission to overwrite a populated project.
+	// MCP forwards the CLI's ordinary occupancy refusal as a failed operation.
+	expectFailure(call(41, "project_new", map[string]any{"ref": f.source.Commit, "name": "project", "dir": filepath.Dir(f.projectRoot), "sourceInput": sourceInput, "defaults": true, "noHooks": true}), "CLI_OPERATION_FAILED")
+	if out, err := run("new", f.source.Commit, "project", "--dir", f.projectRoot, "--source-input", sourceInput, "--defaults", "--no-hooks"); err == nil || !bytes.Contains(out, []byte("target is not empty")) || bytes.Contains(out, []byte(f.projectRoot)) {
+		t.Fatalf("repeated signed live new accepted or unsafe: exit=%v output=%q", err, out)
+	}
+	if after := snapshotOwned(t, filepath.Dir(f.projectRoot), root); !equalStringMap(liveBaseline, after) {
+		t.Fatalf("repeated signed live new changed fixture: %v", changedSnapshotKeys(liveBaseline, after))
 	}
 	for _, candidate := range []struct {
 		name, path string

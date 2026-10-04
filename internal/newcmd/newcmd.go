@@ -38,6 +38,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/survey"
+	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
@@ -56,6 +57,8 @@ const defaultPort = 8080
 // The cobra layer (internal/cmd/new.go) fills them and adds runtime context
 // (Interactive, CLIVersion).
 type Options struct {
+	// DryRun prepares a verified result without publishing project or registry state.
+	DryRun bool
 	// Ref is a template reference: `<repo>/<name>[@version]`.
 	Ref string
 	// ProjectName is the human-readable project name and slug source.
@@ -97,6 +100,10 @@ type Options struct {
 // testability (production implementations are in internal/cmd/new.go and
 // test doubles are in package tests).
 type Deps struct {
+	// Runtime is the authenticated installed runtime; legacy dependencies cannot replace it.
+	Runtime *trustload.Runtime
+	// SourceInput contains bounded, untrusted pinned selection and evidence locators.
+	SourceInput []byte
 	// Manager resolves and checks out templates (repo).
 	Manager *repo.Manager
 	// Runner starts external processes (deps-check, hooks, ansible/env setup).
@@ -119,18 +126,15 @@ type Deps struct {
 	Now func() time.Time
 }
 
-// Run executes the complete `tplaiter new` flow. Before the target directory
-// is created, resolution, checkout, gates, and prompting create nothing on
-// failure or cancellation. After a successful render, any required-step
-// failure (resource copy, snapshot, marker, required hook, or registration)
-// removes the entire target directory (atomicity); optional-step failures
-// (optional hooks, AI targets, env setup, and NOTES) are downgraded to warnings.
+// Run verifies and renders a signed native, action-free template, then publishes
+// project ledgers and registry state through a recoverable new transaction.
+// An authenticated runtime is mandatory; legacy managers and runners never
+// authorize creation. Publication failures retain the recovery journal.
 func Run(ctx context.Context, opts Options, d Deps) (err error) {
-	// Live creation has no authorized lifecycle consumer in T5. This guard is
-	// deliberately the first observable action: legacy inputs must not select a
-	// target, inspect the filesystem, resolve a source, initialise HOME, or run
-	// a tool before the later lifecycle owner takes responsibility.
-	return ErrLifecycleUnavailable
+	if d.Runtime == nil {
+		return ErrLifecycleUnavailable
+	}
+	return runLive(ctx, opts, d, nil)
 }
 
 // run holds the working state for one [Run] call.

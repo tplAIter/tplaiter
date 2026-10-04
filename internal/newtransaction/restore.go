@@ -43,6 +43,11 @@ func parseTree(raw []byte) (map[string]treeEntry, error) {
 // first verifies that no pre-existing path was modified or removed; if one
 // was, it returns ErrAbortModified without changing anything.
 func (t *Transaction) restoreBeforeTree() error {
+	if t.sealedTree != "" {
+		if err := t.verifySealedAbort(); err != nil {
+			return err
+		}
+	}
 	rawBefore, err := t.readBlob(t.j.TargetBeforeTreeSHA)
 	if err != nil {
 		return err

@@ -154,6 +154,8 @@ type recoveryManifest struct {
 	TreeSHA256     string      `json:"treeSHA256"`
 	BeforeTreeSHA  string      `json:"beforeTreeSHA"`
 	HookPlan       []HookEntry `json:"hookPlan"`
+	SealedTree     string      `json:"sealedTreeSHA256,omitempty"`
+	SealedReady    bool        `json:"sealedReady,omitempty"`
 }
 
 type newJournalWire struct {
@@ -225,6 +227,9 @@ func (t *Transaction) PrepareHooks(plan []HookEntry) error {
 	if t == nil || t.j.Phase != Prepared {
 		return ErrUnsafe
 	}
+	if t.sealedTree != "" && len(plan) != 0 {
+		return ErrUnsafe
+	}
 	for i := range plan {
 		if plan[i].Kind == "" || plan[i].Command == "" {
 			return ErrUnsafe
@@ -244,23 +249,25 @@ func (t *Transaction) PrepareHooks(plan []HookEntry) error {
 }
 
 type Transaction struct {
-	home, dir string
-	j         Journal
-	fault     FaultInjector
-	lock      *os.File // global new.lock, held from Begin through publication
+	home, dir   string
+	j           Journal
+	fault       FaultInjector
+	lock        *os.File // global new.lock, held from Begin through publication
+	sealedTree  string
+	sealedReady bool
 }
 
 func Begin(home, target string) (*Transaction, error) {
-	return begin(home, target, nil)
+	return begin(home, target, nil, "")
 }
 
 // BeginWithFault is a deterministic crash-injection seam for boundary tests;
 // production callers use Begin and therefore have no fault dependency.
 func BeginWithFault(home, target string, fault FaultInjector) (*Transaction, error) {
-	return begin(home, target, fault)
+	return begin(home, target, fault, "")
 }
 
-func begin(home, target string, fault FaultInjector) (*Transaction, error) {
+func begin(home, target string, fault FaultInjector, sealedTree string) (*Transaction, error) {
 	if home == "" || target == "" {
 		return nil, errors.New("new transaction: home and target are required")
 	}
@@ -319,6 +326,7 @@ func begin(home, target string, fault FaultInjector) (*Transaction, error) {
 	}
 	now := time.Now().UTC()
 	tx := &Transaction{home: home, dir: dir, fault: fault, lock: lock, j: Journal{APIVersion: APIVersion, Schema: Schema, ID: id, Phase: Prepared, Target: target, Staging: staging, TargetExisted: true, PendingMarker: pendingMarkerRel, CreatedAt: now, UpdatedAt: now}}
+	tx.sealedTree = sealedTree
 	// The before image is captured while the target is still in place.
 	beforeTree, err := snapshotTree(target)
 	if err != nil {
@@ -343,6 +351,17 @@ func begin(home, target string, fault FaultInjector) (*Transaction, error) {
 	if err := tx.inject("begin.after_journal"); err != nil {
 		return nil, err
 	}
+	// Recheck under the held lock after the journal boundary. An uncooperative
+	// writer is not part of the captured beforeimage and must never be erased.
+	if tx.sealedTree != "" {
+		fresh, captureErr := snapshotTree(target)
+		if captureErr != nil || digest(fresh) != tx.j.TargetBeforeTreeSHA {
+			return nil, ErrOwnershipUncertain
+		}
+		if len(fresh) != 0 {
+			return nil, ErrOwnershipUncertain
+		}
+	}
 	fail := func(cause error) (*Transaction, error) {
 		if abortErr := tx.abortLocked(); abortErr != nil {
 			return nil, errors.Join(cause, abortErr)
@@ -354,6 +373,12 @@ func begin(home, target string, fault FaultInjector) (*Transaction, error) {
 	}
 	if err := tx.inject("begin.after_stage"); err != nil {
 		return nil, err
+	}
+	if tx.sealedTree != "" {
+		fresh, captureErr := snapshotTree(staging)
+		if captureErr != nil || digest(fresh) != tx.j.TargetBeforeTreeSHA {
+			return nil, ErrOwnershipUncertain
+		}
 	}
 	pendingDir, err := transactionDir(staging, true)
 	if err != nil {
@@ -453,7 +478,7 @@ func Load(home, id string) (*Transaction, error) {
 	if err := validateJournal(home, dir, id, j); err != nil {
 		return nil, ErrUnsafe
 	}
-	tx := &Transaction{home: home, dir: dir, j: j}
+	tx := &Transaction{home: home, dir: dir, j: j, sealedTree: manifest.SealedTree, sealedReady: manifest.SealedReady}
 	for _, reference := range []string{j.TargetBeforeTreeSHA, j.TargetAfterSHA, j.RegistryBeforeSHA, j.RegistryAfterSHA} {
 		if reference == "" {
 			continue
@@ -479,6 +504,9 @@ func (t *Transaction) Journal() Journal  { return t.j }
 func (t *Transaction) PrepareRegistry(plan RegistryPlan) error {
 	if t == nil || t.j.Phase != Prepared {
 		return ErrUnsafe
+	}
+	if t.sealedTree != "" && !t.sealedReady {
+		return ErrOwnershipUncertain
 	}
 	if plan.Home == "" {
 		return errors.New("new transaction: registry home is required")
@@ -534,6 +562,9 @@ func (t *Transaction) Commit(plan RegistryPlan) error {
 	if t.j.Phase != Prepared && t.j.Phase != Publishing {
 		return ErrUnsafe
 	}
+	if t.sealedTree != "" && !t.sealedReady {
+		return ErrOwnershipUncertain
+	}
 	home, err := absClean(plan.Home)
 	if err != nil || home == "" || t.j.RegistryTarget != state.ProjectsPath(home) ||
 		digest(plan.Before) != t.j.RegistryBeforeSHA || digest(plan.After) != t.j.RegistryAfterSHA {
@@ -549,6 +580,11 @@ func (t *Transaction) Commit(plan RegistryPlan) error {
 	if _, err := os.Lstat(t.j.Target); os.IsNotExist(err) {
 		if err := t.inject("commit.before_staging_publish"); err != nil {
 			return err
+		}
+		if t.sealedTree != "" {
+			if err := t.verifySealedTree(t.j.Staging); err != nil {
+				return err
+			}
 		}
 		if err := os.Rename(t.j.Staging, t.j.Target); err != nil {
 			return err
@@ -567,6 +603,11 @@ func (t *Transaction) Commit(plan RegistryPlan) error {
 	if err := t.inject("commit.before_registry"); err != nil {
 		return err
 	}
+	if t.sealedTree != "" {
+		if err := t.verifySealedTree(t.j.Target); err != nil {
+			return err
+		}
+	}
 	if err := state.WithLock(home, func() error {
 		current, exists, _, err := state.ReadProjectsRaw(home)
 		if err != nil {
@@ -578,12 +619,22 @@ func (t *Transaction) Commit(plan RegistryPlan) error {
 		if digest(current) != t.j.RegistryBeforeSHA {
 			return fmt.Errorf("%w: registry changed during publish", ErrUnsafe)
 		}
+		if t.sealedTree != "" {
+			if err := t.verifySealedTree(t.j.Target); err != nil {
+				return err
+			}
+		}
 		return state.WriteProjectsRaw(home, plan.After, 0o600)
 	}); err != nil {
 		return err
 	}
 	if err := t.inject("commit.after_registry"); err != nil {
 		return err
+	}
+	if t.sealedTree != "" {
+		if err := t.verifySealedTree(t.j.Target); err != nil {
+			return err
+		}
 	}
 	// The durable COMMITTED record is the linearization point.  Keep the
 	// pending marker until it has been persisted: a crash must never expose a
@@ -596,6 +647,11 @@ func (t *Transaction) Commit(plan RegistryPlan) error {
 	}
 	if err := t.inject("commit.before_marker_remove"); err != nil {
 		return err
+	}
+	if t.sealedTree != "" {
+		if err := t.verifySealedTree(t.j.Target); err != nil {
+			return err
+		}
 	}
 	if err := t.removePending(); err != nil {
 		return err
@@ -629,6 +685,11 @@ func (t *Transaction) Finalize() error {
 	if err := t.inject("finalize.before_journal"); err != nil {
 		return err
 	}
+	if t.sealedTree != "" {
+		if err := t.verifySealedTree(t.j.Target); err != nil {
+			return err
+		}
+	}
 	t.j.Phase = Complete
 	if err := t.save(); err != nil {
 		return err
@@ -655,6 +716,11 @@ func (t *Transaction) abortLocked() error {
 	_, stagingErr := os.Lstat(t.j.Staging)
 	switch {
 	case stagingErr == nil && errors.Is(targetErr, fs.ErrNotExist):
+		if t.sealedTree != "" {
+			if err := t.verifySealedAbort(); err != nil {
+				return err
+			}
+		}
 		if err := t.removePendingFromStaging(); err != nil {
 			return err
 		}
@@ -671,6 +737,9 @@ func (t *Transaction) abortLocked() error {
 		// was published by someone: deleting the journal would strand the
 		// rendered files, so the journal is kept for inspection instead.
 		if err := t.verifyTargetUnstaged(); err != nil {
+			if t.sealedTree != "" {
+				return errors.Join(ErrOwnershipUncertain, err)
+			}
 			return err
 		}
 	default:
@@ -876,13 +945,31 @@ func Inventory(home string) ([]TransactionStatus, error) {
 		if tx.j.Phase == Prepared || tx.j.Phase == Publishing || tx.j.Phase == Committed || tx.j.Phase == HooksRunning || tx.j.Phase == HooksFailed {
 			status = StatusActive
 		}
+		reason := ""
+		if tx.sealedTree != "" && (tx.j.Phase == Prepared || tx.j.Phase == Publishing || tx.j.Phase == Committed) {
+			var checkErr error
+			if _, err := os.Lstat(tx.j.Staging); err == nil {
+				if tx.sealedReady {
+					checkErr = tx.verifySealedTree(tx.j.Staging)
+				} else {
+					checkErr = tx.verifySealedAbort()
+				}
+			} else if tx.j.Phase == Prepared {
+				checkErr = tx.verifyTargetUnstaged()
+			} else {
+				checkErr = tx.verifySealedTree(tx.j.Target)
+			}
+			if checkErr != nil {
+				status, reason = "ownership_uncertain", ErrOwnershipUncertain.Error()
+			}
+		}
 		// The journal file time is when the record last changed phase; for a
 		// terminal record that is when it became terminal.
 		updated := tx.j.UpdatedAt
 		if info, statErr := os.Lstat(filepath.Join(tx.dir, "active.json")); statErr == nil {
 			updated = info.ModTime().UTC()
 		}
-		out = append(out, TransactionStatus{ID: id, Status: status, UpdatedAt: updated})
+		out = append(out, TransactionStatus{ID: id, Status: status, Reason: reason, UpdatedAt: updated})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
@@ -1022,6 +1109,11 @@ func continueTx(home, id, registryHome string, fault FaultInjector) error {
 		return ErrUnsafe
 	}
 	if t.j.Phase == Committed || t.j.Phase == HooksRunning || t.j.Phase == HooksFailed {
+		if t.sealedTree != "" {
+			if err := t.verifySealedTree(t.j.Target); err != nil {
+				return err
+			}
+		}
 		// The commit record is durable; only the marker removal and the hook
 		// suffix may remain. Both are idempotent.
 		if err := t.removePending(); err != nil {
@@ -1034,6 +1126,9 @@ func continueTx(home, id, registryHome string, fault FaultInjector) error {
 	}
 	if t.j.Phase != Publishing && t.j.Phase != Prepared {
 		return ErrUnsafe
+	}
+	if t.sealedTree != "" && !t.sealedReady {
+		return ErrOwnershipUncertain
 	}
 	plan := RegistryPlan{Home: registryHome}
 	if t.j.RegistryAfterSHA != "" {
@@ -1082,6 +1177,11 @@ func continueTx(home, id, registryHome string, fault FaultInjector) error {
 		}
 	}
 	if _, statErr := os.Lstat(t.j.Target); os.IsNotExist(statErr) {
+		if t.sealedTree != "" {
+			if err := t.verifySealedTree(t.j.Staging); err != nil {
+				return err
+			}
+		}
 		if err := os.Rename(t.j.Staging, t.j.Target); err != nil {
 			return err
 		}
@@ -1249,16 +1349,25 @@ func (t *Transaction) updateRecoveryManifest() error {
 	if _, err := os.Lstat(root); os.IsNotExist(err) {
 		root = t.j.Target
 	}
-	tree, err := snapshotTree(root)
-	if err != nil {
-		return err
+	treeDigest := t.sealedTree
+	if treeDigest == "" {
+		tree, err := snapshotTree(root)
+		if err != nil {
+			return err
+		}
+		treeDigest = digest(tree)
+	} else if t.sealedReady {
+		if err := t.verifySealedTree(root); err != nil {
+			return err
+		}
 	}
 	manifest := recoveryManifest{
 		Schema: Schema, Target: t.j.Target, PathDigest: digest([]byte(t.j.Target)),
 		Staging: t.j.Staging, PendingMarker: t.j.PendingMarker,
 		RegistryTarget: t.j.RegistryTarget,
-		CreatedAt:      t.j.CreatedAt, TreeSHA256: digest(tree), BeforeTreeSHA: t.j.TargetBeforeTreeSHA,
-		HookPlan: append([]HookEntry(nil), t.j.Hooks.Plan...),
+		CreatedAt:      t.j.CreatedAt, TreeSHA256: treeDigest, BeforeTreeSHA: t.j.TargetBeforeTreeSHA,
+		HookPlan:   append([]HookEntry(nil), t.j.Hooks.Plan...),
+		SealedTree: t.sealedTree, SealedReady: t.sealedReady,
 	}
 	data, err := json.Marshal(manifest)
 	if err != nil {
@@ -1302,6 +1411,9 @@ func loadRecoveryManifest(dir, ref string) (recoveryManifest, error) {
 		if hook.Kind != "shell" || hook.Command == "" || hook.Digest != hookDigest(hook) {
 			return recoveryManifest{}, ErrUnsafe
 		}
+	}
+	if manifest.SealedTree != "" && (!validDigest(manifest.SealedTree) || manifest.TreeSHA256 != manifest.SealedTree || len(manifest.HookPlan) != 0) || manifest.SealedReady && manifest.SealedTree == "" {
+		return recoveryManifest{}, ErrUnsafe
 	}
 	return manifest, nil
 }
@@ -1491,6 +1603,7 @@ func (t *Transaction) refresh() error {
 		return err
 	}
 	t.j = current.j
+	t.sealedTree, t.sealedReady = current.sealedTree, current.sealedReady
 	return nil
 }
 
@@ -1514,11 +1627,15 @@ func (t *Transaction) releaseGlobalLock() {
 }
 
 func (t *Transaction) verifyPending() error {
-	info, err := os.Lstat(t.j.Target)
+	return t.verifyPendingAt(t.j.Target)
+}
+
+func (t *Transaction) verifyPendingAt(root string) error {
+	info, err := os.Lstat(root)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return ErrUnsafe
 	}
-	pendingDir, err := transactionDir(t.j.Target, false)
+	pendingDir, err := transactionDir(root, false)
 	if err != nil {
 		return err
 	}
@@ -1583,6 +1700,11 @@ func (t *Transaction) removePendingFromStaging() error {
 }
 
 func (t *Transaction) complete() error {
+	if t.sealedTree != "" {
+		if err := t.verifySealedTree(t.j.Target); err != nil {
+			return err
+		}
+	}
 	t.j.Phase = Complete
 	if err := t.save(); err != nil {
 		return err

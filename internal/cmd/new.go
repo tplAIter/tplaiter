@@ -3,15 +3,18 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/newcmd"
-	"github.com/tplAIter/tplaiter/internal/operationtrust"
-	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
+	"github.com/tplAIter/tplaiter/internal/state"
+	"github.com/tplAIter/tplaiter/internal/survey"
+	"github.com/tplAIter/tplaiter/internal/ui"
+	"golang.org/x/term"
 )
 
 // newRunner — runner for the deps-check/hooks/ansible steps of `tplater new`.
@@ -22,9 +25,7 @@ func init() {
 	registerCommand(newNewCmd)
 }
 
-// newNewCmd creates `tplater new <ref> <project-name>`: the main project
-// creation command. It resolves and renders a template, asks for settings,
-// copies resources, registers the project, and prints NOTES.
+// newNewCmd composes the signed native live-new foundation and its preview.
 func newNewCmd() *cobra.Command {
 	var (
 		dir         string
@@ -49,12 +50,10 @@ func newNewCmd() *cobra.Command {
 
 		Use:   "new <ref> <project-name>",
 		Short: "Create a project from a template",
-		Long: "Deploys a template (reference <ref> — `repo/name@version` or short `name`) " +
-			"into new project <project-name>: prompts for settings, " +
-			"renders tree, copies environment/generator/ai-config resources to .tplaiter/, " +
-			"writes manifest snapshot and project marker, executes hooks.postCreate, " +
-			"registers project, and prints NOTES.\n\n" +
-			"Prompting is interactive with TTY; in CI use --set/--answers/--defaults.",
+		Long: "Creates a project from a signed, pinned native template using --source-input. " +
+			"The target must match the installed project context. Settings use --set/--answers/--defaults " +
+			"or an interactive survey. This foundation supports action-free templates; hooks, tools, " +
+			"environment, generators, AI resources and managed blocks require later lifecycle slices.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runtime, err := composeRuntime(cmd.Context())
@@ -62,9 +61,6 @@ func newNewCmd() *cobra.Command {
 				return err
 			}
 			defer runtime.Close()
-			if !dryRun {
-				return newcmd.ErrLifecycleUnavailable
-			}
 			if sourceInput == "" {
 				return errors.New("TRUST_SOURCE_ADAPTER_UNSUPPORTED")
 			}
@@ -72,22 +68,27 @@ func newNewCmd() *cobra.Command {
 			if err != nil {
 				return errors.New("TRUST_SOURCE_ADAPTER_UNSUPPORTED")
 			}
-			selection, err := operationtrust.DecodeSourceSelection(raw)
-			if err != nil || selection.Subject.Commit != args[0] {
-				return errors.New("TRUST_SOURCE_ADAPTER_UNSUPPORTED")
-			}
-			prepared, err := newcmd.Prepare(cmd.Context(), runtime, operationtrust.PrepareNewInput{SourceInput: raw, Render: renderref.Input{}, RendererVersion: resolveVersion()})
+			home, err := state.Home()
 			if err != nil {
 				return err
 			}
-			if !prepared.ValidFor(runtime.TrustRuntime()) {
-				return errors.New("TRUST_RUNTIME_INVALID")
+			interactive := term.IsTerminal(int(os.Stdin.Fd()))
+			opts := newcmd.Options{Ref: args[0], ProjectName: args[1], Dir: dir, Module: module, System: system, Domain: domain, Sets: sets, AnswersFile: answers, Defaults: defaults, NoHooks: noHooks, NoDepsCheck: noDepsCheck, EnvSetup: envSetupTriState(cmd, envSetup, noEnvSetup), Yes: yes, Port: port, Interactive: interactive, CLIVersion: resolveVersion(), DryRun: dryRun}
+			err = newcmd.Run(cmd.Context(), opts, newcmd.Deps{Runtime: runtime, SourceInput: raw, Home: home, Prompter: survey.HuhPrompter{In: cmd.InOrStdin(), Out: humanOut(cmd)}, Out: humanOut(cmd), Err: cmd.ErrOrStderr(), Palette: ui.Default()})
+			if err != nil {
+				return err
 			}
 			if jsonMode(cmd) {
-				// Nothing is created by a dry run, so the envelope names no project.
-				return emitData(cmd, resultdto.OperationProjectNew, nil, resultdto.ProjectNewData{DryRun: true, Ref: args[0], Name: args[1]})
+				var project *resultdto.Project
+				if !dryRun {
+					p := runtime.ProjectContext()
+					project = &resultdto.Project{ID: p.ProjectID, Root: p.RootPath}
+				}
+				return emitData(cmd, resultdto.OperationProjectNew, project, resultdto.ProjectNewData{DryRun: dryRun, Ref: args[0], Name: args[1]})
 			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "dry-run prepared")
+			if dryRun {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "dry-run prepared")
+			}
 			return nil
 		},
 	}
@@ -107,7 +108,7 @@ func newNewCmd() *cobra.Command {
 	f.BoolVar(&yes, "yes", false, "auto-confirm (install tools and env setup)")
 	f.IntVar(&port, "port", 0, "project port (.Runtime.Port, defaults to 8080)")
 	f.BoolVar(&dryRun, "dry-run", false, "prepare result without changing files")
-	f.StringVar(&sourceInput, "source-input", "", "sealed JSON immutable source selection")
+	f.StringVar(&sourceInput, "source-input", "", "JSON pinned source selection and publisher evidence locators")
 	return withResult(c, resultdto.OperationProjectNew)
 }
 
