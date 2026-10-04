@@ -48,6 +48,8 @@ var (
 	ErrPolicyOrigin  = errors.New("stateledger: lock is not bound to the verified trust profile")
 	ErrDigest        = errors.New("stateledger: sealed digest mismatch")
 	ErrEvidence      = errors.New("stateledger: evidence unavailable or invalid")
+	// ErrProjectIdentity reports an absent fresh project check or a marker/root mismatch.
+	ErrProjectIdentity = errors.New("stateledger: project identity is not bound to the selected installed context")
 	// ErrLegacyLock reports a profileless v1 root or dependency lock. It must
 	// be re-resolved through the trust runtime (update) before the ledger can
 	// accept it; the ledger never upgrades trust evidence by itself.
@@ -62,6 +64,15 @@ type BindingAuthority interface {
 	Binding() bootstrap.ProfileBinding
 	CheckBinding(bootstrap.ProfileBinding) error
 }
+
+// ProjectIdentityAuthority checks observed marker/root data using a fresh
+// authenticated project reader. A profile binding alone cannot vouch for it.
+// Both strings are observations, never caller-provided expected authority.
+type ProjectIdentityAuthority interface {
+	CheckProjectIdentity(context.Context, string, string) error
+}
+
+var _ ProjectIdentityAuthority = (*trustverify.Runtime)(nil)
 
 var _ BindingAuthority = (*trustverify.Runtime)(nil)
 
@@ -155,6 +166,9 @@ type StableVerifyOptions struct {
 // writing any state. The returned snapshot is an observation and must not be
 // treated as an authorization token.
 func VerifyStable(ctx context.Context, projectRoot string, authority BindingAuthority, opts StableVerifyOptions) (*Snapshot, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("%w: context required", ErrUnsafe)
+	}
 	if err := requireStable(authority); err != nil {
 		return nil, err
 	}
@@ -165,7 +179,7 @@ func VerifyStable(ctx context.Context, projectRoot string, authority BindingAuth
 	if err != nil {
 		return nil, err
 	}
-	marker, err := stableRead(filepath.Join(root, StateDir, "project.yaml"))
+	marker, markerMode, err := stableReadWithMode(filepath.Join(root, StateDir, "project.yaml"))
 	if err != nil {
 		return nil, fmt.Errorf("%w: project marker: %w", ErrUnsafe, err)
 	}
@@ -176,8 +190,14 @@ func VerifyStable(ctx context.Context, projectRoot string, authority BindingAuth
 	if err := validateV2(project); err != nil {
 		return nil, err
 	}
+	if err := checkProjectIdentity(ctx, authority, root, project.ID); err != nil {
+		return nil, err
+	}
 	snapshot, err := InventoryContext(ctx, root, Options{HomeRoot: home, SecretProvider: opts.SecretProvider})
 	if err != nil {
+		return nil, err
+	}
+	if err := checkMarkerInventory(snapshot, marker, markerMode); err != nil {
 		return nil, err
 	}
 	if err := validateJournalState(snapshot.Entries, home); err != nil {
@@ -202,6 +222,27 @@ func VerifyStable(ctx context.Context, projectRoot string, authority BindingAuth
 		if err := verifyLockEvidence(ctx, opts.CAS, rootLock, dependencyLock); err != nil {
 			return nil, err
 		}
+	}
+	// Reobserve the actual marker, not just the identity cached before inventory.
+	currentMarker, currentMode, err := stableReadWithMode(filepath.Join(root, StateDir, "project.yaml"))
+	if err != nil {
+		return nil, fmt.Errorf("%w: project marker reobservation: %w", ErrUnsafe, err)
+	}
+	var currentProject ProjectV2
+	if err := decodeYAMLStrict(currentMarker, &currentProject); err != nil {
+		return nil, fmt.Errorf("%w: project marker reobservation: %w", ErrUnsafe, err)
+	}
+	if err := validateV2(currentProject); err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(marker, currentMarker) || markerMode != currentMode {
+		return nil, fmt.Errorf("%w: project marker observation changed", ErrUnsafe)
+	}
+	if err := checkMarkerInventory(snapshot, currentMarker, currentMode); err != nil {
+		return nil, err
+	}
+	if err := checkProjectIdentity(ctx, authority, root, currentProject.ID); err != nil {
+		return nil, err
 	}
 	return snapshot, nil
 }
@@ -714,37 +755,43 @@ func nonNil(v map[string]any) map[string]any {
 // stableRead reads a regular, non-symlink ledger and fails if it changed
 // while it was open.
 func stableRead(path string) ([]byte, error) {
+	raw, _, err := stableReadWithMode(path)
+	return raw, err
+}
+
+// stableReadWithMode captures bytes and mode from the same held regular file.
+func stableReadWithMode(path string) ([]byte, uint32, error) {
 	a, e := os.Lstat(path)
 	if e != nil {
-		return nil, e
+		return nil, 0, e
 	}
 	if a.Mode()&os.ModeSymlink != 0 || !a.Mode().IsRegular() {
-		return nil, fmt.Errorf("%w: symlink/non-file ledger", ErrUnsafe)
+		return nil, 0, fmt.Errorf("%w: symlink/non-file ledger", ErrUnsafe)
 	}
 	f, e := os.Open(path)
 	if e != nil {
-		return nil, e
+		return nil, 0, e
 	}
 	defer func() { _ = f.Close() }()
 	opened, e := f.Stat()
 	if e != nil {
-		return nil, e
+		return nil, 0, e
 	}
 	if !os.SameFile(a, opened) || opened.Mode()&os.ModeSymlink != 0 || !opened.Mode().IsRegular() {
-		return nil, fmt.Errorf("%w: ledger changed while open", ErrUnsafe)
+		return nil, 0, fmt.Errorf("%w: ledger changed while open", ErrUnsafe)
 	}
 	b, e := io.ReadAll(f)
 	if e != nil {
-		return nil, e
+		return nil, 0, e
 	}
 	closed, e := f.Stat()
 	if e != nil {
-		return nil, e
+		return nil, 0, e
 	}
-	if !os.SameFile(opened, closed) || opened.Size() != closed.Size() || opened.ModTime() != closed.ModTime() || int64(len(b)) != opened.Size() {
-		return nil, fmt.Errorf("%w: ledger changed while read", ErrUnsafe)
+	if !os.SameFile(opened, closed) || opened.Size() != closed.Size() || opened.ModTime() != closed.ModTime() || opened.Mode() != closed.Mode() || int64(len(b)) != opened.Size() {
+		return nil, 0, fmt.Errorf("%w: ledger changed while read", ErrUnsafe)
 	}
-	return b, nil
+	return b, uint32(opened.Mode()), nil
 }
 
 func yamlVersion(data []byte) (string, error) {
@@ -1040,3 +1087,33 @@ func SelfHashDomain(v any, field, domain string) (string, error) {
 
 // Paths returns the pointer values in a fixed order.
 func (p StatePointers) Paths() []string { return p.all() }
+
+func checkProjectIdentity(ctx context.Context, authority BindingAuthority, root, observedID string) error {
+	checker, ok := authority.(ProjectIdentityAuthority)
+	if !ok {
+		return fmt.Errorf("%w: %w", ErrUnsafe, ErrProjectIdentity)
+	}
+	if err := checker.CheckProjectIdentity(ctx, root, observedID); err != nil {
+		return fmt.Errorf("%w: %w: %w", ErrUnsafe, ErrProjectIdentity, err)
+	}
+	return nil
+}
+
+// checkMarkerInventory ties the identity-checked bytes/mode to the returned
+// snapshot's marker entry. This is marker coherence, not whole-tree atomicity.
+func checkMarkerInventory(snapshot *Snapshot, raw []byte, mode uint32) error {
+	count := 0
+	for _, entry := range snapshot.Entries {
+		if entry.Scope != "project" || entry.Path != StateDir+"/project.yaml" {
+			continue
+		}
+		count++
+		if !entry.Exists || entry.Kind != "file" || entry.Target != "" || entry.Mode != mode || entry.SHA256 != sha(raw) {
+			return fmt.Errorf("%w: project marker disagrees with inventory", ErrUnsafe)
+		}
+	}
+	if count != 1 {
+		return fmt.Errorf("%w: project marker missing or ambiguous in inventory", ErrUnsafe)
+	}
+	return nil
+}

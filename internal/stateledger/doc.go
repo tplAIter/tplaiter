@@ -31,6 +31,10 @@
 //     than the current version, ErrFutureVersion for anything newer).
 //
 // The authority is a BindingAuthority, implemented by *trustverify.Runtime.
+// VerifyStable additionally requires ProjectIdentityAuthority and checks the
+// marker ID and canonical project root against a freshly authenticated installed
+// context both before inventory and before returning. Profile-only authorities
+// cannot fall back to marker identity; source-lock verification alone is narrower.
 // The development runtime cannot satisfy it and a development binding is
 // refused, so an unverified profile never vouches for stable state. The
 // package does not import any policy-root or legacy trust package.

@@ -156,3 +156,14 @@ func stableProject(t *testing.T) string {
 	}
 	return root
 }
+
+// The mock owns the expected fixture identity; call arguments are observations.
+func (a fakeAuthority) CheckProjectIdentity(ctx context.Context, root, observedID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !filepath.IsAbs(root) || observedID != fixtureID {
+		return errors.New("fixture project identity mismatch")
+	}
+	return nil
+}

@@ -184,7 +184,7 @@ func (r runtimeReaders) Load(ctx context.Context) (trustverify.ProjectContext, e
 	if !ok {
 		return trustverify.ProjectContext{}, ErrProvenanceUnavailable
 	}
-	return trustverify.ProjectContext{ProjectID: project.ProjectID, SubmitterPrincipalID: project.SubmitterPrincipalID, MinimumProfile: string(project.MinimumProfile)}, nil
+	return trustverify.ProjectContext{ProjectID: project.ProjectID, SubmitterPrincipalID: project.SubmitterPrincipalID, MinimumProfile: string(project.MinimumProfile), RootPath: project.RootPath}, nil
 }
 
 func selectedProjectContext(install RuntimeInstall, key string) (ProjectContext, bool) {

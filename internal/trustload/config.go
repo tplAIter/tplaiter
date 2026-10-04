@@ -121,14 +121,21 @@ func (v RuntimeInstall) Validate() error {
 		return ErrConfigInvalid
 	}
 	seen := map[string]bool{}
-	for _, p := range v.ProjectContexts {
-		if !token(p.Key) || !token(p.ProjectID) || !token(p.SubmitterPrincipalID) || !validProfile(p.MinimumProfile) || !absolutePath(p.RootPath) || seen[p.Key] {
+	ids := map[string]bool{}
+	for i, p := range v.ProjectContexts {
+		if !token(p.Key) || !token(p.ProjectID) || !token(p.SubmitterPrincipalID) || !validProfile(p.MinimumProfile) || !absolutePath(p.RootPath) || seen[p.Key] || ids[p.ProjectID] {
 			return ErrConfigInvalid
 		}
 		if bootstrap.RequireProfile(p.MinimumProfile, v.Profile) != nil {
 			return ErrConfigInvalid
 		}
+		for _, previous := range v.ProjectContexts[:i] {
+			if pathOverlaps(previous.RootPath, p.RootPath) {
+				return ErrConfigInvalid
+			}
+		}
 		seen[p.Key] = true
+		ids[p.ProjectID] = true
 	}
 	seen = map[string]bool{}
 	for _, o := range v.ObjectOrigins {

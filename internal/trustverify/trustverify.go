@@ -10,7 +10,7 @@ import (
 )
 
 type (
-	ProjectContext       struct{ ProjectID, SubmitterPrincipalID, MinimumProfile string }
+	ProjectContext       struct{ ProjectID, SubmitterPrincipalID, MinimumProfile, RootPath string }
 	ProjectContextReader interface {
 		Load(context.Context) (ProjectContext, error)
 	}
@@ -47,6 +47,7 @@ type EvidenceRefs struct {
 type Runtime struct {
 	options StableOptions
 	binding bootstrap.ProfileBinding
+	project ProjectContext
 	marker  *runtimeMarker
 }
 
@@ -152,7 +153,11 @@ func NewRuntime(ctx context.Context, o StableOptions) (*Runtime, error) {
 	if ctx == nil || o.Project == nil || o.Policy == nil || o.External == nil || o.Evidence == nil || o.Objects == nil || o.Clock == nil || (o.Profile != bootstrap.ProfileOSS && o.Profile != bootstrap.ProfileOrganization) || (o.Profile == bootstrap.ProfileOSS && o.Bundle == nil) || (o.Profile == bootstrap.ProfileOrganization && o.Protected == nil) || (o.Human != nil && o.Transport != "direct-interactive-cli") {
 		return nil, diagnostic(TrustRuntimeInvalid, nil)
 	}
-	r := &Runtime{options: o, marker: &runtimeMarker{}}
+	project, err := o.Project.Load(ctx)
+	if err != nil {
+		return nil, diagnostic(TrustRuntimeInvalid, err)
+	}
+	r := &Runtime{options: o, marker: &runtimeMarker{}, project: project}
 	b, _, _, err := r.load(ctx)
 	if err != nil {
 		return nil, err
@@ -185,6 +190,9 @@ func (r *Runtime) load(ctx context.Context) (bootstrap.ProfileBinding, *Executio
 	pc, err := r.options.Project.Load(ctx)
 	if err != nil {
 		return bootstrap.ProfileBinding{}, nil, nil, diagnostic(TrustRuntimeInvalid, err)
+	}
+	if pc != r.project {
+		return bootstrap.ProfileBinding{}, nil, nil, diagnostic(TrustRuntimeInvalid, nil)
 	}
 	ps, err := r.options.Policy.Load(ctx)
 	if err != nil {
