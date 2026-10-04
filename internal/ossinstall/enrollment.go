@@ -23,6 +23,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
+	"github.com/tplAIter/tplaiter/internal/resources"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
@@ -216,10 +217,7 @@ func validateNativeSnapshot(snapshot *trustverify.SourceSnapshot) error {
 	if err := tpl.Validate(); err != nil {
 		return err
 	}
-	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || len(tpl.Generators) != 0 || len(tpl.Commands) != 0 {
-		return errors.New("ossinstall: initial enrollment supports action-free native templates only")
-	}
-	return nil
+	return resources.ValidateNativeGenerators(snapshot)
 }
 
 func statementSubject(s *bootstrap.PublisherStatement) trustverify.Subject {

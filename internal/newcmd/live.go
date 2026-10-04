@@ -25,6 +25,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ownership"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/resources"
 	"github.com/tplAIter/tplaiter/internal/sourceadapter"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
@@ -72,7 +73,7 @@ func runLive(ctx context.Context, opts Options, d Deps, fault newtransaction.Fau
 	}
 	// Resource and execution consumers are separate slices. Refuse rather than
 	// silently omit declared work or hand it to an ambient runner.
-	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Generators) != 0 || tpl.AIConfig.Path != "" || (opts.EnvSetup != nil && *opts.EnvSetup) {
+	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || len(tpl.Commands) != 0 || tpl.AIConfig.Path != "" || (opts.EnvSetup != nil && *opts.EnvSetup) {
 		return fmt.Errorf("%w: live new supports native action-free templates only", operationtrust.ErrSourceAdapterUnsupported)
 	}
 	constraint := tpl.Requires.Tplaiter
@@ -113,6 +114,18 @@ func runLive(ctx context.Context, opts Options, d Deps, fault newtransaction.Fau
 	if !prepared.ValidFor(d.Runtime.TrustRuntime()) {
 		return errors.New("TRUST_RUNTIME_INVALID")
 	}
+	selection, err := operationtrust.DecodeSourceSelection(src.Input)
+	if err != nil {
+		return err
+	}
+	resolution, err := d.Runtime.TrustRuntime().VerifySubject(ctx, selection.TrustSubject(), selection.EvidenceRefs())
+	if err != nil {
+		return err
+	}
+	resourceImages, err := resources.PlanNativeGeneratorImages(d.Runtime.TrustRuntime(), resolution, prepared.RootLock())
+	if err != nil {
+		return err
+	}
 	result := prepared.Rendered()
 	// The managed-block consumer is not restored in this slice.
 	for path, data := range result.Files {
@@ -142,7 +155,7 @@ func runLive(ctx context.Context, opts Options, d Deps, fault newtransaction.Fau
 			return err
 		}
 	}
-	images, err := liveTreeImages(project.ProjectID, src, info, port, result, prepared, sources, opts.Interactive && !opts.Defaults)
+	images, err := liveTreeImages(project.ProjectID, src, info, port, result, prepared, resourceImages, sources, opts.Interactive && !opts.Defaults)
 	if err != nil {
 		return err
 	}
@@ -223,7 +236,7 @@ func vacantLive(target string) error {
 	return nil
 }
 
-func liveTreeImages(id string, src *sourceadapter.Source, info manifest.ProjectInfo, port int, result *renderref.Result, prepared *operationtrust.PreparedNew, sources map[string]survey.Source, interactive bool) (files map[string][]byte, err error) {
+func liveTreeImages(id string, src *sourceadapter.Source, info manifest.ProjectInfo, port int, result *renderref.Result, prepared *operationtrust.PreparedNew, resourceImages *resources.ResourceImages, sources map[string]survey.Source, interactive bool) (files map[string][]byte, err error) {
 	files = make(map[string][]byte, len(result.Files)+12)
 	write := func(path string, raw []byte) error {
 		if _, exists := files[path]; exists {
@@ -250,6 +263,17 @@ func liveTreeImages(id string, src *sourceadapter.Source, info manifest.ProjectI
 		inv.Artifacts = append(inv.Artifacts, artifact)
 	}
 	rootLock, dependencyLock := prepared.RootLock(), prepared.DependencyLock()
+	if err := resourceImages.Validate(rootLock); err != nil {
+		return nil, err
+	}
+	for _, a := range resourceImages.Lock.Artifacts {
+		if err := write(a.Path, resourceImages.Files[a.Path]); err != nil {
+			return nil, err
+		}
+		// Ownership is deliberately only path/hash/mode; provenance lives in the lock.
+		inv.Artifacts = append(inv.Artifacts, ownership.Artifact{Path: a.Path, SHA256: strings.TrimPrefix(a.SHA256, "sha256:"), Mode: a.Mode})
+	}
+	sort.Slice(inv.Artifacts, func(i, j int) bool { return inv.Artifacts[i].Path < inv.Artifacts[j].Path })
 	if err := provenance.ValidateLockPair(rootLock, dependencyLock); err != nil {
 		return nil, err
 	}
@@ -272,12 +296,9 @@ func liveTreeImages(id string, src *sourceadapter.Source, info manifest.ProjectI
 	}
 	marker := stateledger.ProjectV2{APIVersion: stateledger.ProjectV2APIVersion, Kind: "Project", ID: id, Template: stateledger.TemplateIdentity{Repo: src.Alias, Name: src.Name, RequestedRef: prepared.RootLock().Root.RequestedRef, ResolvedCommit: prepared.RootLock().Root.Commit}, Project: map[string]any{"name": info.Name, "slug": info.Slug, "module": info.Module, "system": info.System, "domain": info.Domain}, Answers: answers, Runtime: map[string]any{"port": port}, State: stateledger.StandardPointers()}
 	images := map[string]any{
-		engine.BaselineRelPath:     result.Baseline,
-		ownership.InventoryRelPath: inv,
-		".tplaiter/resources.lock.json": struct {
-			Version   int   `json:"version"`
-			Artifacts []any `json:"artifacts"`
-		}{2, []any{}},
+		engine.BaselineRelPath:           result.Baseline,
+		ownership.InventoryRelPath:       inv,
+		resources.NativeResourceLockPath: resourceImages.Lock,
 		".tplaiter/ai-managed.json": struct {
 			Version int      `json:"version"`
 			Files   []string `json:"files"`
