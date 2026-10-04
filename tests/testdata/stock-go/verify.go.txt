@@ -1,0 +1,126 @@
+// Read-only observer for the black-box stock install smoke. No authority is minted.
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/tplAIter/tplaiter/internal/bootstrap"
+	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/newtransaction"
+	"github.com/tplAIter/tplaiter/internal/ossinstall"
+	"github.com/tplAIter/tplaiter/internal/provenance"
+	"github.com/tplAIter/tplaiter/internal/resources"
+	"github.com/tplAIter/tplaiter/internal/state"
+	"github.com/tplAIter/tplaiter/internal/stateledger"
+	"github.com/tplAIter/tplaiter/internal/trustload"
+)
+
+func main() {
+	if err := verify(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func verify() error {
+	raw, err := os.ReadFile(os.Args[1])
+	if err != nil {
+		return err
+	}
+	reg, err := ossinstall.DecodeRegistration(raw)
+	if err != nil {
+		return err
+	}
+	runtime, err := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: reg.Selection(), ProjectKey: os.Args[2], Clock: bootstrap.ClockFunc(time.Now)})
+	if err != nil {
+		return err
+	}
+	defer runtime.Close()
+	p := runtime.ProjectContext()
+	rootPath := p.RootPath
+	if len(os.Args) == 5 {
+		rootPath = os.Args[4]
+	}
+	loaded, err := trustload.Load(context.Background(), reg.Selection())
+	if err != nil {
+		return err
+	}
+	cas, err := evidencecas.NewFSReader(loaded.Install.EvidenceRoot)
+	if err != nil {
+		return err
+	}
+	defer cas.Close()
+	if _, err := stateledger.VerifyStable(context.Background(), rootPath, runtime.TrustRuntime(), stateledger.StableVerifyOptions{CAS: cas}); err != nil {
+		return err
+	}
+	marker, err := os.ReadFile(filepath.Join(rootPath, ".tplaiter", "project.yaml"))
+	if err != nil {
+		return err
+	}
+	var project stateledger.ProjectV2
+	if err := yaml.Unmarshal(marker, &project); err != nil {
+		return err
+	}
+	if project.ID != p.ProjectID {
+		return fmt.Errorf("marker/context identity mismatch")
+	}
+	journals, err := newtransaction.List(os.Args[3])
+	if err != nil {
+		return err
+	}
+	if len(journals) != 0 {
+		return fmt.Errorf("unfinished creation journal")
+	}
+	rootRaw, err := os.ReadFile(filepath.Join(rootPath, ".tplaiter", "root-template.lock.json"))
+	if err != nil {
+		return err
+	}
+	root, err := provenance.DecodeRootTemplateLock(rootRaw)
+	if err != nil {
+		return err
+	}
+	lockRaw, err := os.ReadFile(filepath.Join(rootPath, resources.NativeResourceLockPath))
+	if err != nil {
+		return err
+	}
+	lock, err := resources.DecodeResourceLockV2(lockRaw)
+	if err != nil {
+		return err
+	}
+	images := &resources.ResourceImages{Lock: *lock, Files: map[string][]byte{}}
+	for _, artifact := range lock.Artifacts {
+		data, err := os.ReadFile(filepath.Join(rootPath, artifact.Path))
+		if err != nil {
+			return err
+		}
+		images.Files[artifact.Path] = data
+	}
+	if err := images.Validate(*root); err != nil {
+		return err
+	}
+
+	projects, err := state.LoadProjects(os.Args[3])
+	if err != nil {
+		return err
+	}
+	if len(projects.Items) != 2 {
+		return fmt.Errorf("expected exactly two project entries")
+	}
+	found := false
+	for _, item := range projects.Items {
+		if item.ID == p.ProjectID && item.Path == p.RootPath {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("registry identity absent: %s", p.ProjectID)
+	}
+	fmt.Printf("stable registry verified: %s\n", p.ProjectID)
+	return nil
+}

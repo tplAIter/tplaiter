@@ -37,6 +37,9 @@ Variables:
 | `PREFIX` | `/usr/local` | Installation prefix; the binary goes to `$(PREFIX)/bin`. |
 | `TRUST_ROOT` | `$(PREFIX)/lib/tplaiter/trust` | Absolute directory for the trust documents and the trust store. |
 | `TRUST_PUBLISHERS` | empty | Optional JSON file listing trusted template publishers (see below). |
+| `TRUST_SOURCE_PACKAGES` | empty | Public initial signed-source package JSON. |
+| `TRUST_PROJECT_CONTEXTS` | empty | Finite operator-approved project contexts JSON. |
+| `TRUST_LOCAL_SOURCES` | empty | One offline local-operator source JSON; requires contexts and an absent trust root, and forbids publishers, external packages and rotation. |
 | `TRUST_ROTATE` | empty | `1` discards the existing installation, including its trust store, and generates a new one. |
 | `REGISTRATION_PATH`, `REGISTRATION_SHA256` | empty | Link against an existing registration instead of generating one. Set both or neither. |
 
@@ -178,9 +181,13 @@ unused objects, symlink/gitlink modes and mutable refs are refused. Limits are
 32 packages, 8,192 objects per package, 64 MiB aggregate raw objects and 96 MiB
 input JSON, plus the existing verifier's source bounds. The verified subtree
 must contain a native `template.contract.json` with no dependencies and the
-exact raw hash of `template.manifest.yaml`. Only action-free native manifests
-are supported: no commands, generators, tool requirements, environment
-playbooks or create/update hooks. No fetch, checkout or signing service runs.
+exact raw hash of `template.manifest.yaml`. Native manifests may declare
+validated inert generator snippets. Their exact
+verified bytes are retained under `.tplaiter/generators/`, with source provenance
+in `.tplaiter/resources.lock.json` and file ownership in the separate ownership
+inventory. Creation does not execute generators or populate generator targets.
+Commands, tool requirements, environment playbooks and create/update hooks remain
+unsupported by this enrollment route. No fetch, checkout or signing service runs.
 
 An optional `project-contexts.json` contains 1–32 finite contexts, using the
 existing runtime type:
@@ -200,7 +207,10 @@ canonical directory; enrolling it creates no project content. Each runtime
 selects one authenticated `ProjectContexts` key through existing
 `RuntimeOptions.ProjectKey`; no dynamic registry or ordinary CLI root/reader
 trust override is introduced. The registration selects the first supplied
-context by default. CLI target routing is a separate composition step.
+context by default. CLI `new --project-context <key> --dir <target>` selects an
+authenticated context and requires the target to equal its root. MCP
+`project_new` uses `projectContext` and `targetDir`; its `dir` is an existing
+child working directory, which may be unrelated to the absent target.
 
 Choose an **absent** install-root path beneath an existing canonical parent, then link with the
 printed pins:
@@ -242,11 +252,13 @@ refused for an installation carrying this contract, even when the input flags
 are omitted, so it cannot covertly reset an enrolled store. Omitting all input
 flags when reusing an existing installation preserves it.
 
-No retained local publisher key, private profile or helper route is provided.
-The only existing generated signer remains the ephemeral bootstrap anchor,
-which is discarded. A local operator-as-publisher producer requires a separate
-approved provenance and signing interface; credential file contents are never
-part of this public input contract. Release distribution, later source versions,
+For an offline operator-attested source, `make install` also accepts
+`TRUST_LOCAL_SOURCES` together with finite `TRUST_PROJECT_CONTEXTS`; see
+[source enrollment](./source-enrollment.md) for the closed public inputs. This
+official producer generates a distinct ephemeral source-signing key in process
+and discards it, retaining only public attestation. It accepts no private key,
+credential file or private profile, and installs no signing helper. Release
+distribution, later source versions,
 authority refresh and general post-install project enrollment remain separate.
 
 ## Rotate

@@ -30,9 +30,13 @@ make install TRUST_ROOT=/absolute/existing-parent/absent-install \
 claim about remote fetching, upstream signature, authorship or ownership.
 The local repository path is a locator and is omitted from public provenance.
 The exact immutable commit is required; checkout edits, tags and branches are
-never source bytes. This Go example identifies a real capturable source; its
-inert generators still require the separately reviewed resource support before
-installation/project creation can succeed. This packet does not enable them.
+never source bytes. This Go example supports installation and native project
+creation with its six
+validated inert generator snippets. Creation seals their exact verified bytes,
+source provenance and ownership together with the project. Generator execution,
+commands, environment setup, hooks and later lifecycle actions remain outside
+this acceptance path. The default generated Go project uses only the standard
+library and can be built and tested with `GOPROXY=off`.
 
 `project-contexts.json` is a finite array of existing `ProjectContext` values:
 
@@ -119,3 +123,28 @@ installation before linking; do not retry local generation with new keys or rota
 An existing external installation can still be reused only with its exact accepted
 enrollment contract and retained objects/evidence. Post-install refresh requires a
 separate eligible signer and append-only authority transition.
+
+## Installed Go acceptance smoke
+
+The focused black-box test uses a fresh temporary prefix/trust root and isolated
+HOME/XDG/state. It invokes real `make install`, then `trust provision`, CLI `new`
+and MCP `project_new` for finite A/B contexts with absent custom target roots.
+The removable public source copy is deleted after capture, before either create.
+A read-only observer checks stable state and registry against the installed
+registration; it supplies no private keys or runtime authority. Exact snippet
+bytes, resource provenance, ownership and empty generator-target records are
+checked before offline `go build ./...` and `go test ./...`. Replay and invalid
+context/source calls must refuse without changing accepted state.
+
+```sh
+GOWORK=off go test -C tests -run '^TestStockInstalledPublicGo$' -count=1 -v
+```
+
+By default the source repository is reconstructed from the pinned public raw
+Git objects already checked into the integration fixtures. To exercise an actual
+local public checkout, set `TPLAITER_STOCK_GO_SOURCE=/absolute/public/repository`;
+the test captures a disposable copy and leaves the supplied tree untouched.
+`TPLAITER_STOCK_GO_ARTIFACTS=/absolute/absent-directory` retains install and
+creation evidence for review. This smoke accepts only default stdlib Go creation
+and inert resource retention; it does not establish beta completion or live
+generator/action support.
