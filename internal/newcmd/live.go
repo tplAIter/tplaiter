@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/engine"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
@@ -27,7 +29,6 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/survey"
-	"gopkg.in/yaml.v3"
 )
 
 // runLive is the bounded native, action-free lifecycle. It never calls the

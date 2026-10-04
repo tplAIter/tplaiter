@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -290,25 +291,44 @@ func requireProvisionedTrust(t *testing.T) {
 	}
 }
 
-// liveLifecycleDenial is the typed refusal the published core returns for
-// new/update/settings until the live lifecycle is restored.
-const liveLifecycleDenial = "TRUST_LIFECYCLE_UNAVAILABLE"
-
-// skipAtLiveLifecycle runs a live-lifecycle step (new, update, settings set)
-// and ends the scenario there with a tracked skip marker. It first proves that
-// the installed trust launch itself works: the step must fail with exactly the
-// lifecycle denial, never with a trust-anchor or provisioning error. Once the
-// step succeeds, the test fails so that U07 removes the marker.
-func skipAtLiveLifecycle(t *testing.T, home string, args ...string) {
+// requireNewMissingSource proves the exact installed refusal for fixtures that
+// have discovery metadata but no authenticated source selection. Signed live
+// new success is covered by the root module's concrete runtime/process tests.
+func requireNewMissingSource(t *testing.T, home string, args ...string) {
 	t.Helper()
 	requireProvisionedTrust(t)
+	if len(args) == 0 || args[0] != "new" {
+		t.Fatal("missing-source oracle is only for new")
+	}
+	targets := map[string]bool{}
+	for i, arg := range args {
+		if arg == "--dir" && i+1 < len(args) {
+			targets[args[i+1]] = exists(args[i+1])
+		}
+	}
 	res := run(t, home, "", args...)
+	const want = "TRUST_SOURCE_ADAPTER_UNSUPPORTED"
 	out := res.Stdout + res.Stderr
-	if res.ExitCode == 0 {
-		t.Fatalf("tplaiter %v now succeeds: remove the U07 skip marker and restore the scenario assertions", args)
+	// Source-adapter refusal maps to resultdto.ExitUnavailable (8).
+	if res.ExitCode != 8 {
+		t.Fatalf("tplaiter %v: want unavailable exit 8 for missing source, got %d\n%s", args, res.ExitCode, out)
 	}
-	if !strings.Contains(out, liveLifecycleDenial) {
-		t.Fatalf("tplaiter %v: expected the %s denial (installed trust must load), got exit=%d\n%s", args, liveLifecycleDenial, res.ExitCode, out)
+	codes := regexp.MustCompile(`TRUST_[A-Z0-9_]+`).FindAllString(out, -1)
+	if len(codes) != 1 || codes[0] != want {
+		t.Fatalf("tplaiter %v: want exactly %s, got %v\n%s", args, want, codes, out)
 	}
-	t.Skipf("requires U07 live lifecycle: tp-i9g.5.3 (tplaiter %s is %s)", args[0], liveLifecycleDenial)
+	for target, wasPresent := range targets {
+		if !wasPresent && exists(target) {
+			t.Fatalf("missing source created target %s", target)
+		}
+	}
+}
+
+// skipAtLiveLifecycle retains the tracked U07 pending acceptance scenarios.
+// Their unsigned fixtures must first prove the exact missing-source refusal;
+// signed live-new positives run in the root module.
+func skipAtLiveLifecycle(t *testing.T, home string, args ...string) {
+	t.Helper()
+	requireNewMissingSource(t, home, args...)
+	t.Skipf("requires U07 signed lifecycle fixture: tp-i9g.5.3 (tplaiter %s is TRUST_SOURCE_ADAPTER_UNSUPPORTED)", args[0])
 }

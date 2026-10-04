@@ -6,11 +6,11 @@ import (
 	"context"
 	"errors"
 	"io/fs"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/repo"
@@ -112,17 +112,8 @@ func localCommit(ctx context.Context, clone, ref string) (string, error) {
 	if ref == "" || strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, "\x00\r\n") {
 		return "", ErrMismatch
 	}
-	git, err := exec.LookPath("git")
-	if err != nil {
-		return "", err
-	}
 	resolve := func(candidate string) (string, error) {
-		cmd := exec.CommandContext(ctx, git, "--no-optional-locks", "-C", clone, "rev-parse", "--verify", "--end-of-options", candidate+"^{commit}")
-		// No inherited Git config, credentials, alternate objects, replacement refs,
-		// proxy, helpers or partial-clone lazy fetch can affect identity resolution.
-		cmd.Env = []string{"PATH=/usr/bin:/bin", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_TERMINAL_PROMPT=0", "GIT_NO_LAZY_FETCH=1", "GIT_NO_REPLACE_OBJECTS=1"}
-		out, err := cmd.Output()
-		return strings.TrimSpace(string(out)), err
+		return execx.LocalGitCommit(ctx, clone, candidate)
 	}
 	if id, err := resolve("refs/remotes/origin/" + ref); err == nil {
 		return id, nil

@@ -4,7 +4,7 @@
 # removed from this file must succeed. U12 requires this file to be empty.
 #
 # <tool> <CODE[,CODE...]> <owner: reason>
-project_new TRUST_LIFECYCLE_UNAVAILABLE U07: live new through the transaction ledger
+project_new TRUST_SOURCE_ADAPTER_UNSUPPORTED U07: unsigned discovery fixture has no installed authenticated source selection
 settings_set TRUST_LIFECYCLE_UNAVAILABLE U07: live settings through the transaction ledger
 workspace_add_service CLI_OPERATION_FAILED U07: the static fixture is not a workspace; U07 adds a workspace fixture and a typed lifecycle refusal
 run TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted manifest command execution

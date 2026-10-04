@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"os"
@@ -266,5 +267,41 @@ func TestAnchorContractCheckedBeforeTargetCollisionWithoutWrites(t *testing.T) {
 				t.Fatalf("preflight changed fixture: %v", err)
 			}
 		})
+	}
+}
+
+func TestFixtureSnapshotRetainsRootAndRejectsSymlink(t *testing.T) {
+	base := t.TempDir()
+	path := filepath.Join(base, "original")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "owned"), []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	moved := filepath.Join(base, "moved")
+	if err := os.Rename(path, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "owned"), []byte("foreign"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := fixtureSnapshotRoot(root)
+	if err != nil || len(got) != 1 || got["owned"] != sha256.Sum256([]byte("original")) {
+		t.Fatalf("snapshot lost held root: %v %v", got, err)
+	}
+	if err := os.Symlink(filepath.Join(path, "owned"), filepath.Join(moved, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixtureSnapshotRoot(root); err == nil {
+		t.Fatal("symlink snapshot accepted")
 	}
 }

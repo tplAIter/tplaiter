@@ -8,13 +8,14 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
+	"golang.org/x/term"
+
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/newcmd"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/survey"
 	"github.com/tplAIter/tplaiter/internal/ui"
-	"golang.org/x/term"
 )
 
 // newRunner — runner for the deps-check/hooks/ansible steps of `tplater new`.

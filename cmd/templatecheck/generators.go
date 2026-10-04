@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -63,14 +64,20 @@ func preflightGenerators(source, fixture string, tpl *manifest.Template, values 
 				return nil, err
 			}
 			_, err = gen.Generate(context.Background(), tpl, g.Kind, name, opts)
+			if err == nil {
+				return nil, fmt.Errorf("%s %s preparation unexpectedly succeeded", g.Kind, name)
+			}
 			if !errors.Is(err, gen.ErrExecutionUnavailable) {
-				return nil, fmt.Errorf("%s %s preparation: expected execution-unavailable gate, got %v", g.Kind, name, err)
+				return nil, fmt.Errorf("%s %s preparation: expected execution-unavailable gate: %w", g.Kind, name, err)
 			}
 			operations = append(operations, gen.Operation{Kind: g.Kind, Name: name, Params: params, Fields: fields})
 		}
 		// The real batch preparation checks both names against shared targets and
 		// accumulated anchor state, catching collisions that single calls miss.
 		_, err = gen.GenerateBatch(context.Background(), tpl, operations, opts)
+		if err == nil {
+			return nil, fmt.Errorf("%s two-name preparation unexpectedly succeeded", g.Kind)
+		}
 		if !errors.Is(err, gen.ErrExecutionUnavailable) {
 			return nil, fmt.Errorf("%s two-name preparation: %w", g.Kind, err)
 		}
@@ -78,9 +85,12 @@ func preflightGenerators(source, fixture string, tpl *manifest.Template, values 
 		for _, repeat := range []string{names[0], engine.Snake(names[0])} {
 			repeated := []gen.Operation{operations[0], {Kind: g.Kind, Name: repeat, Params: params, Fields: fields}}
 			_, err = gen.GenerateBatch(context.Background(), tpl, repeated, opts)
-			if err == nil || errors.Is(err, gen.ErrExecutionUnavailable) ||
+			if err == nil {
+				return nil, fmt.Errorf("%s repeated-name preparation unexpectedly succeeded", g.Kind)
+			}
+			if errors.Is(err, gen.ErrExecutionUnavailable) ||
 				(!strings.Contains(err.Error(), "already planned") && !strings.Contains(err.Error(), "already present")) {
-				return nil, fmt.Errorf("%s repeated-name preparation did not reject a collision: %v", g.Kind, err)
+				return nil, fmt.Errorf("%s repeated-name preparation did not reject a collision: %w", g.Kind, err)
 			}
 		}
 		records = append(records, generatorRecord{Kind: g.Kind, Names: names, Status: "prepared; execution unavailable; duplicate rejected"})
@@ -196,24 +206,48 @@ func validateGeneratorAnchors(g *manifest.Generator, raw string, opts gen.Option
 	return nil
 }
 
-func fixtureSnapshot(root string) (map[string][32]byte, error) {
+func fixtureSnapshot(path string) (map[string][32]byte, error) {
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return fixtureSnapshotRoot(root)
+}
+
+func fixtureSnapshotRoot(root *os.Root) (map[string][32]byte, error) {
 	files := make(map[string][32]byte)
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+	err := fs.WalkDir(root.FS(), ".", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if entry.IsDir() {
 			return nil
 		}
-		data, err := os.ReadFile(path)
+		expected, err := entry.Info()
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(root, path)
+		if !expected.Mode().IsRegular() {
+			return fmt.Errorf("fixture entry %s is not regular", path)
+		}
+		file, err := root.Open(path)
 		if err != nil {
 			return err
 		}
-		files[rel] = sha256.Sum256(data)
+		defer file.Close()
+		opened, err := file.Stat()
+		if err != nil {
+			return err
+		}
+		if !opened.Mode().IsRegular() || !os.SameFile(expected, opened) {
+			return fmt.Errorf("fixture entry %s changed identity", path)
+		}
+		data, err := io.ReadAll(file)
+		if err != nil {
+			return err
+		}
+		files[filepath.FromSlash(path)] = sha256.Sum256(data)
 		return nil
 	})
 	return files, err

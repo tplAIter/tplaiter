@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tplAIter/tplaiter/internal/testfixture"
+	"github.com/tplAIter/tplaiter/internal/testfixture/installedfixture"
 )
 
 // leakCanary is a token value that must never appear anywhere except the
@@ -37,7 +37,7 @@ exit 128
 // state file other than the token store; the only sanctioned outlet is the
 // git credential helper protocol answer to git itself.
 func TestTokenNeverLeaks(t *testing.T) {
-	inst := testfixture.BuildInstalled(t)
+	inst := installedfixture.BuildInstalled(t)
 	work, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

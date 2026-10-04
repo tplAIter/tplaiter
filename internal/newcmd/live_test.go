@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/newtransaction"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
@@ -25,7 +27,6 @@ import (
 	"github.com/tplAIter/tplaiter/internal/survey"
 	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
-	"gopkg.in/yaml.v3"
 )
 
 func liveFixture(t *testing.T, extra ...string) (*t5DIntegrationFixture, Options, Deps) {
