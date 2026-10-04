@@ -1,0 +1,63 @@
+# Focused Linux functional acceptance; independent of readonly CLI wiring.
+name: stock-go-linux
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-go-linux-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOWORK: "off"
+  GOTOOLCHAIN: local
+  GO_VERSION: "1.27.x"
+
+jobs:
+  stock-go-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.sum
+            tests/go.sum
+      - name: Require Git for the public source fixture
+        run: git --version
+      - name: Cache public root module dependencies
+        run: go mod download
+      - name: Cache public test module dependencies
+        working-directory: tests
+        run: go mod download
+      - name: Installed stock Go acceptance (offline)
+        working-directory: tests
+        shell: bash
+        env:
+          GOPROXY: "off"
+          GOSUMDB: "off"
+        run: |
+          go test -json -count=1 -timeout=15m -run '^TestStockInstalledPublicGo$' ./... | tee "$RUNNER_TEMP/stock-go-linux.jsonl"
+          python3 - "$RUNNER_TEMP/stock-go-linux.jsonl" <<'PY'
+          import json
+          import sys
+
+          name = "TestStockInstalledPublicGo"
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              events = [json.loads(line) for line in stream if line.strip()]
+          named = [event for event in events if event.get("Test") == name]
+          passes = [event for event in named if event.get("Action") == "pass"]
+          rejected = [event for event in events if event.get("Action") in ("skip", "fail")]
+          if len(passes) != 1 or rejected:
+              raise SystemExit("stock Go Linux acceptance requires one actual named test pass and no skip/fail events")
+          print("TestStockInstalledPublicGo: actual test-level pass (Linux)")
+          PY
