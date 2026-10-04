@@ -657,10 +657,11 @@ func capture(source string) ([]Entry, error) {
 	return es, nil
 }
 
-// activeTransaction refuses a root that still carries transaction locks,
-// journals or pending markers. The probe list is the shared state-ledger
+// activeTransaction refuses a root that still carries durable transaction
+// journals or pending markers. Persistent advisory locks do not prove that a
+// transaction is still active. The probe list is the shared state-ledger
 // classification (internal/stateledger/ledgerpath), so migrate-state and the
-// ledger inventory agree on what counts as transaction state.
+// ledger inventory agree on what counts as transaction evidence.
 func activeTransaction(root string) error {
 	rel, err := ledgerpath.TransactionEvidence(root)
 	if err != nil {
@@ -752,7 +753,7 @@ func Apply(p Plan) (Receipt, error) {
 		if e := GuardLegacyWrite(r.SourceRoot); e != nil {
 			return Receipt{}, e
 		}
-		es, x := capture(r.SourceRoot)
+		es, x := capturePreimage(r.SourceRoot, r)
 		if x != nil {
 			return Receipt{}, x
 		}
@@ -799,6 +800,13 @@ func Apply(p Plan) (Receipt, error) {
 	for i := range roots {
 		if e := p.writeCanonical(filepath.Join(stages[i], "migration.receipt.json"), r); e != nil {
 			return Receipt{}, e
+		}
+		if roots[i].Kind == "home" {
+			f, err := lockHomeWriter(stages[i])
+			if err != nil {
+				return Receipt{}, err
+			}
+			defer unlockRoots([]*os.File{f})
 		}
 	}
 	j.Phase = "committing"
@@ -895,7 +903,7 @@ func matchingReceipt(root Root, p Plan) (Receipt, bool) {
 	if err != nil || !archiveInfo.IsDir() {
 		return Receipt{}, false
 	}
-	entries, err := capture(archive)
+	entries, err := capturePreimage(archive, root)
 	if err != nil {
 		return Receipt{}, false
 	}
@@ -1138,6 +1146,15 @@ func Recover(journalPath string) (Receipt, error) {
 		pending[i] = true
 	}
 	for i, root := range roots {
+		if pending[i] && root.Kind == "home" {
+			f, err := lockHomeWriter(j.Stages[i])
+			if err != nil {
+				return Receipt{}, err
+			}
+			defer unlockRoots([]*os.File{f})
+		}
+	}
+	for i, root := range roots {
 		if existingDestination[i] {
 			if err := sealLegacyRoot(root.SourceRoot, j.Plan.Digest); err != nil {
 				return Receipt{}, err
@@ -1191,7 +1208,7 @@ func sourceOrArchiveMatches(root Root, digest string) error {
 	} else if sourceErr != nil || !sourceInfo.IsDir() {
 		return errors.New("missing source preimage")
 	}
-	entries, err := capture(path)
+	entries, err := capturePreimage(path, root)
 	if err != nil {
 		return err
 	}
@@ -1234,6 +1251,9 @@ func verifyStage(stage string, root Root, p Plan) error {
 		}
 		e, ok := expected[rel]
 		if !ok {
+			if root.Kind == "home" && rel == ledgerpath.HomeLock && info.Size() == 0 && info.Mode().Perm() == 0o600 {
+				return nil
+			}
 			return fmt.Errorf("unexpected stage entry %s", rel)
 		}
 		delete(expected, rel)
@@ -1290,7 +1310,76 @@ func lockRoots(roots []Root) ([]*os.File, error) {
 		}
 		fs = append(fs, f)
 	}
+	for _, r := range roots {
+		if r.Kind != "home" {
+			continue
+		}
+		for _, root := range []string{r.SourceRoot, r.DestinationRoot} {
+			info, err := os.Lstat(root)
+			if os.IsNotExist(err) || (err == nil && info.Mode().IsRegular()) {
+				continue // Absent destination or sealed source tombstone.
+			}
+			if err != nil || !info.IsDir() {
+				unlockRoots(fs)
+				return nil, fmt.Errorf("naming: unsafe home lock root %s", root)
+			}
+			if root == r.DestinationRoot {
+				if _, err := os.Lstat(filepath.Join(root, ledgerpath.HomeLock)); os.IsNotExist(err) {
+					continue // Never add a lock to an existing foreign destination.
+				}
+			}
+			f, err := lockHomeWriter(root)
+			if err != nil {
+				unlockRoots(fs)
+				return nil, err
+			}
+			fs = append(fs, f)
+		}
+	}
 	return fs, nil
+}
+
+// lockHomeWriter uses the same persistent inode and exclusive flock as
+// state.WithLock. Refuse a busy writer instead of waiting on a stale plan.
+func lockHomeWriter(root string) (*os.File, error) {
+	p := filepath.Join(root, ledgerpath.HomeLock)
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err == nil && !info.Mode().IsRegular() {
+		err = errors.New("naming: unsafe home writer lock")
+	}
+	if err == nil {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	}
+	if err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("naming: home writer lock unavailable: %w", err)
+	}
+	return f, nil
+}
+
+// An absent lock at plan time may be created by Apply's writer coordination.
+// Preserve it on disk, but do not treat that empty advisory file as a change
+// to the sealed state preimage. Existing lock bytes remain part of the plan.
+func capturePreimage(path string, root Root) ([]Entry, error) {
+	entries, err := capture(path)
+	if err != nil || root.Kind != "home" {
+		return entries, err
+	}
+	for _, e := range root.Entries {
+		if e.Path == ledgerpath.HomeLock {
+			return entries, nil
+		}
+	}
+	for i, e := range entries {
+		if e.Path == ledgerpath.HomeLock && len(e.Bytes) == 0 && e.Mode == 0o600 {
+			return append(entries[:i], entries[i+1:]...), nil
+		}
+	}
+	return entries, nil
 }
 
 func unlockRoots(fs []*os.File) {

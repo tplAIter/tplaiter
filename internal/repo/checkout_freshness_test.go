@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,6 +48,114 @@ func TestCheckoutLatestSeesFetchedCommits(t *testing.T) {
 
 	if _, err := fsys.Open("fresh.txt"); err != nil {
 		t.Fatalf("checkout @latest does not see the fresh commit after update: %v", err)
+	}
+}
+
+func TestCheckoutRejectsTemplatePathEscapingAtRequestedRef(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+
+	origin := initOrigin(t)
+	templateDir := filepath.Join(origin, "template")
+	writeFile(t, filepath.Join(templateDir, templateManifestName), singleManifest)
+	writeFile(t, filepath.Join(templateDir, "hello.txt"), "safe\n")
+	commitAll(t, origin, "safe template")
+	mainCommit := runGitOutput(t, origin, "rev-parse", "HEAD")
+
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "secret.txt"), "outside\n")
+	if err := os.RemoveAll(templateDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, templateDir); err != nil {
+		t.Fatal(err)
+	}
+	commitAll(t, origin, "malicious template ref")
+	runGit(t, origin, "tag", "malicious")
+	runGit(t, origin, "reset", "--hard", mainCommit)
+
+	m := newIntegrationManager(t)
+	if err := m.Add(ctx, AddOptions{Alias: "escape", URL: fileURL(origin)}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if _, _, err := m.Checkout(ctx, "escape", "malicious", "template"); err == nil || !strings.Contains(err.Error(), "escapes checkout root") {
+		t.Fatalf("Checkout malicious ref error=%v, want checkout-root confinement error", err)
+	}
+}
+
+func TestCheckoutConfinesDescendantSymlinksAtOtherRef(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	origin := initOrigin(t)
+	writeFile(t, filepath.Join(origin, "template", templateManifestName), singleManifest)
+	commitAll(t, origin, "safe main")
+	main := runGitOutput(t, origin, "rev-parse", "HEAD")
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "canary"), "external canary")
+	for _, name := range []string{templateManifestName, "file.txt"} {
+		p := filepath.Join(origin, "template", name)
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(outside, "canary"), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	commitAll(t, origin, "escaping descendants")
+	runGit(t, origin, "tag", "descendants")
+	runGit(t, origin, "reset", "--hard", main)
+	m := newIntegrationManager(t)
+	if err := m.Add(ctx, AddOptions{Alias: "descendants", URL: fileURL(origin)}); err != nil {
+		t.Fatal(err)
+	}
+	fsys, cleanup, err := m.Checkout(ctx, "descendants", "descendants", "template")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cleanup() }()
+	for _, name := range []string{templateManifestName, "file.txt"} {
+		if b, err := fs.ReadFile(fsys, name); err == nil {
+			t.Fatalf("escaping descendant %s read %q", name, b)
+		}
+	}
+}
+
+func TestCheckoutRetainsDirectoryAfterReplacement(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	origin := initOrigin(t)
+	writeFile(t, filepath.Join(origin, "template", templateManifestName), singleManifest)
+	writeFile(t, filepath.Join(origin, "template", "file.txt"), "original")
+	commitAll(t, origin, "safe template")
+	m := newIntegrationManager(t)
+	if err := m.Add(ctx, AddOptions{Alias: "replacement", URL: fileURL(origin)}); err != nil {
+		t.Fatal(err)
+	}
+	fsys, cleanup, err := m.Checkout(ctx, "replacement", "main", "template")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cleanup() }()
+	var wt string
+	for _, line := range strings.Split(runGitOutput(t, m.cloneDir("replacement"), "worktree", "list", "--porcelain"), "\n") {
+		if strings.HasPrefix(line, "worktree ") && strings.Contains(line, "tplater-checkout-replacement-") {
+			wt = strings.TrimPrefix(line, "worktree ")
+		}
+	}
+	if wt == "" {
+		t.Fatal("checkout worktree not found")
+	}
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "file.txt"), "external canary")
+	p := filepath.Join(wt, "template")
+	if err := os.Rename(p, p+"-held"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, p); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := fs.ReadFile(fsys, "file.txt"); err != nil || string(b) != "original" {
+		t.Fatalf("held checkout read %q, %v", b, err)
 	}
 }
 

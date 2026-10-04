@@ -148,17 +148,17 @@ func newTransactionEntry(rel string) (dir, rest string, ok bool) {
 	return dir, rest, true
 }
 
-// transactionProbes are the fixed locations whose presence means that a
-// transaction engine may own the state root. They cover both a home root and
-// a project state directory because the legacy naming migration treats every
-// captured root the same way.
-var transactionProbes = []string{HomeLock, UpdateLock, UpdateJournal, NewLock, NewPendingMarker}
+// transactionProbes are the durable records whose presence means that a
+// transaction engine may own the state root. Persistent advisory lock files
+// are deliberately excluded: their existence does not prove that a process
+// still owns the lock after it exits.
+var transactionProbes = []string{UpdateJournal, NewPendingMarker}
 
-// ErrTransactionEvidence reports that a transaction lock or journal exists.
+// ErrTransactionEvidence reports that durable transaction evidence exists.
 var ErrTransactionEvidence = errors.New("ledgerpath: transaction evidence present")
 
 // TransactionEvidence returns the first relative path under root that is
-// owned by a transaction engine (a lock, a journal or a pending marker), or
+// owned by a transaction engine (a journal or a pending marker), or
 // "" when there is none. It only uses lstat and a directory listing; it never
 // opens, locks or creates a file.
 func TransactionEvidence(root string) (string, error) {
@@ -177,6 +177,9 @@ func TransactionEvidence(root string) (string, error) {
 		return "", fmt.Errorf("ledgerpath: transaction listing: %w", err)
 	}
 	for _, entry := range entries {
+		if !entry.IsDir() {
+			return "", fmt.Errorf("ledgerpath: unsafe transaction entry %s", entry.Name())
+		}
 		rel := path.Join(NewTransactionsDir, entry.Name(), "active.json")
 		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
 			return rel, nil

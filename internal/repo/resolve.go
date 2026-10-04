@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
@@ -160,21 +161,51 @@ func (m *Manager) Checkout(ctx context.Context, alias, gitRef, templatePath stri
 		return nil, nil, fmt.Errorf("repo: checkout %s@%s: %w", alias, gitRef, err)
 	}
 
+	root, err := confinedTemplateRoot(wt, templatePath)
+	if err != nil {
+		_, _ = m.git(ctx, clone, []string{"worktree", "remove", "--force", wt}, nil)
+		_ = os.RemoveAll(wt)
+		return nil, nil, err
+	}
+
 	cleanup := func() error {
+		closeErr := root.Close()
 		// worktree remove detaches and deletes the working directory; RemoveAll is
 		// a safeguard if git left it behind, for example because of a dirty tree.
 		_, rmErr := m.git(ctx, clone, []string{"worktree", "remove", "--force", wt}, nil)
 		if err := os.RemoveAll(wt); err != nil && rmErr == nil {
 			return err
 		}
-		return rmErr
+		if rmErr != nil {
+			return rmErr
+		}
+		return closeErr
 	}
 
-	root := wt
-	if p := normalizeTemplatePath(templatePath); p != "." {
-		root = filepath.Join(wt, filepath.FromSlash(p))
+	return root.FS(), cleanup, nil
+}
+
+// confinedTemplateRoot resolves the indexed template directory in the newly
+// checked-out ref. The index is built from one ref, but callers may request
+// another tag or branch; that ref can replace a directory with a symlink.
+func confinedTemplateRoot(worktree, templatePath string) (*os.Root, error) {
+	if templatePath == "" {
+		templatePath = "."
 	}
-	return os.DirFS(root), cleanup, nil
+	clean, err := manifest.CleanTemplatePath(templatePath)
+	if err != nil {
+		return nil, err
+	}
+	checkout, err := os.OpenRoot(worktree)
+	if err != nil {
+		return nil, fmt.Errorf("repo: open checkout root: %w", err)
+	}
+	defer checkout.Close()
+	root, err := checkout.OpenRoot(filepath.FromSlash(clean))
+	if err != nil {
+		return nil, fmt.Errorf("repo: template path %q escapes checkout root or is unavailable: %w", templatePath, err)
+	}
+	return root, nil
 }
 
 // splitVersion splits a reference into coordinates and version at the last '@'.

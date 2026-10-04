@@ -36,8 +36,23 @@ func TestProjectAndHomeClassification(t *testing.T) {
 	}
 }
 
-func TestTransactionEvidenceFindsLocksJournalsAndMarkers(t *testing.T) {
-	for _, rel := range []string{".lock", "update.lock", "update/active.json", "transactions/new.lock", "new-transaction.pending", "transactions/new/tx-abc/active.json"} {
+func TestTransactionEvidenceIgnoresPersistentLocksAndFindsDurableEvidence(t *testing.T) {
+	for _, rel := range []string{".lock", "update.lock", "transactions/new.lock"} {
+		t.Run("persistent "+rel, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := TransactionEvidence(root); err != nil || got != "" {
+				t.Fatalf("evidence=%q err=%v, want no evidence", got, err)
+			}
+		})
+	}
+	for _, rel := range []string{"update/active.json", "new-transaction.pending", "transactions/new/tx-abc/active.json"} {
 		t.Run(rel, func(t *testing.T) {
 			root := t.TempDir()
 			path := filepath.Join(root, filepath.FromSlash(rel))
@@ -59,5 +74,27 @@ func TestTransactionEvidenceFindsLocksJournalsAndMarkers(t *testing.T) {
 	}
 	if got, err := TransactionEvidence(root); err != nil || got != "" {
 		t.Fatalf("clean root evidence=%q err=%v", got, err)
+	}
+}
+
+func TestTransactionEvidenceRejectsNonDirectoryEntries(t *testing.T) {
+	for _, symlink := range []bool{false, true} {
+		root := t.TempDir()
+		base := filepath.Join(root, "transactions", "new")
+		if err := os.MkdirAll(base, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		var err error
+		if symlink {
+			err = os.Symlink(t.TempDir(), filepath.Join(base, "tx-unknown"))
+		} else {
+			err = os.WriteFile(filepath.Join(base, "tx-unknown"), nil, 0o600)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := TransactionEvidence(root); err == nil {
+			t.Fatalf("unsafe transaction entry accepted (symlink=%v)", symlink)
+		}
 	}
 }

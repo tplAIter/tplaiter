@@ -1,13 +1,17 @@
 package naming
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -1019,10 +1023,11 @@ func TestPlanRejectsUnknownLegacyStateMajorBeforeWrites(t *testing.T) {
 }
 
 // TestActiveTransactionUsesLedgerClassification pins migrate-state to the
-// shared state-ledger probe list: every lock, journal or pending marker the
-// ledger classifies as transaction state blocks planning.
+// shared state-ledger probe list: durable journals and pending markers block
+// planning, while persistent advisory lock files do not prove an active
+// transaction.
 func TestActiveTransactionUsesLedgerClassification(t *testing.T) {
-	for _, rel := range []string{".lock", "update.lock", "update/active.json", "transactions/new.lock", "new-transaction.pending", "transactions/new/tx-1/active.json"} {
+	for _, rel := range []string{"update/active.json", "new-transaction.pending", "transactions/new/tx-1/active.json"} {
 		root := t.TempDir()
 		path := filepath.Join(root, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -1035,7 +1040,106 @@ func TestActiveTransactionUsesLedgerClassification(t *testing.T) {
 			t.Fatalf("%s: activeTransaction=%v", rel, err)
 		}
 	}
+	for _, rel := range []string{".lock", "update.lock", "transactions/new.lock"} {
+		root := t.TempDir()
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := activeTransaction(root); err != nil {
+			t.Fatalf("%s: persistent lock blocked migration: %v", rel, err)
+		}
+	}
 	if err := activeTransaction(t.TempDir()); err != nil {
 		t.Fatalf("clean root refused: %v", err)
+	}
+}
+
+func TestHomeWriterLockHolder(t *testing.T) {
+	root := os.Getenv("TPLAITER_NAMING_LOCK_HOLDER")
+	if root == "" {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(root, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stdout.WriteString("locked\n"); err != nil {
+		t.Fatal(err)
+	}
+	var release [1]byte
+	_, _ = os.Stdin.Read(release[:])
+}
+
+func TestHomeMigrationCoordinatesWriterLock(t *testing.T) {
+	parent := t.TempDir()
+	source, target := filepath.Join(parent, "old"), filepath.Join(parent, "new")
+	writeLegacyHome(t, source)
+	if err := os.WriteFile(filepath.Join(source, ".lock"), []byte("persistent lock bytes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestHomeWriterLockHolder$")
+	cmd.Env = append(os.Environ(), "TPLAITER_NAMING_LOCK_HOLDER="+source)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = stdin.Close(); _ = cmd.Wait() })
+	if line, err := bufio.NewReader(stdout).ReadString('\n'); err != nil || line != "locked\n" {
+		t.Fatalf("lock holder readiness %q: %v %s", line, err, stderr.String())
+	}
+	before, err := capture(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := PlanHome(source, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Apply(p); err == nil || !strings.Contains(err.Error(), "home writer lock unavailable") {
+		t.Fatalf("migration while writer holds lock: %v", err)
+	}
+	after, err := capture(source)
+	if err != nil || !reflect.DeepEqual(before, after) {
+		t.Fatalf("busy migration changed source: %v", err)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("busy migration created destination: %v", err)
+	}
+	if err := stdin.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("lock holder: %v %s", err, stderr.String())
+	}
+	if _, err := Apply(p); err != nil {
+		t.Fatalf("inactive persistent lock blocked migration: %v", err)
+	}
+	for _, root := range []string{target, legacyArchive(source, p.Digest)} {
+		if b, err := os.ReadFile(filepath.Join(root, ".lock")); err != nil || string(b) != "persistent lock bytes\n" {
+			t.Fatalf("persistent lock bytes not preserved at %s: %q %v", root, b, err)
+		}
 	}
 }
