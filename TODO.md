@@ -18,7 +18,7 @@ An overview of tplAIter work. Checked items describe implemented foundations; un
 | ☑ | Provide installed offline CLI `verify`, `check`, and `deps verify` with their MCP counterparts, typed results, finite authenticated contexts, and runtime-owned evidence CAS in `5ec3f53`; prove nonmutation, failure refusals, and cancellation with child cleanup. |
 | ☑ | Confine descriptor-based template checkout and coordinate real writer locks during migrations. |
 | ☐ | Finish verification of trusted CLI/MCP launch behavior and its negative scenarios; Windows remains deferred. |
-| ☐ | Complete offline zero-network platform acceptance for the installed readonly operations; the isolated Linux CI proof remains pending. |
+| ☑ | Verify installed readonly operations on Linux: `TestStockReadonlyInstalledAcceptedBackend` passes in a fresh loopback-only network namespace with zero routes and zero traced IPv4/IPv6 attempts; [CI run 37242552602](https://github.com/tplAIter/tplaiter/actions/runs/37242552602). |
 | ☐ | Restore ordinary live `new` and `update` workflows, settings and workspace operations, diff, linking, adoption, recopy, rebaseline, and reanswer. |
 | ☑ | Provide the typed result envelope, MCP output schemas, cancellation and timeout separation with process cleanup, and the stdio JSON-RPC contract suite. |
 | ☑ | Provide the executor foundation for persistently approved native actions; ordinary `run` and `gen` workflows remain pending. |
