@@ -13,6 +13,9 @@ import (
 // A work package that adds a readonly, trust-owned or legacy-action command
 // adds its row here together with the annotation in its own file.
 var wantPrerunClass = map[string]prerunClass{
+	"tplaiter verify":              prerunTrustOwned,
+	"tplaiter check":               prerunTrustOwned,
+	"tplaiter deps verify":         prerunTrustOwned,
 	"tplaiter ai gen":              prerunLegacyAction, // preserved name collision, see ai.go
 	"tplaiter doctor":              prerunReadonly,
 	"tplaiter env list":            prerunReadonly,
@@ -109,7 +112,7 @@ func TestPreRunClassificationMatchesLegacySwitch(t *testing.T) {
 		if cmd.Name() == "list" && cmd.Parent() != nil && (cmd.Parent().Name() == "gen" || cmd.Parent().Name() == "env") {
 			return "skip"
 		}
-		if cmd.Name() == "migrate-state" || cmd.Name() == "new" || cmd.Name() == "update" {
+		if cmd.Name() == "verify" || cmd.Name() == "check" || cmd.Name() == "migrate-state" || cmd.Name() == "new" || cmd.Name() == "update" {
 			return "skip"
 		}
 		if cmd.Name() == "trust" || (cmd.Parent() != nil && cmd.Parent().Name() == "trust") {

@@ -470,6 +470,22 @@ func TestMCPStdioContract(t *testing.T) {
 			}
 		})
 	}
+	// These tools have dedicated signed stock-project acceptance. This legacy
+	// unsigned discovery fixture exercises their explicit capability refusal.
+	for _, tc := range []struct{ name, operation string }{
+		{"project_verify", "project.verify"},
+		{"project_check", "project.check"},
+		{"deps_verify", "deps.verify"},
+	} {
+		called[tc.name] = true
+		t.Run("tools/call "+tc.name, func(t *testing.T) {
+			res := c.callTool(tc.name, map[string]any{"dir": workdir, "offline": false})
+			op, status, codes := requireEnvelope(t, tc.name, res)
+			if !res.IsError || op != tc.operation || status != "blocked" || len(codes) != 1 || codes[0] != "TPL-E-ONLINE-UNSUPPORTED-001" {
+				t.Fatalf("offline-only refusal: isError=%v op=%s status=%s codes=%v", res.IsError, op, status, codes)
+			}
+		})
+	}
 	t.Run("every tool called", func(t *testing.T) {
 		for _, name := range listToolNames(t, c) {
 			if !called[name] {

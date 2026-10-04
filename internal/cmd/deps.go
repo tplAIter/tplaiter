@@ -18,7 +18,7 @@ var depsSubcommands []func() *cobra.Command
 // registerDepsSubcommand adds a subcommand to the deps group. It records the
 // constructor for per-invocation roots and attaches the subcommand to rootCmd's
 // deps group; package init order between files therefore does not matter.
-func registerDepsSubcommand(factory func() *cobra.Command) { //nolint:unused // extension point for the deps subcommands (U08, U09)
+func registerDepsSubcommand(factory func() *cobra.Command) {
 	depsSubcommands = append(depsSubcommands, factory)
 	for _, c := range rootCmd.Commands() {
 		if c.Name() == "deps" {

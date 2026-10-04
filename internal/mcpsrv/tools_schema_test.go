@@ -15,6 +15,9 @@ import (
 // toolOperations maps every tool to the result/v1 operations it can return.
 // A tool added without an entry fails TestEveryToolHasOutputSchema.
 var toolOperations = map[string][]resultdto.Operation{
+	"project_verify":        {resultdto.OperationProjectVerify},
+	"project_check":         {resultdto.OperationProjectCheck},
+	"deps_verify":           {resultdto.OperationDepsVerify},
 	"trust_inspect":         {resultdto.OperationTrustInspect},
 	"repo_add":              {resultdto.OperationRepoAdd},
 	"repo_list":             {resultdto.OperationRepoList},
@@ -85,7 +88,13 @@ func TestEveryToolHasOutputSchema(t *testing.T) {
 				}
 				validateStructured(t, schema, structuredResult(ok, false), "success")
 			}
-			other := resultdto.New(resultdto.OperationProjectVerify, "test")
+			foreign := resultdto.OperationProjectVerify
+			for _, op := range ops {
+				if op == foreign {
+					foreign = resultdto.OperationProjectCheck
+				}
+			}
+			other := resultdto.New(foreign, "test")
 			other.Project = &resultdto.Project{ID: "p", Root: "/work/p"}
 			if res := structuredResult(other, false); validateAgainst(schema, res) == nil {
 				t.Fatalf("tool %q schema accepts a foreign operation", name)

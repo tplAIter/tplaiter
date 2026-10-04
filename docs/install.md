@@ -4,6 +4,8 @@ tplaiter refuses every trust-gated command (`new`, `update`, `trust *`, `mcp-ser
 
 This page covers the OSS profile built from source. There is no published release yet, and release archives are out of scope until the release-distribution registration exists.
 
+For the installed readonly operations, see [offline verification](offline-verification.md). They use the enrolled finite project contexts described in the [source enrollment guide](source-enrollment.md) and require an exact authenticated project root.
+
 ## Requirements
 
 - macOS (verified on arm64) or Linux. Both have a secure trust store (see ADR-006 for Linux), so `trust provision` works on both. Windows is not supported.

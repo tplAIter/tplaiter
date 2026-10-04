@@ -27,6 +27,7 @@ var toolRegistrars = []func(*Server){
 	(*Server).addRepoTools,
 	(*Server).addTemplateTools,
 	(*Server).addProjectTools,
+	(*Server).addVerifyTools,
 	(*Server).addSettingsTools,
 	(*Server).addGenTools,
 	(*Server).addWorkspaceTools,

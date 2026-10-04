@@ -1,4 +1,5 @@
 ai_gen
+deps_verify
 doctor
 env_setup
 gen
@@ -6,7 +7,9 @@ gen_batch
 gen_list
 init_template
 lint_template
+project_check
 project_new
+project_verify
 projects_list
 repo_add
 repo_list

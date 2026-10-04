@@ -274,6 +274,278 @@
   },
   {
     "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read-only offline verification using an authenticated installed project context. No refresh, network or execution.",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Existing child working directory; independent of the target",
+          "type": "string"
+        },
+        "offline": {
+          "default": true,
+          "description": "Only offline=true is supported",
+          "type": "boolean"
+        },
+        "projectContext": {
+          "description": "Authenticated installed context key; default is the registration key",
+          "type": "string"
+        },
+        "targetDir": {
+          "description": "Optional project locator; must equal the authenticated context root",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "deps_verify",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "deps.verify"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "offline": {
+              "type": "boolean"
+            },
+            "verified": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "offline",
+            "verified"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "DepsVerify"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "deps.verify"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
       "destructiveHint": true,
       "idempotentHint": false,
       "openWorldHint": true,
@@ -2197,6 +2469,364 @@
   },
   {
     "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read-only offline verification using an authenticated installed project context. No refresh, network or execution.",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Existing child working directory; independent of the target",
+          "type": "string"
+        },
+        "offline": {
+          "default": true,
+          "description": "Only offline=true is supported",
+          "type": "boolean"
+        },
+        "projectContext": {
+          "description": "Authenticated installed context key; default is the registration key",
+          "type": "string"
+        },
+        "targetDir": {
+          "description": "Optional project locator; must equal the authenticated context root",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "project_check",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "project.check"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "type": "string"
+            },
+            "findings": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "managed": {
+              "additionalProperties": false,
+              "properties": {
+                "invalid": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "missing": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "modified": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "state",
+                "modified",
+                "missing",
+                "invalid"
+              ],
+              "type": "object"
+            },
+            "offline": {
+              "type": "boolean"
+            },
+            "status": {
+              "type": "string"
+            },
+            "verify": {
+              "additionalProperties": false,
+              "properties": {
+                "dependencyCount": {
+                  "type": "integer"
+                },
+                "dependencyState": {
+                  "type": "string"
+                },
+                "entryCount": {
+                  "type": "integer"
+                },
+                "ledgerCount": {
+                  "type": "integer"
+                },
+                "offline": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "offline",
+                "entryCount",
+                "ledgerCount",
+                "dependencyCount",
+                "dependencyState"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "offline",
+            "apiVersion",
+            "status",
+            "managed",
+            "findings",
+            "verify"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "ProjectCheck"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "project.check"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
       "destructiveHint": true,
       "idempotentHint": false,
       "openWorldHint": true,
@@ -2423,6 +3053,290 @@
         },
         "operation": {
           "const": "project.new"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read-only offline verification using an authenticated installed project context. No refresh, network or execution.",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Existing child working directory; independent of the target",
+          "type": "string"
+        },
+        "offline": {
+          "default": true,
+          "description": "Only offline=true is supported",
+          "type": "boolean"
+        },
+        "projectContext": {
+          "description": "Authenticated installed context key; default is the registration key",
+          "type": "string"
+        },
+        "targetDir": {
+          "description": "Optional project locator; must equal the authenticated context root",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "project_verify",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "project.verify"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "dependencyCount": {
+              "type": "integer"
+            },
+            "dependencyState": {
+              "type": "string"
+            },
+            "entryCount": {
+              "type": "integer"
+            },
+            "ledgerCount": {
+              "type": "integer"
+            },
+            "offline": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "offline",
+            "entryCount",
+            "ledgerCount",
+            "dependencyCount",
+            "dependencyState"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "ProjectVerify"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "project.verify"
         },
         "project": {
           "anyOf": [
