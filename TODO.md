@@ -1,23 +1,26 @@
 # Remaining work
 
-An overview of tplAIter work. Current status and dependencies are tracked in Beads; the identifiers below refer to the local tracker, not to GitHub Issues. Work on the core beta-preview resumed on 2026-09-29; the ☑ rows below that date mark what has landed on `main`.
+An overview of tplAIter work. Checked items describe implemented foundations; unchecked items remain open.
 
-| Status | Work | Beads issues |
-| --- | --- | --- |
-| ☑ | Translate ordinary comments in the core sources and templates; runtime strings and testdata values are out of scope. | `tp-i9g.30.4` |
-| ☑ | Translate the remaining Russian user-facing strings (CLI help, errors, MCP tool descriptions, docs) to English (2026-09-29). | `tp-i9g.2.3` |
-| ☑ | Repair the baseline: Linux build, `go vet`, gofumpt, `go mod tidy`, golangci-lint config at zero issues, `make verify`, split MCP tool and CLI command registration, core PR CI (2026-09-29). | `tp-i9g.4.2.7`, `tp-i9g.15.1` |
-| ☑ | OSS install registration and first-run `trust provision --oss`, installed-binary e2e trust fixture, safe install-root rotation (2026-09-29; merged without the final test run, re-verify in the next wave). | `tp-i9g.4.4`, `tp-i9g.4.3` |
-| ☑ | Linux trust store for proven filesystems, Linux held-stage transport for `mcp-server`, approved runner on Linux (2026-09-29). | `tp-i9g.4.3.2` |
-| ☐ | Finish verification of the trusted CLI/MCP launch and its negative scenarios; Windows is deferred. | `tp-i9g.4` |
-| ☑ | Port the state ledger, crash-safe `new` transactions, ownership ledger, template migrations and the read-only snapshot (2026-09-29). | `tp-i9g.5.1`, `tp-qbk.4` |
-| ☐ | Restore live `new`/`update`/`settings`/`workspace`, read-only `verify`/`check`, `diff`, `link`/`adopt`, `recopy`/`rebaseline` and reanswer. | `tp-i9g.5–6` |
-| ☑ | `result/v1` typed envelope with output schemas on MCP tools, cancellation separated from timeout with process-group cleanup, stdio JSON-RPC contract suite (2026-09-29). | `tp-60o`, `tp-xd6.4`, `tp-xd6.5` |
-| ☐ | Complete the CLI/MCP surface: restore `gen`/`run`/`env setup`/hooks, batch generation, compact output and full CLI↔MCP parity. | `tp-i9g.7` |
-| ☑ | Discover nested templates under a root manifest with path and symlink confinement and duplicate detection (2026-09-29). | `tp-tdm` |
-| ☐ | Complete composition and modifiers in the lifecycle; Go formatting is real, Rust/TypeScript formatting is typed-unsupported in the beta. | `tp-i9g.8` |
-| ☐ | Complete Base/Go/Rust; implement React and the Next modifier. | `tp-i9g.9–13` |
-| ☐ | Extend search, documentation and context retrieval on top of the finished graph. | `tp-i9g.14` |
-| ☐ | Prepare distribution, internal overlays and fleet automation. | `tp-i9g.15–17` |
-| ☐ | Run the overall regression and the final program acceptance. | `tp-i9g.20`, `tp-i9g.22` |
-| ☐ | Benchmark: build a Go project with and without the tplAIter MCP using parallel Sonnet 5 agents; compare tokens and time. | `tp-2v2` |
+| Status | Work |
+| --- | --- |
+| ☑ | Translate ordinary comments in core sources and templates to English while preserving runtime strings and test data. |
+| ☑ | Translate remaining Russian user-facing strings in CLI help, errors, MCP tool descriptions, and documentation to English. |
+| ☑ | Repair the development baseline: Linux build, static checks, formatting, module maintenance, verification, separated CLI and MCP registration, and continuous integration. |
+| ☑ | Provide accepted OSS installation registration, first-run trust provisioning, and installed-binary trust coverage; refuse installation-root reuse or rotation for unproven roots or roots with foreign entries before removing files. |
+| ☑ | Support the Linux trust store on proven filesystems, held-stage MCP transport, and the approved Linux runner. |
+| ☑ | Return a verified typed MCP error for an unsupported trust-store filesystem. |
+| ☑ | Provide the state ledger, crash-safe transaction foundation, ownership tracking, template migrations, and read-only snapshots. |
+| ☑ | Confine descriptor-based template checkout and coordinate real writer locks during migrations. |
+| ☐ | Finish verification of trusted CLI/MCP launch behavior and its negative scenarios; Windows remains deferred. |
+| ☐ | Restore ordinary live `new` and `update` workflows, settings and workspace operations, read-only checks, diff, linking, adoption, recopy, rebaseline, and reanswer. |
+| ☑ | Provide the typed result envelope, MCP output schemas, cancellation and timeout separation with process cleanup, and the stdio JSON-RPC contract suite. |
+| ☑ | Provide the executor foundation for persistently approved native actions; ordinary `run` and `gen` workflows remain pending. |
+| ☐ | Complete the CLI/MCP surface: restore `gen`, `run`, environment setup, hooks, batch generation, compact output, and full CLI-to-MCP parity. |
+| ☑ | Discover nested templates from a root manifest with path and symlink confinement and duplicate detection. |
+| ☐ | Complete composition and modifiers across the lifecycle; Go formatting is implemented, while Rust and TypeScript formatting return typed unsupported results as an accepted beta limitation. |
+| ☐ | Complete the Base, Go, and Rust templates and implement React and the Next modifier. |
+| ☐ | Extend search, documentation, and context retrieval on top of the finished graph. |
+| ☐ | Prepare distribution, overlays, and fleet automation. |
+| ☐ | Reach beta readiness through the overall regression run and final program acceptance. |
+| ☐ | Run matched concurrent Go-project benchmarks with and without the tplAIter MCP using the same requested Sonnet 5 model; verify model availability before execution and compare tokens, elapsed time, and acceptance quality. |
