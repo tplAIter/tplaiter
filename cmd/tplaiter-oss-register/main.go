@@ -9,7 +9,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/ossinstall"
 )
 
@@ -32,6 +32,8 @@ func run(args []string, stdout io.Writer) error {
 	flags := flag.NewFlagSet("tplaiter-oss-register", flag.ContinueOnError)
 	root := flags.String("root", "", "absolute install root for the trust material (required)")
 	publishers := flags.String("publishers", "", "optional JSON file with a list of trusted template publishers")
+	sources := flags.String("source-packages", "", "public initial signed-source package JSON (fresh source-built installation only)")
+	projects := flags.String("project-contexts", "", "finite operator-approved project context JSON")
 	rotate := flags.Bool("rotate", false, "discard an existing installation (and its trust store) and generate a new one")
 	output := flags.String("output", "", "write the linker pins to this file instead of stdout")
 	if err := flags.Parse(args); err != nil {
@@ -52,14 +54,32 @@ func run(args []string, stdout io.Writer) error {
 	}
 	options := ossinstall.Options{Root: absRoot, Rotate: *rotate}
 	if *publishers != "" {
-		raw, err := os.ReadFile(*publishers)
+		raw, err := readPublicInput(*publishers, 1<<20)
 		if err != nil {
 			return fmt.Errorf("read publishers: %w", err)
 		}
-		dec := json.NewDecoder(strings.NewReader(string(raw)))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&options.Publishers); err != nil {
+		if err := canonicaljson.DecodeStrict(raw, &options.Publishers); err != nil {
 			return fmt.Errorf("decode publishers: %w", err)
+		}
+	}
+	if *sources != "" {
+		raw, err := readPublicInput(*sources, ossinstall.MaxSourcePackageInputBytes)
+		if err != nil {
+			return err
+		}
+		options.SourcePackages, err = ossinstall.DecodeSourcePackages(raw)
+		if err != nil {
+			return err
+		}
+	}
+	if *projects != "" {
+		raw, err := readPublicInput(*projects, ossinstall.MaxProjectContextInputBytes)
+		if err != nil {
+			return err
+		}
+		options.ProjectContexts, err = ossinstall.DecodeProjectContexts(raw)
+		if err != nil {
+			return err
 		}
 	}
 	result, err := ossinstall.Generate(options)
@@ -87,3 +107,24 @@ func run(args []string, stdout io.Writer) error {
 // linkerUnsafe lists characters that cannot travel through make variables and
 // -X linker flags intact (they split on whitespace and are shell-quoted).
 const linkerUnsafe = " \t\r\n'\"$`\\"
+
+// Inputs are public JSON documents; no credential/profile file is consumed.
+func readPublicInput(path string, limit int64) ([]byte, error) {
+	f, err := openPublicInput(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > limit {
+		return nil, errors.New("public input is not a bounded regular file")
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > limit {
+		return nil, errors.New("public input size limit")
+	}
+	return raw, nil
+}

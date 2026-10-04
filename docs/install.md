@@ -128,6 +128,127 @@ make install PREFIX="$HOME/.local" TRUST_PUBLISHERS=publishers.json TRUST_ROTATE
 
 The publisher set is part of the pinned descriptor, so changing it means rotating the installation and provisioning again.
 
+## Initial public signed-source enrollment (source builds)
+
+The build-time registration tool accepts a bounded initial importer. This is
+an installation foundation; it does not make `repo add` a trust-enrollment
+command or enable live source selection in every CLI/MCP operation.
+
+Supply operator-approved `publishers.json` as above, **omitting `objectRoot`**:
+this importer always derives object roots inside the new installation. A public
+`source-packages.json` is a list of 1–32 records:
+
+```json
+[
+  {
+    "apiVersion": "tplaiter.dev/initial-source-package/v1",
+    "statement": {
+      "apiVersion": "tplaiter.dev/publisher-statement/v1",
+      "policyOrigin": "https://local.tplaiter.invalid/policy",
+      "issuer": "example-publisher",
+      "predicate": "https://local.tplaiter.invalid/predicate/template-source",
+      "usage": "template-source",
+      "subject": {
+        "origin": "https://git.example.test/templates",
+        "templatePath": ".",
+        "commit": "<full lowercase Git OID>",
+        "treeSHA256": "sha256:<canonical source-content-tree/v1 digest>",
+        "contractSHA256": "sha256:<source-contract/v1 digest>"
+      }
+    },
+    "signature": "<unpadded base64url Ed25519 signature>",
+    "keyFingerprint": "sha256:<approved public key fingerprint>",
+    "objects": {"<Git OID>": "<base64 raw Git frame>"}
+  }
+]
+```
+
+The signature covers the 32 decoded bytes of
+`bootstrap.DomainDigest("tplaiter.dev/publisher-statement/v1", statement)`.
+Statement CAS is the raw statement JSON hash; transparency leaves contain its
+CAS digest **text**, not the signed digest or JSON bytes. Package fingerprints
+are checked against the approved publisher input; packages cannot enroll keys.
+Policy origin, issuer, source origin, template path, predicate and usage must
+match the approved scope exactly.
+
+Each object value encodes uncompressed `kind SP decimal-size NUL data`, keyed
+by its rehashed SHA-1 or SHA-256 Git OID. Include exactly the commit, ancestor
+trees and selected template subtree closure; compressed loose objects, packs,
+unused objects, symlink/gitlink modes and mutable refs are refused. Limits are
+32 packages, 8,192 objects per package, 64 MiB aggregate raw objects and 96 MiB
+input JSON, plus the existing verifier's source bounds. The verified subtree
+must contain a native `template.contract.json` with no dependencies and the
+exact raw hash of `template.manifest.yaml`. Only action-free native manifests
+are supported: no commands, generators, tool requirements, environment
+playbooks or create/update hooks. No fetch, checkout or signing service runs.
+
+An optional `project-contexts.json` contains 1–32 finite contexts, using the
+existing runtime type:
+
+```json
+[
+  {"key":"a","projectID":"project-a","submitterPrincipalID":"principal:operator","minimumProfile":"oss","rootPath":"/absolute/canonical/projects/a"},
+  {"key":"b","projectID":"project-b","submitterPrincipalID":"principal:operator","minimumProfile":"oss","rootPath":"/absolute/canonical/projects/b"}
+]
+```
+
+Keys, IDs and roots must be distinct. Roots cannot nest, overlap the install
+root, traverse symlinks or weaken the OSS profile. The submitter must already
+exist in the generated policy (`principal:operator` or `principal:publisher`).
+A target may be an existing directory or one absent leaf beneath an existing
+canonical directory; enrolling it creates no project content. Each runtime
+selects one authenticated `ProjectContexts` key through existing
+`RuntimeOptions.ProjectKey`; no dynamic registry or ordinary CLI root/reader
+trust override is introduced. The registration selects the first supplied
+context by default. CLI target routing is a separate composition step.
+
+Choose an **absent** install-root path beneath an existing canonical parent, then link with the
+printed pins:
+
+```sh
+go run ./cmd/tplaiter-oss-register \
+  --root /absolute/canonical/new-trust \
+  --publishers publishers.json \
+  --source-packages source-packages.json \
+  --project-contexts project-contexts.json \
+  --output registration.pins
+make install PREFIX="$HOME/.local" $(cat registration.pins)
+tplaiter trust provision
+```
+
+The generator builds one common initial checkpoint containing the envelope
+payload leaf and every signed statement CAS leaf. Existing bootstrap APIs
+verify each signature, exact scope and receipt-bound inclusion before confined
+object/evidence publication. Files and directories are synced in private
+staging before native exclusive atomic publication into the absent install root.
+Linux uses `renameat2(RENAME_NOREPLACE)` and macOS uses
+`renameatx_np(RENAME_EXCL)`. Any existing destination, including an empty
+directory created concurrently, is preserved. Unsupported filesystems are
+refused without an overwrite fallback. Public JSON inputs are opened
+nonblocking and checked as regular files on the opened descriptor, so a FIFO
+with no writer is refused without waiting. An invalid
+import or conflicting immutable bytes cannot replace a prior installation.
+Orphan CAS bytes confer no authority. `config/source-selections.json` is a list
+of **untrusted locators** in the existing SourceSelection wire format; consumers
+must call `Runtime.VerifySubject` again. No independent publisher checkpoint
+can replace the accepted installation checkpoint.
+
+`config/enrollment.json` records the initial source/context contract digest,
+also carried in the linker-pinned registration. Reuse with explicit inputs
+requires the same contract and publisher set, and checks retained object and
+signature bytes. Changed sources or contexts require a fresh root and new
+linker pins; this slice does not update installed authority. `--rotate` is
+refused for an installation carrying this contract, even when the input flags
+are omitted, so it cannot covertly reset an enrolled store. Omitting all input
+flags when reusing an existing installation preserves it.
+
+No retained local publisher key, private profile or helper route is provided.
+The only existing generated signer remains the ephemeral bootstrap anchor,
+which is discarded. A local operator-as-publisher producer requires a separate
+approved provenance and signing interface; credential file contents are never
+part of this public input contract. Release distribution, later source versions,
+authority refresh and general post-install project enrollment remain separate.
+
 ## Rotate
 
 ```sh

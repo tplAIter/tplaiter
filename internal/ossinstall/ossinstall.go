@@ -3,7 +3,7 @@
 //
 // The installing operator is the trust anchor: Generate creates a fresh
 // Ed25519 anchor key, signs a single-authority trust-root envelope with it,
-// records the envelope in a one-leaf transparency log, and discards every
+// records the envelope and initial source statements in a transparency log, and discards every
 // private key before it returns. The resulting documents are pinned by
 // digest, from the leaf documents up to one installed-launch registration.
 // Only the registration's absolute path and digest are then compiled into
@@ -24,7 +24,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -34,6 +33,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
@@ -69,12 +69,13 @@ const (
 // pins its raw SHA-256 at link time and trusts nothing else it cannot reach
 // from these pins.
 type Registration struct {
-	APIVersion     string              `json:"apiVersion"`
-	Profile        bootstrap.ProfileID `json:"profile"`
-	RuntimeConfig  trustload.FilePin   `json:"runtimeConfig"`
-	OperatorRecord trustload.FilePin   `json:"operatorRecord"`
-	InstallationID string              `json:"installationID"`
-	ProjectKey     string              `json:"projectKey"`
+	InitialEnrollmentSHA256 string              `json:"initialEnrollmentSHA256,omitempty"`
+	APIVersion              string              `json:"apiVersion"`
+	Profile                 bootstrap.ProfileID `json:"profile"`
+	RuntimeConfig           trustload.FilePin   `json:"runtimeConfig"`
+	OperatorRecord          trustload.FilePin   `json:"operatorRecord"`
+	InstallationID          string              `json:"installationID"`
+	ProjectKey              string              `json:"projectKey"`
 }
 
 // DecodeRegistration strictly decodes a registration and rejects every
@@ -110,6 +111,12 @@ type Publisher struct {
 
 // Options control Generate.
 type Options struct {
+	// SourcePackages are untrusted public signatures and raw immutable objects.
+	// They are accepted only against Publishers, during a fresh installation.
+	SourcePackages []SourcePackage
+	// ProjectContexts is a finite, operator-approved list. Nil preserves the default.
+	ProjectContexts []trustload.ProjectContext
+
 	// Root is the install root. It is created (mode 0700) when missing and
 	// resolved to a symlink-free absolute path, because the loaders open
 	// every path component with O_NOFOLLOW.
@@ -133,6 +140,9 @@ type Options struct {
 
 // Result describes the registration the binary must be linked against.
 type Result struct {
+	// SelectionsPath is an untrusted locator list, reverified by the installed runtime.
+	SelectionsPath string
+
 	Root               string
 	RegistrationPath   string
 	RegistrationSHA256 string
@@ -175,6 +185,9 @@ var generatedEntries = []string{RegistrationFile, "config", "evidence", "objects
 // Generate creates (or reuses) the operator-pinned OSS installation under
 // options.Root and returns the registration pins for the linker.
 func Generate(options Options) (Result, error) {
+	if options.SourcePackages != nil || options.ProjectContexts != nil {
+		return generateEnrollment(options)
+	}
 	if options.Root == "" || !filepath.IsAbs(options.Root) {
 		return Result{}, errors.New("ossinstall: install root must be an absolute path")
 	}
@@ -202,6 +215,13 @@ func Generate(options Options) (Result, error) {
 		return Result{}, err
 	}
 	if options.Rotate && !empty {
+		raw, readErr := readConfined(root, RegistrationFile)
+		reg, decodeErr := DecodeRegistration(raw)
+		_, contractErr := os.Lstat(filepath.Join(root, "config", "enrollment.json"))
+		if contractErr == nil || readErr == nil && decodeErr == nil && reg.InitialEnrollmentSHA256 != "" {
+			return Result{}, ErrEnrollmentChanged
+		}
+
 		for _, name := range generatedEntries {
 			if err := os.RemoveAll(filepath.Join(root, name)); err != nil {
 				return Result{}, fmt.Errorf("ossinstall: rotate: %w", err)
@@ -319,6 +339,10 @@ func writeOwnershipMarker(root string) error {
 		_ = file.Close()
 		return fmt.Errorf("ossinstall: write ownership marker: %w", err)
 	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("ossinstall: sync ownership marker: %w", err)
+	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("ossinstall: write ownership marker: %w", err)
 	}
@@ -366,11 +390,16 @@ func reuse(root string, requested []publisherScope) (Result, bool, error) {
 }
 
 type generator struct {
-	root     string
-	now      time.Time
-	validity time.Duration
-	rand     io.Reader
-	evidence map[string][]byte
+	root           string
+	disk           string
+	contractDigest string
+	sources        []SourcePackage
+	projects       []trustload.ProjectContext
+	selections     []operationtrust.SourceSelection
+	now            time.Time
+	validity       time.Duration
+	rand           io.Reader
+	evidence       map[string][]byte
 }
 
 func (g *generator) put(raw []byte) string {
@@ -484,19 +513,17 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 	}
 	envelopeRef := g.put(envelopeRaw)
 
-	// One-leaf transparency log holding the envelope payload.
-	leaf := bootstrap.HashLeaf([]byte(envelope.PayloadSHA256))
-	checkpointRaw, err := marshal(bootstrap.Checkpoint{APIVersion: bootstrap.CheckpointAPIVersion, AuthorityID: authorityID, TreeSize: 1, RootHash: "sha256:" + hex.EncodeToString(leaf[:])})
+	// One common receipt-bound checkpoint: envelope payload followed by source CAS strings.
+	leaves := []string{envelope.PayloadSHA256}
+	for _, source := range g.sources {
+		leaves = append(leaves, g.put(source.Statement))
+	}
+	checkpointRef, proofs, err := g.checkpoint(authorityID, leaves)
 	if err != nil {
 		return Result{}, err
 	}
-	checkpointRef := g.put(checkpointRaw)
-	inclusionRaw, err := marshal(bootstrap.InclusionProof{APIVersion: bootstrap.InclusionAPIVersion, LeafIndex: 0, TreeSize: 1, Hashes: []string{}})
-	if err != nil {
-		return Result{}, err
-	}
-	inclusionRef := g.put(inclusionRaw)
-	receipt := bootstrap.Receipt{APIVersion: bootstrap.TrustReceiptAPIVersion, AuthorityID: authorityID, HighestAcceptedSequence: 1, EnvelopePayloadSHA256: envelope.PayloadSHA256, TreeSize: 1, CheckpointDigest: checkpointRef}
+	inclusionRef := proofs[0]
+	receipt := bootstrap.Receipt{APIVersion: bootstrap.TrustReceiptAPIVersion, AuthorityID: authorityID, HighestAcceptedSequence: 1, EnvelopePayloadSHA256: envelope.PayloadSHA256, TreeSize: uint64(len(leaves)), CheckpointDigest: checkpointRef}
 	if receipt.ReceiptDigest, err = receipt.ComputeDigest(); err != nil {
 		return Result{}, fmt.Errorf("ossinstall: receipt: %w", err)
 	}
@@ -527,7 +554,7 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 	// publisher, is the anchor.
 	provisioning := bootstrap.ProvisioningRecord{APIVersion: bootstrap.ProvisioningAPIVersion, Mode: "operator-pinned", DescriptorSHA256: descriptor.DescriptorSHA256, AuthenticationEvidenceSHA256: evidencecas.Digest(operatorRaw), EvidenceClass: bootstrap.EvidenceProduction}
 	provisioning.ProvisioningSHA256 = provisioning.ComputedSHA256()
-	state := bootstrap.OSSAcceptedState{APIVersion: bootstrap.OSSAcceptedStateAPIVersion, DescriptorSHA256: descriptor.DescriptorSHA256, ProvisioningSHA256: provisioning.ProvisioningSHA256, AuthorityID: authorityID, Sequence: 1, EnvelopePayloadSHA256: envelope.PayloadSHA256, ReceiptDigest: receipt.ReceiptDigest, TreeSize: 1, CheckpointDigest: checkpointRef}
+	state := bootstrap.OSSAcceptedState{APIVersion: bootstrap.OSSAcceptedStateAPIVersion, DescriptorSHA256: descriptor.DescriptorSHA256, ProvisioningSHA256: provisioning.ProvisioningSHA256, AuthorityID: authorityID, Sequence: 1, EnvelopePayloadSHA256: envelope.PayloadSHA256, ReceiptDigest: receipt.ReceiptDigest, TreeSize: uint64(len(leaves)), CheckpointDigest: checkpointRef}
 	state.StateSHA256 = state.ComputedSHA256()
 
 	// Execution policy: publishers map to one principal; no approvers, so
@@ -550,10 +577,13 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 		return Result{}, fmt.Errorf("ossinstall: policy: %w", err)
 	}
 
+	if err := g.verifyEnrollment(descriptor, provisioning, state, envelopeRaw, receiptRaw, checkpointRef, proofs); err != nil {
+		return Result{}, err
+	}
 	// Lay out the install root.
 	dirs := map[string]string{"config": "config", "evidence": "evidence", "scratch": "scratch", "objects": "objects", "project": filepath.Join("projects", DefaultProjectKey)}
 	for _, rel := range dirs {
-		if err := os.MkdirAll(filepath.Join(g.root, rel), 0o700); err != nil {
+		if err := os.MkdirAll(g.path(filepath.Join(g.root, rel)), 0o700); err != nil {
 			return Result{}, fmt.Errorf("ossinstall: create %s: %w", rel, err)
 		}
 	}
@@ -565,11 +595,11 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 		if err != nil {
 			return Result{}, err
 		}
-		if pins[name], err = writeDocument(filepath.Join(config, name), raw); err != nil {
+		if pins[name], err = g.writeDocument(filepath.Join(config, name), raw); err != nil {
 			return Result{}, err
 		}
 	}
-	if pins["operator.json"], err = writeDocument(filepath.Join(config, "operator.json"), operatorRaw); err != nil {
+	if pins["operator.json"], err = g.writeDocument(filepath.Join(config, "operator.json"), operatorRaw); err != nil {
 		return Result{}, err
 	}
 	bundle := trustload.StoredBundle{APIVersion: "tplaiter.dev/stored-bootstrap-bundle/v1", EnvelopeCAS: envelopeRef, ReceiptCAS: receiptRef, Transparency: trustload.StoredTransparency{CheckpointCAS: checkpointRef, InclusionProofCAS: inclusionRef}}
@@ -581,11 +611,11 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("ossinstall: bundle: %w", err)
 	}
-	if pins["bundle.json"], err = writeDocument(filepath.Join(config, "bundle.json"), bundleRaw); err != nil {
+	if pins["bundle.json"], err = g.writeDocument(filepath.Join(config, "bundle.json"), bundleRaw); err != nil {
 		return Result{}, err
 	}
 	for digest, raw := range g.evidence {
-		if err := writeCAS(filepath.Join(g.root, "evidence"), digest, raw); err != nil {
+		if err := writeCAS(g.path(filepath.Join(g.root, "evidence")), digest, raw); err != nil {
 			return Result{}, err
 		}
 	}
@@ -599,18 +629,25 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 		objectRoot := p.ObjectRoot
 		if objectRoot == "" {
 			objectRoot = filepath.Join(g.root, "objects", fmt.Sprintf("origin-%d", i))
-			if err := os.MkdirAll(objectRoot, 0o700); err != nil {
+			if err := os.MkdirAll(g.path(objectRoot), 0o700); err != nil {
 				return Result{}, fmt.Errorf("ossinstall: create object root: %w", err)
 			}
 		}
 		origins = append(origins, trustload.ObjectOrigin{Origin: p.SourceOrigin, RootPath: objectRoot})
+	}
+	if err := g.publishSources(origins); err != nil {
+		return Result{}, err
+	}
+	projects := g.projects
+	if projects == nil {
+		projects = []trustload.ProjectContext{{Key: DefaultProjectKey, ProjectID: "local-" + DefaultProjectKey, SubmitterPrincipalID: operatorPrincipal, MinimumProfile: bootstrap.ProfileOSS, RootPath: filepath.Join(g.root, dirs["project"])}}
 	}
 	install := trustload.RuntimeInstall{
 		APIVersion: trustload.RuntimeInstallAPIVersion, InstallationID: installationID,
 		Profile: bootstrap.ProfileOSS, MinimumProfile: bootstrap.ProfileOSS,
 		Descriptor: pins["descriptor.json"], Provisioning: pins["provisioning.json"],
 		OperatorRecord: pins["operator.json"], ExecutionPolicy: pins["policy.json"],
-		ProjectContexts: []trustload.ProjectContext{{Key: DefaultProjectKey, ProjectID: "local-" + DefaultProjectKey, SubmitterPrincipalID: operatorPrincipal, MinimumProfile: bootstrap.ProfileOSS, RootPath: filepath.Join(g.root, dirs["project"])}},
+		ProjectContexts: projects,
 		ObjectOrigins:   origins,
 		EvidenceRoot:    filepath.Join(g.root, "evidence"), ScratchRoot: filepath.Join(g.root, "scratch"),
 		OSS: &trustload.OSSInstall{StorePath: filepath.Join(g.root, "store"), InitialStatePath: pins["state.json"].Path, InitialStateSHA256: state.StateSHA256, InitialBundlePath: pins["bundle.json"].Path, InitialBundleSHA256: bundleDigest},
@@ -627,23 +664,25 @@ func (g *generator) run(configured []Publisher) (Result, error) {
 		return Result{}, fmt.Errorf("ossinstall: runtime install digest: %w", err)
 	}
 	installPath := filepath.Join(config, "runtime.json")
-	if _, err := writeDocument(installPath, installRaw); err != nil {
+	if _, err := g.writeDocument(installPath, installRaw); err != nil {
 		return Result{}, err
 	}
-	registration := Registration{APIVersion: RegistrationAPIVersion, Profile: bootstrap.ProfileOSS, RuntimeConfig: trustload.FilePin{Path: installPath, SHA256: installDigest}, OperatorRecord: install.OperatorRecord, InstallationID: installationID, ProjectKey: DefaultProjectKey}
+	registration := Registration{InitialEnrollmentSHA256: g.contractDigest, APIVersion: RegistrationAPIVersion, Profile: bootstrap.ProfileOSS, RuntimeConfig: trustload.FilePin{Path: installPath, SHA256: installDigest}, OperatorRecord: install.OperatorRecord, InstallationID: installationID, ProjectKey: projects[0].Key}
 	registrationRaw, err := marshal(registration)
 	if err != nil {
 		return Result{}, err
 	}
 	registrationPath := filepath.Join(g.root, RegistrationFile)
-	pin, err := writeDocument(registrationPath, registrationRaw)
+	pin, err := g.writeDocument(registrationPath, registrationRaw)
 	if err != nil {
 		return Result{}, err
 	}
-	if _, err := trustload.Load(context.Background(), registration.Selection()); err != nil {
-		return Result{}, fmt.Errorf("ossinstall: generated installation does not load: %w", err)
+	if g.disk == "" {
+		if _, err := trustload.Load(context.Background(), registration.Selection()); err != nil {
+			return Result{}, fmt.Errorf("ossinstall: generated installation does not load: %w", err)
+		}
 	}
-	return Result{Root: g.root, RegistrationPath: registrationPath, RegistrationSHA256: pin.SHA256, InstallationID: installationID}, nil
+	return Result{Root: g.root, RegistrationPath: registrationPath, RegistrationSHA256: pin.SHA256, InstallationID: installationID, SelectionsPath: filepath.Join(g.root, "config", "source-selections.json")}, nil
 }
 
 // expectedScopes returns the sorted publisher scope keys, the trust-root key
@@ -792,17 +831,16 @@ func writeDocument(path string, raw []byte) (trustload.FilePin, error) {
 	if err := os.Rename(name, path); err != nil {
 		return trustload.FilePin{}, fmt.Errorf("ossinstall: write %s: %w", filepath.Base(path), err)
 	}
+	if err := syncDirectory(filepath.Dir(path)); err != nil {
+		return trustload.FilePin{}, err
+	}
 	return trustload.FilePin{Path: path, SHA256: evidencecas.Digest(raw)}, nil
 }
 
 func writeCAS(root, digest string, raw []byte) error {
+	if evidencecas.Digest(raw) != digest {
+		return errors.New("ossinstall: evidence digest mismatch")
+	}
 	x := strings.TrimPrefix(digest, "sha256:")
-	dir := filepath.Join(root, "sha256", x[:2])
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("ossinstall: evidence: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, x[2:]), raw, 0o600); err != nil && !errors.Is(err, fs.ErrExist) {
-		return fmt.Errorf("ossinstall: evidence: %w", err)
-	}
-	return nil
+	return publishImmutable(root, filepath.Join("sha256", x[:2], x[2:]), raw)
 }

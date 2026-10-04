@@ -53,3 +53,26 @@ func TestRunRejectsBadArguments(t *testing.T) {
 		}
 	}
 }
+
+func TestRunFiniteProjectInputAndClosedPublicPackage(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	contexts := filepath.Join(dir, "contexts.json")
+	raw := `[{"key":"a","projectID":"project-a","submitterPrincipalID":"principal:operator","minimumProfile":"oss","rootPath":"` + filepath.Join(dir, "project-a") + `"},{"key":"b","projectID":"project-b","submitterPrincipalID":"principal:operator","minimumProfile":"oss","rootPath":"` + filepath.Join(dir, "project-b") + `"}]`
+	if err := os.WriteFile(contexts, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := run([]string{"--root", filepath.Join(dir, "trust"), "--project-contexts", contexts}, &out); err != nil {
+		t.Fatal(err)
+	}
+	packages := filepath.Join(dir, "sources.json")
+	if err := os.WriteFile(packages, []byte(`[{"apiVersion":"tplaiter.dev/initial-source-package/v1","publicKey":"self-selected"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"--root", filepath.Join(dir, "bad"), "--source-packages", packages}, &out); err == nil {
+		t.Fatal("package supplied key accepted")
+	}
+}
