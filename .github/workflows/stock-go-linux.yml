@@ -61,3 +61,181 @@ jobs:
               raise SystemExit("stock Go Linux acceptance requires one actual named test pass and no skip/fail events")
           print("TestStockInstalledPublicGo: actual test-level pass (Linux)")
           PY
+      - name: Require network syscall tracing before isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v strace >/dev/null; then
+            sudo -n apt-get update
+            sudo -n apt-get install --yes --no-install-recommends strace
+          fi
+          command -v strace >/dev/null
+          strace --version
+      - name: Installed readonly acceptance without network interfaces or routes
+        working-directory: tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go_bin="$(dirname "$(command -v go)")"
+          mod_cache="$(go env GOMODCACHE)"
+          build_cache="$(go env GOCACHE)"
+          parent_netns="$(readlink /proc/self/ns/net)"
+          runner_uid="$(id -u)"
+          runner_gid="$(id -g)"
+          isolated_home="$RUNNER_TEMP/readonly-linux-home"
+          test_log="$RUNNER_TEMP/readonly-linux.jsonl"
+          receipt="$RUNNER_TEMP/readonly-linux-network.json"
+          trace="$RUNNER_TEMP/readonly-linux-network.strace"
+          trace_stderr="$RUNNER_TEMP/readonly-linux-strace.stderr"
+          trace_status="$RUNNER_TEMP/readonly-linux-strace-status.json"
+          mkdir -p "$isolated_home"
+          # Module caches were warmed above, before entering the namespace.
+          # No inherited environment or credentials enter the test process.
+          sudo -n /usr/bin/unshare --net /usr/bin/env -i \
+            PATH="$go_bin:/usr/bin:/bin" HOME="$isolated_home" \
+            GOMODCACHE="$mod_cache" GOCACHE="$build_cache" \
+            GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOWORK=off \
+            /usr/bin/setpriv --reuid="$runner_uid" --regid="$runner_gid" \
+            --init-groups --bounding-set=-all --no-new-privs \
+            /bin/bash -s -- "$test_log" "$receipt" "$parent_netns" "$trace" "$trace_stderr" "$trace_status" <<'NS'
+          set -euo pipefail
+          command -v strace >/dev/null
+          python3 - "$2" "$3" <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+
+          def ip(*args):
+              return json.loads(subprocess.check_output(
+                  ["/usr/sbin/ip", "-j", *args], text=True))
+
+          namespace = os.readlink("/proc/self/ns/net")
+          interfaces = ip("link", "show")
+          routes4 = ip("-4", "route", "show", "table", "all")
+          routes6 = ip("-6", "route", "show", "table", "all")
+          if (namespace == sys.argv[2] or len(interfaces) != 1
+                  or interfaces[0].get("ifname") != "lo"
+                  or "LOOPBACK" not in interfaces[0].get("flags", [])
+                  or routes4 or routes6):
+              raise SystemExit("readonly acceptance requires a new loopback-only namespace with no routes")
+          receipt = {"isolated": True, "namespace": namespace,
+                     "interfaces": ["lo"], "ipv4Routes": 0, "ipv6Routes": 0}
+          with open(sys.argv[1], "w", encoding="utf-8") as stream:
+              json.dump(receipt, stream, sort_keys=True)
+              stream.write("\n")
+          print("readonly network precheck: isolated namespace, loopback only, zero IPv4/IPv6 routes")
+          PY
+          set +e
+          strace -q -f -e trace=network,exit,exit_group -s 128 -o "$4" \
+            go test -json -count=1 -timeout=15m -run '^TestStockReadonlyInstalledAcceptedBackend$' ./... 2>"$5" | tee "$1"
+          statuses=("${PIPESTATUS[@]}")
+          set -e
+          printf '{"strace":%s,"tee":%s}\n' "${statuses[0]}" "${statuses[1]}" > "$6"
+          test "${statuses[0]}" -eq 0
+          test "${statuses[1]}" -eq 0
+          test -r "$4"
+          test -s "$4"
+          test -r "$5"
+          test ! -s "$5"
+          NS
+          python3 - "$test_log" "$receipt" "$trace" "$trace_stderr" "$trace_status" <<'PY'
+          import json
+          import math
+          import re
+          import sys
+
+          name = "TestStockReadonlyInstalledAcceptedBackend"
+          package = "github.com/tplAIter/tplaiter/tests"
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              events = [json.loads(line) for line in stream if line.strip()]
+          actions = {"start", "run", "pause", "cont", "pass", "output", "skip", "fail", "bench"}
+          fields = {"Time", "Action", "Package", "Test", "Elapsed", "Output", "OutputType"}
+          states = {}
+          for index, event in enumerate(events):
+              if (not isinstance(event, dict) or set(event) - fields
+                      or not isinstance(event.get("Time"), str) or not event["Time"]
+                      or not isinstance(event.get("Action"), str) or event["Action"] not in actions
+                      or not isinstance(event.get("Package"), str) or event["Package"] != package):
+                  raise SystemExit("invalid readonly Go JSON event shape, action or package")
+              action = event["Action"]
+              test = event.get("Test")
+              if "Test" in event and (not isinstance(test, str)
+                      or not (test == name or test.startswith(name + "/"))
+                      or any(not part for part in test.split("/"))):
+                  raise SystemExit("unexpected readonly Go JSON test identity")
+              if action == "pass" and "Elapsed" not in event:
+                  raise SystemExit("readonly Go JSON pass event is missing elapsed time")
+              if "Elapsed" in event and (type(event["Elapsed"]) not in (int, float)
+                      or not math.isfinite(event["Elapsed"]) or event["Elapsed"] < 0):
+                  raise SystemExit("invalid readonly Go JSON elapsed value")
+              if (action == "output" and not isinstance(event.get("Output"), str)
+                      or "Output" in event and not isinstance(event["Output"], str)
+                      or "OutputType" in event and not isinstance(event["OutputType"], str)):
+                  raise SystemExit("invalid readonly Go JSON output")
+              if action in {"skip", "fail", "bench"}:
+                  raise SystemExit("readonly Go JSON contains skip, failure or benchmark")
+              if test is None:
+                  if action not in {"start", "output", "pass"}:
+                      raise SystemExit("invalid readonly Go JSON package event")
+                  if action == "start" and index != 0 or action == "pass" and index != len(events) - 1:
+                      raise SystemExit("invalid readonly Go JSON package boundaries")
+              elif action == "run" and test not in states:
+                  states[test] = "run"
+              elif action == "pause" and states.get(test) == "run":
+                  states[test] = "pause"
+              elif action == "cont" and states.get(test) == "pause":
+                  states[test] = "run"
+              elif action == "pass" and states.get(test) == "run":
+                  states[test] = "pass"
+              elif action != "output" or states.get(test) not in {"run", "pause"}:
+                  raise SystemExit("invalid readonly Go JSON test sequence")
+          if (not events or events[0]["Action"] != "start" or "Test" in events[0]
+                  or events[-1]["Action"] != "pass" or "Test" in events[-1]
+                  or states.get(name) != "pass" or any(state != "pass" for state in states.values())):
+              raise SystemExit("readonly acceptance requires complete package and exact named test passes")
+          with open(sys.argv[2], encoding="utf-8") as stream:
+              receipt = json.load(stream)
+          if (receipt.get("isolated") is not True or receipt.get("interfaces") != ["lo"]
+                  or receipt.get("ipv4Routes") != 0 or receipt.get("ipv6Routes") != 0):
+              raise SystemExit("readonly Linux acceptance requires the network isolation receipt")
+          with open(sys.argv[3], encoding="utf-8") as stream:
+              trace = stream.read()
+          with open(sys.argv[4], encoding="utf-8") as stream:
+              trace_stderr = stream.read()
+          with open(sys.argv[5], encoding="utf-8") as stream:
+              trace_status = json.load(stream)
+          if (trace_stderr != "" or not isinstance(trace_status, dict)
+                  or set(trace_status) != {"strace", "tee"}
+                  or any(type(value) is not int or value != 0 for value in trace_status.values())):
+              raise SystemExit("readonly acceptance requires zero trace diagnostics and successful strace/tee statuses")
+          if not trace.strip():
+              raise SystemExit("readonly Linux acceptance requires a nonempty raw strace")
+          counts = {family: sum(bool(re.search(r"\b" + family + r"\b", line))
+                                for line in trace.splitlines())
+                    for family in ("AF_INET", "AF_INET6", "AF_UNIX")}
+          if counts["AF_INET"] or counts["AF_INET6"]:
+              raise SystemExit("readonly Linux acceptance forbids every IPv4/IPv6 attempt, including failed calls")
+          receipt["tracedTarget"] = name
+          receipt["networkTraceFamilyLines"] = counts
+          receipt["traceStatus"] = trace_status
+          receipt["traceDiagnosticBytes"] = 0
+          with open(sys.argv[2], "w", encoding="utf-8") as stream:
+              json.dump(receipt, stream, sort_keys=True)
+              stream.write("\n")
+          print(name + ": actual named pass; traced AF_INET=0, AF_INET6=0, AF_UNIX="
+                + str(counts["AF_UNIX"]))
+          PY
+      - name: Save bounded readonly acceptance receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: readonly-linux-isolation
+          path: |
+            ${{ runner.temp }}/readonly-linux.jsonl
+            ${{ runner.temp }}/readonly-linux-network.json
+            ${{ runner.temp }}/readonly-linux-network.strace
+            ${{ runner.temp }}/readonly-linux-strace.stderr
+            ${{ runner.temp }}/readonly-linux-strace-status.json
+          if-no-files-found: error
+          retention-days: 7

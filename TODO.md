@@ -15,9 +15,11 @@ An overview of tplAIter work. Checked items describe implemented foundations; un
 | ☑ | Seal inert native generator snippet bytes and typed source/provider/root-lock/profile provenance with ownership and project creation in `993263d`; the verified public Go fixture materializes six snippets. Generator execution, hooks, tools, environment changes, and AI actions remain unsupported on this creation route. |
 | ☑ | Return a verified typed MCP error for an unsupported trust-store filesystem. |
 | ☑ | Provide the state ledger, crash-safe transaction foundation, ownership tracking, template migrations, and read-only snapshots. |
+| ☑ | Provide installed offline CLI `verify`, `check`, and `deps verify` with their MCP counterparts, typed results, finite authenticated contexts, and runtime-owned evidence CAS in `5ec3f53`; prove nonmutation, failure refusals, and cancellation with child cleanup. |
 | ☑ | Confine descriptor-based template checkout and coordinate real writer locks during migrations. |
 | ☐ | Finish verification of trusted CLI/MCP launch behavior and its negative scenarios; Windows remains deferred. |
-| ☐ | Restore ordinary live `new` and `update` workflows, settings and workspace operations, read-only checks, diff, linking, adoption, recopy, rebaseline, and reanswer. |
+| ☐ | Complete offline zero-network platform acceptance for the installed readonly operations; the isolated Linux CI proof remains pending. |
+| ☐ | Restore ordinary live `new` and `update` workflows, settings and workspace operations, diff, linking, adoption, recopy, rebaseline, and reanswer. |
 | ☑ | Provide the typed result envelope, MCP output schemas, cancellation and timeout separation with process cleanup, and the stdio JSON-RPC contract suite. |
 | ☑ | Provide the executor foundation for persistently approved native actions; ordinary `run` and `gen` workflows remain pending. |
 | ☑ | Check real `Generate` and `GenerateBatch` preparation for owned anchors, markers, and idempotency in `10eb614`; the checks reach the execution-unavailable gate without running hooks or claiming live generation completion. |
