@@ -110,8 +110,8 @@ func TestNativeUpdateColdAbortCommand(t *testing.T) {
 		t.Fatalf("repeat cold abort: %v %s", err, out)
 	}
 	out, err = executeNativeGenCLI(in, "update", "continue", id, "--json")
-	if err == nil || exitCodeFor(err) != resultdto.ExitUnavailable || out != "" {
-		t.Fatalf("Continue: %v %s", err, out)
+	if err == nil || exitCodeFor(err) != resultdto.ExitTransaction || out != "" {
+		t.Fatalf("Continue of rolled-back receipt: %v %s", err, out)
 	}
 }
 

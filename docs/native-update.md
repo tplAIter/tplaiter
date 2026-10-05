@@ -1,6 +1,6 @@
 # Signed native Update
 
-This page describes the bounded signed native Update CLI and MCP candidate. It updates one authenticated native project from its registered signed source to a target selected by a closed signed source input. It does not enable the broader Update beta, settings or workspace updates, template actions, or a general recovery workflow.
+Signed file-only native Update CLI/MCP check, plan, and apply plus cold CLI Abort are published in `932d1c4`. They update one authenticated native project from its registered signed source to a target selected by a closed signed source input. Cold CLI Continue is implemented for authenticated prepared, applying, and committed receipts, including repeated no-op terminal confirmation; success is reported after native Commit. The broader Update beta, settings/workspace updates, executable actions, and full recovery remain pending.
 
 Use an installed, provisioned binary and a project created from an enrolled signed native template. Follow [installation](install.md) and [source enrollment](source-enrollment.md) first. A plain build without installed-launch registration cannot run this trust-gated command.
 
@@ -57,10 +57,23 @@ tplaiter update abort <transaction-id> \
   --json
 ```
 
-`abort` reopens only a freshly authenticated native Update receipt with the retained real leases, then rolls back that transaction. It does not use generic `new` recovery. `tplaiter update continue <transaction-id>` is currently typed as unavailable: the native facade does not yet expose the authenticated phase needed to distinguish a preparing transaction from receipt or ownership authentication failures. No cold Continue success is claimed.
+`abort` reopens only a freshly authenticated native Update receipt with the retained real leases, then rolls back that transaction. It does not use generic `new` recovery.
+
+Cold CLI Continue uses the same installed context and exact root:
+
+```sh
+tplaiter update continue <transaction-id> \
+  --project-context <context-key> \
+  --dir /absolute/canonical/project/root \
+  --json
+```
+
+It authenticates the native Update receipt through `OpenUpdate`, retains the real leases, and calls native `Commit`. Supported phases are `prepared`, `applying`, and `committed`; the installed-process proof covers fully applied but uncommitted `applying` receipts, committed and no-op terminal receipts, and repeated terminal confirmation. Success reports `update.continue`, `status: "ok"`, and the authenticated project and transaction ID. It is a CLI recovery command; the MCP `update` tool above continues to expose check, plan, and apply.
+
+Authenticated `preparing` receipts remain unsupported for Continue. Only the native typed preparing refusal maps to `TRUST_NATIVE_UPDATE_CONTINUE_UNSUPPORTED` (exit 8). Genuine seven- and ten-step preparing prefixes preserve staged inventory without publishing project outputs or the registry, and can be aborted. Rolled-back, tampered, missing, or mismatched receipts instead produce `TPL-E-NATIVE-UPDATE-TRANSACTION` (exit 6); finite-context and locator refusals retain their runtime trust classification. A failing Continue does not automatically call Abort: native Commit owns conditional restoration and publication uncertainty. Preserve the receipt and project for recovery rather than assuming every failure undid every change.
 
 ## Current limits
 
-The candidate refuses target templates that declare hooks, commands, tools, environment playbooks, or AI configuration. It also refuses `--all`. Actions, settings updates, workspace updates, the full Update beta, inspector inventory, and wider recovery remain pending.
+Update refuses target templates that declare hooks, commands, tools, environment playbooks, or AI configuration. It also refuses `--all`. Preparing Continue, executable actions, settings/workspace updates, the full Update beta, and wider recovery remain pending. The published writer guard blocks incompatible unfinished native transactions. Read-only transaction inventory is published in `704f4aa`; concrete authenticated ledger verification and migration assembly remain pending. Inventory observations do not grant writer or recovery authority.
 
-A shared-home probe reproduced an authentication refusal when a second project context attempts native Update after the first project has updated in the same tplaiter home. The isolated-home CLI and MCP path is covered; shared-home multi-project completion remains a library-owner limitation pending its fix. This page does not claim that limitation is resolved.
+The earlier shared-home second-project refusal arose from a no-op zero-step receipt bug fixed in `1c71a99`. The installed CLI proof runs signed A-to-B and B-to-B updates for two distinct project contexts in one home under the same installation sealing authority, preserving the first project's bytes, modes, and inodes. This establishes the bounded same-install path; it does not establish authority across foreign installations. Historical malformed receipts containing `steps: null` still fail authentication; they are not automatically normalized or migrated.

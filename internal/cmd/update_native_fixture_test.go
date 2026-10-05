@@ -22,6 +22,10 @@ import (
 // installed launcher/provisioning path. Extra owned files exercise deletion
 // and creation; independent line changes exercise the ordinary three-way path.
 func nativeUpdateCLIFixture(t *testing.T, targetExtra ...string) t5FFixture {
+	return nativeUpdateCLIFixtureWithDirectories(t, false, targetExtra...)
+}
+
+func nativeUpdateCLIFixtureWithDirectories(t *testing.T, directories bool, targetExtra ...string) t5FFixture {
 	t.Helper()
 	options := t5FFixtureOptions{Now: time.Now().UTC()}
 	base := "/private/tmp"
@@ -72,7 +76,7 @@ func nativeUpdateCLIFixture(t *testing.T, targetExtra ...string) t5FFixture {
 	envelope.Signatures = []bootstrap.Signature{{KeyFingerprint: bootstrap.Fingerprint(anchorPublic), SignatureCAS: put([]byte(bootstrap.EncodeSignature(ed25519.Sign(anchor, payload))))}}
 	envelopeRef := put(t5FJSON(t, envelope))
 	_, source := nativeUpdateCLISource(t, filepath.Join(dir, "objects"), "source", "base one\nbase two\nbase three\n")
-	_, target := nativeUpdateCLISource(t, filepath.Join(dir, "objects"), "target", "base one\nbase two\nupstream three\n", targetExtra...)
+	_, target := nativeUpdateCLISourceWithDirectories(t, filepath.Join(dir, "objects"), "target", "base one\nbase two\nupstream three\n", directories, targetExtra...)
 	sourceRefs := t5FPublisherEvidence(t, evidence, publisher, source, "publisher-1")
 	targetRefs := t5FPublisherEvidence(t, evidence, publisher, target, "publisher-1")
 	leaf0, leaf1, leaf2 := bootstrap.HashLeaf([]byte(envelope.PayloadSHA256)), bootstrap.HashLeaf([]byte(sourceRefs.StatementCAS)), bootstrap.HashLeaf([]byte(targetRefs.StatementCAS))
@@ -141,6 +145,10 @@ func nativeUpdateCLIFixture(t *testing.T, targetExtra ...string) t5FFixture {
 }
 
 func nativeUpdateCLISource(t *testing.T, root, suffix, output string, extra ...string) ([]byte, trustverify.Subject) {
+	return nativeUpdateCLISourceWithDirectories(t, root, suffix, output, false, extra...)
+}
+
+func nativeUpdateCLISourceWithDirectories(t *testing.T, root, suffix, output string, directories bool, extra ...string) ([]byte, trustverify.Subject) {
 	t.Helper()
 	manifest := []byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata:\n  name: t5f-" + suffix + "\n  version: 1.0.0\n  description: fixture\nengine:\n  type: gotemplate\n  root: files\nsettings:\n  - group: label\n    title: Label\n    type: string\n    default: ok\n")
 	manifest = append(manifest, []byte("generators:\n  - kind: note\n    description: Signed native note\n    snippet: generators/note.txt.tmpl\n    target: notes/{{ .Name.Snake }}.txt\n    params:\n      - name: label\n        type: string\n        required: true\n        pattern: '^[a-z]+$'\n")...)
@@ -163,7 +171,14 @@ func nativeUpdateCLISource(t *testing.T, root, suffix, output string, extra ...s
 	if suffix == "target" {
 		extraName, extraContent = "added.txt.tmpl", []byte("new owned\n")
 	}
-	files := t5FTree(add, []t5FTreeEntry{{mode: "100644", name: "hello.txt.tmpl", oid: file}, {mode: "100644", name: extraName, oid: add("blob", extraContent)}})
+	fileEntries := []t5FTreeEntry{{mode: "100644", name: "hello.txt.tmpl", oid: file}, {mode: "100644", name: extraName, oid: add("blob", extraContent)}}
+	if directories {
+		for _, name := range []string{"aa", "bb"} {
+			child := t5FTree(add, []t5FTreeEntry{{mode: "100644", name: "note.txt", oid: add("blob", []byte("signed directory\n"))}})
+			fileEntries = append(fileEntries, t5FTreeEntry{mode: "40000", name: name, oid: child})
+		}
+	}
+	files := t5FTree(add, fileEntries)
 	generators := t5FTree(add, []t5FTreeEntry{{mode: "100644", name: "note.txt.tmpl", oid: add("blob", snippet)}})
 	manifestID, contractID := add("blob", manifest), add("blob", contract)
 	rootID := t5FTree(add, []t5FTreeEntry{{mode: "40000", name: "generators", oid: generators}, {mode: "40000", name: "files", oid: files}, {mode: "100644", name: "template.contract.json", oid: contractID}, {mode: "100644", name: "template.manifest.yaml", oid: manifestID}})
@@ -176,6 +191,11 @@ func nativeUpdateCLISource(t *testing.T, root, suffix, output string, extra ...s
 	entries := []trustverify.SourceEntry{{Path: "files", Kind: "directory", Mode: "40000"}, {Path: "files/hello.txt.tmpl", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest([]byte(output))}, {Path: "template.contract.json", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(contract)}, {Path: "template.manifest.yaml", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(manifest)}}
 	entries = append(entries, trustverify.SourceEntry{Path: "files/" + extraName, Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(extraContent)})
 	entries = append(entries, trustverify.SourceEntry{Path: "generators", Kind: "directory", Mode: "40000"}, trustverify.SourceEntry{Path: "generators/note.txt.tmpl", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(snippet)})
+	if directories {
+		for _, name := range []string{"aa", "bb"} {
+			entries = append(entries, trustverify.SourceEntry{Path: "files/" + name, Kind: "directory", Mode: "40000"}, trustverify.SourceEntry{Path: "files/" + name + "/note.txt", Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest([]byte("signed directory\n"))})
+		}
+	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 	treeDigest, err := bootstrap.DomainDigest("tplaiter.dev/source-content-tree/v1", struct {
 		APIVersion string                    `json:"apiVersion"`

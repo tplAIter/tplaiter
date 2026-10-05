@@ -292,19 +292,49 @@ func newNativeUpdateAbortCmd() *cobra.Command {
 	return withResult(c, resultdto.OperationUpdateAbort)
 }
 
-// The facade does not expose authenticated phase or a typed preparing-phase
-// Continue result. Refuse this command explicitly until that narrow cold
-// continuation contract exists; never fall through to generic recovery.
+// Cold Continue authenticates the native kind-bound receipt and commits under
+// retained leases. Only the typed preparing refusal means staging is unavailable.
 func newNativeUpdateContinueCmd() *cobra.Command {
+	var key, dir string
 	c := &cobra.Command{
 		Annotations: prerunAnnotations(prerunTrustOwned),
-		Use:         "continue <transaction-id>", Short: "Native Update continuation (currently unavailable)",
+		Use:         "continue <transaction-id>", Short: "Continue an authenticated native Update transaction",
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return resultdto.NewError("TRUST_NATIVE_UPDATE_CONTINUE_UNSUPPORTED", resultdto.ExitUnavailable, nil)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := nativeGenRuntime(cmd, nativeGenControls{key: key, dir: dir})
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			home, err := readonlyHome()
+			if err != nil {
+				return err
+			}
+			tx, err := projecttransaction.OpenUpdate(cmd.Context(), r, home, args[0], resolveVersion())
+			if err != nil {
+				return nativeUpdateTransactionError(err)
+			}
+			defer tx.Release()
+			if err := tx.Commit(cmd.Context()); err != nil {
+				if errors.Is(err, projecttransaction.ErrUpdatePreparingContinue) {
+					return resultdto.NewError("TRUST_NATIVE_UPDATE_CONTINUE_UNSUPPORTED", resultdto.ExitUnavailable, err)
+				}
+				// Commit owns conditional restoration and publication uncertainty.
+				// A continuation failure does not authorize a separate Abort.
+				return nativeUpdateTransactionError(err)
+			}
+			env := newResult(resultdto.OperationUpdateContinue)
+			env.Project = trustProject(r.ProjectContext())
+			id := tx.ID()
+			env.TransactionID = &id
+			if jsonMode(cmd) {
+				return emitResult(cmd, env, resultdto.ExitSuccess, nil)
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "continued native Update %s\n", id)
+			return err
 		},
 	}
-	c.Flags().String("project-context", "", "key of an authenticated installed project context")
-	c.Flags().String("dir", "", "locator; must match the installed project root")
+	c.Flags().StringVar(&key, "project-context", "", "key of an authenticated installed project context")
+	c.Flags().StringVar(&dir, "dir", "", "locator; must match the installed project root")
 	return withResult(c, resultdto.OperationUpdateContinue)
 }
