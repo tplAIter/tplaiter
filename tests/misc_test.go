@@ -33,7 +33,7 @@ func TestMiscCommandsExitZero(t *testing.T) {
 	}
 }
 
-// TestVersionReportsBuildVersion verifies that `tplater version` prints
+// TestVersionReportsBuildVersion verifies that `tplaiter version` prints
 // EXACTLY the version compiled in by ldflags in TestMain (buildVersion) — the
 // only guarantee that scenario 3's version gate (requires.tplaiter) checks the
 // intended value rather than a "dev" stub (see main_test.go:buildVersion).

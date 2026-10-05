@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// runResult — result of one tplater binary invocation.
+// runResult — result of one tplaiter binary invocation.
 type runResult struct {
 	Stdout   string
 	Stderr   string
@@ -24,9 +24,9 @@ type runResult struct {
 // gitIdentityEnv — git environment variables for DETERMINISTIC commits
 // without relying on the machine's global ~/.gitconfig (following
 // internal/newcmd/newcmd_test.go:gitEnv). They are passed BOTH to our helper
-// git commands (building origin fixtures) AND to the tplater binary under test
+// git commands (building origin fixtures) AND to the tplaiter binary under test
 // (repo add clones, init-template runs git init+commit); otherwise
-// `tplater init-template` without user.name/user.email merely downgrades a
+// `tplaiter init-template` without user.name/user.email merely downgrades a
 // commit failure to a warning (see inittemplate.go:initGit), and scenario 1
 // would not see a .git directory with a real commit on a CI runner without
 // configured git identity.
@@ -43,7 +43,7 @@ func gitIdentityEnv() []string {
 // (except help/version/completion/self-upgrade, see
 // internal/cmd/selfupgrade.go:suggestSkip) on its first run in a fresh
 // TPLAITER_HOME starts a background `git ls-remote --tags
-// <canonical-tplater-repository>` (internal/selfupdate.MaybeSuggest) — a
+// <canonical-tplaiter-repository>` (internal/selfupdate.MaybeSuggest) — a
 // network request with a timeout of up to 2s for EVERY test, unnecessary and
 // potentially unstable on a runner without network access. The format is
 // exactly what state.SaveConfig (internal/state/config.go) writes, verified by
@@ -59,7 +59,7 @@ func newHome(t *testing.T) string {
 	return home
 }
 
-// run starts the tplater binary with TPLAITER_HOME=home and working directory
+// run starts the tplaiter binary with TPLAITER_HOME=home and working directory
 // dir (an empty string means a temporary empty directory, therefore certainly
 // NOT inside any project/template). It never calls t.Fatal for a non-zero exit
 // code; that alone is not a test error, only a process launch failure (missing
@@ -76,7 +76,7 @@ func run(t *testing.T, home, dir string, args ...string) runResult {
 		os.Environ(),
 		"TPLAITER_HOME="+home,
 		"NO_COLOR=1",
-		// $SHELL is used by `tplater run`/hooks (execRunCommand); normalize it to
+		// $SHELL is used by `tplaiter run`/hooks (execRunCommand); normalize it to
 		// a POSIX shell regardless of the runner/developer shell environment.
 		"SHELL=/bin/sh",
 	), gitIdentityEnv()...)
@@ -111,7 +111,7 @@ func mustRun(t *testing.T, home, dir string, args ...string) runResult {
 
 // requireGit skips the test if git is not found in PATH — the same contract as
 // internal/newcmd/newcmd_test.go and internal/inittemplate/e2e_test.go (git is
-// needed both by the harness to build origin fixtures and by tplater for repo
+// needed both by the harness to build origin fixtures and by tplaiter for repo
 // add/init-template).
 func requireGit(t *testing.T) {
 	t.Helper()
@@ -122,7 +122,7 @@ func requireGit(t *testing.T) {
 
 // runGit executes a git command with deterministic identity
 // (gitIdentityEnv). It is used ONLY by the harness to prepare fixture origin
-// repositories, not by tplater itself (tplater runs git through its own
+// repositories, not by tplaiter itself (tplaiter runs git through its own
 // Runner).
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
@@ -212,7 +212,7 @@ func buildSingleOrigin(t *testing.T, src string, tags ...string) string {
 }
 
 // gateFixtureManifest — minimal template manifest with a requires.tplaiter
-// version gate unreachable by any real tplater version (">=99.0.0"). This is
+// version gate unreachable by any real tplaiter version (">=99.0.0"). This is
 // the only deterministic way to exercise checkTplaterVersion
 // (internal/newcmd/slug.go) as a black box: the test binary is built with a
 // fixed buildVersion (see main_test.go), and no existing fixture template
@@ -231,7 +231,7 @@ requires:
 `
 
 // buildVersionGateOrigin builds a single-template repository whose manifest
-// requires tplater >=99.0.0. `tplater new` from it must fail at
+// requires tplater >=99.0.0. `tplaiter new` from it must fail at
 // checkTplaterVersion BEFORE creating any files (scenario 3, project
 // documentation/implementation requirement: "version gate").
 func buildVersionGateOrigin(t *testing.T) string {

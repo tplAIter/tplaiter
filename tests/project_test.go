@@ -8,7 +8,7 @@ import (
 // TestEnvGenAI runs env/gen/ai against generated projects
 // (scenario 6, implementation requirement): `env list` on a project WITHOUT
 // playbooks (testdata/fixtures/single-basic declares no environment.playbooks);
-// `gen list` and `ai validate` on a project from `tplater init-template` (it
+// `gen list` and `ai validate` on a project from `tplaiter init-template` (it
 // includes generators + ai-config "out of the box" — the only fixture where
 // these commands see a non-empty result).
 func TestEnvGenAI(t *testing.T) {

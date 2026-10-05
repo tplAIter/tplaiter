@@ -93,7 +93,7 @@ func TestFindRoot_OutsideProject(t *testing.T) {
 
 // TestFindRoot_StopsAtHome verifies that the search does not walk above $HOME,
 // even when a project marker exists in a parent of $HOME (for example, the
-// user works in a tplater project somewhere in the home tree, while the
+// user works in a tplaiter project somewhere in the home tree, while the
 // parent of $HOME happens to contain another .tplaiter/project.yaml that must
 // not be searched).
 func TestFindRoot_StopsAtHome(t *testing.T) {

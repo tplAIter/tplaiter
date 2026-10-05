@@ -9,7 +9,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
-// TestGenFlowFromResolvedSettings reproduces the `tplater ai gen` path: it
+// TestGenFlowFromResolvedSettings reproduces the `tplaiter ai gen` path: it
 // resolves project settings (settings.Resolve), validates ai-config against
 // the template manifest, and renders all targets into the project root, gating
 // modules by ActiveValues. This library e2e does not depend on the cmd package.

@@ -12,7 +12,7 @@ import (
 // --defaults) -> run test -> settings set -> update --check -> stats --json
 // -> projects list.
 //
-// The template source is `tplater init-template` (internal/inittemplate), not
+// The template source is `tplaiter init-template` (internal/inittemplate), not
 // testdata/fixtures: its skeleton carries settings (feature_x toggle, variant
 // select), a files rule, commands, a hook, generators, ai-config, and an
 // environment playbook — the only repository fixture covering ALL subcommands

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestNewErrors runs error paths for `tplater new` (scenario 3, implementation
+// TestNewErrors runs error paths for `tplaiter new` (scenario 3, implementation
 // requirement): unknown template, repeated new into an occupied directory,
 // and the requires.tplaiter version gate.
 func TestNewErrors(t *testing.T) {

@@ -1,6 +1,6 @@
-// Package e2e is the black-box e2e harness for the tplater CLI.
+// Package e2e is the black-box e2e harness for the tplaiter CLI.
 //
-// All tests run the REAL tplater binary through os/exec (they call no
+// All tests run the REAL tplaiter binary through os/exec (they call no
 // internal package directly; this is a separate module, see go.mod), with
 // an isolated TPLAITER_HOME per test and real file:// git repositories
 // (without network). Assertions follow harness_test.go: exit codes,
@@ -20,7 +20,7 @@ import (
 	"testing"
 )
 
-// binPath is the built tplater binary path, prepared once in TestMain and shared
+// binPath is the built tplaiter binary path, prepared once in TestMain and shared
 // by all package tests (building it for every test would be wasteful).
 var binPath string
 
@@ -33,7 +33,7 @@ var binPath string
 // version gate always skips this check and scenario 3 would be untestable.
 const buildVersion = "v1.0.0"
 
-// TestMain builds the tplater binary from the repository root (../) into a temporary
+// TestMain builds the tplaiter binary from the repository root (../) into a temporary
 // directory before package tests run. The exit code is handled separately by
 // [runMain], rather than os.Exit in TestMain itself, because otherwise
 // `defer os.RemoveAll(tmp)` would never run (os.Exit does not unwind the defer

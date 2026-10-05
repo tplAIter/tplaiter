@@ -24,7 +24,7 @@ import (
 )
 
 // TestE2E_InitTemplateToNewProject runs the full requirement-2 path:
-// init-template → git repository → tplater repo add file:// → tplater new →
+// init-template → git repository → tplaiter repo add file:// → tplaiter new →
 // project created (README rendered, feature_x path works).
 func TestE2E_InitTemplateToNewProject(t *testing.T) {
 	if _, err := (execx.Exec{}).LookPath("git"); err != nil {
@@ -45,7 +45,7 @@ func TestE2E_InitTemplateToNewProject(t *testing.T) {
 		t.Fatalf("expected a git repository: %v", err)
 	}
 
-	// 2. tplater repo add file://<repoDir>.
+	// 2. tplaiter repo add file://<repoDir>.
 	home := filepath.Join(base, "home")
 	t.Setenv(state.HomeEnv, home)
 	if _, _, err := state.EnsureHome(); err != nil {

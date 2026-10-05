@@ -74,7 +74,7 @@ func templateFileURL(dir string) string { return "file://" + dir }
 
 // newTemplateTestManager creates repo.Manager with real git and an isolated
 // home/store (TPLAITER_HOME is set to t.TempDir()), the same instance used by
-// `tplater repo add` in production but directly (without cobra) for faster
+// `tplaiter repo add` in production but directly (without cobra) for faster
 // fixture setup.
 func newTemplateTestManager(t *testing.T) *repo.Manager {
 	t.Helper()
