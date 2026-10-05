@@ -10,6 +10,7 @@ init_template
 lint_template
 project_check
 project_diff
+project_link
 project_new
 project_verify
 projects_list

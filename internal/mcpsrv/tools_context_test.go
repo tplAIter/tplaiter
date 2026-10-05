@@ -59,8 +59,8 @@ func TestContextToolRejectsUnknownWindowAndAuthority(t *testing.T) {
 	}
 }
 
-// The shared golden is the complete union. Removing only context must preserve
-// the inherited 28 named tools, and context must be the single added name.
+// The shared golden is the complete union. Removing the two named additions
+// must preserve the inherited 28 named tools.
 func TestContextPreservesSharedToolSurface(t *testing.T) {
 	raw, err := os.ReadFile(toolsGoldenPath)
 	if err != nil {
@@ -68,24 +68,31 @@ func TestContextPreservesSharedToolSurface(t *testing.T) {
 	}
 	var expected []string
 	contextNames := 0
+	projectLinkNames := 0
 	for _, name := range strings.Fields(string(raw)) {
-		if name == "context" {
+		switch name {
+		case "context":
 			contextNames++
-			continue
+		case "project_link":
+			projectLinkNames++
+		default:
+			expected = append(expected, name)
 		}
-		expected = append(expected, name)
 	}
-	if contextNames != 1 || len(expected) != 28 {
-		t.Fatalf("shared union must contain inherited 28 plus exactly one context: inherited=%d context=%d", len(expected), contextNames)
+	if contextNames != 1 || projectLinkNames != 1 || len(expected) != 28 {
+		t.Fatalf("shared union must contain inherited 28 plus context and project_link: inherited=%d context=%d project_link=%d", len(expected), contextNames, projectLinkNames)
 	}
 	s := New("/nonexistent/tplaiter", "test", nil)
 	tools := s.MCP().ListTools()
-	if _, ok := tools["context"]; !ok || len(tools) != 29 {
-		t.Fatalf("registered union must contain inherited 28 plus context: tools=%d", len(tools))
+	if _, ok := tools["context"]; !ok {
+		t.Fatal("registered union is missing context")
+	}
+	if _, ok := tools["project_link"]; !ok || len(tools) != 30 {
+		t.Fatalf("registered union must contain inherited 28 plus context and project_link: tools=%d", len(tools))
 	}
 	var inherited []string
 	for name := range tools {
-		if name != "context" {
+		if name != "context" && name != "project_link" {
 			inherited = append(inherited, name)
 		}
 	}
@@ -94,5 +101,5 @@ func TestContextPreservesSharedToolSurface(t *testing.T) {
 	if strings.Join(inherited, "\n") != strings.Join(expected, "\n") {
 		t.Fatal("context registration changed another owner's named tool surface")
 	}
-	t.Logf("inherited %d named tools preserved; context is the only added name", len(inherited))
+	t.Logf("inherited %d named tools preserved; context and project_link are the named additions", len(inherited))
 }

@@ -106,6 +106,16 @@ func InspectJournal(ctx context.Context, runtime *trustload.Runtime, home, id st
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
+	// An untrusted kind selects only a verifier; it never supplies admission.
+	if raw, err := privateRead(filepath.Join(journalDir(home, id), "plan.json"), 128<<20); err == nil {
+		var outer envelope
+		var header struct {
+			Kind string `json:"kind"`
+		}
+		if canonicaljson.DecodeStrict(raw, &outer) == nil && json.Unmarshal(outer.Payload, &header) == nil && header.Kind == NativeLinkKind {
+			return inspectFirstMarker(ctx, runtime, home, id)
+		}
+	}
 	pc := runtime.ProjectContext()
 	trusted := runtime.TrustRuntime()
 	if trusted == nil || pc.RootPath == "" || pc.ProjectID == "" || overlaps(pc.RootPath, home) {

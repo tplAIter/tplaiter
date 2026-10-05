@@ -2,12 +2,15 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 )
 
 func (t *Transaction) expectedSteps() []step {
@@ -239,6 +242,26 @@ func (t *Transaction) rejectActiveJournals() error {
 		id := strings.TrimPrefix(e.Name(), "tx-")
 		if len(id) != 32 {
 			return ErrAuthentication
+		}
+		if raw, err := privateRead(filepath.Join(parent, e.Name(), "plan.json"), 128<<20); err == nil {
+			var outer envelope
+			var header struct {
+				Kind string `json:"kind"`
+			}
+			if canonicaljson.DecodeStrict(raw, &outer) == nil && json.Unmarshal(outer.Payload, &header) == nil && header.Kind == NativeLinkKind {
+				// Shared installation sealing proves a historical terminal
+				// fence even for another named context; it grants no root authority.
+				prior := &Transaction{key: t.key, dir: filepath.Join(parent, e.Name()), plan: immutable{Kind: NativeLinkKind}}
+				var plan immutable
+				var state firstMarkerState
+				if prior.readSigned("plan.json", &plan) != nil || prior.readSigned("state.json", &state) != nil || plan.APIVersion != APIVersion || plan.Kind != NativeLinkKind || plan.ID != id || state.APIVersion != APIVersion || state.Kind != NativeLinkKind || state.ID != id || state.Fingerprint != plan.Material.Fingerprint || plan.Material.Home != t.plan.Material.Home {
+					return ErrAuthentication
+				}
+				if state.Phase != "committed" && state.Phase != "rolled-back" {
+					return ErrActive
+				}
+				continue
+			}
 		}
 		var p immutable
 		var state progress
