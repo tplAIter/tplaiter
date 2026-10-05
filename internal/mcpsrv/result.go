@@ -193,6 +193,7 @@ func toolOutputSchema(op resultdto.Operation) (json.RawMessage, error) {
 // dataSchemas maps each operation behind an MCP tool to the JSON schema of
 // its data payload, derived from the resultdto data types.
 var dataSchemas = map[resultdto.Operation]func() (json.RawMessage, error){
+	resultdto.OperationProjectDiff:         schemaOf[resultdto.ProjectDiffData],
 	resultdto.OperationProjectVerify:       schemaOf[resultdto.ProjectVerifyData],
 	resultdto.OperationProjectCheck:        schemaOf[resultdto.ProjectCheckData],
 	resultdto.OperationDepsVerify:          schemaOf[resultdto.DepsVerifyData],

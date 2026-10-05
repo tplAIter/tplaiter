@@ -13,6 +13,7 @@ import (
 // A work package that adds a readonly, trust-owned or legacy-action command
 // adds its row here together with the annotation in its own file.
 var wantPrerunClass = map[string]prerunClass{
+	"tplaiter diff":                prerunTrustOwned,
 	"tplaiter verify":              prerunTrustOwned,
 	"tplaiter check":               prerunTrustOwned,
 	"tplaiter deps verify":         prerunTrustOwned,

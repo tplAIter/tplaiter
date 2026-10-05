@@ -8,6 +8,7 @@ gen_list
 init_template
 lint_template
 project_check
+project_diff
 project_new
 project_verify
 projects_list

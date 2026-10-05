@@ -501,6 +501,7 @@ func TestMCPStdioContract(t *testing.T) {
 		name, operation string
 		args            map[string]any
 	}{
+		{"project_diff", "project.diff", map[string]any{"dir": project, "exitCode": true}},
 		{"gen_list", "gen.list", map[string]any{"dir": project}},
 		{"gen", "gen.run", map[string]any{"dir": project, "kind": "crud", "name": "Ride", "noBuild": true}},
 		{"gen_batch", "gen.batch", map[string]any{"dir": project, "operations": []any{map[string]any{"kind": "crud", "name": "Ride"}}, "noBuild": true}},

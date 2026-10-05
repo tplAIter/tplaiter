@@ -15,6 +15,7 @@ import (
 // toolOperations maps every tool to the result/v1 operations it can return.
 // A tool added without an entry fails TestEveryToolHasOutputSchema.
 var toolOperations = map[string][]resultdto.Operation{
+	"project_diff":          {resultdto.OperationProjectDiff},
 	"project_verify":        {resultdto.OperationProjectVerify},
 	"project_check":         {resultdto.OperationProjectCheck},
 	"deps_verify":           {resultdto.OperationDepsVerify},
