@@ -1,4 +1,4 @@
-// Package gen implements the `tplater gen <kind> <Name>` scaffolder (SPEC-01 §6):
+// Package gen implements the `tplaiter gen <kind> <Name>` scaffolder (SPEC-01 §6):
 // a manifest-model port of go-template's internal/gen anchor mechanics
 // (idempotency marker, insertion before an anchor, backup/rollback after a
 // post-step error, Go formatting post-steps, and the build gate).
@@ -30,7 +30,7 @@ import (
 )
 
 // GeneratorsRelPath — path to the copied generator-snippet directory in a
-// generated project, relative to its root (C2/C4 contract: `tplater new` copies
+// generated project, relative to its root (C2/C4 contract: `tplaiter new` copies
 // here the directory referenced by the template manifest's Generator.Snippet/Anchor.Insert).
 const GeneratorsRelPath = ".tplaiter/generators"
 
@@ -149,7 +149,7 @@ func kindNames(tpl *manifest.Template) []string {
 	return names
 }
 
-// List returns each manifest generator's status for values (for `tplater gen
+// List returns each manifest generator's status for values (for `tplaiter gen
 // list`): whether it is available (see [evalGate]) and, if not, what to enable.
 func List(tpl *manifest.Template, values settings.Values) []Status {
 	out := make([]Status, 0, len(tpl.Generators))
@@ -236,7 +236,7 @@ func Generate(ctx context.Context, tpl *manifest.Template, kind, rawName string,
 	}
 	if !available {
 		return nil, fmt.Errorf(
-			"gen %s is unavailable with current settings (%s) — enable the setting: tplater settings set %s",
+			"gen %s is unavailable with current settings (%s) — enable the setting: tplaiter settings set %s",
 			kind, gateReason(g.When, nil), suggestSet(g.When),
 		)
 	}

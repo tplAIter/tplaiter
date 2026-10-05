@@ -65,7 +65,7 @@ func TestUpgrade_Brew(t *testing.T) {
 	if len(r.Calls) != 0 {
 		t.Errorf("Upgrade() ran %d commands for brew channel, want 0 (instruction only)", len(r.Calls))
 	}
-	if !strings.Contains(out.String(), "brew upgrade tplater") {
+	if !strings.Contains(out.String(), "brew upgrade tplaiter") {
 		t.Errorf("Upgrade() output = %q, want brew instruction", out.String())
 	}
 }
@@ -80,7 +80,7 @@ func TestUpgrade_Unknown(t *testing.T) {
 		t.Errorf("Upgrade() ran %d commands for unknown channel, want 0 (instructions only)", len(r.Calls))
 	}
 	got := out.String()
-	if !strings.Contains(got, "go install example.com/mod@latest") || !strings.Contains(got, "brew upgrade tplater") {
+	if !strings.Contains(got, "go install example.com/mod@latest") || !strings.Contains(got, "brew upgrade tplaiter") {
 		t.Errorf("Upgrade() output = %q, want both go install and brew instructions", got)
 	}
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// contributeRunner — runner for glab/gh commands used by `tplater upgrade`. A
+// contributeRunner — runner for glab/gh commands used by `tplaiter upgrade`. A
 // package variable replaced with execx.RecordingRunner in tests (like repoRunner).
 var contributeRunner execx.Runner = execx.Exec{}
 
@@ -21,7 +21,7 @@ func init() {
 	registerCommand(newUpgradeCmd)
 }
 
-// newUpgradeCmd creates `tplater upgrade`: the reverse flow, where improvements
+// newUpgradeCmd creates `tplaiter upgrade`: the reverse flow, where improvements
 // in the generated project are proposed to the template through an MR/PR.
 func newUpgradeCmd() *cobra.Command {
 	var (
@@ -36,7 +36,7 @@ func newUpgradeCmd() *cobra.Command {
 		Use:   "upgrade",
 		Short: "Propose project improvements to template (MR/PR)",
 		Long: "Compares the project working tree with a clean render of the pinned template version " +
-			"(baseline, like `tplater stats`) and proposes changed files back to the template repository. " +
+			"(baseline, like `tplaiter stats`) and proposes changed files back to the template repository. " +
 			"Candidates are modified baseline files (go.mod/go.sum excluded as noisy); " +
 			"extra files are added only with explicit --files <glob>. Selected files are de-parametrized " +
 			"(slug/module/project name → placeholders `{{ .Project.* }}`), placed in the template `.tmpl` " +

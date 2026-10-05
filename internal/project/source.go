@@ -22,7 +22,7 @@ var ErrSourceUnavailable = errors.New("manifest source unavailable")
 
 // ErrNoManifest is returned by [LoadManifestForProject] when no source in the
 // chain can provide a manifest.
-var ErrNoManifest = errors.New("no template cache or manifest snapshot — run tplater update")
+var ErrNoManifest = errors.New("no template cache or manifest snapshot — run tplaiter update")
 
 // ManifestSource resolves a template manifest for a project at a pinned
 // version. Implementations are [repoSource] (the preferred source, checking
@@ -39,7 +39,7 @@ type ManifestSource interface {
 }
 
 // SnapshotSource reads .tplaiter/manifest.snapshot.yaml from the project root.
-// Root is the snapshot saved by `tplater new`/`update` so that `run`/`gen` work
+// Root is the snapshot saved by `tplaiter new`/`update` so that `run`/`gen` work
 // offline when the template repository is unavailable.
 type SnapshotSource struct {
 	Root string

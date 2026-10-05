@@ -51,7 +51,7 @@ func (m *Manager) resolveGitAuth(ctx context.Context, repoURL string, kind state
 		return m.storeTokenFromReader(host, tool, repoURL)
 	}
 	if !m.ui.Interactive {
-		m.warnf("token for %s not found, continuing without authentication (for a private repository add token: `tplater auth add %s`)\n", host, host)
+		m.warnf("token for %s not found, continuing without authentication (for a private repository add token: `tplaiter auth add %s`)\n", host, host)
 		return nil, nil
 	}
 	return m.interactiveAuth(ctx, repoURL, host, kind, tool)

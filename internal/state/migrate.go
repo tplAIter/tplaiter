@@ -42,13 +42,13 @@ func peekVersion(data []byte) (int, error) {
 
 // checkAndMigrate compares a file version with the supported current version
 // and applies registered migrations in sequence when the file is older.
-// version > current means a newer tplater created the file and there is no safe
+// version > current means a newer tplaiter created the file and there is no safe
 // rollback, so it returns a clear update hint. version < current without a
 // registered migration is also an error: the registry is incomplete.
 func checkAndMigrate(kind fileKind, data []byte, version, current int) ([]byte, error) {
 	if version > current {
 		return nil, fmt.Errorf(
-			"state: %s: file version (%d) is newer than supported by this tplater version (%d) — update tplater",
+			"state: %s: file version (%d) is newer than supported by this tplaiter version (%d) — update tplaiter",
 			kind, version, current,
 		)
 	}

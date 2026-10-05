@@ -58,5 +58,5 @@ func MaybeSuggest(ctx context.Context, runner execx.Runner, home, current string
 	}
 
 	p := ui.Default()
-	fmt.Fprintln(out, p.Muted(fmt.Sprintf("new version %s available: tplater --upgrade", latest)))
+	fmt.Fprintln(out, p.Muted(fmt.Sprintf("new version %s available: tplaiter --upgrade", latest)))
 }

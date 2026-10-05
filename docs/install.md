@@ -282,4 +282,6 @@ rm "$HOME/.local/bin/tplaiter"
 rm -rf "$HOME/.local/lib/tplaiter/trust"
 ```
 
+The executable is named `tplaiter`; the `tplater.db` filename is retained for storage compatibility.
+
 The token store for template repositories (`~/.tplaiter/tplater.db`) and other per-user state under `~/.tplaiter` are separate from the trust installation. Remove them only if you no longer need the saved tokens and registered projects.

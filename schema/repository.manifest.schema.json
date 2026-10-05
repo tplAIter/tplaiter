@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tplater.dev/schema/repository.manifest.schema.json",
-  "title": "tplater Repository manifest",
-  "description": "tplater repo.manifest.yaml schema. Manual, for IDE hints. Filesystem confinement (symlinks, existence) is enforced by discovery; see docs/template-discovery.md.",
+  "title": "tplaiter Repository manifest",
+  "description": "tplaiter repo.manifest.yaml schema. Manual, for IDE hints. Filesystem confinement (symlinks, existence) is enforced by discovery; see docs/template-discovery.md.",
   "type": "object",
   "required": ["apiVersion", "kind", "metadata"],
   "additionalProperties": false,

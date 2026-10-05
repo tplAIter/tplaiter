@@ -1,6 +1,6 @@
 # testdata/fixtures
 
-Mini-templates (single/multi-repo) for offline tplater tests (file:// repositories,
+Mini-templates (single/multi-repo) for offline tplaiter tests (file:// repositories,
 no network). Contain examples for the rendering engine (`internal/engine`) —
 generic templates with `.Settings`, `is`/`has`, `__if_group__`/`__if_group=value__`
 directories, file rules, etc., used by unit and e2e tests of

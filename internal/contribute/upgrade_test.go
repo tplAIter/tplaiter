@@ -309,7 +309,7 @@ func TestUpgrade_E2E_MR(t *testing.T) {
 	}
 	// The description contains the metadata block.
 	desc := argValue(glab.Args, "--description")
-	if !strings.Contains(desc, "## tplater upgrade") || !strings.Contains(desc, "example/svc@v1.0.0") {
+	if !strings.Contains(desc, "## tplaiter upgrade") || !strings.Contains(desc, "example/svc@v1.0.0") {
 		t.Errorf("description has no metadata block:\n%s", desc)
 	}
 

@@ -15,7 +15,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// aiTargetsFlag — `--targets` flag for `tplater ai gen` (empty → all
+// aiTargetsFlag — `--targets` flag for `tplaiter ai gen` (empty → all
 // targets in the source config.json; see [aiconfig.RenderOptions.Targets]).
 var aiTargetsFlag []string
 
@@ -23,14 +23,14 @@ func init() {
 	registerCommand(newAICmd)
 }
 
-// newAICmd creates the `tplater ai` command: generate/list/validate the
+// newAICmd creates the `tplaiter ai` command: generate/list/validate the
 // project's AI configuration (CLAUDE.md/.cursor/**/AGENTS.md/GEMINI.md)
 // from the copied .tplaiter/ai-config directory (contract with /).
 func newAICmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "ai",
 		Short: "AI configuration for the project (CLAUDE.md, .cursor/**, AGENTS.md, GEMINI.md)",
-		Long: "Works with the ai-config directory copy that `tplater new` places in the project " +
+		Long: "Works with the ai-config directory copy that `tplaiter new` places in the project " +
 			"as .tplaiter/ai-config. Modules are gated by a `when` condition (§3.2) based on " +
 			"current project settings — a module without when is always active.",
 	}
@@ -62,7 +62,7 @@ func loadAIContext() (tpl *manifest.Template, values settings.Values, root strin
 	return tpl, settingsValues(proj.Settings), root, src, nil
 }
 
-// newAIGenCmd creates `tplater ai gen`.
+// newAIGenCmd creates `tplaiter ai gen`.
 func newAIGenCmd() *cobra.Command {
 	c := &cobra.Command{
 		// Preserved from the former name-based switch, which matched every command
@@ -128,7 +128,7 @@ func printAIResult(cmd *cobra.Command, res *aiconfig.Result) error {
 	return nil
 }
 
-// newAIListCmd creates `tplater ai list`.
+// newAIListCmd creates `tplaiter ai list`.
 func newAIListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -182,8 +182,8 @@ func printAIList(cmd *cobra.Command, src *aiconfig.Source, values settings.Value
 	return nil
 }
 
-// newAIValidateCmd creates `tplater ai validate`. The template manifest is
-// resolved through the same source chain as `tplater run`/`gen` ([loadRunContext]
+// newAIValidateCmd creates `tplaiter ai validate`. The template manifest is
+// resolved through the same source chain as `tplaiter run`/`gen` ([loadRunContext]
 // → [project.LoadManifestForProject]): the repository cache is currently always
 // unavailable, so .tplaiter/manifest.snapshot.yaml is used in practice — a
 // missing snapshot produces a clear error ([project.ErrNoManifest]) without

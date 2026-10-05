@@ -8,11 +8,11 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
-// Upgrade performs a tplater self-update according to installation channel
+// Upgrade performs a tplaiter self-update according to installation channel
 // :
 //   - [ChannelGoInstall]: `go install <modulePath>@latest`, streaming output to out;
-//   - [ChannelBrew]: prints `brew upgrade tplater` (brew manages its own
-//     packages, so invoking it from tplater is outside the MVP);
+//   - [ChannelBrew]: prints `brew upgrade tplaiter` (brew manages its own
+//     packages, so invoking it from tplaiter is outside the MVP);
 //   - otherwise (unknown channel): prints both instructions as a fallback for
 //     the user to choose manually.
 //
@@ -29,7 +29,7 @@ func Upgrade(ctx context.Context, runner execx.Runner, channel Channel, modulePa
 		printBrewInstruction(out)
 		return nil
 	default:
-		fmt.Fprintln(out, "tplater installation channel not recognized — update manually using one of the following methods:")
+		fmt.Fprintln(out, "tplaiter installation channel not recognized — update manually using one of the following methods:")
 		printGoInstallInstruction(out, modulePath)
 		printBrewInstruction(out)
 		return nil
@@ -48,7 +48,7 @@ func upgradeGoInstall(ctx context.Context, runner execx.Runner, modulePath strin
 		return fmt.Errorf("selfupdate: go install %s: %w", target, err)
 	}
 
-	fmt.Fprintln(out, "Done — changes will take effect on the next tplater run.")
+	fmt.Fprintln(out, "Done — changes will take effect on the next tplaiter run.")
 	return nil
 }
 
@@ -60,5 +60,5 @@ func printGoInstallInstruction(out io.Writer, modulePath string) {
 }
 
 func printBrewInstruction(out io.Writer) {
-	fmt.Fprintln(out, "  brew upgrade tplater")
+	fmt.Fprintln(out, "  brew upgrade tplaiter")
 }

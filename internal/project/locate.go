@@ -1,6 +1,6 @@
-// Package project discovers a tplater project from an arbitrary working
+// Package project discovers a tplaiter project from an arbitrary working
 // directory and resolves the template manifest to which it is linked
-// (the base infrastructure for `tplater run`).
+// (the base infrastructure for `tplaiter run`).
 //
 // The package does not read or write the ~/.tplaiter/projects.yaml registry;
 // that belongs to a separate implementation. It only searches upward for the
@@ -29,9 +29,9 @@ const LegacyMarkerRelPath = ".tplater/project.yaml"
 // absent from the starting directory and all parents up to $HOME or the file
 // system root. errors.Is distinguishes this case from other filesystem or
 // parsing errors, which FindRoot returns unchanged.
-var ErrNotInProject = errors.New("directory is not a tplater project")
+var ErrNotInProject = errors.New("directory is not a tplaiter project")
 
-// FindRoot searches for the tplater project root by walking upward from
+// FindRoot searches for the tplaiter project root by walking upward from
 // startDir until it finds .tplaiter/project.yaml. It stops at the user's home
 // directory ($HOME, when defined) or the filesystem root; each boundary is
 // checked before stopping, so a marker directly in $HOME or "/" is found.
@@ -111,7 +111,7 @@ func FindRoot(startDir string) (root string, proj *manifest.Project, err error) 
 
 	return "", nil, fmt.Errorf(
 		"%w: %s not found in %s or any parent directory — "+
-			"command must be run inside a project created with `tplater new`",
+			"command must be run inside a project created with `tplaiter new`",
 		ErrNotInProject, MarkerRelPath, startDir,
 	)
 }

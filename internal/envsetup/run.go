@@ -1,21 +1,21 @@
 // Package envsetup executes environment Ansible playbooks declared by the
 // template in its manifest (environment.playbooks, SPEC-01 §2, SPEC-03 §4).
-// tplater does not try to understand every possible project-environment setup;
+// tplaiter does not try to understand every possible project-environment setup;
 // it installs the single universal tool (Ansible) and delegates to a playbook
 // carried by the template.
 //
 // The package is named envsetup rather than env: the latter is too closely
 // associated with the standard library (os.Environ, etc.) and would be
-// misleading beside internal/cmd/env.go (the `tplater env` CLI command that wraps this package).
+// misleading beside internal/cmd/env.go (the `tplaiter env` CLI command that wraps this package).
 //
-// # .tplaiter/environment contract (for C2 — `tplater new`)
+// # .tplaiter/environment contract (for C2 — `tplaiter new`)
 //
 // A created project has no template checkout: rendering (engine) leaves only
 // the gotemplate result over the settings tree, while playbook files
 // (environment.playbooks[].file, usually "environment/setup.yml", etc.) are
-// addressed relative to the TEMPLATE ROOT, not the project. For `tplater env`
+// addressed relative to the TEMPLATE ROOT, not the project. For `tplaiter env`
 // to run playbooks after the template checkout has been removed or updated,
-// C2 (`tplater new`) MUST copy (not render — verbatim, including .yml/.j2/vars
+// C2 (`tplaiter new`) MUST copy (not render — verbatim, including .yml/.j2/vars
 // and any Ansible-specific files) the directories referenced by the template's
 // environment.playbooks[].file paths into the project at:
 //
@@ -27,7 +27,7 @@
 // copy the entire template directory under .tplaiter/environment/, preserving
 // its 1:1 structure; then Playbook.File can be joined with TemplateDir without
 // path renormalization. [EnvironmentRelPath] is the canonical relative path so
-// both contract parties (C2 and `tplater env`) use one constant. Package tests
+// both contract parties (C2 and `tplaiter env`) use one constant. Package tests
 // place playbook files manually (without a real C2/checkout pass).
 package envsetup
 
@@ -47,7 +47,7 @@ import (
 )
 
 // EnvironmentRelPath — project environment-directory path relative to the
-// project root. `tplater new` (C2) copies template playbook files there (see the
+// project root. `tplaiter new` (C2) copies template playbook files there (see the
 // package docs); [Options].TemplateDir is built with filepath.Join(root, EnvironmentRelPath).
 const EnvironmentRelPath = ".tplaiter/environment"
 
@@ -55,7 +55,7 @@ const EnvironmentRelPath = ".tplaiter/environment"
 // `{ name: ansible, required: false, install: { brew: ansible, apt: ansible } }`).
 // required is true here not in the template-manifest sense (Ansible is not
 // globally required there), but as a local requirement of this operation:
-// without ansible-playbook, `tplater env setup` simply cannot run.
+// without ansible-playbook, `tplaiter env setup` simply cannot run.
 var ansibleTool = manifest.Tool{
 	Name:     "ansible",
 	Required: true,
@@ -87,7 +87,7 @@ var ErrPlaybookFileNotFound = errors.New("envsetup: playbook file not found")
 // approved executable adapter.
 var ErrAnsibleAdapterUnavailable = errors.New("TRUST_ANSIBLE_ADAPTER_UNAVAILABLE")
 
-// PlaybookInfo — one environment playbook for the `tplater env list` report.
+// PlaybookInfo — one environment playbook for the `tplaiter env list` report.
 type PlaybookInfo struct {
 	// Name — playbook identifier (environment.playbooks[].name).
 	Name string
@@ -161,7 +161,7 @@ func NewRunner(exec execx.Runner, out io.Writer, pal ui.Palette) *Runner {
 type Options struct {
 	// TemplateDir — directory containing playbook files (usually
 	// <project root>/.tplaiter/environment; see [EnvironmentRelPath] and the
-	// package contract with `tplater new`). Playbook.File resolves via
+	// package contract with `tplaiter new`). Playbook.File resolves via
 	// filepath.Join(TemplateDir, Playbook.File).
 	TemplateDir string
 	// ProjectRoot — project root: ansible-playbook working directory and source
@@ -195,7 +195,7 @@ type Options struct {
 //
 // An ansible-playbook error (non-zero exit code) is returned as-is, containing
 // *execx.ExitError; errors.As lets the calling command layer
-// (internal/cmd/env.go) propagate the same exit code through tplater (see the
+// (internal/cmd/env.go) propagate the same exit code through tplaiter (see the
 // same technique in execRunCommand in run.go).
 func (r *Runner) RunPlaybook(ctx context.Context, opts Options) error {
 	return ErrAnsibleAdapterUnavailable
@@ -205,7 +205,7 @@ func (r *Runner) RunPlaybook(ctx context.Context, opts Options) error {
 			if os.IsNotExist(err) {
 				return fmt.Errorf(
 					"%w: %s (playbook %q from manifest environment.playbooks) — check that "+
-						"`tplater new` copied the template environment directory to %s",
+						"`tplaiter new` copied the template environment directory to %s",
 					ErrPlaybookFileNotFound, playbookPath, opts.Playbook.Name, EnvironmentRelPath,
 				)
 			}

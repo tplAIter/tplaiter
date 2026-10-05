@@ -84,7 +84,7 @@ func TestLoadTemplate_ForeignAPIVersion(t *testing.T) {
 	if !errors.Is(err, ErrUnsupportedAPIVersion) {
 		t.Fatalf("err = %v, want ErrUnsupportedAPIVersion", err)
 	}
-	if !strings.Contains(err.Error(), "update tplater") {
+	if !strings.Contains(err.Error(), "update tplaiter") {
 		t.Errorf("message does not ask to update: %v", err)
 	}
 }

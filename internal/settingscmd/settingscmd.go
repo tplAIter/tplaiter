@@ -1,8 +1,8 @@
-// Package settingscmd orchestrates `tplater settings`: viewing current project
+// Package settingscmd orchestrates `tplaiter settings`: viewing current project
 // settings (list), changing them through --set (set), and interactively re-asking
 // one group (edit).
 //
-// set/edit use the same 3-way mechanics as `tplater update`, but on ONE template
+// set/edit use the same 3-way mechanics as `tplaiter update`, but on ONE template
 // version: base is a clean render of OLD project values, target a render of NEW
 // values. Changing a select removes the old file vertical (hash==baseline →
 // deletion; locally changed files warn) and adds the new one. Computation is
@@ -54,7 +54,7 @@ type Options struct {
 type Deps struct {
 	// Manager — template-version resolution/checkout (repository cache).
 	Manager *repo.Manager
-	// Home — tplater home directory (project registry, lock).
+	// Home — tplaiter home directory (project registry, lock).
 	Home string
 	// Out, Err — main output and warning streams.
 	Out io.Writer
@@ -143,7 +143,7 @@ func Edit(ctx context.Context, d Deps, opts Options) error {
 			return fmt.Errorf("settings edit: %w", rerr)
 		}
 		printSettingsTable(d.Out, d.Palette, ch.tpl, resolved.Values)
-		fmt.Fprintln(d.Out, d.Palette.Muted("specify group to re-ask: tplater settings edit <group>"))
+		fmt.Fprintln(d.Out, d.Palette.Muted("specify group to re-ask: tplaiter settings edit <group>"))
 		return nil
 	}
 
@@ -289,7 +289,7 @@ func applyChange(ctx context.Context, d Deps, ch *change, opts Options, confirm 
 
 	if ch.tpl.AIConfig.Path != "" {
 		fmt.Fprintln(d.Err, d.Palette.Warn("warning: ")+
-			"ai-config composition may have changed with settings — regenerate: tplater ai gen")
+			"ai-config composition may have changed with settings — regenerate: tplaiter ai gen")
 	}
 	fmt.Fprintln(d.Out, d.Palette.Success("settings applied"))
 	if len(conflicts) > 0 {

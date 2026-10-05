@@ -24,8 +24,8 @@ func TestMaybeSuggest_PrintsWhenOutdated(t *testing.T) {
 	var out bytes.Buffer
 	MaybeSuggest(context.Background(), r, home, "v1.0.0", time.Now(), &out)
 
-	if !strings.Contains(out.String(), "v9.9.9") || !strings.Contains(out.String(), "tplater --upgrade") {
-		t.Errorf("MaybeSuggest() output = %q, want mention of v9.9.9 and tplater --upgrade", out.String())
+	if !strings.Contains(out.String(), "v9.9.9") || !strings.Contains(out.String(), "tplaiter --upgrade") {
+		t.Errorf("MaybeSuggest() output = %q, want mention of v9.9.9 and tplaiter --upgrade", out.String())
 	}
 
 	rs, err := state.LoadRunState(home)

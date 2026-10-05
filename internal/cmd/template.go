@@ -30,7 +30,7 @@ func init() {
 	registerCommand(newTemplateCmd)
 }
 
-// newTemplateCmd creates `tplater template`: the catalog of templates from
+// newTemplateCmd creates `tplaiter template`: the catalog of templates from
 // added repositories, with listing, inspection, and tree export.
 func newTemplateCmd() *cobra.Command {
 	c := &cobra.Command{
@@ -203,7 +203,7 @@ func reportEmptyTemplateList(out io.Writer, mgr *repo.Manager) error {
 	}
 	if len(infos) == 0 {
 		fmt.Fprintln(out, "No templates found: no repositories have been added. "+
-			"Add a repository: `tplater repo add <alias> <url>`.")
+			"Add a repository: `tplaiter repo add <alias> <url>`.")
 		return nil
 	}
 	fmt.Fprintln(out, "No templates found: no template matches the specified filters.")

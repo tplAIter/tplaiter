@@ -56,7 +56,7 @@ type Manager struct {
 	now func() time.Time
 }
 
-// New creates a manager. home is the tplater home directory (see state.Home).
+// New creates a manager. home is the tplaiter home directory (see state.Home).
 // authStore may be nil, making the auth flow unavailable for https URLs; git
 // then runs without a credential helper, suitable for public/file:// repositories.
 func New(home string, runner execx.Runner, authStore *auth.Store, u UI) *Manager {
@@ -242,7 +242,7 @@ func (m *Manager) Update(ctx context.Context, alias string) error {
 	for _, ref := range targets {
 		dest := m.cloneDir(ref.Alias)
 		if _, statErr := os.Stat(dest); statErr != nil {
-			m.warnf("repository %q: clone missing (%s) — skipping; run `tplater repo remove/add`\n", ref.Alias, dest)
+			m.warnf("repository %q: clone missing (%s) — skipping; run `tplaiter repo remove/add`\n", ref.Alias, dest)
 			continue
 		}
 		authEnv, aerr := m.resolveGitAuthQuiet(ref.URL, ref.Type)
@@ -365,13 +365,13 @@ func (m *Manager) git(ctx context.Context, dir string, args, extraEnv []string) 
 
 // CloneDir returns the cache clone path for repository alias
 // (~/.tplaiter/repos/<alias>). It is exported for internal/contribute
-// (`tplater upgrade`), which creates a branch in the cache clone and returns it
+// (`tplaiter upgrade`), which creates a branch in the cache clone and returns it
 // to the original ref after push; the private [Manager.cloneDir] serves the rest.
 func (m *Manager) CloneDir(alias string) string { return m.cloneDir(alias) }
 
 // RunGit runs an arbitrary git command in dir with extraEnv (usually the
 // credential helper from [auth.HelperEnv] for push). It is a thin exported
-// wrapper around private [Manager.git] for internal/contribute (`tplater upgrade`),
+// wrapper around private [Manager.git] for internal/contribute (`tplaiter upgrade`),
 // which needs to branch, commit, push, and format-patch through the same runner.
 func (m *Manager) RunGit(ctx context.Context, dir string, args, extraEnv []string) (execx.Result, error) {
 	return m.git(ctx, dir, args, extraEnv)

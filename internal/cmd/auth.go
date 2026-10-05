@@ -199,7 +199,7 @@ func newAuthImportCmd(use, bin, toolName, defaultHost string) *cobra.Command {
 	var hostname string
 	c := &cobra.Command{
 		Use:   use + " [--hostname <h>]",
-		Short: fmt.Sprintf("Import token from %s into tplater store", bin),
+		Short: fmt.Sprintf("Import token from %s into tplaiter store", bin),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if _, err := authRunner.LookPath(bin); err != nil {

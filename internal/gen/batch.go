@@ -184,7 +184,7 @@ func planBatchOperation(tpl *manifest.Template, op Operation, opts Options, rese
 		return batchPlan{}, fmt.Errorf("gen %s: evaluating when: %w", op.Kind, gateErr)
 	}
 	if !available {
-		return batchPlan{}, fmt.Errorf("gen %s is unavailable with current settings (%s) — enable the setting: tplater settings set %s", op.Kind, gateReason(g.When, nil), suggestSet(g.When))
+		return batchPlan{}, fmt.Errorf("gen %s is unavailable with current settings (%s) — enable the setting: tplaiter settings set %s", op.Kind, gateReason(g.When, nil), suggestSet(g.When))
 	}
 
 	gctx, err := newContext(op.Name, opts.Values, opts.Project)

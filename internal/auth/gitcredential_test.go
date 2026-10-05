@@ -111,6 +111,9 @@ func TestRunGitCredential_StoreDoesNotCreate(t *testing.T) {
 	if logw.Len() == 0 {
 		t.Error("expected diagnostic log for unstored host")
 	}
+	if !strings.Contains(logw.String(), "tplaiter auth: store") || strings.Contains(logw.String(), "tplater auth") {
+		t.Errorf("store diagnostic uses the wrong executable name: %q", logw.String())
+	}
 }
 
 func TestRunGitCredential_EraseNoOp(t *testing.T) {
@@ -124,6 +127,9 @@ func TestRunGitCredential_EraseNoOp(t *testing.T) {
 	}
 	if all, _ := st.List(); len(all) != 1 {
 		t.Errorf("erase deleted a row: List() len = %d, want 1 (no-op)", len(all))
+	}
+	if !strings.Contains(logw.String(), "tplaiter auth: erase") || strings.Contains(logw.String(), "tplater auth") {
+		t.Errorf("erase diagnostic uses the wrong executable name: %q", logw.String())
 	}
 }
 

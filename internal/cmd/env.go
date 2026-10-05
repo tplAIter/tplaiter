@@ -20,7 +20,7 @@ import (
 // execx.RecordingRunner, while the default uses real os/exec.
 var envRunner execx.Runner = execx.Exec{}
 
-// envAutoYes — `--yes` for `tplater env setup`: confirms ansible installation
+// envAutoYes — `--yes` for `tplaiter env setup`: confirms ansible installation
 // without an interactive prompt (SPEC-03 §4). A full huh-confirm belongs to
 // the questionnaire task (C2/tp-U1); this is the sole consent source for
 // non-interactive scenarios (CI, scripts).
@@ -30,14 +30,14 @@ func init() {
 	registerCommand(newEnvCmd)
 }
 
-// newEnvCmd creates `tplater env` (SPEC-03 §4): the single entry point for
+// newEnvCmd creates `tplaiter env` (SPEC-03 §4): the single entry point for
 // environment ansible playbooks shipped with the template.
 func newEnvCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "env",
 		Short: "Set up project environment through template ansible playbooks",
 		Long: "The template declares environment.playbooks (SPEC-01 §2) — ansible playbooks " +
-			"for environment setup (infrastructure, dependencies, etc.). tplater is the single " +
+			"for environment setup (infrastructure, dependencies, etc.). tplaiter is the single " +
 			"entry point for running them: it installs ansible if needed and executes the playbook " +
 			"with extra-vars from project settings and identification.\n\n" +
 			"See specs/SPEC-03-scaffolding.md §4.",
@@ -46,7 +46,7 @@ func newEnvCmd() *cobra.Command {
 	return c
 }
 
-// newEnvListCmd creates `tplater env list`.
+// newEnvListCmd creates `tplaiter env list`.
 func newEnvListCmd() *cobra.Command {
 	return &cobra.Command{
 		Annotations: prerunAnnotations(prerunReadonly),
@@ -64,7 +64,7 @@ func newEnvListCmd() *cobra.Command {
 	}
 }
 
-// newEnvSetupCmd creates `tplater env setup [name]` (name=setup by default,
+// newEnvSetupCmd creates `tplaiter env setup [name]` (name=setup by default,
 // SPEC-03 §4).
 func newEnvSetupCmd() *cobra.Command {
 	c := &cobra.Command{

@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ErrUnsupportedAPIVersion is returned when this tplater does not support the
+// ErrUnsupportedAPIVersion is returned when this tplaiter does not support the
 // contract major version (the message asks the user to update).
 var ErrUnsupportedAPIVersion = errors.New("unsupported contract API version")
 
@@ -129,7 +129,7 @@ func checkAPIVersion(apiVersion string) error {
 	}
 	if major != SupportedMajor {
 		return fmt.Errorf(
-			"%w: manifest uses major v%d (%s), but this tplater supports v%d — update tplater",
+			"%w: manifest uses major v%d (%s), but this tplaiter supports v%d — update tplaiter",
 			ErrUnsupportedAPIVersion, major, apiVersion, SupportedMajor,
 		)
 	}

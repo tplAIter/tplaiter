@@ -23,7 +23,7 @@ func init() {
 	registerCommand(newGenCmd)
 }
 
-// newGenCmd creates `tplater gen <kind> <name> [--<param> ...]` (SPEC-01 §6,
+// newGenCmd creates `tplaiter gen <kind> <name> [--<param> ...]` (SPEC-01 §6,
 // CG-1): a project scaffolder based on the authenticated native manifest.
 //
 // Dynamic flags are handled manually because the set depends on the selected
@@ -40,8 +40,8 @@ func newGenCmd() *cobra.Command {
 		Use:   "gen <kind> <name> [--<param> ...]",
 		Short: "Template scaffolder: create file(s) of kind <kind> with name <name>",
 		Long: "Generates files and anchor insertions according to the template manifest generators (SPEC-01 §6). " +
-			"The kind and its snippets come from the template, not from the tplater binary — " +
-			"`tplater gen list` shows available kinds for the current project.\n\n" +
+			"The kind and its snippets come from the template, not from the tplaiter binary — " +
+			"`tplaiter gen list` shows available kinds for the current project.\n\n" +
 			"Generator parameters (Generator.params) become flags: `--fields \"name:type,...\"` " +
 			"and arbitrary `--<param>`; required parameters without a value are an error.\n\n" +
 			"Idempotency: running gen again with the same name is an error (target file already " +
@@ -66,7 +66,7 @@ func runGen(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	}
 	if len(args) < 2 {
-		return errors.New("gen requires arguments <kind> <name> (see `tplater gen list`)")
+		return errors.New("gen requires arguments <kind> <name> (see `tplaiter gen list`)")
 	}
 	kind, name := args[0], args[1]
 	if len(kind) > 0 && kind[0] == '-' {
@@ -97,7 +97,7 @@ func paramUsage(p *manifest.Param) string {
 	return usage
 }
 
-// newGenListCmd creates `tplater gen list`.
+// newGenListCmd creates `tplaiter gen list`.
 func newGenListCmd() *cobra.Command {
 	var controls nativeGenControls
 	c := &cobra.Command{
@@ -118,7 +118,7 @@ type genBatchInput struct {
 	Params map[string]string `json:"params"`
 }
 
-// newGenBatchCmd creates `tplater gen batch --operations <JSON>`. JSON gives the
+// newGenBatchCmd creates `tplaiter gen batch --operations <JSON>`. JSON gives the
 // CLI a portable non-interactive format for a complex operation list; MCP adds
 // a typed operations array on top (see gen_batch).
 func newGenBatchCmd() *cobra.Command {

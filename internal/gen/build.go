@@ -46,7 +46,7 @@ func isGoProject(root string) bool {
 
 // runBuildGate runs the manifest's commands.build.run build gate once at the
 // project root. The command is trusted manifest text and therefore runs like
-// `tplater run`, through a POSIX shell. Older Go manifests without a build
+// `tplaiter run`, through a POSIX shell. Older Go manifests without a build
 // command retain the workspace-aware `go build ./...` fallback.
 func runBuildGate(ctx context.Context, tpl *manifest.Template, opts Options) (string, string, error) {
 	return "", "", ErrExecutionUnavailable

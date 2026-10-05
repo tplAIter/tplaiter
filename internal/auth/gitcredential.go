@@ -14,17 +14,17 @@ import (
 // `git help credential`) for get/store/erase operations. Attributes are read
 // from stdin (key=value lines until the first blank line or EOF), and the response is written to out.
 //
-// tplater store policy:
+// tplaiter store policy:
 //   - get — look up a token by host (+path with credential.useHttpPath), output
 //     username/password. If no token is found, output NOTHING and exit 0 (the
 //     normal git protocol: the helper silently declines, and git tries the next
 //     helper or an interactive prompt). This is not a process error.
 //   - store — git reports credentials after successful authentication. We only
 //     record use (TouchLastUsed) of an existing entry and NEVER create tokens
-//     automatically: store population is only through explicit `tplater auth
+//     automatically: store population is only through explicit `tplaiter auth
 //     add` / `import-*` (otherwise credentials entered in a git prompt without
-//     tplater's knowledge would be stored in the database).
-//   - erase — logged no-op: tokens are removed only through `tplater auth
+//     tplaiter's knowledge would be stored in the database).
+//   - erase — logged no-op: tokens are removed only through `tplaiter auth
 //     remove`, so an authentication failure cannot silently lose a token.
 //
 // now is passed as an argument (to make TouchLastUsed testable). logw receives
@@ -57,14 +57,14 @@ func RunGitCredential(s *Store, op string, in io.Reader, out, logw io.Writer, no
 			return err
 		}
 		if !found {
-			fmt.Fprintln(logw, "tplater auth: store — no saved token for this host, "+
-				"not creating automatically (use `tplater auth add`)")
+			fmt.Fprintln(logw, "tplaiter auth: store — no saved token for this host, "+
+				"not creating automatically (use `tplaiter auth add`)")
 			return nil
 		}
 		return s.TouchLastUsed(cred.ID, now)
 
 	case "erase":
-		fmt.Fprintln(logw, "tplater auth: erase — no-op (tokens are removed only through `tplater auth remove`)")
+		fmt.Fprintln(logw, "tplaiter auth: erase — no-op (tokens are removed only through `tplaiter auth remove`)")
 		return nil
 
 	default:
@@ -118,8 +118,8 @@ func normalizeRepoPath(p string) string {
 }
 
 // HelperEnv returns environment variables (GIT_CONFIG_COUNT/KEY/VALUE format)
-// that enable tplater as a git credential helper for ONE git command only —
-// equivalent to `git -c credential.helper="!tplater auth git-credential"`,
+// that enable tplaiter as a git credential helper for ONE git command only —
+// equivalent to `git -c credential.helper="!tplaiter auth git-credential"`,
 // without modifying the global git config. Values are put in execx.Options.Env
 // before running git (clone/fetch/push).
 //

@@ -35,7 +35,7 @@ var projectSyncSkip = map[string]bool{
 
 // projectSyncPreRun — third (and last) element of the root command's
 // PersistentPreRunE chain (see [rootPreRun] in root.go, §1): when the working
-// directory is inside a tplater project, it reconciles its entry in
+// directory is inside a tplaiter project, it reconciles its entry in
 // ~/.tplaiter/projects.yaml with actual state; [projectsync.SyncCurrent] does
 // the work.
 //
@@ -67,10 +67,10 @@ func logProjectSyncErr(cmd *cobra.Command, err error) {
 	if !verbose {
 		return
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "tplater: project registry synchronization: %v\n", err)
+	fmt.Fprintf(cmd.ErrOrStderr(), "tplaiter: project registry synchronization: %v\n", err)
 }
 
-// newProjectsCmd creates `tplater projects`: viewing and pruning the local
+// newProjectsCmd creates `tplaiter projects`: viewing and pruning the local
 // ~/.tplaiter/projects.yaml registry.
 func newProjectsCmd() *cobra.Command {
 	c := &cobra.Command{
@@ -78,7 +78,7 @@ func newProjectsCmd() *cobra.Command {
 		Short: "Registry of projects generated from templates on this machine",
 		Long: "Registry ~/.tplaiter/projects.yaml — a navigation convenience, not the source of truth " +
 			"(the source of truth is .tplaiter/ within each project). The registry is " +
-			"automatically updated by each tplater command run inside a project: directory " +
+			"automatically updated by each tplaiter command run inside a project: directory " +
 			"relocation is tracked by stable id from .tplaiter/project.yaml, a project without " +
 			"an entry (cloned by a colleague) is registered on first discovery, and " +
 			"baselineSHA divergence (project updated on another machine) is updated on discovery.",
@@ -94,9 +94,9 @@ func newProjectsListCmd() *cobra.Command {
 		Long: "STATUS column:\n" +
 			"  ok      — directory at PATH exists and .tplaiter/project.yaml in it can be read.\n" +
 			"  missing — directory deleted or project marker missing; entry cleaned by\n" +
-			"            `tplater projects prune` command.\n\n" +
+			"            `tplaiter projects prune` command.\n\n" +
 			"There is no separate \"relocated\" status: directory relocation (same project id, " +
-			"different path) is detected and fixed automatically on first tplater run " +
+			"different path) is detected and fixed automatically on first tplaiter run " +
 			"in the new path — registry synchronization is built into " +
 			"PersistentPreRunE of each command (see root.go), so list always shows " +
 			"the current PATH, never stale paths.",
