@@ -11,11 +11,14 @@
 package mcpsrv
 
 import (
+	"context"
 	"errors"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"github.com/mark3labs/mcp-go/server"
 
@@ -25,20 +28,21 @@ import (
 // Server wraps *server.MCPServer with the tplaiter binary path and a child-process
 // runner, mockable in tests through execx.RecordingRunner.
 type Server struct {
-	exe       string
-	version   string
-	runner    execx.Runner
-	mcp       *server.MCPServer
-	installed bool
-	direct    bool
-	limits    Limits
-	stage     *heldStage
-	childEnv  []string
-	mu        sync.Mutex
-	closed    bool
-	closeDone chan struct{}
-	closeErr  error
-	children  sync.WaitGroup
+	exe        string
+	version    string
+	runner     execx.Runner
+	mcp        *server.MCPServer
+	installed  bool
+	direct     bool
+	limits     Limits
+	stage      *heldStage
+	childEnv   []string
+	mu         sync.Mutex
+	closed     bool
+	closeDone  chan struct{}
+	closeErr   error
+	children   sync.WaitGroup
+	rootFrames *rootFrames
 }
 
 // New constructs the tplaiter MCP server and registers all tools and resources.
@@ -65,6 +69,7 @@ func New(exe, version string, runner execx.Runner) *Server {
 	s := &Server{exe: exe, version: version, runner: runner, mcp: m, limits: DefaultLimits(), closeDone: make(chan struct{})}
 	s.registerTools()
 	s.registerResources()
+	s.rootFrames = s.installRootFrames()
 	return s
 }
 
@@ -94,7 +99,18 @@ func (s *Server) MCP() *server.MCPServer { return s.mcp }
 // (stdin EOF or SIGINT/SIGTERM, handled inside ServeStdio).
 func (s *Server) ServeStdio() error {
 	errLog := log.New(os.Stderr, "tplaiter-mcp ", log.LstdFlags)
-	serveErr := server.ServeStdio(s.mcp, server.WithErrorLogger(errLog))
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+	output, closeOutput, err := rootStdioOutput()
+	if err != nil {
+		_ = s.Close()
+		return errTransportUnavailable
+	}
+	defer closeOutput()
+	stdio := server.NewStdioServer(s.mcp)
+	stdio.SetErrorLogger(errLog)
+	serveErr := stdio.Listen(ctx, &rootCancellationReader{in: os.Stdin, frames: s.rootFrames}, &rootResponseWriter{frames: s.rootFrames, server: s, out: output})
+	s.rootFrames.close()
 	closeErr := s.Close()
 	if serveErr != nil || closeErr != nil {
 		return errTransportUnavailable
@@ -117,6 +133,7 @@ func (s *Server) Close() error {
 	}
 	s.closed = true
 	s.mu.Unlock()
+	s.rootFrames.close()
 	s.children.Wait()
 	var err error
 	if s.stage != nil {

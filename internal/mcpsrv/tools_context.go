@@ -19,11 +19,12 @@ func init() {
 }
 
 type contextToolArgs struct {
-	Preview        *contextcmd.LocalPreviewRequest `json:"preview,omitempty"`
-	Action         string                          `json:"action"`
-	ProjectContext string                          `json:"projectContext,omitempty"`
-	Dir            string                          `json:"dir,omitempty"`
-	Request        contextcmd.Request              `json:"request,omitempty"`
+	RootSelection  *contextcmd.RootSelectionRequest `json:"rootSelection,omitempty"`
+	Preview        *contextcmd.LocalPreviewRequest  `json:"preview,omitempty"`
+	Action         string                           `json:"action"`
+	ProjectContext string                           `json:"projectContext,omitempty"`
+	Dir            string                           `json:"dir,omitempty"`
+	Request        contextcmd.Request               `json:"request,omitempty"`
 }
 
 func ContextFullSchema() (json.RawMessage, error) {
@@ -32,6 +33,25 @@ func ContextFullSchema() (json.RawMessage, error) {
 		return nil, err
 	}
 	data, err := schemaOf[resultdto.ContextData]()
+	if err != nil {
+		return nil, err
+	}
+	// mcp-go reflects []byte as an integer array, but encoding/json emits
+	// exact ROOT file images as base64 strings. Amend only this new leaf.
+	var rootSchema map[string]any
+	if err = json.Unmarshal(data, &rootSchema); err != nil {
+		return nil, err
+	}
+	node := rootSchema
+	for _, key := range []string{"properties", "nativeRootSelection", "properties", "body", "properties", "files", "items", "properties"} {
+		next, ok := node[key].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("ROOT content schema missing %s", key)
+		}
+		node = next
+	}
+	node["content"] = map[string]any{"type": []string{"null", "string"}, "contentEncoding": "base64"}
+	data, err = json.Marshal(rootSchema)
 	if err != nil {
 		return nil, err
 	}
@@ -49,11 +69,12 @@ func (s *Server) addContextTools() {
 	frames := s.installPreviewFrames()
 	s.mcp.AddTool(mcp.NewTool(
 		"context",
-		mcp.WithDescription("Read installed signed context with bounded local byte plans. Model window stays unknown. Local preview-catalog/preview-resource return explicitly untrusted observed data; signed actions discover/search/get/continue/plan; pull schema on demand."),
-		mcp.WithString("action", mcp.Required(), mcp.Enum("discover", "search", "get", "continue", "plan", "schema", "preview-catalog", "preview-resource")),
+		mcp.WithDescription("Read installed signed context with bounded local byte plans. Model window stays unknown. Local preview-catalog/preview-resource return explicitly untrusted observed data; authenticated ROOT select returns complete task context; signed actions discover/search/get/continue/plan; pull schema on demand."),
+		mcp.WithString("action", mcp.Required(), mcp.Enum("discover", "search", "get", "continue", "plan", "schema", "preview-catalog", "preview-resource", "select")),
 		mcp.WithString("projectContext", mcp.Description("Exact installed context key; default is registered")),
 		mcp.WithString("dir", mcp.Description("Optional locator, must match the installed root")),
 		mcp.WithObject("preview", mcp.Description("Local preview selectors/bounds and installed registration ID; never endpoints or authentication")),
+		mcp.WithObject("rootSelection", mcp.Description("Authenticated installed ROOT selectors, expected snapshot and complete byte bounds; exclusive with request/preview")),
 		mcp.WithObject("request", mcp.Description("Typed selectors/byte bounds; action=schema gives full contract")),
 		mcp.WithReadOnlyHintAnnotation(true), outputSchema(resultdto.OperationContextQuery),
 	), func(ctx context.Context, call mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -66,6 +87,17 @@ func (s *Server) addContextTools() {
 		var a contextToolArgs
 		if canonicaljson.DecodeStrict(raw, &a) != nil {
 			return s.argumentFailure(resultdto.OperationContextQuery, "request"), nil //nolint:nilerr // MCP decoding failures are typed tool results, not protocol errors
+		}
+		var outer map[string]json.RawMessage
+		_ = json.Unmarshal(raw, &outer)
+		if a.Action == "select" {
+			if a.RootSelection == nil || outer["request"] != nil || outer["preview"] != nil || len(raw) > 16384 {
+				return s.argumentFailure(resultdto.OperationContextQuery, "rootSelection"), nil
+			}
+			return s.callRootSelection(ctx, *a.RootSelection, a.ProjectContext, a.Dir, call), nil
+		}
+		if outer["rootSelection"] != nil {
+			return s.argumentFailure(resultdto.OperationContextQuery, "rootSelection"), nil
 		}
 		if a.Action == "preview-catalog" || a.Action == "preview-resource" {
 			var outer map[string]json.RawMessage
