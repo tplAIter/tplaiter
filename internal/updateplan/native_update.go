@@ -201,7 +201,7 @@ func updateMaterialFingerprint(m UpdateMaterial) (string, error) {
 }
 
 // AuthenticateUpdateMaterial freshly reconstructs signed source AND target and
-// all expected images from immutable beforeimages. It does not read an incomplete
+// all expected images (including signed answer migrations and their ledger) from immutable beforeimages. It does not read an incomplete
 // tree as stable and cannot authorize publication or recovery. Actual root/phase
 // ownership belongs to the authenticated engine receipt and retained lease.
 func AuthenticateUpdateMaterial(ctx context.Context, r *trustload.Runtime, actualRendererVersion string, m UpdateMaterial) error {

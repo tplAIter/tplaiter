@@ -13,7 +13,8 @@ import (
 // ResolveSettingsAnswers resolves operator intent against recorded answer origins.
 // It is a pure calculation, never a source or publication authority. Default
 // origins follow the signed manifest and requires; all other recorded origins
-// remain explicit, including user answers equal to a default.
+// remain explicit, including user answers equal to a default. Migration callers
+// supply the transformed answer map so removed keys cannot be copied back.
 func ResolveSettingsAnswers(tpl *manifest.Template, before map[string]stateledger.Answer, pairs []string) (settings.Resolved, error) {
 	explicit := settings.Values{}
 	prior := settings.DefaultValues(tpl)

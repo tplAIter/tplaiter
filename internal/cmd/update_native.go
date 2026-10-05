@@ -111,6 +111,9 @@ func runNativeUpdate(cmd *cobra.Command, c nativeUpdateControls) error {
 			env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-E-NATIVE-UPDATE-CONFLICT", Severity: "error", Path: change.Path, Message: change.Reason, Details: map[string]any{}})
 		}
 	}
+	if len(report.Migrations) > 0 {
+		env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-I-NATIVE-UPDATE-MIGRATIONS", Severity: "info", Message: "signed data-only answer migrations", Details: map[string]any{"ids": report.Migrations}})
+	}
 	// Registry is outside the project namespace: report its sealed transition
 	// as a diagnostic, never pretend that its home-relative path is a project file.
 	if report.Registry.Before.SHA256 != report.Registry.After.SHA256 {

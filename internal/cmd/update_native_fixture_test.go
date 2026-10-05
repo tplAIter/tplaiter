@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -26,6 +27,10 @@ func nativeUpdateCLIFixture(t *testing.T, targetExtra ...string) t5FFixture {
 }
 
 func nativeUpdateCLIFixtureWithDirectories(t *testing.T, directories bool, targetExtra ...string) t5FFixture {
+	return nativeUpdateCLIFixtureVersions(t, directories, "1.0.0", "1.0.0", "base one\nbase two\nbase three\n", "base one\nbase two\nupstream three\n", nil, targetExtra...)
+}
+
+func nativeUpdateCLIFixtureVersions(t *testing.T, directories bool, sourceVersion, targetVersion, sourceOutput, targetOutput string, sourceExtra []string, targetExtra ...string) t5FFixture {
 	t.Helper()
 	options := t5FFixtureOptions{Now: time.Now().UTC()}
 	base := "/private/tmp"
@@ -75,8 +80,8 @@ func nativeUpdateCLIFixtureWithDirectories(t *testing.T, directories bool, targe
 	anchorPublic := anchor.Public().(ed25519.PublicKey)
 	envelope.Signatures = []bootstrap.Signature{{KeyFingerprint: bootstrap.Fingerprint(anchorPublic), SignatureCAS: put([]byte(bootstrap.EncodeSignature(ed25519.Sign(anchor, payload))))}}
 	envelopeRef := put(t5FJSON(t, envelope))
-	_, source := nativeUpdateCLISource(t, filepath.Join(dir, "objects"), "source", "base one\nbase two\nbase three\n")
-	_, target := nativeUpdateCLISourceWithDirectories(t, filepath.Join(dir, "objects"), "target", "base one\nbase two\nupstream three\n", directories, targetExtra...)
+	_, source := nativeUpdateCLISourceVersion(t, filepath.Join(dir, "objects"), "source", sourceOutput, false, sourceVersion, sourceExtra...)
+	_, target := nativeUpdateCLISourceVersion(t, filepath.Join(dir, "objects"), "target", targetOutput, directories, targetVersion, targetExtra...)
 	sourceRefs := t5FPublisherEvidence(t, evidence, publisher, source, "publisher-1")
 	targetRefs := t5FPublisherEvidence(t, evidence, publisher, target, "publisher-1")
 	leaf0, leaf1, leaf2 := bootstrap.HashLeaf([]byte(envelope.PayloadSHA256)), bootstrap.HashLeaf([]byte(sourceRefs.StatementCAS)), bootstrap.HashLeaf([]byte(targetRefs.StatementCAS))
@@ -149,12 +154,20 @@ func nativeUpdateCLISource(t *testing.T, root, suffix, output string, extra ...s
 }
 
 func nativeUpdateCLISourceWithDirectories(t *testing.T, root, suffix, output string, directories bool, extra ...string) ([]byte, trustverify.Subject) {
+	return nativeUpdateCLISourceVersion(t, root, suffix, output, directories, "1.0.0", extra...)
+}
+
+func nativeUpdateCLISourceVersion(t *testing.T, root, suffix, output string, directories bool, version string, extra ...string) ([]byte, trustverify.Subject) {
 	t.Helper()
-	manifest := []byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata:\n  name: t5f-" + suffix + "\n  version: 1.0.0\n  description: fixture\nengine:\n  type: gotemplate\n  root: files\nsettings:\n  - group: label\n    title: Label\n    type: string\n    default: ok\n")
+	manifest := []byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata:\n  name: t5f-" + suffix + "\n  version: " + version + "\n  description: fixture\nengine:\n  type: gotemplate\n  root: files\nsettings:\n  - group: label\n    title: Label\n    type: string\n    default: ok\n")
 	manifest = append(manifest, []byte("generators:\n  - kind: note\n    description: Signed native note\n    snippet: generators/note.txt.tmpl\n    target: notes/{{ .Name.Snake }}.txt\n    params:\n      - name: label\n        type: string\n        required: true\n        pattern: '^[a-z]+$'\n")...)
 	snippet := []byte("{{ .Name.Pascal }}:{{ index .Params \"label\" }}:{{ index .Settings \"label\" }}\n")
 	for _, raw := range extra {
-		manifest = append(manifest, []byte(raw)...)
+		if bytes.HasPrefix([]byte(raw), []byte("settings:\n")) {
+			manifest = bytes.Replace(manifest, []byte("settings:\n  - group: label\n    title: Label\n    type: string\n    default: ok\n"), []byte(raw), 1)
+		} else {
+			manifest = append(manifest, []byte(raw)...)
+		}
 	}
 	h := sha256.Sum256(manifest)
 	contract := []byte(`{"apiVersion":"tplaiter.dev/native-template-contract/v1","kind":"NativeTemplate","manifestPath":"template.manifest.yaml","manifestSHA256":"sha256:` + hex.EncodeToString(h[:]) + `","dependencies":[]}`)

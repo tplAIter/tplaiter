@@ -219,3 +219,27 @@ settings:
 		t.Fatalf("expected an error about a missing option in default, got: %v", err)
 	}
 }
+
+func TestSignedMigrationDeclarations(t *testing.T) {
+	base := "apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata: {name: migration-test, version: 3.0.0}\n"
+	good := "migrations:\n  - id: rename\n    from: 1.0.0\n    to: 2.0.0\n    phase: before\n    settings: {rename: {old: new}}\n"
+	tpl, err := ParseTemplate([]byte(base + good))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tpl.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{strings.Replace(good, "to: 2.0.0", "to: 1.0.0", 1), strings.Replace(good, "phase: before", "phase: other", 1), strings.Replace(good, "old: new", "old: old", 1)} {
+		tpl, err := ParseTemplate([]byte(base + bad))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tpl.Validate() == nil {
+			t.Fatal("invalid declaration accepted")
+		}
+	}
+	if _, err := ParseTemplate([]byte(base + strings.Replace(good, "phase: before", "phase: before\n    trusted: true", 1))); err == nil {
+		t.Fatal("unknown migration field accepted")
+	}
+}

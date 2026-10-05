@@ -21,6 +21,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/engine"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/migrations"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/ownership"
 	"github.com/tplAIter/tplaiter/internal/provenance"
@@ -90,6 +91,7 @@ type Report struct {
 	Target                provenance.RootTemplateLock `json:"target"`
 	Preimages             []Image                     `json:"preimages"`
 	Changes               []Change                    `json:"changes"`
+	Migrations            []string                    `json:"migrations,omitempty"`
 	Registry              RegistryImage               `json:"registry"`
 }
 
@@ -235,6 +237,10 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
+	targetRender, targetAnswers, migrationPlan, err := b.migrationRender(ctx, in, targetRender, marker.Answers, observed.files[migrations.LedgerRelPath])
+	if err != nil {
+		return nil, err
+	}
 	prepared, err := operationtrust.PrepareUpdate(ctx, b.runtime, operationtrust.PrepareUpdateInput{SourceInput: in.SourceInput, TargetInput: in.TargetInput, Render: targetRender, RendererVersion: b.rendererVersion, PreimageSHA256: preimage})
 	if err != nil {
 		return nil, err
@@ -286,7 +292,7 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 			}
 		}
 	}
-	answers, err := settingsAnswerAfterimages(prepared.Rendered().Template, marker.Answers, prepared.Rendered().Resolved.Values, in.SettingsPairs)
+	answers, err := settingsAnswerAfterimages(prepared.Rendered().Template, targetAnswers, prepared.Rendered().Resolved.Values, in.SettingsPairs)
 	if err != nil {
 		return nil, err
 	}
@@ -305,6 +311,9 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 		return nil, err
 	}
 	metadata[manifest.SnapshotRelPath] = manifestRaw
+	if migrationPlan != nil {
+		metadata[migrations.LedgerRelPath] = migrationPlan.Ledger.After
+	}
 	for path, raw := range metadata {
 		changes = append(changes, decision(observed, path, raw, true, "metadata", false))
 	}
@@ -320,6 +329,13 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 		}
 	}
 	report := Report{Adoption: protection, Publishable: publishable, Registry: registry, APIVersion: APIVersion, ProjectID: marker.ID, Root: root, PreimageSHA256: preimage, OperationInputsSHA256: prepared.OperationInputsSHA256(), Source: prepared.SourceRootLock(), Target: prepared.TargetRootLock(), Preimages: observed.images, Changes: changes}
+	if migrationPlan != nil {
+		selected := append(append([]migrations.PlannedMigration(nil), migrationPlan.Before...), migrationPlan.After...)
+		sort.Slice(selected, func(i, j int) bool { return selected[i].Order < selected[j].Order })
+		for _, step := range selected {
+			report.Migrations = append(report.Migrations, step.ID)
+		}
+	}
 	digest, err := bootstrap.DomainDigest(APIVersion, report)
 	if err != nil {
 		return nil, err
@@ -470,7 +486,21 @@ func validateOwned(observed *observation, base map[string][]byte, result *render
 	if !bytes.Equal(expected, observed.files[resources.NativeResourceLockPath]) {
 		return ErrUnsafe
 	}
-	// Active generation, managed blocks, migrations and AI ownership require
+	if err := migrations.ValidateAppliedHistory(result.Template.Migrations, result.Template.Metadata.Version, observed.files[migrations.LedgerRelPath]); err != nil {
+		return err
+	}
+	if len(result.Template.Migrations) == 0 {
+		// Keep the existing exact empty-ledger contract for ordinary templates.
+		// Strict applied-history admission is the replacement only for declarations.
+		raw, err := canonicaljson.Canonical(migrations.Ledger{Version: 1, Applied: []migrations.LedgerEntry{}})
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(raw, observed.files[migrations.LedgerRelPath]) {
+			return operationtrust.ErrSourceAdapterUnsupported
+		}
+	}
+	// Active generation, managed blocks and AI ownership require
 	// dedicated consumers. Never silently ignore their durable state.
 	empty := map[string]any{
 		".tplaiter/ai-managed.json": struct {
@@ -485,10 +515,6 @@ func validateOwned(observed *observation, base map[string][]byte, result *render
 			Schema int            `json:"schema"`
 			Files  map[string]any `json:"files"`
 		}{1, map[string]any{}},
-		".tplaiter/migrations.json": struct {
-			Version int   `json:"version"`
-			Applied []any `json:"applied"`
-		}{1, []any{}},
 	}
 	for p, v := range empty {
 		raw, err := canonicaljson.Canonical(v)

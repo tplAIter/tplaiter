@@ -77,3 +77,43 @@ An unknown or unrecorded staging slot, orphan, replaced recorded inode, or chang
 Update refuses target templates that declare hooks, commands, tools, environment playbooks, or AI configuration. It also refuses `--all`. Pre-receipt crashes, unrecorded staging, ambiguous historical empty preparing prefixes, recovery under another sealing authority, executable actions, settings/workspace updates, the full Update beta, and wider recovery remain outside supported Continue coverage. The published writer guard blocks incompatible unfinished native transactions. Read-only transaction inventory remains unchanged from `704f4aa`; the bounded integration in `7dcd37b` connects actual Runtime, Home, and CAS to ledger verification under existing held writer locks and a confined in-place migration API. It does not restore the full CLI migration flow or grant global recovery or naming/native receipt relocation. Inventory observations do not grant writer or recovery authority.
 
 The earlier shared-home second-project refusal arose from a no-op zero-step receipt bug fixed in `1c71a99`. The installed CLI proof runs signed A-to-B and B-to-B updates for two distinct project contexts in one home under the same installation sealing authority, preserving the first project's bytes, modes, and inodes. This establishes the bounded same-install path; it does not establish authority across foreign installations. Historical malformed receipts containing `steps: null` still fail authentication; they are not automatically normalized or migrated.
+
+
+## Signed data-only answer migration history
+
+Native Update selects migrations from authenticated source and target manifest
+`metadata.version`, independently of the exact commit used as a source selector.
+A template may declare a closed `migrations` array with immutable `id`, `from`,
+`to`, `phase` and `settings.rename` / `settings.delete` fields. Boundaries in
+`(sourceVersion, targetVersion]` are selected in manifest order. Previously
+applied IDs, declaration digests and positions must remain unchanged; an applied
+boundary newer than the signed current version is refused.
+
+Renames within one declaration are simultaneous. An unrelated occupied target
+is refused; swaps and chains use the original records. Moved records retain
+values and acquire `migration` origin. Untouched origins and inactive snapshots
+remain recorded. Deletes remove exactly named records. Active default-origin
+answers still follow target defaults and requires. Inactive answers do not
+become active rendering inputs.
+
+Data transformations follow the existing `ApplySettings` contract: combine the
+`before` and `after` lists and apply them in authored declaration order before
+resolving the target. Phase labels remain execution scheduling metadata; this
+lane executes neither phase. Any selected executable `steps` are refused with
+`migrations.ErrExecutionUnauthorized`; declarations do not confer execution,
+provider, hook or source authority.
+
+The original signed source and its original answers form the three-way base.
+The migrated answers resolve the target. Answer marker, rendered files,
+`migrations.json`, baseline, ownership and locks publish together in the existing
+native Update transaction. Dry-run publishes nothing. Cold continuation freshly
+reconstructs the same plan from sealed beforeimages and both signed selections,
+retaining its transaction ID and fingerprint. Caller-rehashed altered answers or
+ledger bytes and stale preimages are refused. No-migration material retains its
+existing wire version and omits the optional migration report field.
+
+Settings Read/reanswer and offline Diff verify retained applied history against
+the current signed manifest. They do not reapply migrations. Ordered migration
+IDs are reported as diagnostics without answer values. This supported slice is
+data-only: deprecated/secret answers, managed-block keep/drop/rename, and other
+lifecycle views remain separate work.

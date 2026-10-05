@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/migrations"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 
 	"github.com/tplAIter/tplaiter/internal/ownership"
@@ -64,5 +66,25 @@ func TestOrderedGapBoundaries(t *testing.T) {
 	changes, count, err := compare("a.go", []byte(pair), ownership.State{Exists: true, Kind: ownership.KindFile, Mode: 0o644, Data: []byte(current)})
 	if err != nil || count != 2 || len(changes) != 1 || changes[0].Action != "skeleton" || changes[0].BlockID != "" || changes[0].BeforeSHA256 == changes[0].AfterSHA256 {
 		t.Fatalf("gap movement hidden: %v %d %#v", err, count, changes)
+	}
+}
+
+func TestDiffSignedMigrationHistory(t *testing.T) {
+	tpl := &manifest.Template{Metadata: manifest.TemplateMeta{Version: "2.0.0"}, Migrations: []migrations.Migration{{ID: "rename", From: "1.0.0", To: "2.0.0", Phase: "before", Settings: migrations.MigrationSettings{Rename: map[string]string{"old": "new"}}}}}
+	plan, err := migrations.Build(tpl.Migrations, migrations.Options{CurrentVersion: "1.0.0", TargetVersion: "2.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateMigrationHistory(tpl, plan.Ledger.After); err != nil {
+		t.Fatal(err)
+	}
+	tpl.Metadata.Version = "1.0.0"
+	if err := validateMigrationHistory(tpl, plan.Ledger.After); err == nil || !strings.Contains(err.Error(), StateCode) {
+		t.Fatalf("future history not typed diff state refusal: %v", err)
+	}
+	tpl.Metadata.Version = "2.0.0"
+	tpl.Migrations = nil
+	if validateMigrationHistory(tpl, plan.Ledger.After) == nil {
+		t.Fatal("missing declaration accepted")
 	}
 }

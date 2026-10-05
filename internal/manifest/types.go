@@ -8,6 +8,8 @@
 // syntax parsing, and reference validation against the group tree.
 package manifest
 
+import "github.com/tplAIter/tplaiter/internal/migrations"
+
 // APIGroup is the contract group in the apiVersion field (`tplater.dev/v1alpha1`).
 const APIGroup = "tplater.dev"
 
@@ -39,20 +41,21 @@ const StatusPlanned = "planned"
 
 // Template is a manifest for one template (`template.manifest.yaml`).
 type Template struct {
-	APIVersion  string             `yaml:"apiVersion"`
-	Kind        string             `yaml:"kind"`
-	Metadata    TemplateMeta       `yaml:"metadata"`
-	Engine      Engine             `yaml:"engine"`
-	Requires    Requires           `yaml:"requires"`
-	Settings    []SettingGroup     `yaml:"settings"`
-	Files       []FileRule         `yaml:"files"`
-	Constraints []Constraint       `yaml:"constraints"`
-	Commands    map[string]Command `yaml:"commands"`
-	Generators  []Generator        `yaml:"generators"`
-	AIConfig    AIConfig           `yaml:"aiConfig"`
-	Environment Environment        `yaml:"environment"`
-	Hooks       Hooks              `yaml:"hooks"`
-	Lint        LintConfig         `yaml:"lint"` // opt-in architecture-lint rules; see lint_types.go
+	APIVersion  string                 `yaml:"apiVersion"`
+	Kind        string                 `yaml:"kind"`
+	Metadata    TemplateMeta           `yaml:"metadata"`
+	Engine      Engine                 `yaml:"engine"`
+	Requires    Requires               `yaml:"requires"`
+	Migrations  []migrations.Migration `yaml:"migrations"`
+	Settings    []SettingGroup         `yaml:"settings"`
+	Files       []FileRule             `yaml:"files"`
+	Constraints []Constraint           `yaml:"constraints"`
+	Commands    map[string]Command     `yaml:"commands"`
+	Generators  []Generator            `yaml:"generators"`
+	AIConfig    AIConfig               `yaml:"aiConfig"`
+	Environment Environment            `yaml:"environment"`
+	Hooks       Hooks                  `yaml:"hooks"`
+	Lint        LintConfig             `yaml:"lint"` // opt-in architecture-lint rules; see lint_types.go
 }
 
 // TemplateMeta is the template metadata section.

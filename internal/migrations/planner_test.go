@@ -353,3 +353,36 @@ func assertBuildErrorContains(t *testing.T, migrations []Migration, ledger []byt
 		t.Fatalf("want error containing %q, got %v", want, err)
 	}
 }
+
+func TestSignedAppliedHistory(t *testing.T) {
+	declarations := []Migration{{ID: "rename", From: "1.0.0", To: "2.0.0", Phase: "after", Settings: MigrationSettings{Rename: map[string]string{"old": "new"}}}}
+	plan, err := Build(declarations, Options{CurrentVersion: "1.0.0", TargetVersion: "2.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateAppliedHistory(declarations, "2.0.0", plan.Ledger.After); err != nil {
+		t.Fatal(err)
+	}
+	for _, version := range []string{"1.0.0", "main", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"} {
+		if ValidateAppliedHistory(declarations, version, plan.Ledger.After) == nil {
+			t.Fatal("future or unversioned applied history accepted")
+		}
+	}
+	changed := append([]Migration(nil), declarations...)
+	changed[0].From = "1.1.0"
+	if ValidateAppliedHistory(changed, "2.0.0", plan.Ledger.After) == nil {
+		t.Fatal("changed applied boundary accepted")
+	}
+	if ValidateAppliedHistory(nil, "2.0.0", plan.Ledger.After) == nil {
+		t.Fatal("removed declaration accepted")
+	}
+	for _, raw := range [][]byte{[]byte(`{"version":1,"applied":null}`), []byte(`{"version":1,"version":1,"applied":[]}`), []byte(`{"version":1,"applied":[],"trusted":true}`)} {
+		if ValidateAppliedHistory(declarations, "2.0.0", raw) == nil {
+			t.Fatal("malformed history accepted")
+		}
+	}
+	// Generic replay remains distinct from stable current-version validation.
+	if _, err := Build(declarations, Options{CurrentVersion: "1.0.0", TargetVersion: "2.0.0", LedgerBytes: plan.Ledger.After}); err != nil {
+		t.Fatal(err)
+	}
+}

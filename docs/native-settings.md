@@ -137,3 +137,19 @@ also does not provide a dedicated settings recovery or continuation command.
 General crash recovery, deprecated or secret question attributes, template
 answer migrations, and an operator keep/drop/rename codec remain outside this
 bounded path.
+
+
+## Signed data-only answer migration history
+
+After native Update, Settings Read/reanswer validates `migrations.json` against
+retained declarations in the freshly authenticated current manifest. Applied
+IDs, digests, order and version boundaries must match. History is verified, not
+reapplied during a same-version settings operation. Offline Diff uses the same
+history contract.
+
+Moved answers acquire `migration` origin while keeping their values. Untouched
+origins and inactive snapshots remain recorded; inactive answers stay outside
+active rendering. Deleted records are not copied back. Active default-origin
+answers still follow signed defaults and requires. See [Native Update](native-update.md)
+for selection, authored phase ordering, the single transaction and cold recovery.
+Deprecated/secret and managed-block decision policies remain separate work.

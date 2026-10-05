@@ -292,7 +292,13 @@ func validateSettingsMigration(migration MigrationSettings) error {
 		deleted[key] = struct{}{}
 	}
 	targets := map[string]string{}
-	for from, to := range migration.Rename {
+	sources := make([]string, 0, len(migration.Rename))
+	for from := range migration.Rename {
+		sources = append(sources, from)
+	}
+	sort.Strings(sources)
+	for _, from := range sources {
+		to := migration.Rename[from]
 		if !settingsKeyRE.MatchString(from) || !settingsKeyRE.MatchString(to) || from == to {
 			return fmt.Errorf("invalid settings rename %q to %q", from, to)
 		}
@@ -533,4 +539,38 @@ func clone(data []byte) []byte {
 	out := make([]byte, len(data))
 	copy(out, data)
 	return out
+}
+
+// ValidateDeclarations checks the same closed immutable declaration contract as
+// Build without selecting steps or granting execution authority.
+func ValidateDeclarations(declarations []Migration) error {
+	_, err := Build(declarations, Options{})
+	return err
+}
+
+// ValidateAppliedHistory verifies a stable project's ledger against its signed
+// current manifest. Unlike Build's generic replay contract, live applied
+// boundaries may not be newer than the signed current version.
+func ValidateAppliedHistory(declarations []Migration, currentVersion string, data []byte) error {
+	ledger, err := parseLedger(data)
+	if err != nil {
+		return err
+	}
+	if _, err := Build(declarations, Options{LedgerBytes: data}); err != nil {
+		return err
+	}
+	if len(ledger.Applied) == 0 {
+		return nil
+	}
+	current, err := semver.StrictNewVersion(currentVersion)
+	if err != nil {
+		return fmt.Errorf("migrations: signed current version: %w", err)
+	}
+	for _, entry := range ledger.Applied {
+		boundary, _ := semver.StrictNewVersion(declarations[entry.Order].To)
+		if boundary.GreaterThan(current) {
+			return fmt.Errorf("migrations: applied migration %q is newer than signed current version", entry.ID)
+		}
+	}
+	return nil
 }

@@ -62,3 +62,26 @@ func TestSchema_CoversFullExample(t *testing.T) {
 		}
 	}
 }
+
+func TestSchemaClosedMigrationContract(t *testing.T) {
+	raw, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	props := schema["properties"].(map[string]any)
+	if props["migrations"].(map[string]any)["items"].(map[string]any)["$ref"] != "#/$defs/migration" {
+		t.Fatal("missing migration property")
+	}
+	migration := schema["$defs"].(map[string]any)["migration"].(map[string]any)
+	if migration["additionalProperties"] != false {
+		t.Fatal("open migration schema")
+	}
+	step := migration["properties"].(map[string]any)["steps"].(map[string]any)["items"].(map[string]any)
+	if step["additionalProperties"] != false || len(step["oneOf"].([]any)) != 2 {
+		t.Fatal("open executable schema")
+	}
+}

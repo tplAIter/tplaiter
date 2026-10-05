@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/tplAIter/tplaiter/internal/migrations"
 )
 
 // Issue is one validation problem. Path is a logical address within the manifest
@@ -73,6 +75,9 @@ func (t *Template) Validate() error {
 	v := &validator{groups: make(map[string]groupInfo)}
 
 	v.checkMetadata(t)
+	if err := migrations.ValidateDeclarations(t.Migrations); err != nil {
+		v.add("migrations", "%s", err)
+	}
 	v.walkGroups(t.Settings, "settings")
 	v.checkFiles(t.Files)
 	v.checkConstraints(t.Constraints)

@@ -100,6 +100,7 @@
         }
       }
     },
+    "migrations": { "type": "array", "items": { "$ref": "#/$defs/migration" } },
     "settings": {
       "type": "array",
       "items": { "$ref": "#/$defs/settingGroup" }
@@ -232,6 +233,121 @@
     }
   },
   "$defs": {
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "from",
+        "to",
+        "phase"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+        },
+        "phase": {
+          "enum": [
+            "before",
+            "after"
+          ]
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "run": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ansible": {
+                "type": "string",
+                "minLength": 1
+              },
+              "optional": {
+                "type": "boolean"
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "path",
+                    "sha256"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "run"
+                ],
+                "not": {
+                  "required": [
+                    "ansible"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "ansible"
+                ],
+                "not": {
+                  "required": [
+                    "run"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rename": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+              }
+            },
+            "delete": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+              }
+            }
+          }
+        }
+      }
+    },
     "param": {
       "type": "object",
       "required": ["name", "type"],

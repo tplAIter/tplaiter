@@ -12,6 +12,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/migrations"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction"
 	"github.com/tplAIter/tplaiter/internal/projectverify"
@@ -147,6 +148,13 @@ func (n *Native) Read(ctx context.Context) (*NativeView, error) {
 		if err != nil || !bytes.Equal(actual, expected) {
 			return nil, operationtrust.ErrSourceAdapterUnsupported
 		}
+	}
+	ledger, err := read("migrations.json")
+	if err != nil {
+		return nil, err
+	}
+	if err := migrations.ValidateAppliedHistory(tpl.Migrations, tpl.Metadata.Version, ledger); err != nil {
+		return nil, err
 	}
 	values := settings.Values{}
 	for key, a := range marker.Answers {

@@ -21,6 +21,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/managedblocks"
 	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/migrations"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/ownership"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction/adoption"
@@ -155,6 +156,13 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 	port, ok := marker.Runtime["port"].(int)
 	if !ok || port < 0 || port > 65535 {
 		return Report{}, failure(StateCode, stateledger.ErrUnsafe)
+	}
+	ledger, err := read(migrations.LedgerRelPath)
+	if err != nil {
+		return Report{}, failure(StateCode, err)
+	}
+	if err := validateMigrationHistory(tpl, ledger); err != nil {
+		return Report{}, err
 	}
 	values := map[string]any{}
 	for k, v := range marker.Answers {
@@ -401,4 +409,13 @@ func exclusionObservation(p string, files map[string][]byte, policy *adoptionpol
 	}
 	x.Drift = !actual.Exists || x.CurrentSHA256 != x.ExpectedSHA256 || actual.Mode != 0o644
 	return x
+}
+
+// validateMigrationHistory verifies the freshly signed current manifest's
+// retained declarations; a ledger checksum alone is not reader authority.
+func validateMigrationHistory(tpl *manifest.Template, raw []byte) error {
+	if err := migrations.ValidateAppliedHistory(tpl.Migrations, tpl.Metadata.Version, raw); err != nil {
+		return failure(StateCode, err)
+	}
+	return nil
 }
