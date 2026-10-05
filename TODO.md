@@ -4,7 +4,7 @@ An overview of tplAIter work. Checked items describe implemented foundations; un
 
 | Status | Work |
 | --- | --- |
-| ☑ | Translate ordinary comments in core sources and templates to English while preserving runtime strings and test data. Naming-comment fixes are published in `11590c6` and `1c09d8a`; whole Task33 naming closure remains open because `docs/commands.md` is currently missing. |
+| ☑ | Translate ordinary comments in core sources and templates to English while preserving runtime strings and test data. Naming-comment fixes are published in `11590c6` and `1c09d8a`; Task33 naming/reference work is complete with published [commands](docs/commands.md) and [retained compatibility identifiers](docs/compatibility-identifiers.md) in `ccfd7f0`, including explicit residual identity classification. This does not claim broader CLI, ROOT B2, beta or organization-admission completion. |
 | ☑ | Translate remaining Russian user-facing strings in CLI help, errors, MCP tool descriptions, and documentation to English. |
 | ☑ | Repair the development baseline: Linux build, static checks, formatting, module maintenance, verification, separated CLI and MCP registration, and continuous integration. |
 | ☑ | Provide accepted OSS installation registration, first-run trust provisioning, and installed-binary trust coverage; refuse installation-root reuse or rotation for unproven roots or roots with foreign entries before removing files. |
