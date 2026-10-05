@@ -1,0 +1,29 @@
+{
+  "format": "providerclient-neutral-synthetic-fixture/v1",
+  "provenance": "label-neutralized regression derivative; not an actual producer receipt",
+  "actualProducerEvidence": false,
+  "cursorReplayable": false,
+  "opaqueMetadata": "query, scope, descriptor and source digests are opaque fixture claims; catalog digest is recomputed over exact compact catalog bytes",
+  "allowedArtifacts": [
+    {
+      "file": "expected-digests.json",
+      "sha256": "a59e1a5dd7e3a2ffaa177f223ce3f6647716504926a2b96b9054fb313c6ec6cb"
+    },
+    {
+      "file": "full-catalog.json",
+      "sha256": "76c05113c19d3ddc429d568e6b9f0a52d406b57f4a5422b12be81b4e87bc9856"
+    },
+    {
+      "file": "knowledge.v1.schema.json",
+      "sha256": "b5febb8f5454254771eae7c5624a1994971517acb76b56b148e610b7853cbad6"
+    },
+    {
+      "file": "receipt.ndjson",
+      "sha256": "1ab3403bd8104b326ab9dcb4e3344400fe0cf6abc0e3d518e09b550cfe4e6a88"
+    },
+    {
+      "file": "session-v1.schema.json",
+      "sha256": "ed63c33a65168c7a6e4e5d4916c2c951344ced21d6a8f2d38eecd9da1a14c712"
+    }
+  ]
+}

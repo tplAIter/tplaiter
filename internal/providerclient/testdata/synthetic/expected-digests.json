@@ -1,0 +1,43 @@
+{
+  "descriptorDigest": "sha256:synthetic-local-session-snapshot:91f6d5ca96e2c01f9b599214f40474a16bef7812df9986d1cde6de10c49f0d7c",
+  "full": {
+    "catalogDigest": "sha256:73ea67f18faf2d7bb464b5a6eae9d5c0caceeaa6cfad265538c2b68241e60529",
+    "complete": true,
+    "offset": 0,
+    "queryDigest": "sha256:1ba5722e1f5b68efe6b7820413d7a651a9f77c8fe45323501ebac0d1285fa24c",
+    "scopeDigest": "sha256:synthetic-local-session-snapshot:91f6d5ca96e2c01f9b599214f40474a16bef7812df9986d1cde6de10c49f0d7c",
+    "totalSources": 2
+  },
+  "page1": {
+    "catalogDigest": "sha256:73ea67f18faf2d7bb464b5a6eae9d5c0caceeaa6cfad265538c2b68241e60529",
+    "complete": false,
+    "offset": 0,
+    "queryDigest": "sha256:4fa6771eb96447a3b120f8f76014c79ef0ba6d9e92d05767748daaefe414eda0",
+    "scopeDigest": "sha256:synthetic-local-session-snapshot:91f6d5ca96e2c01f9b599214f40474a16bef7812df9986d1cde6de10c49f0d7c",
+    "totalSources": 2
+  },
+  "page2": {
+    "catalogDigest": "sha256:73ea67f18faf2d7bb464b5a6eae9d5c0caceeaa6cfad265538c2b68241e60529",
+    "complete": true,
+    "offset": 1,
+    "queryDigest": "sha256:4fa6771eb96447a3b120f8f76014c79ef0ba6d9e92d05767748daaefe414eda0",
+    "scopeDigest": "sha256:synthetic-local-session-snapshot:91f6d5ca96e2c01f9b599214f40474a16bef7812df9986d1cde6de10c49f0d7c",
+    "totalSources": 2
+  },
+  "sourcePinDigests": {
+    "synthetic:source:alpha": {
+      "commit": "ab9b253701d470f794f37b7c570d44d769d65251",
+      "contentDigest": "sha256:8363cbfb6e35dfde282010404bfc26562754e6d8c092d828b680d27e73a2f998",
+      "contractDigest": "sha256:7df0fbc4459a2c2155ab57ee8a6dfef16c452939650c87243fb950f6d4a78649",
+      "evidenceDigest": "sha256:d3b280dcb96580eafebde48cf5346ed4662cedfadedeac7082f7b53d0b7fc7e2",
+      "treeDigest": "sha256:065c03cb33bde644cba69a13dcba78305dea3f63edd47515bdc4902085265098"
+    },
+    "synthetic:source:beta": {
+      "commit": "39c0732b336eab4ea59e66946e5e7d360fe0ee34",
+      "contentDigest": "sha256:c81a48c2764dca177bb94e0c52e7200769fbe372238c0d4dcc24fc83d990ed36",
+      "contractDigest": "sha256:7df0fbc4459a2c2155ab57ee8a6dfef16c452939650c87243fb950f6d4a78649",
+      "evidenceDigest": "sha256:54447f63ff90b18a84d697ebb13c353d534d9db953a11ecbaf879e88459c0c9a",
+      "treeDigest": "sha256:f260d9ad13266d89febe2c1f5da41667716d76725b51def2cf842cf933e16c32"
+    }
+  }
+}

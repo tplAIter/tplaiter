@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:local-provider:descriptor:v1",
+  "title": "Pinned Source/Asset metadata v1; not a C01 Block/Skill or runtime authority schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/source"
+    },
+    {
+      "$ref": "#/$defs/asset"
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "sha256"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "hex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "algorithm",
+        "domain",
+        "hex"
+      ]
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "path": {
+          "type": "string"
+        },
+        "blobDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "sourceId",
+        "revision",
+        "path",
+        "blobDigest"
+      ]
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "static-document"
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65536
+        },
+        "descriptorDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "anchor",
+        "bytes",
+        "descriptorDigest"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "repositoryId": {
+          "type": "integer"
+        },
+        "rootRef": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "gitTreeOid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "state": {
+          "enum": [
+            "available-static",
+            "not-ready-empty"
+          ]
+        },
+        "category": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/asset"
+          }
+        },
+        "classification": {
+          "const": "private"
+        },
+        "sourceTrust": {
+          "type": "string"
+        },
+        "unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "repositoryId",
+        "rootRef",
+        "state",
+        "category",
+        "summary",
+        "capabilities",
+        "assets",
+        "classification",
+        "sourceTrust",
+        "unresolved"
+      ]
+    }
+  }
+}

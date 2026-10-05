@@ -1,0 +1,46 @@
+{
+  "format": "providerclient-current-local-proof/v1",
+  "publicBase": "e49dd1f77492388e02b638ad6db1265224b97fcd",
+  "wireVersion": "local-provider.session/v1",
+  "c01Admission": true,
+  "organizationCertified": false,
+  "rawEvidenceExported": false,
+  "transports": {
+    "pipes": {
+      "consumerExitCode": 0,
+      "knowledgePages": 2,
+      "sources": 2,
+      "assetsRead": 4,
+      "c01Admission": true,
+      "productionAdmission": "SESSION_PRODUCTION_UNQUALIFIED",
+      "refusals": {
+        "wrong-pin": "PIN_MISMATCH",
+        "query-change": "CURSOR_STALE",
+        "scope-change": "CURSOR_STALE",
+        "budget-change": "CURSOR_STALE",
+        "wrong-version": "SCHEMA_VERSION_UNSUPPORTED",
+        "bad-schema": "SCHEMA_VERSION_UNSUPPORTED",
+        "bad-capability": "CAPABILITY_REQUIRED",
+        "foreign-cursor": "CURSOR_STALE"
+      }
+    },
+    "socket": {
+      "consumerExitCode": 0,
+      "knowledgePages": 2,
+      "sources": 2,
+      "assetsRead": 4,
+      "c01Admission": true,
+      "productionAdmission": "SESSION_PRODUCTION_UNQUALIFIED",
+      "refusals": {
+        "wrong-pin": "PIN_MISMATCH",
+        "query-change": "CURSOR_STALE",
+        "scope-change": "CURSOR_STALE",
+        "budget-change": "CURSOR_STALE",
+        "wrong-version": "SCHEMA_VERSION_UNSUPPORTED",
+        "bad-schema": "SCHEMA_VERSION_UNSUPPORTED",
+        "bad-capability": "CAPABILITY_REQUIRED",
+        "foreign-cursor": "CURSOR_STALE"
+      }
+    }
+  }
+}

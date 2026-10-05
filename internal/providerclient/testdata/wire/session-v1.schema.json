@@ -1,0 +1,85 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "local-provider.session/v1"
+    },
+    "id": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9._:-]*$"
+    },
+    "op": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schemaVersions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "requiredOperations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "requiredCapabilities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sourceId": {
+      "type": "string"
+    },
+    "assetId": {
+      "type": "string"
+    },
+    "pin": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "projection": {
+      "type": "string"
+    },
+    "deadlineMs": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2000
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "responseBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "metadataBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "strictTokens": {
+          "type": "boolean"
+        }
+      },
+      "required": []
+    }
+  },
+  "required": [
+    "version",
+    "op"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:local-provider:session:v1:request",
+  "title": "Local uncertified provider session request v1"
+}
