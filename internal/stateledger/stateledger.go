@@ -23,6 +23,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/naming"
 	"github.com/tplAIter/tplaiter/internal/newtransaction"
+	inventory "github.com/tplAIter/tplaiter/internal/projecttransaction/inventory/catalog"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/stateledger/ledgerpath"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
@@ -308,6 +309,9 @@ type Snapshot struct {
 	Entries    []Entry `json:"entries"`
 	// Transactions is the global new-transaction inventory (home scope only).
 	Transactions []newtransaction.TransactionStatus `json:"-"`
+	// ProjectTransactionCandidates are namespace observations only; they do not
+	// authenticate a phase or replace the transaction guards.
+	ProjectTransactionCandidates []inventory.Candidate `json:"-"`
 }
 
 // Report is the sealed outcome of a planned or applied ledger migration.
@@ -386,6 +390,9 @@ func InventoryContext(ctx context.Context, projectRoot string, opts Options) (*S
 			return nil, err
 		}
 	}
+	if s.ProjectTransactionCandidates, err = inventory.Discover(ctx, p, h); err != nil {
+		return nil, err
+	}
 	if opts.ProtectedReceipt != nil {
 		if err = validReceipt(*opts.ProtectedReceipt); err != nil {
 			return nil, err
@@ -430,9 +437,17 @@ func inventoryRoot(ctx context.Context, s *Snapshot, scope, root, prefix string,
 		}
 		var class ledgerpath.Class
 		if scope == "project" {
-			class = ledgerpath.Project(rel)
+			if observed, reserved := ledgerpath.ProjectTransactionImage(rel); reserved {
+				class = observed
+			} else {
+				class = ledgerpath.Project(rel)
+			}
 		} else {
-			class = ledgerpath.Home(rel)
+			if observed, reserved := ledgerpath.HomeProjectTransaction(rel); reserved {
+				class = observed
+			} else {
+				class = ledgerpath.Home(rel)
+			}
 		}
 		digest := ""
 		if scope == "home" {
