@@ -68,6 +68,25 @@
       "if": {
         "properties": {
           "operation": {
+            "const": "context.query"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ContextQuery"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
             "const": "deps.verify"
           }
         },
@@ -998,6 +1017,7 @@
     "kind": {
       "enum": [
         "AIGen",
+        "ContextQuery",
         "DepsVerify",
         "DoctorCheck",
         "EnvSetup",
@@ -1059,6 +1079,7 @@
     "operation": {
       "enum": [
         "ai.gen",
+        "context.query",
         "deps.verify",
         "doctor.check",
         "env.setup",

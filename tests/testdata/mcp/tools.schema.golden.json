@@ -274,6 +274,243 @@
   },
   {
     "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Read installed signed context with bounded local byte plans. Model window stays unknown. Actions discover/search/get/continue/plan; pull schema on demand.",
+    "inputSchema": {
+      "properties": {
+        "action": {
+          "enum": [
+            "discover",
+            "search",
+            "get",
+            "continue",
+            "plan",
+            "schema"
+          ],
+          "type": "string"
+        },
+        "dir": {
+          "description": "Optional locator, must match the installed root",
+          "type": "string"
+        },
+        "projectContext": {
+          "description": "Exact installed context key; default is registered",
+          "type": "string"
+        },
+        "request": {
+          "description": "Typed selectors/byte bounds; action=schema gives full contract",
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    "name": "context",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "ContextQuery"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "context.query"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,

@@ -118,6 +118,7 @@ func TestProtocolListTools(t *testing.T) {
 	}
 
 	want := []string{
+		"context", "project_diff", "settings_edit",
 		"trust_inspect",
 		"repo_add", "repo_list", "repo_update", "repo_remove",
 		"template_list", "template_show",

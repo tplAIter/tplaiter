@@ -13,35 +13,45 @@ import (
 // A work package that adds a readonly, trust-owned or legacy-action command
 // adds its row here together with the annotation in its own file.
 var wantPrerunClass = map[string]prerunClass{
-	"tplaiter diff":                prerunTrustOwned,
-	"tplaiter verify":              prerunTrustOwned,
-	"tplaiter check":               prerunTrustOwned,
-	"tplaiter deps verify":         prerunTrustOwned,
-	"tplaiter ai gen":              prerunLegacyAction, // preserved name collision, see ai.go
-	"tplaiter doctor":              prerunReadonly,
-	"tplaiter env list":            prerunReadonly,
-	"tplaiter env setup":           prerunLegacyAction,
-	"tplaiter gen":                 prerunTrustOwned,
-	"tplaiter gen batch":           prerunTrustOwned,
-	"tplaiter gen list":            prerunTrustOwned,
-	"tplaiter migrate-state":       prerunTrustOwned,
-	"tplaiter new":                 prerunTrustOwned,
-	"tplaiter repo update":         prerunTrustOwned, // preserved name collision, see repo.go
-	"tplaiter run":                 prerunLegacyAction,
-	"tplaiter settings":            prerunTrustOwned,
-	"tplaiter settings list":       prerunTrustOwned,
-	"tplaiter settings set":        prerunTrustOwned,
-	"tplaiter settings edit":       prerunTrustOwned,
-	"tplaiter trust":               prerunTrustOwned,
-	"tplaiter trust contexts":      prerunTrustOwned,
-	"tplaiter trust inspect":       prerunTrustOwned,
-	"tplaiter trust provision":     prerunTrustOwned,
-	"tplaiter trust recover-state": prerunTrustOwned,
-	"tplaiter trust refresh":       prerunTrustOwned,
-	"tplaiter update":              prerunTrustOwned,
-	"tplaiter update abort":        prerunTrustOwned,
-	"tplaiter update continue":     prerunTrustOwned,
-	"tplaiter version":             prerunReadonly,
+	"tplaiter context":               prerunReadonly,
+	"tplaiter context continue":      prerunReadonly,
+	"tplaiter context discover":      prerunReadonly,
+	"tplaiter context get":           prerunReadonly,
+	"tplaiter context plan":          prerunReadonly,
+	"tplaiter context schema":        prerunReadonly,
+	"tplaiter context search":        prerunReadonly,
+	"tplaiter diff":                  prerunTrustOwned,
+	"tplaiter verify":                prerunTrustOwned,
+	"tplaiter check":                 prerunTrustOwned,
+	"tplaiter deps verify":           prerunTrustOwned,
+	"tplaiter ai gen":                prerunLegacyAction, // preserved name collision, see ai.go
+	"tplaiter doctor":                prerunReadonly,
+	"tplaiter env list":              prerunReadonly,
+	"tplaiter env setup":             prerunLegacyAction,
+	"tplaiter gen":                   prerunTrustOwned,
+	"tplaiter gen batch":             prerunTrustOwned,
+	"tplaiter gen list":              prerunTrustOwned,
+	"tplaiter migrate-state":         prerunTrustOwned,
+	"tplaiter new":                   prerunTrustOwned,
+	"tplaiter repo update":           prerunTrustOwned, // preserved name collision, see repo.go
+	"tplaiter run":                   prerunLegacyAction,
+	"tplaiter settings":              prerunTrustOwned,
+	"tplaiter settings list":         prerunTrustOwned,
+	"tplaiter settings set":          prerunTrustOwned,
+	"tplaiter settings edit":         prerunTrustOwned,
+	"tplaiter trust":                 prerunTrustOwned,
+	"tplaiter trust contexts":        prerunTrustOwned,
+	"tplaiter trust inspect":         prerunTrustOwned,
+	"tplaiter trust provision":       prerunTrustOwned,
+	"tplaiter trust recover-state":   prerunTrustOwned,
+	"tplaiter trust refresh":         prerunTrustOwned,
+	"tplaiter update":                prerunTrustOwned,
+	"tplaiter update abort":          prerunTrustOwned,
+	"tplaiter update continue":       prerunTrustOwned,
+	"tplaiter workspace abort":       prerunTrustOwned,
+	"tplaiter workspace add-service": prerunTrustOwned,
+	"tplaiter workspace continue":    prerunTrustOwned,
+	"tplaiter version":               prerunReadonly,
 }
 
 // wantPrerunNoArgsClass pins classes that differ when a command runs without
@@ -145,7 +155,15 @@ func TestPreRunClassificationMatchesLegacySwitch(t *testing.T) {
 		}
 		for _, args := range [][]string{nil, {"arg"}} {
 			want := legacy(c, args)
+			if c.CommandPath() == "tplaiter context" || strings.HasPrefix(c.CommandPath(), "tplaiter context ") {
+				want = "skip" // Context owns authenticated read-only composition.
+			}
 			switch c.CommandPath() {
+			case "tplaiter diff", "tplaiter workspace abort", "tplaiter workspace add-service", "tplaiter workspace continue":
+				if want != "hooks" {
+					t.Errorf("%q: historical baseline=%s, want hooks", c.CommandPath(), want)
+				}
+				want = "skip" // Signed diff/workspace own authenticated runtime composition.
 			case "tplaiter settings", "tplaiter settings list", "tplaiter settings set", "tplaiter settings edit":
 				if want != "hooks" {
 					t.Errorf("%q: historical settings baseline=%s, want hooks", c.CommandPath(), want)
