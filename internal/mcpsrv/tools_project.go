@@ -40,11 +40,12 @@ type dirArgs struct {
 }
 
 type updateArgs struct {
-	Dir         string `json:"dir"`
-	To          string `json:"to"`
-	DryRun      bool   `json:"dryRun"`
-	Check       bool   `json:"check"`
-	SourceInput string `json:"sourceInput"`
+	ProjectContext string `json:"projectContext"`
+	Dir            string `json:"dir"`
+	To             string `json:"to"`
+	DryRun         bool   `json:"dryRun"`
+	Check          bool   `json:"check"`
+	SourceInput    string `json:"sourceInput"`
 }
 
 type doctorArgs struct {
@@ -111,9 +112,10 @@ func (s *Server) addProjectTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"update",
-		mcp.WithDescription("Update project (dir) to a new template version using 3-way merge. Conflicts produce markers and a non-zero exit (isError). operation is update.check with check=true, update.plan with dryRun=true, otherwise update.apply."),
+		mcp.WithDescription("Update the authenticated native project to its signed pinned target. Conflicting plans preserve project and registry. operation is update.check with check=true, update.plan with dryRun=true, otherwise update.apply."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
-		mcp.WithString("to", mcp.Description("Target template version; empty — latest stable tag")),
+		mcp.WithString("to", mcp.Description("Exact target commit from sourceInput")),
+		mcp.WithString("projectContext", mcp.Description("Exact authenticated installed context key; omitted uses registration default")),
 		mcp.WithBoolean("dryRun", mcp.Description("Show plan without modifying files"), mcp.DefaultBool(false)),
 		mcp.WithBoolean("check", mcp.Description("Check tree for conflict markers (exit code 1 if found)"), mcp.DefaultBool(false)),
 		mcp.WithString("sourceInput", mcp.Description("Path to the closed JSON source selection")),
@@ -126,7 +128,12 @@ func (s *Server) addProjectTools() {
 		if failure != nil {
 			return failure, nil
 		}
-		return s.callStructured(ctx, op, cwd, argvUpdate(a.To, a.DryRun, a.Check, a.SourceInput), longCall), nil
+		argv := argvUpdate(a.To, a.DryRun, a.Check, a.SourceInput)
+		argv = append(argv, "--dir", cwd)
+		if a.ProjectContext != "" {
+			argv = append(argv, "--project-context", a.ProjectContext)
+		}
+		return s.callStructured(ctx, op, cwd, argv, longCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(

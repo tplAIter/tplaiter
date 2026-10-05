@@ -102,7 +102,7 @@ func TestMainJSONSuccessAndFailureEnvelopes(t *testing.T) {
 		{"repo list", []string{"repo", "list", "--json"}, resultdto.ExitSuccess, resultdto.OperationRepoList, resultdto.StatusOK, ""},
 		{"projects list", []string{"projects", "list", "--json"}, resultdto.ExitSuccess, resultdto.OperationProjectsList, resultdto.StatusOK, ""},
 		{"doctor", []string{"doctor", "--json"}, resultdto.ExitSuccess, resultdto.OperationDoctorCheck, resultdto.StatusOK, ""},
-		{"update check clean", []string{"update", "--check", "--json"}, resultdto.ExitSuccess, resultdto.OperationUpdateCheck, resultdto.StatusOK, ""},
+		{"unsigned update check", []string{"update", "--check", "--json"}, resultdto.ExitTrust, resultdto.OperationUpdateCheck, resultdto.StatusBlocked, "TRUST_ANCHOR_MISSING"},
 		{"usage", []string{"repo", "list", "--bogus", "--json"}, resultdto.ExitUsage, resultdto.OperationRepoList, resultdto.StatusFailed, "CLI_USAGE"},
 		{"native default build unavailable", []string{"gen", "crud", "Ride", "--json"}, resultdto.ExitUnavailable, resultdto.OperationGenRun, resultdto.StatusBlocked, "TRUST_GENERATION_EXECUTION_UNAVAILABLE"},
 		{"native file-only anchor missing", []string{"gen", "crud", "Ride", "--no-build", "--json"}, resultdto.ExitTrust, resultdto.OperationGenRun, resultdto.StatusBlocked, "TRUST_ANCHOR_MISSING"},

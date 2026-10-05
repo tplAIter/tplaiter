@@ -7,6 +7,7 @@ This page covers the OSS profile built from source. There is no published releas
 For the installed readonly operations, see [offline verification](offline-verification.md). They use the enrolled finite project contexts described in the [source enrollment guide](source-enrollment.md) and require an exact authenticated project root.
 
 For the restored file-only native generator CLI and its current limits, see [native generation](native-generation.md).
+For the bounded signed native Update CLI and MCP candidate, see [native Update](native-update.md).
 
 ## Requirements
 

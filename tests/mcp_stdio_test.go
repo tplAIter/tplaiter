@@ -443,6 +443,19 @@ func TestMCPStdioContract(t *testing.T) {
 			if op != tc.op {
 				t.Fatalf("%s: operation=%s, want %s", tc.tool, op, tc.op)
 			}
+			if tc.tool == "update" {
+				// This unsigned discovery fixture is outside the installed project root.
+				if !res.IsError || status != "blocked" || len(codes) != 1 || codes[0] != "TRUST_PROJECT_CONTEXT_MISMATCH" {
+					t.Fatalf("static discovery project context refusal: isError=%v op=%s status=%s codes=%v result=%+v", res.IsError, op, status, codes, res.StructuredContent)
+				}
+				if res.StructuredContent["project"] != nil || res.StructuredContent["transactionId"] != nil {
+					t.Fatalf("context refusal claimed a project or transaction: %+v", res.StructuredContent)
+				}
+				if changes, ok := res.StructuredContent["changes"].([]any); !ok || len(changes) != 0 {
+					t.Fatalf("context refusal reported changes: %+v", res.StructuredContent)
+				}
+				return
+			}
 			if p, isPending := pending[tc.tool]; isPending {
 				reason := p.reason
 				// The backend lands later: the call must fail closed with a

@@ -1,6 +1,6 @@
 # Native file generation
 
-File-only native `gen`, `gen list` and `gen batch` are restored in [68899a0](https://github.com/tplAIter/tplaiter/commit/68899a059fa13ade3d0dab6f4143303edc2bf966), including their MCP counterparts. The guard that blocks incompatible operations while a native generation transaction is unfinished remains pending implementation and acceptance. This page describes the accepted file-only capability; it does not claim complete lifecycle safety, build or hook support, recovery CLI, or live update support.
+File-only native `gen`, `gen list` and `gen batch` are restored in [68899a0](https://github.com/tplAIter/tplaiter/commit/68899a059fa13ade3d0dab6f4143303edc2bf966), including their MCP counterparts. The guard that blocks incompatible operations while a native generation transaction is unfinished remains pending implementation and acceptance. This page describes the accepted file-only capability; it does not claim complete lifecycle safety, build or hook support, recovery CLI, or the broader live-update beta. The bounded signed native Update CLI and MCP candidate is documented separately in [native Update](native-update.md).
 
 Use an installed, provisioned binary and a project created from an enrolled signed native template. Follow [installation](install.md) and [source enrollment](source-enrollment.md) first. A plain build without installation registration cannot generate files.
 

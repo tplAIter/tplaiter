@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"sort"
 
@@ -18,11 +17,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/provenance"
-	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
-	"github.com/tplAIter/tplaiter/internal/update"
 )
 
 // updateRunner — runner for `tplater update` post-update hooks. A package
@@ -33,97 +30,28 @@ func init() {
 	registerCommand(newUpdateCmd)
 }
 
-// newUpdateCmd creates `tplater update`: a 3-way update of the project to a new
-// template version with a five-category report and conflict markers.
+// newUpdateCmd composes the authenticated, action-free native update lifecycle.
 func newUpdateCmd() *cobra.Command {
-	var (
-		to             string
-		all            bool
-		dryRun         bool
-		check          bool
-		sourceInput    string
-		projectContext string
-	)
-
+	var controls nativeUpdateControls
 	c := &cobra.Command{
 		Annotations: prerunAnnotations(prerunTrustOwned),
-
-		Use:   "update",
-		Short: "Update project to new template version (3-way merge)",
-		Long: "Updates the generated project to target template version using the 3-way merge model " +
-			"(base is a clean render of the pinned version, target is a render of the new version; " +
-			"user edits are determined by .tplaiter/baseline.json). Non-overlapping edits merge automatically; " +
-			"overlapping edits produce conflict markers " +
-			"(<<<<<<< / ======= / >>>>>>>) and exit code 2.\n\n" +
-			"Without --to, uses the latest stable tag from repository cache (`tplater repo update` " +
-			"fetches new tags). --dry-run computes the plan without writing; --check scans the tree " +
-			"for remaining conflict markers (exit code 1); --all processes all registry projects.",
+		Use:         "update", Short: "Update an authenticated native project (3-way merge)",
+		Long: "Updates the installed project context from its signed current source to the exact target in --source-input. " +
+			"--to, when supplied, must equal that pinned commit. --dir must match the installed root. " +
+			"--dry-run prepares a read-only plan; --check with source input checks that plan, otherwise it scans conflict markers. " +
+			"Conflicting plans preserve the project and registry. Actions, hooks, tools, environment and --all are unavailable.",
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			switch {
-			case check:
-				setResultOperation(cmd, resultdto.OperationUpdateCheck)
-			case dryRun:
-				setResultOperation(cmd, resultdto.OperationUpdatePlan)
-			default:
-				setResultOperation(cmd, resultdto.OperationUpdateApply)
-			}
-			if all {
-				return update.ErrLifecycleUnavailable
-			}
-			if check {
-				return checkLocalConflicts(cmd)
-			}
-			runtime, err := composeRuntimeForProject(cmd.Context(), projectContext)
-			if err != nil {
-				return err
-			}
-			defer runtime.Close()
-			if !dryRun {
-				return update.ErrLifecycleUnavailable
-			}
-			if sourceInput == "" {
-				return errors.New("TRUST_SOURCE_ADAPTER_UNSUPPORTED")
-			}
-			target, err := readUntrustedDocument(cmd.Context(), sourceInput)
-			if err != nil {
-				return errors.New("TRUST_SOURCE_ADAPTER_UNSUPPORTED")
-			}
-			targetSelection, err := operationtrust.DecodeSourceSelection(target)
-			if err != nil || (to != "" && targetSelection.Subject.Commit != to) {
-				return errors.New("TRUST_SOURCE_ADAPTER_UNSUPPORTED")
-			}
-			source, err := registeredSourceInput(cmd.Context(), runtime)
-			if err != nil {
-				return err
-			}
-			preimage, err := registeredProjectPreimage(cmd.Context(), runtime.ProjectContext().RootPath)
-			if err != nil {
-				return err
-			}
-			prepared, err := update.Prepare(cmd.Context(), runtime, operationtrust.PrepareUpdateInput{SourceInput: source, TargetInput: target, Render: renderref.Input{}, RendererVersion: resolveVersion(), PreimageSHA256: preimage})
-			if err != nil {
-				return err
-			}
-			if !prepared.ValidFor(runtime.TrustRuntime()) {
-				return errors.New("TRUST_RUNTIME_INVALID")
-			}
-			if jsonMode(cmd) {
-				return emitData(cmd, resultdto.OperationUpdatePlan, trustProject(runtime.ProjectContext()),
-					resultdto.UpdateData{DryRun: true, To: to, ConflictMarkers: []string{}})
-			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "dry-run prepared")
-			return nil
-		},
+		RunE: func(cmd *cobra.Command, _ []string) error { return runNativeUpdate(cmd, controls) },
 	}
-
 	f := c.Flags()
-	f.StringVar(&to, "to", "", "target template version (by default — latest stable tag)")
-	f.BoolVar(&all, "all", false, "update all registry projects with status ok")
-	f.BoolVar(&dryRun, "dry-run", false, "show plan without modifying files")
-	f.BoolVar(&check, "check", false, "check tree for conflict markers (exit code 1 if found)")
-	f.StringVar(&projectContext, "project-context", "", "key of an authenticated installed project context (default: registration key)")
-	f.StringVar(&sourceInput, "source-input", "", "sealed JSON of target source selection")
+	f.StringVar(&controls.to, "to", "", "exact target commit from the signed source selection")
+	f.BoolVar(&controls.all, "all", false, "update all registry projects (currently unavailable)")
+	f.BoolVar(&controls.dryRun, "dry-run", false, "show authenticated plan without modifying files")
+	f.BoolVar(&controls.check, "check", false, "check target plan, or remaining conflict markers when no source input is given")
+	f.StringVar(&controls.key, "project-context", "", "key of an authenticated installed project context")
+	f.StringVar(&controls.dir, "dir", "", "locator; must match the installed project root")
+	f.StringVar(&controls.sourceInput, "source-input", "", "JSON pinned target source selection and publisher evidence locators")
+	c.AddCommand(newNativeUpdateAbortCmd(), newNativeUpdateContinueCmd())
 	return withResult(c, resultdto.OperationUpdateApply)
 }
 
@@ -236,21 +164,15 @@ func registeredProjectPreimage(ctx context.Context, root string) (string, error)
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func checkLocalConflicts(cmd *cobra.Command) error {
-	// --check is intentionally local and bounded; it does not load a manager,
-	// source ref, registry, or publisher. The project root is the current dir.
-	root, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	found, err := update.ScanConflicts(root, nil)
+func checkNativeConflicts(cmd *cobra.Command, root string, project *resultdto.Project) error {
+	found, err := scanNativeConflictMarkers(cmd.Context(), root)
 	if err != nil {
 		return err
 	}
 	markersErr := errors.New("conflict markers found")
 	if jsonMode(cmd) {
 		env := newResult(resultdto.OperationUpdateCheck)
-		env.Project = projectAt(root)
+		env.Project = project
 		env.Summary.Conflicts = len(found)
 		if err := env.SetData(resultdto.UpdateData{ConflictMarkers: nonNil(found)}); err != nil {
 			return err

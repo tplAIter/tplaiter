@@ -6490,7 +6490,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Update project (dir) to a new template version using 3-way merge. Conflicts produce markers and a non-zero exit (isError). operation is update.check with check=true, update.plan with dryRun=true, otherwise update.apply.",
+    "description": "Update the authenticated native project to its signed pinned target. Conflicting plans preserve project and registry. operation is update.check with check=true, update.plan with dryRun=true, otherwise update.apply.",
     "inputSchema": {
       "properties": {
         "check": {
@@ -6507,12 +6507,16 @@
           "description": "Show plan without modifying files",
           "type": "boolean"
         },
+        "projectContext": {
+          "description": "Exact authenticated installed context key; omitted uses registration default",
+          "type": "string"
+        },
         "sourceInput": {
           "description": "Path to the closed JSON source selection",
           "type": "string"
         },
         "to": {
-          "description": "Target template version; empty — latest stable tag",
+          "description": "Exact target commit from sourceInput",
           "type": "string"
         }
       },

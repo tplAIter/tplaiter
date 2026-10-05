@@ -34,6 +34,8 @@ var wantPrerunClass = map[string]prerunClass{
 	"tplaiter trust recover-state": prerunTrustOwned,
 	"tplaiter trust refresh":       prerunTrustOwned,
 	"tplaiter update":              prerunTrustOwned,
+	"tplaiter update abort":        prerunTrustOwned,
+	"tplaiter update continue":     prerunTrustOwned,
 	"tplaiter version":             prerunReadonly,
 }
 
@@ -90,8 +92,9 @@ func TestPreRunClassification(t *testing.T) {
 // TestPreRunClassificationMatchesLegacySwitch proves the annotation classifier
 // reproduces the removed name-based switch (legacyActionCommand,
 // descriptiveCommand and the migrate-state/new/update/trust checks) for every
-// command except the explicitly delivered native gen/gen batch transition.
-// Those commands now own authenticated composition instead of blanket denial.
+// command except the delivered native gen/gen batch and update abort/continue
+// transitions. Those commands now own authenticated composition and skip
+// legacy hooks.
 // Readonly and trust-owned both skip legacy hooks and compare as "skip".
 func TestPreRunClassificationMatchesLegacySwitch(t *testing.T) {
 	legacy := func(cmd *cobra.Command, args []string) string {
@@ -141,6 +144,12 @@ func TestPreRunClassificationMatchesLegacySwitch(t *testing.T) {
 					t.Errorf("%q: historical gen baseline=%s, want refuse", c.CommandPath(), want)
 				}
 				want = "skip" // Native composition owns its action/refusal boundary.
+			}
+			if c.CommandPath() == "tplaiter update abort" || c.CommandPath() == "tplaiter update continue" {
+				if want != "hooks" {
+					t.Errorf("%q: historical update recovery baseline=%s, want hooks", c.CommandPath(), want)
+				}
+				want = "skip" // Native recovery owns its authenticated boundary.
 			}
 			if got := current(c, args); got != want {
 				t.Errorf("%q args=%v: classifier=%s legacy=%s", c.CommandPath(), args, got, want)
