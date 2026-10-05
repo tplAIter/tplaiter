@@ -2,7 +2,7 @@
 // directory) and renders per-tool artifacts (CLAUDE.md, .cursor/**,
 // AGENTS.md, GEMINI.md) into the project root.
 //
-// The source (the go-template WP-19 migration, now part of the tplater
+// The source (the go-template WP-19 migration, now part of the tplaiter
 // contract) consists of:
 //   - config.json           — language, target tools, line length;
 //   - modules/NN-*.json     — rule module declarations (activation, globs, when);
@@ -34,7 +34,7 @@ import (
 const ConfigFileName = "config.json"
 
 // AIConfigRelPath — path to the copied ai-config directory in the generated
-// project, relative to its root. `tplater new` copies here the directory
+// project, relative to its root. `tplaiter new` copies here the directory
 // referenced by the template manifest's aiConfig.path (the contract with /).
 const AIConfigRelPath = ".tplaiter/ai-config"
 

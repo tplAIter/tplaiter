@@ -170,10 +170,10 @@ type Options struct {
 	// Playbook — playbook to run from manifest environment.playbooks.
 	Playbook manifest.Playbook
 	// Values — current project settings (.tplaiter/project.yaml), passed as
-	// tplater.settings in extra-vars.
+	// tplaiter.settings in extra-vars.
 	Values settings.Values
 	// Project — project identity (.tplaiter/project.yaml: project), passed as
-	// tplater.project in extra-vars.
+	// tplaiter.project in extra-vars.
 	Project manifest.ProjectInfo
 	// AutoYes — confirms Ansible installation without an interactive question
 	// (`--yes`, SPEC-03 §4). When false and ansible-playbook is missing,
@@ -283,7 +283,7 @@ func installRecipe(exec execx.Runner) string {
 	return "brew install " + ansibleTool.Install.Brew + " (or " + ansibleTool.Install.Apt + " via apt on linux)"
 }
 
-// projectVars — tplater.project portion of extra-vars (SPEC-03 §4: JSON
+// projectVars — tplaiter.project portion of extra-vars (SPEC-03 §4: JSON
 // {"tplaiter": {"project": {...}, "settings": {...}}}). Explicit lowercase
 // json tags are required externally (Ansible expects snake/lower case), rather
 // than Go's convention for exported [manifest.ProjectInfo] fields.

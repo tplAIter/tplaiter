@@ -5,7 +5,7 @@
 // are not created.
 //
 // The logic is extracted from internal/newcmd into a shared package so
-// `tplater update` can reuse it without duplication: updating the version copies
+// `tplaiter update` can reuse it without duplication: updating the version copies
 // the same resources from the new checkout. newcmd retains the thin
 // copyResources → [Copy] wrapper.
 package resources

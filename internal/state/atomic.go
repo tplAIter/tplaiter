@@ -18,7 +18,7 @@ import (
 // overwrite the other's changes. writeFileAtomic only prevents reading half a
 // file during a write.
 //
-// The resulting file always has [filePerm] (0600): all tplater state files are
+// The resulting file always has [filePerm] (0600): all tplaiter state files are
 // equally private (see the package comment in state.go). Permissions are kept
 // internal so there is one explicit source of truth instead of N calls passing
 // the same value.

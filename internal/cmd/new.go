@@ -17,7 +17,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// newRunner — runner for the deps-check/hooks/ansible steps of `tplater new`.
+// newRunner — runner for the deps-check/hooks/ansible steps of `tplaiter new`.
 // A package variable like runRunner/envRunner for substitution in tests.
 var newRunner execx.Runner = execx.Exec{}
 

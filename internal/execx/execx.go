@@ -1,6 +1,6 @@
 // Package execx — mockable layer for launching external processes.
 //
-// tplater constantly orchestrates external tools (git, glab, gh, brew, ansible,
+// tplaiter constantly orchestrates external tools (git, glab, gh, brew, ansible,
 // arbitrary manifest shell commands). All this code must use [Runner], rather
 // than os/exec directly, so tests can substitute [RecordingRunner] without
 // touching the real environment.
@@ -36,8 +36,8 @@ type Options struct {
 	Stderr io.Writer
 	// Signals — optional OS-signal channel (usually created by the caller through
 	// os/signal.Notify) that Run forwards to the launched process until it exits.
-	// It is needed by interactive long-running commands (for example, `tplater run
-	// dev`) so Ctrl+C/SIGTERM caught by tplater do not silently terminate it
+	// It is needed by interactive long-running commands (for example, `tplaiter run
+	// dev`) so Ctrl+C/SIGTERM caught by tplaiter do not silently terminate it
 	// (leaving the child orphaned), but reach the child normally and give it a
 	// chance for graceful shutdown. nil (the default) forwards no signals.
 	Signals <-chan os.Signal

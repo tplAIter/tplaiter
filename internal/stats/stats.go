@@ -1,5 +1,5 @@
 // Package stats reports drift of a generated project from its template
-// (`tplater stats`): a clean render of the pinned version and answers
+// (`tplaiter stats`): a clean render of the pinned version and answers
 // (the reference from internal/renderref, shared with update) against the work
 // tree. Each file gets a status (identical/modified/deleted/extra), a changed
 // line percentage (LCS), and an updateability class (auto/conflict-prone/
@@ -39,7 +39,7 @@ type Options struct {
 type Deps struct {
 	// Manager resolves and checks out template versions (repository cache).
 	Manager *repo.Manager
-	// Home is the tplater home directory (reserved for registry checks; retained
+	// Home is the tplaiter home directory (reserved for registry checks; retained
 	// for symmetry with update.Deps).
 	Home string
 	// Out and Err are the main output and warning streams.
@@ -49,7 +49,7 @@ type Deps struct {
 	Palette ui.Palette
 }
 
-// Run executes `tplater stats`: finds the project from StartDir, collects a drift
+// Run executes `tplaiter stats`: finds the project from StartDir, collects a drift
 // report, and prints it as text or JSON. It only reads and produces no special exit errors.
 func Run(ctx context.Context, d Deps, opts Options) error {
 	rep, err := Collect(ctx, d, opts.StartDir)

@@ -10,7 +10,7 @@ import (
 // ConfigVersion is the currently supported config.yaml format version.
 const ConfigVersion = 1
 
-// configFileName is the file name in the tplater home directory.
+// configFileName is the file name in the tplaiter home directory.
 const configFileName = "config.yaml"
 
 // RepoKind is the template repository hosting type and determines which auth
@@ -37,7 +37,7 @@ type RepoRef struct {
 // from the start so the format version need not change when it is populated.
 type Defaults struct{}
 
-// UpdatesSettings contains settings for background tplater update checks.
+// UpdatesSettings contains settings for background tplaiter update checks.
 type UpdatesSettings struct {
 	// Check enables a quiet check for a new version every 24h. It defaults to
 	// true and is disabled explicitly with `updates.check: false`.
@@ -68,7 +68,7 @@ func configPath(home string) string {
 
 // LoadConfig reads config.yaml from home. A missing file is not an error and
 // returns [DefaultConfig]. A version newer than [ConfigVersion] is an
-// "update tplater" error; older versions use registered migrations (see migrate.go).
+// "update tplaiter" error; older versions use registered migrations (see migrate.go).
 func LoadConfig(home string) (Config, error) {
 	data, existed, err := readFile(configPath(home))
 	if err != nil {

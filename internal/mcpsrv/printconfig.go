@@ -16,7 +16,7 @@ type serverEntry struct {
 
 // PrintConfig returns a ready JSON configuration snippet for connecting an MCP
 // client to this server (the goca `--print-config` pattern). Supported clients
-// are claude, cursor, and vscode. exe is the absolute path to the tplater binary.
+// are claude, cursor, and vscode. exe is the absolute path to the tplaiter binary.
 //
 // Configuration shapes differ by client:
 //   - claude / cursor: {"mcpServers": {"tplaiter": {command, args}}};

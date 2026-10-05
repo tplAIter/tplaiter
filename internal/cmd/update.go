@@ -22,7 +22,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
-// updateRunner — runner for `tplater update` post-update hooks. A package
+// updateRunner — runner for `tplaiter update` post-update hooks. A package
 // variable following newRunner/runRunner for substitution in tests.
 var updateRunner execx.Runner = execx.Exec{}
 

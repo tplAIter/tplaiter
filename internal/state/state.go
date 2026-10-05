@@ -1,4 +1,4 @@
-// Package state manages the tplater home directory (~/.tplaiter by default,
+// Package state manages the tplaiter home directory (~/.tplaiter by default,
 // TPLAITER_HOME for tests/CI) and its state files: config.yaml, index.yaml,
 // projects.yaml, and state.yaml. See the package documentation for details.
 //
@@ -15,7 +15,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/naming"
 )
 
-// HomeEnv overrides the tplater home directory. Tests and CI use it to avoid
+// HomeEnv overrides the tplaiter home directory. Tests and CI use it to avoid
 // touching the real ~/.tplaiter.
 const HomeEnv = naming.HomeEnv
 
@@ -30,7 +30,7 @@ const (
 	filePerm    = 0o600
 )
 
-// Home returns the tplater home path: TPLAITER_HOME when set (even an empty
+// Home returns the tplaiter home path: TPLAITER_HOME when set (even an empty
 // directory is an explicit caller choice), otherwise
 // ~/.tplaiter.
 func Home() (string, error) {
@@ -45,7 +45,7 @@ func Home() (string, error) {
 	return home, nil
 }
 
-// EnsureHome ensures the tplater home directory and its skeleton (repos/) exist.
+// EnsureHome ensures the tplaiter home directory and its skeleton (repos/) exist.
 // It does not create files (config.yaml, etc.): each Load helper returns a
 // default when its file is absent and creates it on the first write. created
 // reports whether the directory existed before the call for first-run messaging.

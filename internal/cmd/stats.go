@@ -18,7 +18,7 @@ func init() {
 	registerCommand(newStatsCmd)
 }
 
-// newStatsCmd creates `tplater stats`: a drift report comparing the generated
+// newStatsCmd creates `tplaiter stats`: a drift report comparing the generated
 // project with a clean render of the pinned template version — file statuses,
 // percentage of changed lines (LCS), updateability classification
 // (auto/conflict-prone/manual-only), total drift score, and broken anchors.

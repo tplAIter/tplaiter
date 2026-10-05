@@ -26,7 +26,7 @@ var knownLintRuleIDs = map[string]bool{
 }
 
 // LintConfig is the template manifest's opt-in `lint` section (the  check):
-// the template declares its architectural invariants, which `tplater
+// the template declares its architectural invariants, which `tplaiter
 // lint-template` checks against a trial render AST. An empty section
 // (Rules == nil) does not change lint-template behavior: no rules, no checks.
 type LintConfig struct {

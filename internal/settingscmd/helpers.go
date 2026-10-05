@@ -30,7 +30,7 @@ type groupChange struct {
 }
 
 // exitForConflicts returns [update.ExitCodeError] with code 2 when the plan
-// leaves conflict markers (symmetric with `tplater update`). The cmd layer maps
+// leaves conflict markers (symmetric with `tplaiter update`). The cmd layer maps
 // it to the process exit code.
 func exitForConflicts(conflicts []string) error {
 	if len(conflicts) == 0 {

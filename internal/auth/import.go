@@ -12,7 +12,7 @@ import (
 // `<bin> auth token [--hostname <host>]` through runner and stores it under
 // tool `tool` for host `host`. Returns the ID of the saved record.
 //
-// This is a reusable function called by both the `tplater auth
+// This is a reusable function called by both the `tplaiter auth
 // import-glab|import-gh` command and the interactive `repo add` auth flow.
 // All external calls go through [execx.Runner], so the logic can be mocked in
 // unit tests without real glab/gh binaries.

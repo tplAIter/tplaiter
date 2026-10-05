@@ -10,7 +10,7 @@ import (
 )
 
 // SnapshotRelPath is the manifest snapshot path relative to the project root.
-// The snapshot enables offline `tplater run`/`gen` without access to the
+// The snapshot enables offline `tplaiter run`/`gen` without access to the
 // template repository.
 const SnapshotRelPath = ".tplaiter/manifest.snapshot.yaml"
 

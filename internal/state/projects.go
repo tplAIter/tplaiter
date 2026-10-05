@@ -14,7 +14,7 @@ import (
 // ProjectsVersion is the currently supported projects.yaml format version.
 const ProjectsVersion = 1
 
-// projectsFileName is the file name in the tplater home directory.
+// projectsFileName is the file name in the tplaiter home directory.
 const projectsFileName = "projects.yaml"
 
 // TemplateSelection is the template used to generate a project: pinned
@@ -201,7 +201,7 @@ func (p *Projects) Remove(id string) bool {
 }
 
 // Prune removes entries for which exists(item.Path) returns false (the project
-// path no longer exists, as in `tplater projects prune`) and returns the removed
+// path no longer exists, as in `tplaiter projects prune`) and returns the removed
 // entries. exists is injected instead of calling os.Stat so the operation can
 // be tested without a real filesystem.
 func (p *Projects) Prune(exists func(path string) bool) []ProjectRef {

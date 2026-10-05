@@ -1,5 +1,5 @@
-// Package templateview renders a template's catalog view (`tplater template show`
-// and future `tplater new --help-template`): metadata header, settings-group tree,
+// Package templateview renders a template's catalog view (`tplaiter template show`
+// and future `tplaiter new --help-template`): metadata header, settings-group tree,
 // and template documentation. It is pure rendering to io.Writer with no repository
 // or template-filesystem access: the caller (internal/cmd) resolves the reference,
 // checks it out, and passes the parsed [manifest.Template] and documentation bytes.

@@ -19,7 +19,7 @@ import (
 
 // runRunner — runner for executing manifest commands. It is a package variable
 // like authRunner (see auth.go), allowing tests to substitute a Runner; the
-// default is real execx.Exec{}, since `tplater run` must execute the project
+// default is real execx.Exec{}, since `tplaiter run` must execute the project
 // command for real.
 var runRunner execx.Runner = execx.Exec{}
 
@@ -27,7 +27,7 @@ func init() {
 	registerCommand(newRunCmd)
 }
 
-// newRunCmd creates `tplater run` (SPEC-01 §5, SPEC-04 §4).
+// newRunCmd creates `tplaiter run` (SPEC-01 §5, SPEC-04 §4).
 func newRunCmd() *cobra.Command {
 	var native nativeRunControls
 	c := withResult(&cobra.Command{
@@ -221,7 +221,7 @@ func execRunCommand(
 		script := c.Run + ` "$@"`
 		shellArgs := append([]string{"-c", script, "sh"}, extraArgs...)
 
-		// Signals received by tplater itself (Ctrl+C, etc.) are forwarded to the
+		// Signals received by tplaiter itself (Ctrl+C, etc.) are forwarded to the
 		// executed command; see execx.Options.Signals and
 		// execx.runWithSignalForwarding (it starts $SHELL in a separate process
 		// group so the signal reaches the real program, not only the shell).

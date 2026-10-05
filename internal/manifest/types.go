@@ -1,4 +1,4 @@
-// Package manifest defines the contract between a template and the tplater CLI:
+// Package manifest defines the contract between a template and the tplaiter CLI:
 // manifest structures (Template/Repository/Project), their parser (yaml.v3 with
 // KnownFields and an apiVersion gate), a template validator, a small condition
 // language, and an offline manifest snapshot.
@@ -12,7 +12,7 @@ package manifest
 const APIGroup = "tplater.dev"
 
 // SupportedMajor is the only supported major contract version. The parser rejects
-// a manifest with another major version and asks the user to update tplater.
+// a manifest with another major version and asks the user to update tplaiter.
 const SupportedMajor = 1
 
 // APIVersion is the canonical apiVersion field value written by v1 templates.
@@ -155,7 +155,7 @@ type Constraint struct {
 	Message string `yaml:"message"`
 }
 
-// Command is a named project command for `tplater run`.
+// Command is a named project command for `tplaiter run`.
 type Command struct {
 	Run         string `yaml:"run"`
 	Description string `yaml:"description"`
@@ -163,7 +163,7 @@ type Command struct {
 }
 
 // Generator parameter types (Param.Type). A parameter value comes from the CLI
-// (`tplater gen <kind> <Name> --<param> <value>`) and enters snippet rendering
+// (`tplaiter gen <kind> <Name> --<param> <value>`) and enters snippet rendering
 // context as `.Params.<name>` (and as parsed `.Fields` for the fields type).
 const (
 	ParamTypeString = "string"
@@ -182,7 +182,7 @@ const (
 // next goose migration number (`.MigrationSeq`, NNNNN) is derived from its directory.
 const NumberedGoose = "goose"
 
-// Generator is a scaffold kind for `tplater gen`.
+// Generator is a scaffold kind for `tplaiter gen`.
 //
 // File form is mutually exclusive: either the single-file form (Snippet+Target,
 // kept for backward compatibility) or the multi-file form (Targets[]). The

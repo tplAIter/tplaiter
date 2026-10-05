@@ -71,7 +71,7 @@ const (
 	CompareAhead
 )
 
-// Compare compares current (usually the result of `tplater version`) with
+// Compare compares current (usually the result of `tplaiter version`) with
 // latest (the result of [LatestTag]). The "v" prefix is optional in both.
 func Compare(current, latest string) CompareResult {
 	cv, err := semver.NewVersion(strings.TrimPrefix(current, "v"))

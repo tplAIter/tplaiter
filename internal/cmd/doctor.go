@@ -43,7 +43,7 @@ type doctorSection struct {
 	Rows  []doctorRow
 }
 
-// doctorCriticalTools — tools whose absence/mismatch makes `tplater doctor`
+// doctorCriticalTools — tools whose absence/mismatch makes `tplaiter doctor`
 // fail (non-zero exit code). Other problems are only warnings in the report
 // (SPEC-03 §4: "exit 1 on critical ✗
 // (go, git)").
@@ -52,7 +52,7 @@ var doctorCriticalTools = map[string]bool{
 	"git": true,
 }
 
-// newDoctorCmd creates `tplater doctor`.
+// newDoctorCmd creates `tplaiter doctor`.
 func newDoctorCmd() *cobra.Command {
 	return withResult(&cobra.Command{
 		Annotations: prerunAnnotations(prerunReadonly),
@@ -176,7 +176,7 @@ func environmentSection(ctx context.Context, runner execx.Runner) (doctorSection
 }
 
 // templateToolsSection checks requires.tools in the current project's manifest
-// snapshot. ok=false when cwd is not a tplater project (no snapshot); the
+// snapshot. ok=false when cwd is not a tplaiter project (no snapshot); the
 // caller skips the entire section.
 func templateToolsSection(ctx context.Context, runner execx.Runner, cwd string) (doctorSection, bool) {
 	snapshotPath := filepath.Join(cwd, manifest.SnapshotRelPath)
@@ -212,7 +212,7 @@ func templateToolsSection(ctx context.Context, runner execx.Runner, cwd string) 
 	return section, true
 }
 
-// stateSection checks the tplater home directory (~/.tplaiter) and whether its
+// stateSection checks the tplaiter home directory (~/.tplaiter) and whether its
 // config.yaml can be read.
 func stateSection(home string) doctorSection {
 	section := doctorSection{Title: "State"}

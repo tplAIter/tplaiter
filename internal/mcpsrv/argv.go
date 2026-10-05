@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// Package mcpsrv builds tplater subcommand argv values from MCP tool arguments.
+// Package mcpsrv builds tplaiter subcommand argv values from MCP tool arguments.
 // The essential security rule is that arguments always pass to a child process
 // as separate slice elements: there is no string concatenation or shell
 // interpolation (see exec.go). The functions below are pure: they neither touch
@@ -48,7 +48,7 @@ func sortedPositionalPairs(values map[string]string) []string {
 }
 
 // sortedDynamicFlags serializes generator parameters into dynamic Cobra flags
-// such as "--fields", "name:string". Unlike project settings, `tplater gen`
+// such as "--fields", "name:string". Unlike project settings, `tplaiter gen`
 // registers a particular generator's parameters directly as flags (see cmd/gen.go),
 // so the generic `--set key=value` is not applicable here.
 func sortedDynamicFlags(values map[string]string) []string {
@@ -176,7 +176,7 @@ func argvUpdate(to string, dryRun, check bool, extra ...string) []string {
 // argvStats builds argv for `stats`; the structured-call path adds --json.
 func argvStats() []string { return []string{"stats"} }
 
-// argvGen builds argv for `tplater gen <kind> <name>`. params serialize as dynamic
+// argvGen builds argv for `tplaiter gen <kind> <name>`. params serialize as dynamic
 // generator flags: {"fields":"name:string"} becomes `--fields name:string`.
 // Cobra registers these flags from manifest params before argv parsing; gen has no
 // generic --set flag. noBuild skips the final build gate, retaining created files
@@ -193,7 +193,7 @@ func argvGen(kind, name string, params map[string]string, noBuild bool) []string
 }
 
 // genBatchOperation is the MCP gen_batch input contract. JSON is serialized only
-// at the CLI boundary; params values remain strings until `tplater gen batch`
+// at the CLI boundary; params values remain strings until `tplaiter gen batch`
 // types them according to the specific generator's manifest.Param.
 type genBatchOperation struct {
 	Kind   string            `json:"kind"`

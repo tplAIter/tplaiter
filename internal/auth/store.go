@@ -25,7 +25,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 )
 
-// dbFileName — store file name in the tplater home directory.
+// dbFileName — store file name in the tplaiter home directory.
 const dbFileName = "tplater.db"
 
 // dbFilePerm — database file mode: owner access only (the file contains tokens).
@@ -74,7 +74,7 @@ type Store struct {
 	path string
 }
 
-// Open opens (creating as needed) the token store in the tplater home directory,
+// Open opens (creating as needed) the token store in the tplaiter home directory,
 // applies schema migrations, and fixes the file mode to 0600. ctx is used for
 // ping and migrations.
 func Open(ctx context.Context) (*Store, error) {

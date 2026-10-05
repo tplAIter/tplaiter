@@ -1,4 +1,4 @@
-// Package selfupdate implements tplater CLI self-updates: detecting the install
+// Package selfupdate implements tplaiter CLI self-updates: detecting the install
 // channel, comparing versions with the canonical repository through
 // `git ls-remote --tags`, performing updates, and a quiet background suggest
 // check every 24h.
@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-// Channel is the channel through which the current tplater binary was installed.
+// Channel is the channel through which the current tplaiter binary was installed.
 type Channel string
 
 // Supported installation channels (go install is primary, brew is additional or
@@ -27,7 +27,7 @@ const (
 	ChannelUnknown   Channel = "unknown"
 )
 
-// Label returns the human-readable channel name for `tplater version`.
+// Label returns the human-readable channel name for `tplaiter version`.
 func (c Channel) Label() string {
 	switch c {
 	case ChannelGoInstall:
@@ -39,12 +39,12 @@ func (c Channel) Label() string {
 	}
 }
 
-// RepoEnv overrides the canonical tplater repository URL for version checks and
+// RepoEnv overrides the canonical tplaiter repository URL for version checks and
 // module builds. Tests use it to avoid real network access; it is also a
 // temporary workaround if [DefaultRepoURL] is wrong before release.
 const RepoEnv = "TPLAITER_SELF_REPO"
 
-// DefaultRepoURL is the canonical tplater git repository used for
+// DefaultRepoURL is the canonical tplaiter git repository used for
 // `git ls-remote --tags` when checking versions.
 //
 // The URL is owner-confirmed (and matches the module path in go.mod), but is a
@@ -52,7 +52,7 @@ const RepoEnv = "TPLAITER_SELF_REPO"
 // repository and CLI repository may diverge in the future.
 const DefaultRepoURL = "https://github.com/tplAIter/tplaiter.git"
 
-// RepoURL returns the canonical tplater repository URL: [RepoEnv] when set,
+// RepoURL returns the canonical tplaiter repository URL: [RepoEnv] when set,
 // otherwise [DefaultRepoURL].
 func RepoURL() string {
 	if v := os.Getenv(RepoEnv); v != "" {
@@ -67,7 +67,7 @@ func RepoURL() string {
 // target platform.
 var brewPathMarkers = []string{"/opt/homebrew/", "/usr/local/Cellar/"}
 
-// DetectChannel determines how the current tplater executable was installed:
+// DetectChannel determines how the current tplaiter executable was installed:
 // from its path (go install places binaries in $GOPATH/bin or $HOME/go/bin,
 // brew in /opt/homebrew or /usr/local/Cellar), and, when the path is unknown
 // (for example, a binary copied or symlinked into an arbitrary PATH directory),

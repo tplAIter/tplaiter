@@ -12,7 +12,7 @@ import (
 // IndexVersion is the currently supported index.yaml format version.
 const IndexVersion = 1
 
-// indexFileName is the file name in the tplater home directory.
+// indexFileName is the file name in the tplaiter home directory.
 const indexFileName = "index.yaml"
 
 // ErrIndexCorrupted reports that index.yaml could not be parsed as YAML or as
@@ -98,7 +98,7 @@ func decodeIndex(data []byte) (Index, error) {
 		return Index{}, fmt.Errorf("%w: %v", ErrIndexCorrupted, err) //nolint:errorlint // Deliberately embeds the cause as text: parsing detail, not a separate typed error.
 	}
 
-	// A version newer than this tplater is not "corrupt" but "update tplater":
+	// A version newer than this tplaiter is not "corrupt" but "update tplaiter":
 	// the file is readable, just from the future. Keep it separate from
 	// ErrIndexCorrupted.
 	migrated, err := checkAndMigrate(kindIndex, data, version, IndexVersion)

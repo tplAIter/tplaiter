@@ -10,7 +10,7 @@ import (
 )
 
 // EnsureOptions configures [EnsureTools] for non-interactive scenarios
-// (`tplater new`, CI).
+// (`tplaiter new`, CI).
 type EnsureOptions struct {
 	// AutoYes — automatically confirm installation without an interactive question
 	// (the `--yes` CLI flag, SPEC-03 §4). Full interactive confirmation (huh) is
@@ -27,7 +27,7 @@ type EnsureOptions struct {
 var ErrMissingRequiredTools = errors.New("deps: required environment tools are missing")
 
 // EnsureTools — orchestration of checking and (optionally) installing tools for
-// `tplater new` (SPEC-03 §4): check -> offer installation for missing/mismatched
+// `tplaiter new` (SPEC-03 §4): check -> offer installation for missing/mismatched
 // tools -> check again -> fail if required tools remain unavailable.
 //
 // Tools with required=false that remain unavailable only produce an out.Warn and

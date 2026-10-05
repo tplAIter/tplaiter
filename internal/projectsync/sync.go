@@ -33,11 +33,11 @@ import (
 )
 
 // SyncCurrent synchronizes the ~/.tplaiter/projects.yaml registry entry (home
-// directory home) for a tplater project discovered by walking from cwd up its
+// directory home) for a tplaiter project discovered by walking from cwd up its
 // directory tree ([project.FindRoot]). now is written as CreatedAt (only on the
 // first insert) and LastSeenAt.
 //
-// A cwd outside a tplater project is not an error: SyncCurrent returns nil
+// A cwd outside a tplaiter project is not an error: SyncCurrent returns nil
 // without changing anything (the registry is a navigation convenience, not a
 // source of truth, and there is nothing to synchronize outside a project). It
 // returns other errors unchanged (corrupt .tplaiter/project.yaml, inaccessible
@@ -84,7 +84,7 @@ func SyncCurrent(home, cwd string, now time.Time) error {
 
 // hashFile returns the hexadecimal SHA-256 of path's content. It uses the same
 // formula as [internal/newcmd] during initial project registration in
-// `tplater new`, so baselineSHA values are comparable.
+// `tplaiter new`, so baselineSHA values are comparable.
 func hashFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

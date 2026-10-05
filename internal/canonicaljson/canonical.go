@@ -1,5 +1,5 @@
 // Package canonicaljson implements the RFC 8785 JSON Canonicalization Scheme
-// used by tplater's signed and integrity-protected wire contracts.
+// used by tplaiter's signed and integrity-protected wire contracts.
 package canonicaljson
 
 import (

@@ -11,13 +11,13 @@ import (
 	"github.com/tplAIter/tplaiter/internal/naming"
 )
 
-// lockFileName is the interprocess lock file in the tplater home directory.
+// lockFileName is the interprocess lock file in the tplaiter home directory.
 const lockFileName = ".lock"
 
-// WithLock serializes fn against other tplater processes holding an exclusive
+// WithLock serializes fn against other tplaiter processes holding an exclusive
 // flock on ~/.tplaiter/.lock (or $TPLAITER_HOME/.lock) for its duration. It is
 // used for read-modify-write operations on state files; without it, concurrent
-// `tplater repo add` calls could lose each other's changes through
+// `tplaiter repo add` calls could lose each other's changes through
 // writeFileAtomic (atomic for one file, not for the complete sequence).
 //
 // home must exist (see [EnsureHome]); WithLock does not create it, avoiding side

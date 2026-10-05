@@ -2,8 +2,8 @@
 // (a repository checkout at a pinned ref) into memory: it parses the manifest,
 // resolves settings, and runs the engine in a temporary directory, reading the
 // result into a relative-path-to-content map. This reusable "render a template
-// from ref+values" core powers `tplater update` (a 3-way merge of two
-// versions) and `tplater stats` (comparing a clean render with the working
+// from ref+values" core powers `tplaiter update` (a 3-way merge of two
+// versions) and `tplaiter stats` (comparing a clean render with the working
 // tree); both receive files and a baseline of the same shape without duplicated
 // render orchestration.
 //
@@ -208,7 +208,7 @@ func LoadTemplate(src fs.FS) (*manifest.Template, error) {
 // []string. Scalar values (string/bool/int) are already native Go types. Strict
 // typing and option checks belong to [settings.ParseSet]/[settings.LoadAnswersFile];
 // this only removes a YAML parsing artifact (the same logic as in
-// internal/cmd/run.go for `tplater run`).
+// internal/cmd/run.go for `tplaiter run`).
 func Values(raw map[string]any) settings.Values {
 	out := make(settings.Values, len(raw))
 	for k, v := range raw {

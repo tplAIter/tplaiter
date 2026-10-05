@@ -1,4 +1,4 @@
-// Package ui provides shared UI primitives for the tplater CLI: color palette
+// Package ui provides shared UI primitives for the tplaiter CLI: color palette
 // and table output. Rich polish (Glamour/Bubbles and interactive components)
 // builds on this foundation.
 package ui

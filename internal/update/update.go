@@ -49,7 +49,7 @@ type Deps struct {
 	Manager *repo.Manager
 	// Runner runs postUpdate hooks (shell/ansible).
 	Runner execx.Runner
-	// Home is the tplater home directory (project registry and lock).
+	// Home is the tplaiter home directory (project registry and lock).
 	Home string
 	// Out and Err are the main output and warning streams.
 	Out io.Writer
@@ -173,8 +173,8 @@ func applyLegacyUpdate(
 	return updateRegistry(d, root, proj, targetRef)
 }
 
-// ThreeWay is the plan and report for one 3-way operation: shared by `tplater update`
-// (two template versions) and `tplater settings set/edit` (one version, old vs new values).
+// ThreeWay is the plan and report for one 3-way operation: shared by `tplaiter update`
+// (two template versions) and `tplaiter settings set/edit` (one version, old vs new values).
 // Extracted from [updateOne] additively without changing update behavior.
 type ThreeWay struct {
 	// Plan is the set of file decisions (see [Plan]).
@@ -186,7 +186,7 @@ type ThreeWay struct {
 // ComputeThreeWay builds a 3-way plan and report from clean base and target
 // renders plus baseline hashes for workDir. It is the [Compute]+buildReport
 // sequence used by [updateOne], extracted so
-// `tplater settings set` (the implementation) reuses the mechanism without duplication:
+// `tplaiter settings set` (the implementation) reuses the mechanism without duplication:
 // settings can use base = old-values render and target = new-values render at one
 // template version (update uses two different versions).
 func ComputeThreeWay(baseFiles, targetFiles map[string][]byte, baseline map[string]string, workDir string) (*ThreeWay, error) {

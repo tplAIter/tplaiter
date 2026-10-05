@@ -1,5 +1,5 @@
 // Package update upgrades a generated project to a new template version
-// (`tplater update`) using a cruft 3-way model.
+// (`tplaiter update`) using a cruft 3-way model.
 //
 // The core is a line-based diff3 merge: base (clean render of the pinned
 // template), ours (project work tree), and theirs (clean target render).
@@ -7,7 +7,7 @@
 // <<<<<<< ours / ======= / >>>>>>> template markers. The implementation is local:
 // compact LCS plus stitching at common anchors avoids an external dependency.
 // The mechanism was adapted from go-template/cli/gotmpl/internal/update for the
-// tplater manifest model (two git-ref renders instead of version/features).
+// tplaiter manifest model (two git-ref renders instead of version/features).
 package update
 
 import "strings"

@@ -1,7 +1,7 @@
-// Package mcpsrv implements the tplater MCP server: it exposes CLI commands as
+// Package mcpsrv implements the tplaiter MCP server: it exposes CLI commands as
 // MCP tools for AI agents (derivation 6 in docs/research/clean-codegen.md §1,
 // “MCP server over CLI”). Its architecture follows the goca subprocess pattern:
-// each tool executes the same tplater binary in a separate process with separate
+// each tool executes the same tplaiter binary in a separate process with separate
 // arguments (without shell interpolation), rather than invoking Cobra commands
 // in process. In-process calls are unsafe because global Cobra flag state leaks
 // between tool calls; a process per call provides complete isolation.
@@ -22,7 +22,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/execx"
 )
 
-// Server wraps *server.MCPServer with the tplater binary path and a child-process
+// Server wraps *server.MCPServer with the tplaiter binary path and a child-process
 // runner, mockable in tests through execx.RecordingRunner.
 type Server struct {
 	exe       string
@@ -41,11 +41,11 @@ type Server struct {
 	children  sync.WaitGroup
 }
 
-// New constructs the tplater MCP server and registers all tools and resources.
+// New constructs the tplaiter MCP server and registers all tools and resources.
 //
-//	exe     — absolute path to the tplater binary (usually os.Executable());
+//	exe     — absolute path to the tplaiter binary (usually os.Executable());
 //	          every tool executes it as its child process;
-//	version — tplater version (for Implementation in initialize);
+//	version — tplaiter version (for Implementation in initialize);
 //	runner  — child-process runner (execx.Exec{} in production and
 //	          execx.RecordingRunner in tests).
 func New(exe, version string, runner execx.Runner) *Server {

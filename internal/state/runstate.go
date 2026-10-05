@@ -11,7 +11,7 @@ import (
 // RunStateVersion is the currently supported state.yaml format version.
 const RunStateVersion = 1
 
-// runStateFileName is the file name in the tplater home directory. It is kept
+// runStateFileName is the file name in the tplaiter home directory. It is kept
 // separate from the package, type ([RunState]), and file namesake to avoid
 // confusion such as "state.State".
 const runStateFileName = "state.yaml"
@@ -20,7 +20,7 @@ const runStateFileName = "state.yaml"
 // unrelated to configuration or registries (such as the 24h suggest check).
 type RunState struct {
 	Version int `yaml:"version"`
-	// LastUpdateCheck is when tplater last checked for a new version in the
+	// LastUpdateCheck is when tplaiter last checked for a new version in the
 	// background. Zero means the check has not run yet.
 	LastUpdateCheck time.Time `yaml:"lastUpdateCheck"`
 }
