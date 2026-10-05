@@ -42,6 +42,9 @@ type FilePin struct {
 	SHA256 string `json:"sha256"`
 }
 type ProjectContext struct {
+	// WorkspaceContext is an installed, pinned parent link for a single immediate
+	// services/<slug> root. Unlinked project contexts remain disjoint.
+	WorkspaceContext     string              `json:"workspaceContext,omitempty"`
 	Key                  string              `json:"key"`
 	ProjectID            string              `json:"projectID"`
 	SubmitterPrincipalID string              `json:"submitterPrincipalID"`
@@ -130,7 +133,18 @@ func (v RuntimeInstall) Validate() error {
 			return ErrConfigInvalid
 		}
 		for _, previous := range v.ProjectContexts[:i] {
-			if pathOverlaps(previous.RootPath, p.RootPath) {
+			if pathOverlaps(previous.RootPath, p.RootPath) && !workspaceContextPair(previous, p) {
+				return ErrConfigInvalid
+			}
+		}
+		if p.WorkspaceContext != "" {
+			parentFound := false
+			for _, parent := range v.ProjectContexts {
+				if parent.Key == p.WorkspaceContext && workspaceContextPair(parent, p) {
+					parentFound = true
+				}
+			}
+			if !parentFound {
 				return ErrConfigInvalid
 			}
 		}

@@ -432,7 +432,7 @@ func TestMCPStdioContract(t *testing.T) {
 		{"ai_gen", map[string]any{"dir": project}, "ai.gen"},
 		{"settings_set", map[string]any{"dir": project, "values": map[string]any{"database": "postgres"}}, "settings.set"},
 		{"settings_edit", map[string]any{"dir": project, "group": "database", "value": "postgres"}, "settings.reanswer"},
-		{"workspace_add_service", map[string]any{"dir": project, "name": "billing"}, "workspace.add-service"},
+		{"workspace_add_service", map[string]any{"dir": project, "name": "billing", "serviceContext": "billing", "sourceInput": filepath.Join(workdir, "workspace-service-source.json")}, "workspace.add-service"},
 		{"env_setup", map[string]any{"dir": project, "yes": true}, "env.setup"},
 		{"repo_remove", map[string]any{"alias": "fixture"}, "repo.remove"},
 	}
@@ -441,8 +441,9 @@ func TestMCPStdioContract(t *testing.T) {
 		called[tc.tool] = true
 		t.Run("tools/call "+tc.tool, func(t *testing.T) {
 			settingsCall := tc.tool == "settings_list" || tc.tool == "settings_set" || tc.tool == "settings_edit"
+			workspaceCall := tc.tool == "workspace_add_service"
 			var before map[string]string
-			if settingsCall {
+			if settingsCall || workspaceCall {
 				before = stockSnapshot(t, project, home)
 			}
 			res := c.callTool(tc.tool, tc.args)
@@ -450,7 +451,7 @@ func TestMCPStdioContract(t *testing.T) {
 			if op != tc.op {
 				t.Fatalf("%s: operation=%s, want %s", tc.tool, op, tc.op)
 			}
-			if tc.tool == "update" || settingsCall {
+			if tc.tool == "update" || settingsCall || workspaceCall {
 				// This unsigned discovery fixture is outside the installed project root.
 				if !res.IsError || status != "blocked" || len(codes) != 1 || codes[0] != "TRUST_PROJECT_CONTEXT_MISMATCH" {
 					t.Fatalf("static discovery project context refusal: isError=%v op=%s status=%s codes=%v result=%+v", res.IsError, op, status, codes, res.StructuredContent)
@@ -461,7 +462,7 @@ func TestMCPStdioContract(t *testing.T) {
 				if changes, ok := res.StructuredContent["changes"].([]any); !ok || len(changes) != 0 {
 					t.Fatalf("context refusal reported changes: %+v", res.StructuredContent)
 				}
-				if settingsCall && !reflect.DeepEqual(before, stockSnapshot(t, project, home)) {
+				if (settingsCall || workspaceCall) && !reflect.DeepEqual(before, stockSnapshot(t, project, home)) {
 					t.Fatalf("%s context refusal changed project or home", tc.tool)
 				}
 				return

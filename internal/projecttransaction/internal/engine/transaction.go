@@ -123,7 +123,7 @@ func (t *Transaction) Release() {
 // prepared afterimage inodes before changing any project artifact. Root stays
 // present throughout. No caller-supplied material or signature is admitted.
 func Acquire(ctx context.Context, runtime *trustload.Runtime, kind string, m Material) (*Transaction, error) {
-	if kind != NativeGeneratorKind && kind != NativeUpdateKind {
+	if kind != NativeGeneratorKind && !pairedKind(kind) {
 		return nil, ErrAuthentication
 	}
 	if runtime == nil || runtime.TrustRuntime() == nil {
@@ -187,7 +187,7 @@ func (t *Transaction) Seal(ctx context.Context, m Material) error {
 	}
 	for name, before := range m.Before {
 		after, ok := m.After[name]
-		if (!ok && (t.plan.Kind != NativeUpdateKind || before.Directory)) || before.Directory && !sameFile(before, after) {
+		if (!ok && (!pairedKind(t.plan.Kind) || before.Directory)) || before.Directory && !sameFile(before, after) {
 			return ErrUnsupported
 		}
 	}
@@ -231,7 +231,7 @@ func (t *Transaction) prepare(ctx context.Context, m Material) error {
 		return fail(err)
 	}
 	t.durable = true
-	if kind == NativeUpdateKind {
+	if pairedKind(kind) {
 		return t.continuePreparing(ctx)
 	}
 	steps := t.expectedSteps()
@@ -387,7 +387,7 @@ func (t *Transaction) Apply(ctx context.Context) error {
 	if t.state.Phase == "committed" {
 		return nil
 	}
-	if t.plan.Kind == NativeUpdateKind && t.state.Phase == "preparing" {
+	if pairedKind(t.plan.Kind) && t.state.Phase == "preparing" {
 		if err := t.continuePreparing(ctx); err != nil {
 			return err
 		}
@@ -443,7 +443,7 @@ func (t *Transaction) Commit(ctx context.Context) error {
 	if err := t.authenticate(ctx); err != nil {
 		return t.rollbackAfter(err)
 	}
-	if t.plan.Kind == NativeUpdateKind {
+	if pairedKind(t.plan.Kind) {
 		if err := t.checkObservations(ctx); err != nil {
 			return t.rollbackAfter(err)
 		}

@@ -255,7 +255,7 @@ func TestWorkspaceAddService_HappyPath(t *testing.T) {
 	writeTestFile(t, filepath.Join(root, "go.work"), "go 1.23\n")
 	chdirTemp(t, root)
 
-	assertWorkspaceAddServiceUnavailable(t, root, "Billing")
+	assertUnsignedWorkspaceRefused(t, root, "Billing")
 }
 
 func TestWorkspaceAddService_OutsideProject(t *testing.T) {
@@ -266,7 +266,7 @@ func TestWorkspaceAddService_OutsideProject(t *testing.T) {
 	if err == nil {
 		t.Fatal("workspace add-service outside project: expected error")
 	}
-	if !strings.Contains(err.Error(), "is not a tplater project") {
+	if !strings.Contains(err.Error(), "TPL-E-NATIVE-WORKSPACE-INPUT") {
 		t.Errorf("error does not mention missing project: %v", err)
 	}
 }
@@ -283,7 +283,7 @@ func TestWorkspaceAddService_NotWorkspaceKind(t *testing.T) {
 	if err == nil {
 		t.Fatal("workspace add-service in non-workspace project: expected error")
 	}
-	if !strings.Contains(err.Error(), "is not a workspace") {
+	if !strings.Contains(err.Error(), "TPL-E-NATIVE-WORKSPACE-INPUT") {
 		t.Errorf("error does not mention kind=workspace mismatch: %v", err)
 	}
 }
@@ -342,7 +342,7 @@ func TestWorkspaceAddService_FromNestedServiceDir(t *testing.T) {
 		t.Fatalf("findWorkspaceRoot nested = %q, %v; want %q", located, err, root)
 	}
 	chdirTemp(t, svcDir)
-	assertWorkspaceAddServiceUnavailable(t, root, "Payments")
+	assertUnsignedWorkspaceRefused(t, root, "Payments")
 }
 
 // TestWorkspaceAddService_ServiceTemplateMissingWorkflowGroup_BestEffort
@@ -361,10 +361,10 @@ func TestWorkspaceAddService_ServiceTemplateMissingWorkflowGroup_BestEffort(t *t
 	writeTestFile(t, filepath.Join(root, "go.work"), "go 1.23\n")
 	chdirTemp(t, root)
 
-	assertWorkspaceAddServiceUnavailable(t, root, "Billing")
+	assertUnsignedWorkspaceRefused(t, root, "Billing")
 }
 
-func assertWorkspaceAddServiceUnavailable(t *testing.T, root, name string) {
+func assertUnsignedWorkspaceRefused(t *testing.T, root, name string) {
 	t.Helper()
 	workPath := filepath.Join(root, "go.work")
 	before, err := os.ReadFile(workPath)
@@ -372,8 +372,8 @@ func assertWorkspaceAddServiceUnavailable(t *testing.T, root, name string) {
 		t.Fatal(err)
 	}
 	_, err = runWorkspaceCmd(t, "add-service", name, "--defaults", "--no-hooks", "--no-deps-check", "--no-env-setup")
-	if !errors.Is(err, newcmd.ErrLifecycleUnavailable) {
-		t.Fatalf("workspace add-service error = %v, want %v", err, newcmd.ErrLifecycleUnavailable)
+	if err == nil || !strings.Contains(err.Error(), "TPL-E-NATIVE-WORKSPACE-INPUT") {
+		t.Fatalf("unsigned legacy workspace must require installed context and signed source: %v", err)
 	}
 	after, err := os.ReadFile(workPath)
 	if err != nil || string(after) != string(before) {
@@ -405,11 +405,8 @@ func TestWorkspaceAddService_ServiceTemplateWorkflowGroupWrongType(t *testing.T)
 	if err == nil {
 		t.Fatal("workspace add-service on template with workflow group of select type: expected error")
 	}
-	if !strings.Contains(err.Error(), "workflow") {
-		t.Errorf("error does not mention workflow group: %v", err)
-	}
-	if !strings.Contains(err.Error(), "incompatible") {
-		t.Errorf("error does not explain incompatibility of group type with forced value: %v", err)
+	if !strings.Contains(err.Error(), "TPL-E-NATIVE-WORKSPACE-INPUT") {
+		t.Errorf("mutable manifest cannot replace signed service authority: %v", err)
 	}
 
 	// go.work must be unchanged because rendering did not complete.
@@ -431,12 +428,17 @@ func (f fakeTemplateIndex) Templates() (map[string][]state.TemplateEntry, error)
 }
 
 func TestResolveServiceTemplateName_NoMatches(t *testing.T) {
+	name, err := resolveServiceTemplateName(fakeTemplateIndex{"example": {{Name: "svc", LabelsFlat: map[string][]string{"type": {"service"}}}}}, "example")
+	if err != nil || name != "svc" {
+		t.Fatalf("historical service lookup: %q %v", name, err)
+	}
+
 	idx := fakeTemplateIndex{
 		"example": {
 			{Name: "lib", LabelsFlat: map[string][]string{"type": {"library"}}},
 		},
 	}
-	_, err := resolveServiceTemplateName(idx, "example")
+	_, err = resolveServiceTemplateName(idx, "example")
 	if err == nil {
 		t.Fatal("0 matches for type=service: expected error")
 	}

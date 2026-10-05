@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
 	"golang.org/x/term"
@@ -128,24 +127,5 @@ func envSetupTriState(cmd *cobra.Command, envSetup, noEnvSetup bool) *bool {
 		return &v
 	default:
 		return nil
-	}
-}
-
-// confirmFunc remains the shared interactive confirmation adapter used by
-// workspace commands. T5 new preparation never calls it.
-func confirmFunc(cmd *cobra.Command, interactive bool) func(string) (bool, error) {
-	if !interactive {
-		return nil
-	}
-	return func(prompt string) (bool, error) {
-		var ok bool
-		form := huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().Title(prompt).Affirmative("Yes").Negative("No").Value(&ok),
-		))
-		form = form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout())
-		if err := form.Run(); err != nil {
-			return false, err
-		}
-		return ok, nil
 	}
 }

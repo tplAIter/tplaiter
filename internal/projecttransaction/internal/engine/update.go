@@ -82,12 +82,12 @@ func (t *Transaction) sameRegistryMaterial(m Material) error {
 
 func (t *Transaction) checkRegistryMaterial(m Material) error {
 	if m.Registry == nil {
-		if t.plan.Kind == NativeUpdateKind {
+		if pairedKind(t.plan.Kind) {
 			return ErrAuthentication
 		}
 		return nil
 	}
-	if t.plan.Kind != NativeUpdateKind || m.Registry.Before.Directory || m.Registry.After.Directory || m.Registry.Before.Inode == 0 || m.Registry.Before.Mode > 0o777 || m.Registry.After.Mode != m.Registry.Before.Mode {
+	if !pairedKind(t.plan.Kind) || m.Registry.Before.Directory || m.Registry.After.Directory || m.Registry.Before.Inode == 0 || m.Registry.Before.Mode > 0o777 || m.Registry.After.Mode != m.Registry.Before.Mode {
 		return ErrAuthentication
 	}
 	return checkPath(filepath.Join(m.Home, "projects.yaml"), m.Registry.Before, Identity{m.Registry.Before.Device, m.Registry.Before.Inode})
@@ -191,7 +191,7 @@ func (t *Transaction) undoDelete(i int) error {
 }
 
 func (t *Transaction) checkNamespace(s step) error {
-	if t.plan.Kind != NativeUpdateKind {
+	if !pairedKind(t.plan.Kind) {
 		return nil
 	}
 	root := t.plan.Material.Root
@@ -243,7 +243,7 @@ func (t *Transaction) rejectActiveJournals() error {
 		var p immutable
 		var state progress
 		found := false
-		for _, kind := range []string{NativeGeneratorKind, NativeUpdateKind} {
+		for _, kind := range []string{NativeGeneratorKind, NativeUpdateKind, NativeWorkspaceKind} {
 			prior := &Transaction{key: t.key, dir: filepath.Join(parent, e.Name()), plan: immutable{Kind: kind}}
 			if prior.readSigned("plan.json", &p) == nil && prior.readSigned("state.json", &state) == nil {
 				if p.APIVersion != APIVersion || state.APIVersion != APIVersion || p.ID != id || p.Kind != kind || state.ID != id || state.Kind != kind || state.Fingerprint != p.Material.Fingerprint || p.Material.Home != t.plan.Material.Home {

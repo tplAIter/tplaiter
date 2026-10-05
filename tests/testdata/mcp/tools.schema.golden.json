@@ -7128,7 +7128,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Add a Temporal service-action to a go-workspace project and register it in go.work. Executed completely non-interactively.",
+    "description": "Add an independently signed native service under the finite installed workspace and service contexts; atomically register go.work and the project registry.",
     "inputSchema": {
       "properties": {
         "defaults": {
@@ -7137,8 +7137,13 @@
           "type": "boolean"
         },
         "dir": {
-          "description": "Root of workspace-project or a nested directory inside it",
+          "description": "Exact authenticated workspace root",
           "type": "string"
+        },
+        "dryRun": {
+          "default": false,
+          "description": "Authenticate and report without changes",
+          "type": "boolean"
         },
         "module": {
           "description": "Go module of service; default <workspace module>/services/<slug>",
@@ -7162,14 +7167,28 @@
           "description": "Service port; 0 — use template value",
           "type": "number"
         },
+        "projectContext": {
+          "description": "Authenticated installed workspace context; omitted uses registration default",
+          "type": "string"
+        },
+        "serviceContext": {
+          "description": "Authenticated installed service context at services/<slug>",
+          "type": "string"
+        },
         "set": {
           "description": "Service template settings: group→value; workflow=true is forced by CLI",
           "properties": {},
           "type": "object"
+        },
+        "sourceInput": {
+          "description": "Closed signed service source selection",
+          "type": "string"
         }
       },
       "required": [
         "dir",
+        "serviceContext",
+        "sourceInput",
         "name"
       ],
       "type": "object"

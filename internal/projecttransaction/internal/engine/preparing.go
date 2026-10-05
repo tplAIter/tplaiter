@@ -22,7 +22,7 @@ var ErrPreparingAmbiguous = errors.New("project transaction: ambiguous preparing
 // exclusively. A crash between slot creation and prefix publication deliberately
 // leaves an unresolved orphan, never an implicit recovery ownership grant.
 func (t *Transaction) continuePreparing(ctx context.Context) error {
-	if t.plan.Kind != NativeUpdateKind || t.state.Phase != "preparing" {
+	if !pairedKind(t.plan.Kind) || t.state.Phase != "preparing" {
 		return ErrAuthentication
 	}
 	if err := t.checkPreparing(ctx); err != nil {

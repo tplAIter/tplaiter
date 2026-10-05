@@ -6,7 +6,6 @@
 #
 # <tool> <CODE[,CODE...]> <owner: reason>
 project_new TRUST_SOURCE_ADAPTER_UNSUPPORTED U07: unsigned discovery fixture has no installed authenticated source selection
-workspace_add_service CLI_OPERATION_FAILED U07: the static fixture is not a workspace; U07 adds a workspace fixture and a typed lifecycle refusal
 run TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted manifest command execution
 ai_gen TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted AI artifact generation
 env_setup TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted environment playbooks

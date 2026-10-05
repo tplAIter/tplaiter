@@ -23,14 +23,15 @@ type RuntimeOptions struct {
 // Runtime owns the concrete readers used by one stable trustverify Runtime.
 // Callers must close it when command composition is finished.
 type Runtime struct {
-	mu          sync.Mutex
-	runtime     *trustverify.Runtime
-	store       *Store
-	evidence    *evidencecas.FSReader
-	objects     *ObjectReader
-	scratchRoot string
-	project     ProjectContext
-	closed      bool
+	installation LaunchSelection
+	mu           sync.Mutex
+	runtime      *trustverify.Runtime
+	store        *Store
+	evidence     *evidencecas.FSReader
+	objects      *ObjectReader
+	scratchRoot  string
+	project      ProjectContext
+	closed       bool
 }
 
 // OpenRuntime constructs the OSS stable runtime from fixed installed inputs.
@@ -92,7 +93,7 @@ func OpenRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error) 
 	if err != nil {
 		return closeOnFailure(err)
 	}
-	return &Runtime{runtime: stable, store: store, evidence: evidence, objects: objects, scratchRoot: loaded.Install.ScratchRoot, project: project}, nil
+	return &Runtime{installation: options.Selection, runtime: stable, store: store, evidence: evidence, objects: objects, scratchRoot: loaded.Install.ScratchRoot, project: project}, nil
 }
 
 // TrustRuntime returns the actual stable runtime, whose reader dependencies
