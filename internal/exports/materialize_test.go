@@ -13,6 +13,128 @@ import (
 	"github.com/tplAIter/tplaiter/internal/managedblocks"
 )
 
+func stageAMaterialBatch(targets ...string) MaterializeInput {
+	in := closedMaterialInput()
+	for i, target := range targets {
+		id := fmt.Sprintf("export-%d", i)
+		content := []byte(id + "\n")
+		path := "source/" + id
+		raw := materialPayload(id, path, target, content, "100644")
+		sel := materialSelected(id, raw)
+		in.Sources = append(in.Sources, MaterialSource{Selected: sel, Payload: raw, Blobs: []MaterialBlob{{path, "100644", content}}})
+		in.Current = append(in.Current, FileState{Path: target})
+		in.Operations = append(in.Operations, MaterialOperation{Kind: "add", Path: target, AfterOwner: MaterialOwner{Provider: sel.Provider, RuleID: id, ExportID: id}, SourceIndex: i, EntryIndex: 0})
+	}
+	return in
+}
+
+func TestStageAMaterializeSameSourceAndDuplicates(t *testing.T) {
+	in := stageAMaterialBatch("context/block.md", "context/skill.md")
+	out, err := Materialize(in)
+	if err != nil || len(out.Images) != 2 || len(out.Conflicts) != 0 {
+		t.Fatalf("distinct same-source exports refused: %+v %v", out, err)
+	}
+	for _, field := range []string{"provider", "contract", "source-parameters"} {
+		t.Run("same-source-"+field, func(t *testing.T) {
+			bad := stageAMaterialBatch("context/a", "context/b")
+			switch field {
+			case "provider":
+				bad.Sources[1].Selected.Provider = "other"
+			case "contract":
+				bad.Sources[1].Selected.ContractDigest = exportDigest('f')
+			case "source-parameters":
+				bad.Sources[1].Selected.SourceParameterSHA256 = exportDigest('f')
+			}
+			assertZeroMaterialization(t, bad, "MATERIAL_BINDING")
+		})
+	}
+	duplicate := stageAMaterialBatch("context/one.md")
+	duplicate.Sources = append(duplicate.Sources, duplicate.Sources[0])
+	duplicate.Operations[0].SourceIndex = 1
+	out, err = Materialize(duplicate)
+	if err != nil || len(out.Images) != 1 {
+		t.Fatalf("exact duplicate not redirected: %+v %v", out, err)
+	}
+	for name, mutate := range map[string]func(*MaterialSource){
+		"malformed-raw": func(s *MaterialSource) { s.Payload = []byte(`{"apiVersion":"tplaiter.dev/export-payload/v1"}`) },
+		"duplicate-raw-key": func(s *MaterialSource) {
+			s.Payload = []byte(strings.Replace(string(s.Payload), `"exportID":`, `"exportID":"export-0","exportID":`, 1))
+			s.Selected.ContentDigest = digestBytes(s.Payload)
+		},
+		"tampered-blob": func(s *MaterialSource) { s.Blobs = []MaterialBlob{{s.Blobs[0].Path, "100644", []byte("tampered")}} },
+		"domain":        func(s *MaterialSource) { s.Selected.Domain = "skill" },
+		"name":          func(s *MaterialSource) { s.Selected.Name = "other" },
+		"chains":        func(s *MaterialSource) { s.Selected.Chains = [][]string{{"forged"}} },
+		"tool-pin":      func(s *MaterialSource) { s.Selected.ToolDigest = exportDigest('f') },
+		"parameter-pin": func(s *MaterialSource) { s.Selected.SourceParameterSHA256 = exportDigest('f') },
+		"contract-pin":  func(s *MaterialSource) { s.Selected.ContractDigest = exportDigest('f') },
+		"binding-pin":   func(s *MaterialSource) { s.Selected.BindingSHA256 = exportDigest('f') },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := duplicate
+			bad.Sources = append([]MaterialSource(nil), duplicate.Sources...)
+			mutate(&bad.Sources[1])
+			result, err := Materialize(bad)
+			if err == nil || len(result.Images) != 0 || len(result.Conflicts) != 0 || len(result.Managed) != 0 {
+				t.Fatalf("duplicate hid invalid/conflicting record: %+v %v", result, err)
+			}
+		})
+	}
+}
+
+func TestStageAMaterializeCrossExportTopology(t *testing.T) {
+	for _, tc := range []struct {
+		name, a, b string
+		conflict   bool
+	}{
+		{"ancestor-first", "context", "context/skill.md", true},
+		{"ancestor-last", "context/block.md", "context", true},
+		{"folded-directory", "Context/block.md", "context/skill.md", true},
+		{"folded-ancestor", "Context", "context/skill.md", true},
+		{"unicode-folded-ancestor", "\u212Aontext", "kontext/skill.md", true},
+		{"folded-file", "Context.md", "context.md", true},
+		{"shared-directory", "context/block.md", "context/skill.md", false},
+		{"prefix-not-ancestor", "context", "context-other/skill.md", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := stageAMaterialBatch(tc.a, tc.b)
+			for i := range in.Sources {
+				in.Sources[i].Selected.Source = exportDigest(byte('a' + i))
+			}
+			out, err := Materialize(in)
+			if tc.conflict {
+				if err == nil || err.Error() != "MATERIAL_TARGET_CONFLICT" || len(out.Images) != 0 || len(out.Managed) != 0 || len(out.Conflicts) != 0 {
+					t.Fatalf("unsafe combined preview: %+v %v", out, err)
+				}
+			} else if err != nil || len(out.Images) != 2 || len(out.Conflicts) != 0 {
+				t.Fatalf("valid topology refused: %+v %v", out, err)
+			}
+		})
+	}
+}
+
+func TestStageAMaterializeInventoryTopology(t *testing.T) {
+	for _, tc := range []struct{ name, path, kind, target string }{
+		{"folded-directory", "Context", "directory", "context/file.md"},
+		{"symlink-ancestor", "context", "symlink", "context/file.md"},
+		{"occupied-directory", "context", "directory", "context"},
+		{"inventory-descendant", "context/sub", "directory", "context"},
+		{"symlink-target", "context", "symlink", "context"},
+		{"other-ancestor", "context", "other", "context/file.md"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := stageAMaterialBatch(tc.target)
+			in.TargetInventory = []InventoryEntry{{tc.path, tc.kind}}
+			assertZeroMaterialization(t, in, "MATERIAL_TARGET_CONFLICT")
+		})
+	}
+	in := stageAMaterialBatch("context/file.md")
+	in.TargetInventory = []InventoryEntry{{"context", "directory"}}
+	if out, err := Materialize(in); err != nil || len(out.Images) != 1 {
+		t.Fatalf("valid shared inventory directory: %+v %v", out, err)
+	}
+}
+
 func TestParseExportPayloadGolden(t *testing.T) {
 	raw := []byte(`{"apiVersion":"tplaiter.dev/export-payload/v1","blocks":[],"exportID":"data","files":[{"contentSHA256":"sha256:73cb3858a687a8494ca3323053016282f3dad39d42cf62ca4e79dda2aac7d9ac","mode":"100644","sourcePath":"files/data.txt","targetPath":"data.txt"}],"slots":[]}`)
 	p, err := ParseExportPayload(raw)

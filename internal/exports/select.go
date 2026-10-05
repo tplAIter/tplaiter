@@ -101,25 +101,51 @@ type selectKey struct {
 	sourceParameterSHA256 string
 	chains                [][]string
 	depth                 int
+	bindingSHA256         string
 }
 
-const maxExportDependencyDepth = 128
+const (
+	maxExportDependencyDepth = 128
+	maxBatchProvenancePaths  = 4096
+)
 
 // ResolveSelection performs provider-scoped, dependency-closed selection. It
 // only validates and returns immutable records; it never materializes or runs.
 func ResolveSelection(selection Selection, sources *deps.SourceGraph, catalogs []Catalog) (ExportGraph, error) {
-	if err := selection.Validate(); err != nil {
-		return ExportGraph{}, err
+	return resolveSelections([]Selection{selection}, sources, catalogs, false)
+}
+
+// ResolveSelections resolves a finite batch without dropping prerequisites or
+// changing the single-selection identity contract. Duplicate requests and more
+// than 4096 distinct export/provenance-path pairs refuse without a partial graph.
+func ResolveSelections(selections []Selection, sources *deps.SourceGraph, catalogs []Catalog) (ExportGraph, error) {
+	if len(selections) == 0 || len(selections) > 16 {
+		return ExportGraph{}, errors.New("EXPORT_LIMIT: selection batch")
+	}
+	seen := map[string]bool{}
+	for _, selection := range selections {
+		if err := selection.Validate(); err != nil {
+			return ExportGraph{}, err
+		}
+		if seen[selection.Selector] {
+			return ExportGraph{}, errors.New("EXPORT_SELECTOR: duplicate request")
+		}
+		seen[selection.Selector] = true
+	}
+	return resolveSelections(selections, sources, catalogs, true)
+}
+
+func resolveSelections(selections []Selection, sources *deps.SourceGraph, catalogs []Catalog, completeChains bool) (ExportGraph, error) {
+	for _, selection := range selections {
+		if err := selection.Validate(); err != nil {
+			return ExportGraph{}, err
+		}
 	}
 	if sources == nil || len(sources.Nodes) == 0 || len(catalogs) > maxResolverCatalogs {
 		return ExportGraph{}, errors.New("EXPORT_SOURCE: missing or excessive source graph")
 	}
 	if err := deps.ValidateSourceGraph(sources); err != nil {
 		return ExportGraph{}, errors.New("EXPORT_SOURCE: invalid source graph")
-	}
-	alias, domain, name := splitSelector(selection.Selector)
-	if alias == "" {
-		return ExportGraph{}, errors.New("EXPORT_SELECTOR: invalid selector")
 	}
 	bySource := map[string]deps.SourceNode{}
 	byAlias := map[string]deps.SourceNode{}
@@ -152,19 +178,18 @@ func ResolveSelection(selection Selection, sources *deps.SourceGraph, catalogs [
 		}
 		bySourceCatalog[c.Source] = c
 	}
-	rootNode, ok := byAlias[alias]
-	if !ok {
-		return ExportGraph{}, fmt.Errorf("EXPORT_PROVIDER: unknown provider %s", alias)
-	}
-	root, ok := bySourceCatalog[rootNode.Key]
-	if !ok {
-		return ExportGraph{}, fmt.Errorf("EXPORT_SOURCE: missing catalog for %s", alias)
-	}
 	selected := map[string]selectKey{}
 	edges := map[string]ExportEdge{}
 	visiting := map[string]bool{}
-	var visit func(string, Catalog, string, string, string, []string) (string, error)
-	visit = func(currentAlias string, cat Catalog, sel, dom, n string, chain []string) (string, error) {
+	// Batch provenance is the bounded set of full export/alias path traversals.
+	// Distinct roots may share aliases, so alias strings alone cannot identify a
+	// traversal. The closed wire still retains the established alias chains.
+	// Caching a resolved export does not cache its descendants' new root paths.
+	propagated := map[string]map[string]bool{}
+	chainCount := 0
+	var selection Selection
+	var visit func(string, Catalog, string, string, string, []string, []string) (string, error)
+	visit = func(currentAlias string, cat Catalog, sel, dom, n string, chain, exportChain []string) (string, error) {
 		if len(chain) >= maxExportDependencyDepth {
 			return "", errors.New("EXPORT_LIMIT: dependency depth exceeded")
 		}
@@ -180,14 +205,52 @@ func ResolveSelection(selection Selection, sources *deps.SourceGraph, catalogs [
 		if ent == nil {
 			return "", fmt.Errorf("EXPORT_MISSING: %s", sel)
 		}
+		if sel == selection.Selector && !reflect.DeepEqual(ent.Parameters, selection.Bindings) {
+			return "", fmt.Errorf("EXPORT_BINDING: parameter mismatch for %s", sel)
+		}
+		binding, err := parameterDigest(selection.Bindings)
+		if err != nil {
+			return "", err
+		}
 		key := selectNodeKey(cat.Source, cat.Provider, *ent)
 		if visiting[key] {
 			return "", fmt.Errorf("EXPORT_CYCLE: %s", strings.Join(append(chain, currentAlias), " -> "))
 		}
-		if prior, ok := selected[key]; ok {
-			prior.chains = append(prior.chains, append([]string(nil), append(chain, currentAlias)...))
+		prior, cached := selected[key]
+		if cached {
+			if prior.bindingSHA256 != binding {
+				return "", errors.New("EXPORT_BINDING: incompatible shared prerequisite")
+			}
+			// Preserve the established single-selection wire. The batch API
+			// propagates complete paths, including a batch with one root.
+			if !completeChains {
+				prior.chains = append(prior.chains, append([]string(nil), append(chain, currentAlias)...))
+				selected[key] = prior
+				return key, nil
+			}
+		}
+		path := append(append([]string(nil), chain...), currentAlias)
+		exportPath := append(append([]string(nil), exportChain...), key)
+		if completeChains {
+			pathKey := strings.Join(exportPath, "\x01") + "\x02" + strings.Join(path, "\x00")
+			if propagated[key][pathKey] {
+				return key, nil
+			}
+			chainCount++
+			if chainCount > maxBatchProvenancePaths {
+				return "", errors.New("EXPORT_LIMIT: batch provenance paths exceeded")
+			}
+			if propagated[key] == nil {
+				propagated[key] = map[string]bool{}
+			}
+			propagated[key][pathKey] = true
+		}
+		if cached {
+			prior.chains = append(prior.chains, path)
+			if currentAlias < prior.alias {
+				prior.alias = currentAlias
+			}
 			selected[key] = prior
-			return key, nil
 		}
 		visiting[key] = true
 		defer delete(visiting, key)
@@ -211,24 +274,35 @@ func ResolveSelection(selection Selection, sources *deps.SourceGraph, catalogs [
 			if !versionMatches(required.Version, req.CompatibleRange) {
 				return "", errors.New("EXPORT_FACT_MISMATCH: version")
 			}
-			dep, err := visit(ra, rc, req.Selector, rd, rn, append(chain, currentAlias))
+			dep, err := visit(ra, rc, req.Selector, rd, rn, path, exportPath)
 			if err != nil {
 				return "", err
 			}
 			edges[dep+"\x00"+key] = ExportEdge{Dependency: dep, Consumer: key}
 		}
-		if sel == selection.Selector && !reflect.DeepEqual(ent.Parameters, selection.Bindings) {
-			return "", fmt.Errorf("EXPORT_BINDING: parameter mismatch for %s", sel)
+		if !cached {
+			node := bySource[cat.Source]
+			selected[key] = selectKey{catalog: cat, entry: *ent, alias: currentAlias, sourceParameterSHA256: node.Identity.ParameterSHA256, chains: [][]string{path}, bindingSHA256: binding}
 		}
-		node := bySource[cat.Source]
-		selected[key] = selectKey{catalog: cat, entry: *ent, alias: currentAlias, sourceParameterSHA256: node.Identity.ParameterSHA256, chains: [][]string{append([]string(nil), append(chain, currentAlias)...)}}
 		if len(selected) > 4096 {
 			return "", errors.New("EXPORT_LIMIT: selected export limit")
 		}
 		return key, nil
 	}
-	if _, err := visit(alias, root, selection.Selector, domain, name, nil); err != nil {
-		return ExportGraph{}, err
+	for _, request := range selections {
+		selection = request
+		alias, domain, name := splitSelector(selection.Selector)
+		rootNode, ok := byAlias[alias]
+		if !ok {
+			return ExportGraph{}, fmt.Errorf("EXPORT_PROVIDER: unknown provider %s", alias)
+		}
+		root, ok := bySourceCatalog[rootNode.Key]
+		if !ok {
+			return ExportGraph{}, fmt.Errorf("EXPORT_SOURCE: missing catalog for %s", alias)
+		}
+		if _, err := visit(alias, root, selection.Selector, domain, name, nil, nil); err != nil {
+			return ExportGraph{}, err
+		}
 	}
 	items := make([]selectKey, 0, len(selected))
 	for _, x := range selected {
@@ -243,9 +317,8 @@ func ResolveSelection(selection Selection, sources *deps.SourceGraph, catalogs [
 	}
 	out := ExportGraph{Edges: make([]ExportEdge, 0, len(edges))}
 	for _, x := range items {
-		bd, _ := parameterDigest(selection.Bindings)
 		sort.Slice(x.chains, func(i, j int) bool { return strings.Join(x.chains[i], "\x00") < strings.Join(x.chains[j], "\x00") })
-		out.Selected = append(out.Selected, SelectedExport{Source: x.catalog.Source, Provider: x.catalog.Provider, ID: x.entry.ID, Domain: x.entry.Domain, Name: x.entry.Name, Version: x.entry.Version, ContentDigest: x.entry.ContentDigest, ContractDigest: x.catalog.ContractDigest, Parameters: x.entry.Parameters, BindingSHA256: bd, SourceParameterSHA256: x.sourceParameterSHA256, ToolDigest: x.entry.ToolDigest, Chains: cloneChains(x.chains)})
+		out.Selected = append(out.Selected, SelectedExport{Source: x.catalog.Source, Provider: x.catalog.Provider, ID: x.entry.ID, Domain: x.entry.Domain, Name: x.entry.Name, Version: x.entry.Version, ContentDigest: x.entry.ContentDigest, ContractDigest: x.catalog.ContractDigest, Parameters: x.entry.Parameters, BindingSHA256: x.bindingSHA256, SourceParameterSHA256: x.sourceParameterSHA256, ToolDigest: x.entry.ToolDigest, Chains: cloneChains(x.chains)})
 	}
 	for _, e := range edges {
 		out.Edges = append(out.Edges, e)

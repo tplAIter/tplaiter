@@ -350,6 +350,9 @@ func Materialize(in MaterializeInput) (Materialization, error) {
 	selectedBySource := map[int]SelectedExport{}
 	sourceRedirect := map[int]int{}
 	selectedIdentity := map[string]int{}
+	selectedRecords := map[string]string{}
+	selectedMetadata := map[int]string{}
+	sourceBindings := map[string]SelectedExport{}
 	sourceContent := map[int]string{}
 	seenPaths := map[string]string{}
 	inventory := map[string]InventoryEntry{}
@@ -407,6 +410,10 @@ func Materialize(in MaterializeInput) (Materialization, error) {
 		if identityErr != nil || validateSelected(s.Selected) != nil {
 			return Materialization{}, merr("MATERIAL_BINDING", "", "")
 		}
+		if prior, exists := sourceBindings[s.Selected.Source]; exists && (prior.Provider != s.Selected.Provider || prior.ContractDigest != s.Selected.ContractDigest || prior.SourceParameterSHA256 != s.Selected.SourceParameterSHA256) {
+			return Materialization{}, merr("MATERIAL_BINDING", "", "")
+		}
+		sourceBindings[s.Selected.Source] = s.Selected
 		selectedBySource[si] = s.Selected
 		p, e := ParseExportPayload(s.Payload)
 		if e != nil {
@@ -460,17 +467,32 @@ func Materialize(in MaterializeInput) (Materialization, error) {
 			sigBuilder.WriteString("\x00" + b.Path + "\x00" + b.Mode + "\x00" + digestBytes(b.Content))
 		}
 		sig += sigBuilder.String()
-		if first, duplicate := selectedIdentity[s.Selected.Source]; duplicate {
-			firstIdentity, _ := SelectedExportIdentity(selectedBySource[first])
-			if identity != firstIdentity || sig != sourceContent[first] {
+		metadata, err := canonicaljson.Canonical(s.Selected)
+		if err != nil {
+			return Materialization{}, merr("MATERIAL_BINDING", "", "")
+		}
+		record := s.Selected.Source + "\x00" + s.Selected.Provider + "\x00" + s.Selected.ID
+		if prior, exists := selectedRecords[record]; exists && prior != identity {
+			return Materialization{}, merr("MATERIAL_BINDING", "", "")
+		}
+		selectedRecords[record] = identity
+		if first, duplicate := selectedIdentity[identity]; duplicate {
+			if string(metadata) != selectedMetadata[first] || sig != sourceContent[first] {
 				return Materialization{}, merr("MATERIAL_BINDING", "", "")
 			}
 			sourceRedirect[si] = first
 		} else {
-			selectedIdentity[s.Selected.Source] = si
+			selectedIdentity[identity] = si
+			selectedMetadata[si] = string(metadata)
 			sourceContent[si] = sig
 			sourceRedirect[si] = si
 		}
+	}
+	// Validate the shared inventory and every planned target before producing
+	// any images or managed plans. Exact same-file slot merges remain subject
+	// to the existing pointer/owner checks below.
+	if err := materialTopology(in); err != nil {
+		return Materialization{}, err
 	}
 	owned := map[string]OwnedPreimage{}
 	ownedSlots := make([]OwnedPreimage, 0)
@@ -706,6 +728,54 @@ func Materialize(in MaterializeInput) (Materialization, error) {
 	sort.Slice(out.Images, func(i, j int) bool { return out.Images[i].Path < out.Images[j].Path })
 	sortSlotConflicts(out.Conflicts)
 	return out, nil
+}
+
+func materialTopology(in MaterializeInput) error {
+	type node struct {
+		path      string
+		directory bool
+	}
+	nodes := map[string]node{}
+	kinds := map[string]string{}
+	add := func(path string, directory bool) error {
+		if err := payloadPath(path); err != nil {
+			return err
+		}
+		parts := strings.Split(path, "/")
+		for i := range parts {
+			p := strings.Join(parts[:i+1], "/")
+			dir := i < len(parts)-1 || directory
+			key := foldPath(p)
+			if old, exists := nodes[key]; exists {
+				if old.path != p || old.directory != dir {
+					return merr("MATERIAL_TARGET_CONFLICT", path, "")
+				}
+			} else {
+				nodes[key] = node{p, dir}
+			}
+		}
+		return nil
+	}
+	for _, entry := range in.TargetInventory {
+		if err := add(entry.Path, entry.Kind == "directory"); err != nil {
+			return err
+		}
+		kinds[entry.Path] = entry.Kind
+	}
+	for _, op := range in.Operations {
+		if err := add(op.Path, false); err != nil {
+			return err
+		}
+		if kind, exists := kinds[op.Path]; exists && kind != "regular" {
+			return merr("MATERIAL_TARGET_CONFLICT", op.Path, "")
+		}
+	}
+	for _, candidate := range in.Managed {
+		if err := add(candidate.Plan.Path, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func cloneManagedPlan(p managedblocks.FilePlan) managedblocks.FilePlan {
