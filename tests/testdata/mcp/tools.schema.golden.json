@@ -4912,6 +4912,273 @@
       "destructiveHint": true,
       "idempotentHint": false,
       "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Reanswer one authenticated native settings group on the pinned version using an explicit value; operation is settings.reanswer.",
+    "inputSchema": {
+      "properties": {
+        "dir": {
+          "description": "Project directory",
+          "type": "string"
+        },
+        "dryRun": {
+          "default": false,
+          "description": "Show signed plan without publication",
+          "type": "boolean"
+        },
+        "group": {
+          "description": "Signed manifest settings group",
+          "type": "string"
+        },
+        "projectContext": {
+          "description": "Exact authenticated installed context key; omitted uses registration default",
+          "type": "string"
+        },
+        "value": {
+          "description": "Explicit answer, validated against the signed group type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir",
+        "group",
+        "value"
+      ],
+      "type": "object"
+    },
+    "name": "settings_edit",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "settings.reanswer"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "SettingsReanswer"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "settings.reanswer"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
       "readOnlyHint": true
     },
     "description": "Show current values of project settings (dir) as result/v1 settings.show.",
@@ -4919,6 +5186,10 @@
       "properties": {
         "dir": {
           "description": "Project directory",
+          "type": "string"
+        },
+        "projectContext": {
+          "description": "Exact authenticated installed context key; omitted uses registration default",
           "type": "string"
         }
       },
@@ -5198,6 +5469,15 @@
       "properties": {
         "dir": {
           "description": "Project directory",
+          "type": "string"
+        },
+        "dryRun": {
+          "default": false,
+          "description": "Show signed plan without publication",
+          "type": "boolean"
+        },
+        "projectContext": {
+          "description": "Exact authenticated installed context key; omitted uses registration default",
           "type": "string"
         },
         "values": {

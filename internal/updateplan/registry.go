@@ -168,7 +168,7 @@ func planRegistryObserved(observed *registryObservation, home string, marker sta
 	if err != nil {
 		return RegistryImage{}, nil, err
 	}
-	if p.SourceRootLock() == p.TargetRootLock() {
+	if p.SourceRootLock() == p.TargetRootLock() && bytes.Equal(targetBaseline, baseline) {
 		after = bytes.Clone(observed.raw)
 	}
 	beforeImage := Image{Path: "projects.yaml", Kind: "file", Mode: observed.mode, SHA256: evidencecas.Digest(observed.raw)}

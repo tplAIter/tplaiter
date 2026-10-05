@@ -27,6 +27,10 @@ var wantPrerunClass = map[string]prerunClass{
 	"tplaiter new":                 prerunTrustOwned,
 	"tplaiter repo update":         prerunTrustOwned, // preserved name collision, see repo.go
 	"tplaiter run":                 prerunLegacyAction,
+	"tplaiter settings":            prerunTrustOwned,
+	"tplaiter settings list":       prerunTrustOwned,
+	"tplaiter settings set":        prerunTrustOwned,
+	"tplaiter settings edit":       prerunTrustOwned,
 	"tplaiter trust":               prerunTrustOwned,
 	"tplaiter trust contexts":      prerunTrustOwned,
 	"tplaiter trust inspect":       prerunTrustOwned,
@@ -92,7 +96,8 @@ func TestPreRunClassification(t *testing.T) {
 // TestPreRunClassificationMatchesLegacySwitch proves the annotation classifier
 // reproduces the removed name-based switch (legacyActionCommand,
 // descriptiveCommand and the migrate-state/new/update/trust checks) for every
-// command except the delivered native gen/gen batch and update abort/continue
+// command except the delivered native gen/gen batch, settings parent/list/set/edit,
+// and update abort/continue
 // transitions. Those commands now own authenticated composition and skip
 // legacy hooks.
 // Readonly and trust-owned both skip legacy hooks and compare as "skip".
@@ -139,6 +144,13 @@ func TestPreRunClassificationMatchesLegacySwitch(t *testing.T) {
 		}
 		for _, args := range [][]string{nil, {"arg"}} {
 			want := legacy(c, args)
+			switch c.CommandPath() {
+			case "tplaiter settings", "tplaiter settings list", "tplaiter settings set", "tplaiter settings edit":
+				if want != "hooks" {
+					t.Errorf("%q: historical settings baseline=%s, want hooks", c.CommandPath(), want)
+				}
+				want = "skip" // Native settings owns its authenticated boundary.
+			}
 			if c.CommandPath() == "tplaiter gen" || c.CommandPath() == "tplaiter gen batch" {
 				if want != "refuse" {
 					t.Errorf("%q: historical gen baseline=%s, want refuse", c.CommandPath(), want)

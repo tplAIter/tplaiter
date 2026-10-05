@@ -16,6 +16,7 @@ repo_list
 repo_remove
 repo_update
 run
+settings_edit
 settings_list
 settings_set
 stats

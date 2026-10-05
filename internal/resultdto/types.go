@@ -377,5 +377,10 @@ func (r Result) ValidateExit(code ExitCode) error {
 	if (r.Operation == OperationUpdateStatus || r.Operation == OperationNewStatus) && code == ExitSuccess {
 		return nil
 	}
+	// Historical settings text conflicts are committed outcomes with process
+	// status 2. This exception does not change generic usage/conflict exit rules.
+	if code == ExitCode(2) && r.Status == StatusConflicted && (r.Operation == OperationSettingsSet || r.Operation == OperationSettingsReanswer) && r.TransactionID != nil && *r.TransactionID != "" && r.Summary.Conflicts > 0 && len(r.Changes) > 0 {
+		return nil
+	}
 	return ValidateStatusExit(r.Status, code)
 }

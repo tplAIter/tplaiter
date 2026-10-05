@@ -61,7 +61,7 @@ func buildMutation(p *Plan) (*mutationIntent, error) {
 	parents := map[string]bool{}
 	seen := map[string]bool{}
 	for _, c := range p.report.Changes {
-		if c.Conflict || !safePath(c.Path) || seen[c.Path] {
+		if (c.Conflict && !settingsConflictPublication(p.input, c)) || !safePath(c.Path) || seen[c.Path] {
 			return nil, ErrUnsafe
 		}
 		seen[c.Path] = true

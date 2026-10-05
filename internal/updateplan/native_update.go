@@ -31,6 +31,7 @@ type UpdateFile struct {
 	Inode     uint64      `json:"inode"`
 }
 type UpdateMaterial struct {
+	SettingsPairs       []string                 `json:"settingsPairs,omitempty"`
 	RegistryDevice      uint64                   `json:"registryDevice"`
 	RegistryInode       uint64                   `json:"registryInode"`
 	Version             int                      `json:"version"`
@@ -158,7 +159,7 @@ func materialFromPlan(p *Plan, actual *observation, added bool) (UpdateMaterial,
 	if err != nil {
 		return UpdateMaterial{}, err
 	}
-	m := UpdateMaterial{Version: 1, Root: p.report.Root, Home: p.owner.home, ProjectID: p.report.ProjectID, Binding: p.owner.runtime.TrustRuntime().Binding(), RendererVersion: p.owner.rendererVersion, SourceInput: bytes.Clone(p.input.SourceInput), TargetInput: bytes.Clone(p.input.TargetInput), ExpectedFingerprint: p.digest, ControlAdded: added, Before: map[string]UpdateFile{}, After: map[string]UpdateFile{}, Registry: updateRegistry(intent.registry)}
+	m := UpdateMaterial{SettingsPairs: append([]string(nil), p.input.SettingsPairs...), Version: 1, Root: p.report.Root, Home: p.owner.home, ProjectID: p.report.ProjectID, Binding: p.owner.runtime.TrustRuntime().Binding(), RendererVersion: p.owner.rendererVersion, SourceInput: bytes.Clone(p.input.SourceInput), TargetInput: bytes.Clone(p.input.TargetInput), ExpectedFingerprint: p.digest, ControlAdded: added, Before: map[string]UpdateFile{}, After: map[string]UpdateFile{}, Registry: updateRegistry(intent.registry)}
 	for _, i := range actual.images {
 		device, inode := updateFileID(actual.identities[i.Path])
 		f := UpdateFile{Data: bytes.Clone(actual.files[i.Path]), Mode: i.Mode, Directory: i.Kind == "directory", Device: device, Inode: inode}
@@ -226,7 +227,7 @@ func AuthenticateUpdateMaterial(ctx context.Context, r *trustload.Runtime, actua
 		return err
 	}
 	reg := &registryObservation{raw: bytes.Clone(m.Registry.BeforeContent), mode: m.Registry.Before.Mode}
-	p, err := b.reconstruct(ctx, Input{SourceInput: m.SourceInput, TargetInput: m.TargetInput}, observed, reg)
+	p, err := b.reconstruct(ctx, Input{SourceInput: m.SourceInput, TargetInput: m.TargetInput, SettingsPairs: m.SettingsPairs}, observed, reg)
 	if err != nil {
 		return err
 	}

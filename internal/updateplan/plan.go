@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -57,9 +58,16 @@ func New(runtime *trustload.Runtime, home, rendererVersion string) (*Backend, er
 
 // Input is untrusted source transport. Rendering coordinates and answers are
 // derived from the verified current marker, not caller-supplied parameters.
-type Input struct{ SourceInput, TargetInput []byte }
+type Input struct {
+	SourceInput, TargetInput []byte
+	// SettingsPairs are bounded operator overrides, freshly resolved against the
+	// signed current manifest. They require exactly the same source and target.
+	SettingsPairs []string `json:"settingsPairs,omitempty"`
+}
 
 type Change struct {
+	Decision  string `json:"decision,omitempty"`
+	Warning   string `json:"warning,omitempty"`
 	Path      string `json:"path"`
 	Operation string `json:"operation"`
 	Reason    string `json:"reason"`
@@ -123,7 +131,10 @@ func (b *Backend) Prepare(ctx context.Context, in Input) (*Plan, error) {
 	if len(in.SourceInput) == 0 || len(in.SourceInput) > 1<<20 || len(in.TargetInput) == 0 || len(in.TargetInput) > 1<<20 {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
-	in = Input{SourceInput: bytes.Clone(in.SourceInput), TargetInput: bytes.Clone(in.TargetInput)}
+	in, err := cloneSettingsInput(in)
+	if err != nil {
+		return nil, err
+	}
 	stable := b.runtime.TrustRuntime()
 	if stable == nil {
 		return nil, ErrInvalid
@@ -205,7 +216,11 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := operationtrust.PrepareUpdate(ctx, b.runtime, operationtrust.PrepareUpdateInput{SourceInput: in.SourceInput, TargetInput: in.TargetInput, Render: render, RendererVersion: b.rendererVersion, PreimageSHA256: preimage})
+	targetRender, err := b.settingsRender(ctx, in, render)
+	if err != nil {
+		return nil, err
+	}
+	prepared, err := operationtrust.PrepareUpdate(ctx, b.runtime, operationtrust.PrepareUpdateInput{SourceInput: in.SourceInput, TargetInput: in.TargetInput, Render: targetRender, RendererVersion: b.rendererVersion, PreimageSHA256: preimage})
 	if err != nil {
 		return nil, err
 	}
@@ -249,11 +264,14 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
-	metadata, err := targetMetadata(marker, prepared, targetImages)
+	if len(in.SettingsPairs) > 0 {
+		changes = settingsDecisions(changes, observed, beforeFiles, afterFiles)
+	}
+	metadata, err := targetMetadata(marker, prepared, targetImages, len(in.SettingsPairs) > 0)
 	if err != nil {
 		return nil, err
 	}
-	if current.RootLockSHA256 == prepared.TargetRootLock().RootLockSHA256 {
+	if current.RootLockSHA256 == prepared.TargetRootLock().RootLockSHA256 && settingsValuesEqual(base.Rendered().Resolved.Values, prepared.Rendered().Resolved.Values) {
 		// Preserve exact valid existing metadata encoding for a genuine no-op.
 		for p := range metadata {
 			metadata[p] = observed.files[p]
@@ -263,9 +281,7 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
-	if current.RootLockSHA256 != prepared.TargetRootLock().RootLockSHA256 {
-		metadata[manifest.SnapshotRelPath] = manifestRaw
-	}
+	metadata[manifest.SnapshotRelPath] = manifestRaw
 	for path, raw := range metadata {
 		changes = append(changes, decision(observed, path, raw, true, "metadata", false))
 	}
@@ -276,7 +292,7 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	}
 	publishable := resourceChangesValid(changes, targetImages, prepared.TargetRootLock())
 	for _, change := range changes {
-		if change.Conflict {
+		if change.Conflict && !settingsConflictPublication(in, change) {
 			publishable = false
 		}
 	}
@@ -285,7 +301,7 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
-	return &Plan{homeIdentity: registryObserved.identity, registryIdentity: registryObserved.fileIdentity, owner: b, input: Input{SourceInput: bytes.Clone(in.SourceInput), TargetInput: bytes.Clone(in.TargetInput)}, report: report, digest: digest, observed: observed, prepared: prepared}, nil
+	return &Plan{homeIdentity: registryObserved.identity, registryIdentity: registryObserved.fileIdentity, owner: b, input: in, report: report, digest: digest, observed: observed, prepared: prepared}, nil
 }
 
 // Recheck rebuilds the plan with fresh authority and actual project bytes.
@@ -471,7 +487,7 @@ func validateOwned(observed *observation, base map[string][]byte, result *render
 	return nil
 }
 
-func targetMetadata(marker stateledger.ProjectV2, p *operationtrust.PreparedUpdate, images *resources.ResourceImages) (map[string][]byte, error) {
+func targetMetadata(marker stateledger.ProjectV2, p *operationtrust.PreparedUpdate, images *resources.ResourceImages, settingsChange bool) (map[string][]byte, error) {
 	result := p.Rendered()
 	inv := ownership.Inventory{Version: 1, Artifacts: []ownership.Artifact{}}
 	for path, raw := range result.Files {
@@ -489,6 +505,9 @@ func targetMetadata(marker stateledger.ProjectV2, p *operationtrust.PreparedUpda
 		previous, ok := marker.Answers[k]
 		if !ok {
 			previous = stateledger.Answer{Source: "default"}
+		}
+		if settingsChange && !reflect.DeepEqual(previous.Value, v) {
+			previous.Source = "user"
 		}
 		previous.Value = v
 		marker.Answers[k] = previous

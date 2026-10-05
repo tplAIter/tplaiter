@@ -107,7 +107,7 @@ func TestMainJSONSuccessAndFailureEnvelopes(t *testing.T) {
 		{"native default build unavailable", []string{"gen", "crud", "Ride", "--json"}, resultdto.ExitUnavailable, resultdto.OperationGenRun, resultdto.StatusBlocked, "TRUST_GENERATION_EXECUTION_UNAVAILABLE"},
 		{"native file-only anchor missing", []string{"gen", "crud", "Ride", "--no-build", "--json"}, resultdto.ExitTrust, resultdto.OperationGenRun, resultdto.StatusBlocked, "TRUST_ANCHOR_MISSING"},
 		{"trust anchor", []string{"new", "ref", "name", "--json"}, resultdto.ExitTrust, resultdto.OperationProjectNew, resultdto.StatusBlocked, "TRUST_ANCHOR_MISSING"},
-		{"not in project", []string{"settings", "list", "--json"}, resultdto.ExitOperational, resultdto.OperationSettingsShow, resultdto.StatusFailed, "TPL-E-PROJECT-NOT-FOUND"},
+		{"unsigned settings list", []string{"settings", "list", "--json"}, resultdto.ExitTrust, resultdto.OperationSettingsShow, resultdto.StatusBlocked, "TRUST_ANCHOR_MISSING"},
 		{"update dry-run names update.plan", []string{"update", "--dry-run", "--json"}, resultdto.ExitTrust, resultdto.OperationUpdatePlan, resultdto.StatusBlocked, "TRUST_ANCHOR_MISSING"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -116,6 +116,9 @@ func TestMainJSONSuccessAndFailureEnvelopes(t *testing.T) {
 				t.Fatalf("exit=%d, want %d\nstdout=%s\nstderr=%s", code, tc.exit, stdout, stderr)
 			}
 			env := decodeOne(t, stdout)
+			if tc.op == resultdto.OperationSettingsShow && (len(env.Changes) != 0 || env.Project != nil || env.TransactionID != nil) {
+				t.Fatalf("unsigned settings refusal claimed effects: %+v", env)
+			}
 			if env.Operation != tc.op || env.Status != tc.status {
 				t.Fatalf("envelope %s/%s, want %s/%s", env.Operation, env.Status, tc.op, tc.status)
 			}

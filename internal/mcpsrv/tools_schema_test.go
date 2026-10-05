@@ -32,6 +32,7 @@ var toolOperations = map[string][]resultdto.Operation{
 	"doctor":                {resultdto.OperationDoctorCheck},
 	"ai_gen":                {resultdto.OperationAIGen},
 	"settings_list":         {resultdto.OperationSettingsShow},
+	"settings_edit":         {resultdto.OperationSettingsReanswer},
 	"settings_set":          {resultdto.OperationSettingsSet},
 	"gen":                   {resultdto.OperationGenRun},
 	"gen_batch":             {resultdto.OperationGenBatch},
