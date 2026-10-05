@@ -8,6 +8,8 @@ import (
 )
 
 type ProjectProcessResult struct {
+	BuildVariant         string `json:"buildVariant,omitempty"`
+	BuildVariantSHA256   string `json:"buildVariantSHA256,omitempty"`
 	ModuleIndexSHA256    string `json:"moduleIndexSHA256,omitempty"`
 	RequestSHA256        string `json:"requestSHA256"`
 	InputClosureSHA256   string `json:"inputClosureSHA256"`
@@ -44,10 +46,15 @@ func (r *ApprovedRunner) ExecuteProjectBuild(ctx context.Context, permit *trustv
 	if e != nil {
 		return nil, e
 	}
+	variant, binding, e := material.ProjectVariantFor(r.runtime, request)
+	if e != nil {
+		return nil, e
+	}
 	result, e := executeProjectBuild(ctx, r.runtime.ScratchRoot(), staged, chain, modules)
 	if e != nil {
 		return nil, e
 	}
+	result.BuildVariant, result.BuildVariantSHA256 = variant, binding
 	return &ProcessReceipt{runner: r, request: request.RequestSHA256, result: result}, nil
 }
 func (p *ProcessReceipt) ResultFor(r *ApprovedRunner, request trustverify.ExecutionRequest) (ProjectProcessResult, error) {

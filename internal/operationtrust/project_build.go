@@ -3,6 +3,7 @@ package operationtrust
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -14,10 +15,13 @@ import (
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/settings"
+	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 	"golang.org/x/mod/modfile"
+	"gopkg.in/yaml.v3"
 )
 
 var ErrProjectBuild = errors.New("TRUST_PROJECT_BUILD_UNAVAILABLE")
@@ -29,25 +33,47 @@ func ProjectBuildArguments() []string {
 const ProjectBuildActionPath = "actions/run/build.json"
 
 type ProjectBuildAction struct {
-	APIVersion           string   `json:"apiVersion"`
-	Adapter              string   `json:"adapter"`
-	CommandName          string   `json:"commandName"`
-	Argv                 []string `json:"argv"`
-	TimeoutMillis        int64    `json:"timeoutMillis"`
-	ToolchainIndexSHA256 string   `json:"toolchainIndexSHA256"`
-	ModuleIndexSHA256    string   `json:"moduleIndexSHA256,omitempty"`
-	GenBuild             bool     `json:"genBuild,omitempty"`
+	APIVersion           string                `json:"apiVersion"`
+	Adapter              string                `json:"adapter"`
+	CommandName          string                `json:"commandName"`
+	Argv                 []string              `json:"argv"`
+	TimeoutMillis        int64                 `json:"timeoutMillis"`
+	ToolchainIndexSHA256 string                `json:"toolchainIndexSHA256"`
+	ModuleIndexSHA256    string                `json:"moduleIndexSHA256,omitempty"`
+	GenBuild             bool                  `json:"genBuild,omitempty"`
+	Selector             string                `json:"selector,omitempty"`
+	Variants             []ProjectBuildVariant `json:"variants,omitempty"`
+}
+type ProjectBuildVariant struct {
+	ID                string `json:"id"`
+	Workflow          bool   `json:"workflow"`
+	Policy            string `json:"policy"`
+	GoModSHA256       string `json:"goModSHA256,omitempty"`
+	GoSumSHA256       string `json:"goSumSHA256,omitempty"`
+	ModuleIndexSHA256 string `json:"moduleIndexSHA256,omitempty"`
+}
+
+const projectBuildSelectionPath = "actions/run/build.selection.json"
+
+type projectBuildVariantBinding struct {
+	APIVersion     string              `json:"apiVersion"`
+	ActionSHA256   string              `json:"actionSHA256"`
+	MarkerSHA256   string              `json:"markerSHA256"`
+	RootLockSHA256 string              `json:"rootLockSHA256"`
+	Variant        ProjectBuildVariant `json:"variant"`
 }
 type ProjectBuildSelection struct {
-	owner     *trustload.Runtime
-	source    *trustverify.VerifiedResolution
-	operation trustverify.OperationInputs
-	request   trustverify.ExecutionRequest
-	entries   []trustverify.ContentEntry
-	data      [][]byte
-	action    []byte
-	toolchain *trustload.GoToolchain
-	modules   *trustload.GoModules
+	owner      *trustload.Runtime
+	source     *trustverify.VerifiedResolution
+	operation  trustverify.OperationInputs
+	request    trustverify.ExecutionRequest
+	entries    []trustverify.ContentEntry
+	data       [][]byte
+	action     []byte
+	toolchain  *trustload.GoToolchain
+	modules    *trustload.GoModules
+	variant    *projectBuildVariantBinding
+	variantRaw []byte
 }
 
 func ProjectBuildEnvironment() trustverify.EnvironmentPolicy {
@@ -116,7 +142,7 @@ func prepareProjectBuild(ctx context.Context, owner *trustload.Runtime, source *
 		return nil, ErrProjectBuild
 	}
 	var a ProjectBuildAction
-	if canonicaljson.DecodeStrict(actionRaw, &a) != nil || !validProjectBuildVersion(a) || a.CommandName != name || !reflect.DeepEqual(a.Argv, ProjectBuildArguments()) || a.TimeoutMillis < 1 || a.TimeoutMillis > 120000 {
+	if decodeProjectBuildAction(actionRaw, &a) != nil || !validProjectBuildVersion(a) || a.CommandName != name || !reflect.DeepEqual(a.Argv, ProjectBuildArguments()) || a.TimeoutMillis < 1 || a.TimeoutMillis > 120000 {
 		return nil, ErrProjectBuild
 	}
 	chain, err := owner.ResolveGoToolchain(ctx, source)
@@ -126,12 +152,29 @@ func prepareProjectBuild(ctx context.Context, owner *trustload.Runtime, source *
 	if evidencecas.Digest(chain.IndexBytes()) != a.ToolchainIndexSHA256 {
 		return nil, fmt.Errorf("%w: index binding", ErrProjectBuild)
 	}
+	var variant *projectBuildVariantBinding
+	if a.APIVersion == "tplaiter.dev/project-build-action/v3" {
+		trusted, marker, rootLock, e := projectBuildAnswers(ctx, owner, source, tpl)
+		if e != nil || !reflect.DeepEqual(values, trusted) {
+			return nil, ErrProjectBuild
+		}
+		values = trusted
+		workflow, ok := trusted["workflow"].(bool)
+		if !ok {
+			return nil, ErrProjectBuild
+		}
+		v := a.Variants[0]
+		if workflow {
+			v = a.Variants[1]
+		}
+		variant = &projectBuildVariantBinding{APIVersion: "tplaiter.dev/project-build-selection/v1", ActionSHA256: evidencecas.Digest(actionRaw), MarkerSHA256: marker, RootLockSHA256: rootLock, Variant: v}
+	}
 	var entries []trustverify.ContentEntry
 	var data [][]byte
 	if images == nil {
 		entries, data, err = captureProjectBuild(ctx, owner.ProjectContext().RootPath)
 	} else {
-		if a.APIVersion != "tplaiter.dev/project-build-action/v2" || !a.GenBuild {
+		if (a.APIVersion != "tplaiter.dev/project-build-action/v2" && a.APIVersion != "tplaiter.dev/project-build-action/v3") || !a.GenBuild {
 			return nil, ErrProjectBuild
 		}
 		entries, data, err = projectedBuildInputs(images)
@@ -157,12 +200,22 @@ func prepareProjectBuild(ctx context.Context, owner *trustload.Runtime, source *
 		return nil, fmt.Errorf("%w: dependency-free module required", ErrProjectBuild)
 	}
 	var modules *trustload.GoModules
-	if a.APIVersion == "tplaiter.dev/project-build-action/v2" {
+	moduleIndex := a.ModuleIndexSHA256
+	if variant != nil {
+		if err := checkVariantMarker(entries, data, variant.MarkerSHA256, variant.RootLockSHA256); err != nil {
+			return nil, err
+		}
+		moduleIndex = variant.Variant.ModuleIndexSHA256
+		if variant.Variant.Policy == "zero-external-modules" && (len(parsed.Require) != 0 || trustload.GoModuleProjectDigest(mod) != variant.Variant.GoModSHA256 || evidencecas.Digest(sum) != variant.Variant.GoSumSHA256) {
+			return nil, ErrProjectBuild
+		}
+	}
+	if a.APIVersion == "tplaiter.dev/project-build-action/v2" || (variant != nil && variant.Variant.Policy == "module-closure") {
 		modules, err = owner.ResolveGoModules(ctx, source, mod, sum)
 		if err != nil {
 			return nil, err
 		}
-		if evidencecas.Digest(modules.IndexBytes()) != a.ModuleIndexSHA256 {
+		if evidencecas.Digest(modules.IndexBytes()) != moduleIndex {
 			return nil, ErrProjectBuild
 		}
 		for _, req := range parsed.Require {
@@ -188,6 +241,15 @@ func prepareProjectBuild(ctx context.Context, owner *trustload.Runtime, source *
 		b := modules.IndexBytes()
 		entries = append(entries, trustverify.ContentEntry{Root: "provider", Path: trustload.GoModuleIndexPath, Mode: "100644", ContentSHA256: evidencecas.Digest(b)})
 		data = append(data, b)
+	}
+	var variantRaw []byte
+	if variant != nil {
+		variantRaw, err = canonicaljson.Canonical(variant)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, trustverify.ContentEntry{Root: "provider", Path: projectBuildSelectionPath, Mode: "100644", ContentSHA256: evidencecas.Digest(variantRaw)})
+		data = append(data, variantRaw)
 	}
 	// Content closure ordering is canonical across project and provider roots.
 	for i := 1; i < len(entries); i++ {
@@ -232,7 +294,7 @@ func prepareProjectBuild(ctx context.Context, owner *trustload.Runtime, source *
 	if err != nil {
 		return nil, err
 	}
-	return &ProjectBuildSelection{owner: owner, source: source, operation: op, request: req, entries: entries, data: data, action: actionRaw, toolchain: chain, modules: modules}, nil
+	return &ProjectBuildSelection{owner: owner, source: source, operation: op, request: req, entries: entries, data: data, action: actionRaw, toolchain: chain, modules: modules, variant: variant, variantRaw: variantRaw}, nil
 }
 func (s *ProjectBuildSelection) Operation() trustverify.OperationInputs {
 	if s == nil {
@@ -284,7 +346,18 @@ func (s *ProjectBuildSelection) recheck(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if s.variant != nil {
+		if err := s.owner.TrustRuntime().CheckProjectIdentity(ctx, s.owner.ProjectContext().RootPath, s.operation.ProjectID); err != nil {
+			return err
+		}
+		if err := checkVariantMarker(entries, data, s.variant.MarkerSHA256, s.variant.RootLockSHA256); err != nil {
+			return err
+		}
+	}
 	providerEntries := 2
+	if s.variant != nil {
+		providerEntries++
+	}
 	if s.modules != nil {
 		providerEntries++
 	}
@@ -368,10 +441,14 @@ func ValidateProjectBuildDeclaration(snapshot *trustverify.SourceSnapshot, tpl *
 		return err
 	}
 	var a ProjectBuildAction
-	canonicaljson.DecodeStrict(action, &a)
-	if a.APIVersion == "tplaiter.dev/project-build-action/v2" {
+	decodeProjectBuildAction(action, &a)
+	if a.APIVersion == "tplaiter.dev/project-build-action/v2" || a.APIVersion == "tplaiter.dev/project-build-action/v3" {
+		indexDigest := a.ModuleIndexSHA256
+		if a.APIVersion == "tplaiter.dev/project-build-action/v3" {
+			indexDigest = a.Variants[1].ModuleIndexSHA256
+		}
 		raw, ok := snapshot.Blob(trustload.GoModuleIndexPath)
-		if !ok || trustload.ValidateGoModuleIndex(raw) != nil || evidencecas.Digest(raw) != a.ModuleIndexSHA256 {
+		if !ok || trustload.ValidateGoModuleIndex(raw) != nil || evidencecas.Digest(raw) != indexDigest {
 			return ErrProjectBuild
 		}
 	}
@@ -382,7 +459,7 @@ func validateProjectBuildRecord(raw, index []byte) error {
 		return err
 	}
 	var a ProjectBuildAction
-	if len(raw) > 1<<20 || len(index) == 0 || len(index) > 8<<20 || canonicaljson.DecodeStrict(raw, &a) != nil || !validProjectBuildVersion(a) || a.CommandName != "build" || !reflect.DeepEqual(a.Argv, ProjectBuildArguments()) || a.TimeoutMillis < 1 || a.TimeoutMillis > 120000 || a.ToolchainIndexSHA256 != evidencecas.Digest(index) {
+	if len(raw) > 1<<20 || len(index) == 0 || len(index) > 8<<20 || decodeProjectBuildAction(raw, &a) != nil || !validProjectBuildVersion(a) || a.CommandName != "build" || !reflect.DeepEqual(a.Argv, ProjectBuildArguments()) || a.TimeoutMillis < 1 || a.TimeoutMillis > 120000 || a.ToolchainIndexSHA256 != evidencecas.Digest(index) {
 		return ErrProjectBuild
 	}
 	return nil
@@ -409,8 +486,184 @@ func ValidateProjectBuildSource(ctx context.Context, runtime *trustverify.Runtim
 	return ValidateProjectBuildDeclaration(snapshot, tpl)
 }
 
+// decodeProjectBuildAction preserves v3 wire presence before accepting values.
+// Both source admission and operation preparation use this closed decoder.
+func decodeProjectBuildAction(raw []byte, action *ProjectBuildAction) error {
+	if err := canonicaljson.DecodeStrict(raw, action); err != nil {
+		return err
+	}
+	if !validProjectBuildVersion(*action) {
+		return ErrProjectBuild
+	}
+	if action.APIVersion != "tplaiter.dev/project-build-action/v3" {
+		return nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return ErrProjectBuild
+	}
+	required := func(object map[string]json.RawMessage, keys ...string) bool {
+		for _, key := range keys {
+			value, ok := object[key]
+			if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+				return false
+			}
+		}
+		return true
+	}
+	if _, present := fields["moduleIndexSHA256"]; present {
+		return ErrProjectBuild
+	}
+	if !required(fields, "apiVersion", "adapter", "commandName", "argv", "timeoutMillis", "toolchainIndexSHA256", "genBuild", "selector", "variants") {
+		return ErrProjectBuild
+	}
+	var variants []map[string]json.RawMessage
+	if err := json.Unmarshal(fields["variants"], &variants); err != nil || len(variants) != 2 {
+		return ErrProjectBuild
+	}
+	for i, variant := range variants {
+		if !required(variant, "id", "workflow", "policy") {
+			return ErrProjectBuild
+		}
+		if i == 0 {
+			if _, present := variant["moduleIndexSHA256"]; present {
+				return ErrProjectBuild
+			}
+			if !required(variant, "goModSHA256", "goSumSHA256") {
+				return ErrProjectBuild
+			}
+		} else {
+			if _, present := variant["goModSHA256"]; present {
+				return ErrProjectBuild
+			}
+			if _, present := variant["goSumSHA256"]; present {
+				return ErrProjectBuild
+			}
+			if !required(variant, "moduleIndexSHA256") {
+				return ErrProjectBuild
+			}
+		}
+	}
+	return nil
+}
+
+func validBuildDigest(s string) bool {
+	if len(s) != 71 || !strings.HasPrefix(s, "sha256:") {
+		return false
+	}
+	for _, c := range s[7:] {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
 func validProjectBuildVersion(a ProjectBuildAction) bool {
+	if a.APIVersion == "tplaiter.dev/project-build-action/v3" {
+		if a.Adapter != "go-project-build-v3" || a.Selector != "workflow" || a.ModuleIndexSHA256 != "" || len(a.Variants) != 2 || !a.GenBuild {
+			return false
+		}
+		f, t := a.Variants[0], a.Variants[1]
+		return f.ID == "workflow-false" && !f.Workflow && f.Policy == "zero-external-modules" && validBuildDigest(f.GoModSHA256) && validBuildDigest(f.GoSumSHA256) && f.ModuleIndexSHA256 == "" && t.ID == "workflow-true" && t.Workflow && t.Policy == "module-closure" && validBuildDigest(t.ModuleIndexSHA256) && t.GoModSHA256 == "" && t.GoSumSHA256 == ""
+	}
+	if a.Selector != "" || len(a.Variants) != 0 {
+		return false
+	}
 	return (a.APIVersion == "tplaiter.dev/project-build-action/v1" && a.Adapter == "go-project-build-v1" && a.ModuleIndexSHA256 == "" && !a.GenBuild) || (a.APIVersion == "tplaiter.dev/project-build-action/v2" && a.Adapter == "go-project-build-v2" && len(a.ModuleIndexSHA256) == 71 && strings.HasPrefix(a.ModuleIndexSHA256, "sha256:"))
+}
+
+// projectBuildAnswers observes identity-checked current marker bytes. The
+// observation supplies no execution authority: the exact marker and derived
+// variant enter the operator-signed request, and are compared again at spawn.
+func projectBuildAnswers(ctx context.Context, owner *trustload.Runtime, source *trustverify.VerifiedResolution, tpl *manifest.Template) (settings.Values, string, string, error) {
+	inventory, err := stateledger.VerifyStable(ctx, owner.ProjectContext().RootPath, owner.TrustRuntime(), stateledger.StableVerifyOptions{})
+	if err != nil {
+		return nil, "", "", err
+	}
+	entries, data, err := captureProjectBuild(ctx, owner.ProjectContext().RootPath)
+	if err != nil {
+		return nil, "", "", err
+	}
+	var markerRaw, lockRaw []byte
+	for i, f := range entries {
+		if f.Path == ".tplaiter/project.yaml" {
+			markerRaw = data[i]
+		}
+		if f.Path == ".tplaiter/root-template.lock.json" {
+			lockRaw = data[i]
+		}
+	}
+	digest := evidencecas.Digest(markerRaw)
+	observed := false
+	for _, f := range inventory.Entries {
+		if f.Scope == "project" && f.Path == ".tplaiter/project.yaml" && f.SHA256 == digest {
+			observed = true
+		}
+	}
+	if !observed {
+		return nil, "", "", ErrProjectBuild
+	}
+	var marker stateledger.ProjectV2
+	dec := yaml.NewDecoder(bytes.NewReader(markerRaw))
+	dec.KnownFields(true)
+	if dec.Decode(&marker) != nil || marker.ID != owner.ProjectContext().ProjectID || marker.APIVersion != stateledger.ProjectV2APIVersion || marker.Template.ResolvedCommit != source.Subject().Commit || marker.Template.RequestedRef != source.Subject().RequestedRef {
+		return nil, "", "", ErrProjectBuild
+	}
+	lock, err := provenance.DecodeRootTemplateLock(lockRaw)
+	if err != nil {
+		return nil, "", "", ErrProjectBuild
+	}
+	r := lock.Root
+	if (trustverify.Subject{Origin: r.Origin, TemplatePath: r.TemplatePath, RequestedRef: r.RequestedRef, Commit: r.Commit, TreeSHA256: r.TreeSHA256, ContractSHA256: r.ContractSHA256}) != source.Subject() {
+		return nil, "", "", ErrProjectBuild
+	}
+	answer, ok := marker.Answers["workflow"]
+	if !ok {
+		return nil, "", "", ErrProjectBuild
+	}
+	if _, ok := answer.Value.(bool); !ok {
+		return nil, "", "", ErrProjectBuild
+	}
+	values := settings.Values{}
+	for k, a := range marker.Answers {
+		values[k] = a.Value
+	}
+	resolved, err := settings.Resolve(tpl, values)
+	if err != nil {
+		return nil, "", "", err
+	}
+	return resolved.Values, digest, evidencecas.Digest(lockRaw), nil
+}
+func checkVariantMarker(entries []trustverify.ContentEntry, data [][]byte, markerDigest, lockDigest string) error {
+	marker, lock := false, false
+	for i, f := range entries {
+		if f.Root != "project" {
+			continue
+		}
+		switch f.Path {
+		case ".tplaiter/project.yaml":
+			marker = f.ContentSHA256 == markerDigest && evidencecas.Digest(data[i]) == markerDigest
+		case ".tplaiter/root-template.lock.json":
+			lock = f.ContentSHA256 == lockDigest && evidencecas.Digest(data[i]) == lockDigest
+		}
+	}
+	if !marker || !lock {
+		return ErrProjectBuild
+	}
+	return nil
+}
+
+// ProjectVariantFor exposes only the binding from this owner's exact opaque
+// selection; callers cannot inject a variant or reuse it for another request.
+func (m *ExecutionMaterial) ProjectVariantFor(owner *trustload.Runtime, request trustverify.ExecutionRequest) (string, string, error) {
+	if m == nil || m.projectBuild == nil || m.projectBuild.owner != owner || !reflect.DeepEqual(request, m.projectBuild.request) {
+		return "", "", ErrProjectBuild
+	}
+	s := m.projectBuild
+	if s.variant == nil {
+		return "", "", nil
+	}
+	return s.variant.Variant.ID, evidencecas.Digest(s.variantRaw), nil
 }
 func (m *ExecutionMaterial) ProjectModulesFor(ctx context.Context, owner *trustload.Runtime, request trustverify.ExecutionRequest) (*trustload.GoModules, error) {
 	if ctx == nil || m == nil || m.projectBuild == nil || m.projectBuild.owner != owner || !reflect.DeepEqual(request, m.projectBuild.request) {

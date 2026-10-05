@@ -504,6 +504,13 @@ func emitNativeGenResultWithBuild(cmd *cobra.Command, project trustload.ProjectC
 	for _, path := range res.EditedFiles {
 		env.Changes = append(env.Changes, resultdto.Change{Path: path, Action: "write"})
 	}
+	// This emitter runs only after Commit. Count each committed path once,
+	// including anchors shared by several operations in a batch.
+	committed := make(map[string]struct{}, len(env.Changes))
+	for _, change := range env.Changes {
+		committed[change.Path] = struct{}{}
+	}
+	env.Summary.FilesChanged = len(committed)
 	if len(env.Changes) != 0 {
 		env.Status = resultdto.StatusChanges
 	}

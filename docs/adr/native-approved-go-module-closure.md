@@ -109,3 +109,37 @@ For shared schemas, extract the named `run`, `gen` and `gen_batch` entries from 
 actual installed stdio `tools/list`. The parent must splice only these entries,
 preserving workspace, project_diff and all other tools. Never apply the historical
 whole golden over a later shared integration.
+
+## Closed v3 workflow cases
+
+The v3 declaration adds `selector: "workflow"` and exactly two ordered variants.
+`workflow-false` uses `zero-external-modules` and pins normalized go.mod plus raw
+go.sum; it rejects all requires and retains every existing project-input guard.
+`workflow-true` uses the unchanged authenticated module closure and CAS assets.
+Neither missing CAS nor changed inputs can trigger a fallback. v1/v2 behavior and
+the published Temporal SDK v1.29.1 module bytes remain unchanged.
+
+The current answer boundary is `stateledger.VerifyStable` plus the confined
+ProjectV2 marker, checked against its inventory and installed project identity.
+Its snapshot is an observation, not an execution authorization token. The v3
+operation owner reads the marker itself, requires an explicit boolean answer,
+verifies its root lock against the exact source, resolves source-declared answers
+and rejects caller-value disagreement. Caller settings cannot choose a variant.
+Projected Gen must retain the same marker and root-lock bytes.
+
+The marker, root lock, full action declaration and a canonical derived selection
+record enter the approved content closure. That record includes action, marker
+and root-lock digests and the selected case. Existing operation-input and request
+digests bind that closure and the trusted resolved values. Only a persistent
+operator signature authorizes execution. Material binding and the final runner
+gate freshly compare actual project input, marker/root lock, authenticated source,
+toolchain and true-case modules. Receipts add optional `buildVariant` and
+`buildVariantSHA256`; older v1/v2 receipts omit them.
+
+The candidate v3 source and template action/README delta are isolated from the
+accepted source13 packet. Pre-publication installed fixtures are explicitly LOCAL
+synthetic authority, not a published v3 certificate. Preserve the exact published
+e49dd1f/5713671 proof separately. Default false CLI/MCP run and Gen, direct forged
+caller values, actual marker recheck, exact module/sum drift, fresh cross-variant
+approval refusal and retained genuine Temporal execution form the bounded checks.
+Other platforms, other templates and full U13 remain outside this leaf.

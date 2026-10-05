@@ -181,6 +181,9 @@ func publicTemporalFixturePackage(t *testing.T, templateRoot string) (ossinstall
 			return e
 		}
 		rel, _ := filepath.Rel(templateRoot, name)
+		if rel == ".git" && !d.IsDir() {
+			return nil
+		}
 		if d.IsDir() {
 			if rel == ".git" {
 				return filepath.SkipDir
@@ -240,7 +243,7 @@ func publicTemporalFixturePackage(t *testing.T, templateRoot string) (ossinstall
 		return t6BTree(add, nodes)
 	}
 	treeID := tree("")
-	commit := add("commit", []byte("tree "+treeID+"\n\nLOCAL FIXTURE metadata overlay of public template d0179547; not a published GitHub commit\n"))
+	commit := add("commit", []byte("tree "+treeID+"\n\nLOCAL FIXTURE v3 metadata overlay of public template 5713671; not a published GitHub commit\n"))
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 	treeDigest, _ := bootstrap.DomainDigest("tplaiter.dev/source-content-tree/v1", struct {
 		APIVersion string                    `json:"apiVersion"`
@@ -261,6 +264,15 @@ func publicTemporalFixturePackage(t *testing.T, templateRoot string) (ossinstall
 }
 
 func TestPublicTemporalInstalledCLIAndMCP(t *testing.T) {
+	if base := os.Getenv("TPLAITER_PUBLIC_BUILD_GEN_SUMMARY_BASE"); base != "" {
+		publicBuildCommittedGenSummaryProof(t, base)
+		return
+	}
+	workflow := os.Getenv("TPLAITER_PUBLIC_BUILD_WORKFLOW") != "false"
+	variantExpected := "workflow-true"
+	if !workflow {
+		variantExpected = "workflow-false"
+	}
 	packet, templateRoot := os.Getenv("TPLAITER_PUBLIC_TEMPORAL_PACKET"), os.Getenv("TPLAITER_PUBLIC_TEMPORAL_TEMPLATE")
 	if packet == "" || templateRoot == "" {
 		t.Skip("explicit owned public acquisition and metadata fixture required")
@@ -285,12 +297,16 @@ func TestPublicTemporalInstalledCLIAndMCP(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	t.Logf("retained proof %s; PUBLIC ASSETS from d0179547 plus LOCAL unpublished signed metadata fixture; not a GitHub metadata publication certificate", base)
+	t.Logf("retained proof %s; PUBLIC ASSETS from 5713671 plus LOCAL unpublished signed v3 metadata fixture; not a GitHub metadata publication certificate", base)
 	home := filepath.Join(base, "home")
 	if e = os.Mkdir(home, 0700); e != nil && !(reuse && os.IsExist(e)) {
 		t.Fatal(e)
 	}
-	raw, e := os.ReadFile(filepath.Join(packet, "execution-evidence.json"))
+	acquisition := os.Getenv("TPLAITER_PUBLIC_BUILD_ACQUISITION_PACKET")
+	if acquisition == "" {
+		acquisition = packet
+	}
+	raw, e := os.ReadFile(filepath.Join(acquisition, "execution-evidence.json"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -360,13 +376,25 @@ func TestPublicTemporalInstalledCLIAndMCP(t *testing.T) {
 	selectionPath := filepath.Join(base, "source.json")
 	os.WriteFile(selectionPath, t6BJSON(t, selections[0]), 0600)
 	if !reuse {
-		if out, exit := call("new", selections[0].Subject.Commit, "temporal-public-proof", "--dir", project, "--module", "example.com/temporal-public-proof", "--source-input", selectionPath, "--defaults", "--set", "workflow=true", "--no-hooks", "--json"); exit != 0 {
+		newArgs := []string{"new", selections[0].Subject.Commit, "temporal-public-proof", "--dir", project, "--module", "example.com/temporal-public-proof", "--source-input", selectionPath, "--defaults", "--no-hooks", "--json"}
+		if workflow {
+			newArgs = append(newArgs, "--set", "workflow=true")
+		}
+		if out, exit := call(newArgs...); exit != 0 {
 			t.Fatalf("new %d %s", exit, out)
 		}
 	}
 	// Actual Temporal-enabled go.mod/go.sum must equal the retained public render.
 	for _, name := range []string{"go.mod", "go.sum"} {
-		want, e := os.ReadFile(filepath.Join(packet, "rendered", name))
+		want, e := os.ReadFile(filepath.Join(acquisition, "rendered", name))
+		if !workflow {
+			e = nil
+			if name == "go.mod" {
+				want = []byte("module example.com/temporal-public-proof\n\ngo 1.26\n")
+			} else {
+				want = []byte("\n")
+			}
+		}
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -423,11 +451,16 @@ func TestPublicTemporalInstalledCLIAndMCP(t *testing.T) {
 		t.Fatalf("actual dependency CLI %d %s", exit, out)
 	}
 	data := assertProjectBuildReceipt(t, out, req, 0)
-	if data.ProcessReceipt.ModuleIndexSHA256 == "" {
+	if workflow && data.ProcessReceipt.ModuleIndexSHA256 == "" {
 		t.Fatal("missing dependency digest")
 	}
-	t.Log("actual Temporal dependency CLI build", out)
-	projectBuildMCP(t, binary, base, home, project, grant, req)
+	if data.ProcessReceipt.BuildVariant != variantExpected || data.ProcessReceipt.BuildVariantSHA256 == "" || (!workflow && data.ProcessReceipt.ModuleIndexSHA256 != "") {
+		t.Fatalf("wrong variant receipt %s", out)
+	}
+	t.Log("actual selected variant CLI build", out)
+	if os.Getenv("TPLAITER_PUBLIC_BUILD_TEMPORAL_FOCUSED") != "1" {
+		projectBuildMCP(t, binary, base, home, project, grant, req)
+	}
 	// Default generation is a separate gen-scoped projected-input grant.
 	entity := os.Getenv("TPLAITER_PUBLIC_TEMPORAL_ENTITY")
 	if entity == "" {
@@ -452,14 +485,24 @@ func TestPublicTemporalInstalledCLIAndMCP(t *testing.T) {
 	if e = json.Unmarshal(env.Data, &gd); e != nil || gd.NoBuild || gd.ProcessReceipt == nil || gd.ProcessReceipt.ExitCode != 0 || gd.ProcessReceipt.RequestSHA256 != genReq.RequestSHA256 || gd.ProcessReceipt.ModuleIndexSHA256 != data.ProcessReceipt.ModuleIndexSHA256 {
 		t.Fatalf("default gen receipt %v %s", e, out)
 	}
-	t.Log("actual Temporal default Gen build", out)
+	assertNativeGenCommittedSummary(t, env, gd)
+	if gd.ProcessReceipt.BuildVariant != variantExpected || gd.ProcessReceipt.BuildVariantSHA256 != data.ProcessReceipt.BuildVariantSHA256 {
+		t.Fatalf("wrong Gen variant %s", out)
+	}
+	t.Log("actual selected variant default Gen build", out)
 	mcpArgs := []string{"gen", "entity", "Flight", "--dir", project}
 	mcpReq := prepare(mcpArgs...)
 	mcpGrant := filepath.Join(base, "gen-mcp-grant.json")
 	if e := os.WriteFile(mcpGrant, fixtureApproval(t, policy, mcpReq, key), 0600); e != nil {
 		t.Fatal(e)
 	}
-	publicTemporalMCPGen(t, binary, base, home, project, mcpGrant, mcpReq, data.ProcessReceipt.ModuleIndexSHA256)
+	if os.Getenv("TPLAITER_PUBLIC_BUILD_TEMPORAL_FOCUSED") != "1" {
+		publicTemporalMCPGen(t, binary, base, home, project, mcpGrant, "Flight", mcpReq, data.ProcessReceipt.ModuleIndexSHA256)
+	}
+	// Concrete no-spawn mutations never select a fallback case.
+	if os.Getenv("TPLAITER_PUBLIC_BUILD_WORKFLOW") != "" {
+		publicBuildVariantCounterproof(t, call, project, base, grant, workflow, policy, key, reg.Selection())
+	}
 	// Reusing the previous run grant after generation must fail before execution.
 	if out, exit := call("run", "build", "--approval-input", grant, "--json"); exit == 0 {
 		t.Fatalf("stale run grant accepted %s", out)
@@ -469,7 +512,7 @@ func TestPublicTemporalInstalledCLIAndMCP(t *testing.T) {
 	}
 }
 
-func publicTemporalMCPGen(t *testing.T, binary, base, home, project, grant string, req trustverify.ExecutionRequest, moduleDigest string) {
+func publicTemporalMCPGen(t *testing.T, binary, base, home, project, grant, name string, req trustverify.ExecutionRequest, moduleDigest string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -511,7 +554,7 @@ func publicTemporalMCPGen(t *testing.T, binary, base, home, project, grant strin
 	if e := os.WriteFile(filepath.Join(base, "tools-list.json"), t6BJSON(t, schemas), 0600); e != nil {
 		t.Fatal(e)
 	}
-	r := request(3, "tools/call", map[string]any{"name": "gen", "arguments": map[string]any{"dir": project, "kind": "entity", "name": "Flight", "approvalInput": grant}})
+	r := request(3, "tools/call", map[string]any{"name": "gen", "arguments": map[string]any{"dir": project, "kind": "entity", "name": name, "approvalInput": grant}})
 	result, ok := r["result"].(map[string]any)
 	if !ok {
 		t.Fatalf("missing result %+v", r)
@@ -528,6 +571,7 @@ func publicTemporalMCPGen(t *testing.T, binary, base, home, project, grant strin
 	if e = json.Unmarshal(env.Data, &data); e != nil || data.NoBuild || data.ProcessReceipt == nil || data.ProcessReceipt.ExitCode != 0 || data.ProcessReceipt.RequestSHA256 != req.RequestSHA256 || data.ProcessReceipt.ModuleIndexSHA256 != moduleDigest {
 		t.Fatalf("MCP Gen receipt %v %s", e, raw)
 	}
+	assertNativeGenCommittedSummary(t, env, data)
 	t.Logf("real Temporal MCP default Gen build %s", raw)
 }
 
@@ -695,7 +739,7 @@ func TestPublicTemporalInstalledCounterproof(t *testing.T) {
 		t.Fatal(e)
 	}
 	var failed resultdto.GenRunData
-	if e = json.Unmarshal(env.Data, &failed); e != nil || failed.ProcessReceipt == nil || failed.ProcessReceipt.ExitCode != 1 || failed.ProcessReceipt.RequestSHA256 != prepared.PreparedRequest.RequestSHA256 || failed.ProcessReceipt.ModuleIndexSHA256 != evidencecas.Digest(indexRaw) || len(env.Changes) != 0 || len(failed.Created) != 0 {
+	if e = json.Unmarshal(env.Data, &failed); e != nil || failed.ProcessReceipt == nil || failed.ProcessReceipt.ExitCode != 1 || failed.ProcessReceipt.RequestSHA256 != prepared.PreparedRequest.RequestSHA256 || failed.ProcessReceipt.ModuleIndexSHA256 != evidencecas.Digest(indexRaw) || env.Summary.FilesChanged != 0 || len(env.Changes) != 0 || len(failed.Created) != 0 {
 		t.Fatalf("failure receipt %v %s", e, out)
 	}
 	after := temporalRollbackTree(t, project)

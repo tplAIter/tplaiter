@@ -1676,6 +1676,12 @@
             "processReceipt": {
               "additionalProperties": false,
               "properties": {
+                "buildVariant": {
+                  "type": "string"
+                },
+                "buildVariantSHA256": {
+                  "type": "string"
+                },
                 "cancelled": {
                   "type": "boolean"
                 },
@@ -2229,6 +2235,12 @@
             "processReceipt": {
               "additionalProperties": false,
               "properties": {
+                "buildVariant": {
+                  "type": "string"
+                },
+                "buildVariantSHA256": {
+                  "type": "string"
+                },
                 "cancelled": {
                   "type": "boolean"
                 },
@@ -5953,6 +5965,12 @@
             "processReceipt": {
               "additionalProperties": false,
               "properties": {
+                "buildVariant": {
+                  "type": "string"
+                },
+                "buildVariantSHA256": {
+                  "type": "string"
+                },
                 "cancelled": {
                   "type": "boolean"
                 },

@@ -134,6 +134,15 @@ func buildNativeFromImages(ctx context.Context, runtime *trustload.Runtime, home
 	if err := nativeIdentity(ctx, runtime, root, marker.ID); err != nil {
 		return nil, err
 	}
+	// Policy-bearing projects require an authenticated, policy-aware generator.
+	// This common boundary also protects reconstruction of cold material.
+	var inventory ownership.Inventory
+	if err := canonicaljson.DecodeStrict(before[ownership.InventoryRelPath].data, &inventory); err != nil || inventory.Version != 1 {
+		return nil, ErrNativeOwnership
+	}
+	if len(marker.Ownership) != 0 || len(inventory.Skipped) != 0 || len(inventory.Tombstones) != 0 {
+		return nil, ErrNativeOwnership
+	}
 	// The runtime verifies the root's actual evidence, rather than accepting a
 	// caller-provided resolution or trusting the resource lock's self-hash.
 	lock, err := provenance.DecodeRootTemplateLock(before[".tplaiter/root-template.lock.json"].data)
@@ -154,10 +163,6 @@ func buildNativeFromImages(ctx context.Context, runtime *trustload.Runtime, home
 		return nil, err
 	}
 	if !bytes.Equal(expectedLock, before[nativeResourceLockPath].data) {
-		return nil, ErrNativeOwnership
-	}
-	var inventory ownership.Inventory
-	if err := canonicaljson.DecodeStrict(before[ownership.InventoryRelPath].data, &inventory); err != nil || inventory.Version != 1 {
 		return nil, ErrNativeOwnership
 	}
 	owned := map[string]ownership.Artifact{}

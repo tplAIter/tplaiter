@@ -31,8 +31,10 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ownership"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction"
 	"github.com/tplAIter/tplaiter/internal/sourcepackage"
+	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
+	"gopkg.in/yaml.v3"
 )
 
 const publicGoCommit = "d0179547cd2e47b7564b0011bc5045799fc036bd"
@@ -1030,5 +1032,103 @@ func TestNativeSignedForeignHomeColdRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".lock")); !os.IsNotExist(err) {
 		t.Fatal("lock created in foreign home")
+	}
+}
+
+// Synthetic stable policy-bearing ledgers exercise both fresh planning and cold
+// semantic reconstruction; this is not COORD6.4 adoption delivery evidence.
+func TestNativeSignedExcludedPolicyRefusesFreshAndCold(t *testing.T) {
+	for _, kind := range []string{"ownership", "skipped", "tombstone"} {
+		for _, present := range []bool{false, true} {
+			t.Run(kind+"/"+strconv.FormatBool(present), func(t *testing.T) {
+				r, home, root := nativeSignedProject(t)
+				p := nativePlan(t, r, home)
+				material, _, err := p.TransactionMaterial(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				target := p.Result().CreatedFiles[0]
+				markerPath := filepath.Join(root, ".tplaiter/project.yaml")
+				inventoryPath := filepath.Join(root, ownership.InventoryRelPath)
+				markerRaw, err := os.ReadFile(markerPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				inventoryRaw, err := os.ReadFile(inventoryPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var marker stateledger.ProjectV2
+				if err := yaml.Unmarshal(markerRaw, &marker); err != nil {
+					t.Fatal(err)
+				}
+				var inventory ownership.Inventory
+				if err := canonicaljson.DecodeStrict(inventoryRaw, &inventory); err != nil {
+					t.Fatal(err)
+				}
+				switch kind {
+				case "ownership":
+					marker.Ownership = map[string]any{"user_owned": []string{target}}
+				case "skipped":
+					inventory.Skipped = []ownership.Decision{{Path: target, Reason: "user-owned"}}
+				case "tombstone":
+					inventory.Tombstones = []string{target}
+				}
+				markerRaw, err = yaml.Marshal(marker)
+				if err != nil {
+					t.Fatal(err)
+				}
+				inventoryRaw, err = canonicaljson.Canonical(inventory)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(markerPath, markerRaw, 0644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(inventoryPath, inventoryRaw, 0644); err != nil {
+					t.Fatal(err)
+				}
+				targetPath := filepath.Join(root, target)
+				if present {
+					if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(targetPath, []byte("user-owned bytes"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, err := stateledger.VerifyStable(context.Background(), root, r.TrustRuntime(), stateledger.StableVerifyOptions{}); err != nil {
+					t.Fatalf("synthetic fixture must be stable: %v", err)
+				}
+				if _, err := gen.PlanNative(context.Background(), r, home, []gen.NativeOperation{{Kind: "entity", Name: "Widget"}}); !errors.Is(err, gen.ErrNativeOwnership) {
+					t.Fatalf("fresh: %v", err)
+				}
+				markerFile := material.Before[".tplaiter/project.yaml"]
+				markerFile.Data = markerRaw
+				material.Before[".tplaiter/project.yaml"] = markerFile
+				inventoryFile := material.Before[ownership.InventoryRelPath]
+				inventoryFile.Data = inventoryRaw
+				material.Before[ownership.InventoryRelPath] = inventoryFile
+				if present {
+					material.Before[target] = gen.NativeFile{Data: []byte("user-owned bytes"), Mode: 0600}
+				}
+				if err := gen.AuthenticateNativeMaterial(context.Background(), r, material); !errors.Is(err, gen.ErrNativeOwnership) {
+					t.Fatalf("cold reconstruction: %v", err)
+				}
+				gotMarker, _ := os.ReadFile(markerPath)
+				gotInventory, _ := os.ReadFile(inventoryPath)
+				if !bytes.Equal(gotMarker, markerRaw) || !bytes.Equal(gotInventory, inventoryRaw) {
+					t.Fatal("refusal mutated ledger")
+				}
+				got, err := os.ReadFile(targetPath)
+				if present {
+					if err != nil || string(got) != "user-owned bytes" {
+						t.Fatal("excluded target changed")
+					}
+				} else if !os.IsNotExist(err) {
+					t.Fatal("missing excluded target created")
+				}
+			})
+		}
 	}
 }
