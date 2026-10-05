@@ -153,6 +153,7 @@ type Session struct {
 	busy         atomic.Bool
 	frames       int
 	sequence     int
+	capture      *catalogCapture
 }
 
 func digest(raw []byte) string { h := sha256.Sum256(raw); return "sha256:" + hex.EncodeToString(h[:]) }
@@ -361,6 +362,11 @@ func (s *Session) exchange(ctx context.Context, q request) (response, error) {
 	if r.Status != s.host.SuccessStatus {
 		return r, failure("SESSION_WIRE", nil)
 	}
+	if q.Op == "knowledge" && s.capture != nil {
+		if err := s.capture.observe(r.Result); err != nil {
+			return r, err
+		}
+	}
 	return r, nil
 }
 
@@ -435,7 +441,22 @@ func (s *Session) read() ([]byte, error) {
 // ReadCatalog merges complete source pages and checks all objects against the
 // independently frozen public C01 catalog. Producer digest fields are compared
 // to receipt pins, never recomputed using a guessed private serialization.
-func (s *Session) ReadCatalog(ctx context.Context) (catalog knowledge.Catalog, binding Binding, err error) {
+func (s *Session) ReadCatalog(ctx context.Context) (knowledge.Catalog, Binding, error) {
+	return s.readCatalog(ctx, nil)
+}
+
+// ReadCatalogReceipt captures the complete compact wire catalog from this
+// connection. It proves local observations only, never source eligibility.
+func (s *Session) ReadCatalogReceipt(ctx context.Context) (*CatalogReceipt, error) {
+	capture := &catalogCapture{}
+	_, _, err := s.readCatalog(ctx, capture)
+	if err != nil {
+		return nil, err
+	}
+	return capture.receipt, nil
+}
+
+func (s *Session) readCatalog(ctx context.Context, capture *catalogCapture) (catalog knowledge.Catalog, binding Binding, err error) {
 	if s == nil || s.conn == nil || ctx == nil || s.closed.Load() || s.used.Swap(true) {
 		return catalog, binding, failure("SESSION_LIFETIME", nil)
 	}
@@ -446,6 +467,21 @@ func (s *Session) ReadCatalog(ctx context.Context) (catalog knowledge.Catalog, b
 	defer func() {
 		if err != nil {
 			_ = s.Close()
+		}
+	}()
+	s.capture = capture
+	defer func() {
+		s.capture = nil
+		if err == nil && capture != nil {
+			capture.receipt, err = capture.finish(s, binding)
+			if err == nil {
+				err = ctx.Err()
+			}
+			if err != nil {
+				capture.receipt = nil
+				catalog = knowledge.Catalog{}
+				binding = Binding{}
+			}
 		}
 	}()
 	finish, err := s.deadline(ctx)
@@ -601,4 +637,32 @@ func validCursor(s string) bool {
 		}
 	}
 	return true
+}
+
+// ReadAssetReceipt binds a verified body to a catalog observed on this same
+// connection. A foreign or zero receipt cannot authorize a read.
+func (s *Session) ReadAssetReceipt(ctx context.Context, catalog *CatalogReceipt, sourceID, assetID string) (*ContentReceipt, error) {
+	if s == nil || catalog == nil || catalog.session != s || len(catalog.raw) == 0 {
+		return nil, failure("SESSION_SCOPE", nil)
+	}
+	for _, source := range catalog.descriptors {
+		if source.ID != sourceID {
+			continue
+		}
+		for _, asset := range source.Assets {
+			if asset.ID != assetID {
+				continue
+			}
+			body, err := s.ReadAsset(ctx, sourceID, assetID)
+			if err != nil {
+				return nil, err
+			}
+			if len(body) != asset.Bytes || digest(body) != "sha256:"+asset.Anchor.BlobDigest.Hex {
+				_ = s.Close()
+				return nil, failure("SESSION_CATALOG_PIN", nil)
+			}
+			return &ContentReceipt{catalog: catalog, asset: asset, body: append([]byte(nil), body...)}, nil
+		}
+	}
+	return nil, failure("SESSION_SCOPE", nil)
 }
