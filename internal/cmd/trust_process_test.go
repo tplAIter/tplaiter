@@ -235,7 +235,11 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	t.Logf("T7_PROOF owned_baseline_sha256=%x", baselineDigest)
 	for index, args := range [][]string{{"new", f.source.Commit, "project", "--dry-run", "--source-input", sourceInput}, {"update", "--dry-run", "--source-input", targetInput, "--to", f.target.Commit}} {
 		got, e := run(args...)
-		if e != nil || string(got) != "dry-run prepared\n" {
+		validPreview := e == nil && string(got) == "dry-run prepared\n"
+		if index == 1 {
+			validPreview = e == nil && bytes.Contains(got, []byte("TPL-I-NATIVE-UPDATE-REGISTRY project registry transition")) && bytes.Contains(got, []byte(" (update.plan)\n"))
+		}
+		if !validPreview {
 			t.Fatalf("direct %v: %v %q", args, e, got)
 		}
 		previewDigest := sha256.Sum256(got)
@@ -341,7 +345,11 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 		}
 		structured, _ := result["structuredContent"].(map[string]any)
 		data, _ := structured["data"].(map[string]any)
-		if structured["status"] != "ok" || data["dryRun"] != true {
+		wantStatus := "ok"
+		if callSpec.name == "update" {
+			wantStatus = "changes"
+		}
+		if structured["status"] != wantStatus || data["dryRun"] != true {
 			t.Fatalf("mcp %s result: %#v", callSpec.name, response)
 		}
 		preview, _ := json.Marshal(structured)
@@ -380,9 +388,8 @@ func TestInstalledRegistrationRealCLIAndMCP(t *testing.T) {
 	}{
 		// A registered runtime and public-looking ref do not supply source authority.
 		{"project_new", map[string]any{"ref": f.source.Commit, "name": "project", "dir": filepath.Dir(f.projectRoot)}, []string{"new", f.source.Commit, "project"}, "TRUST_SOURCE_ADAPTER_UNSUPPORTED"},
-		{"update", map[string]any{"dir": f.projectRoot, "to": f.target.Commit, "sourceInput": targetInput}, []string{"update", "--source-input", targetInput, "--to", f.target.Commit}, "TRUST_LIFECYCLE_UNAVAILABLE"},
 		{"run", map[string]any{"dir": f.projectRoot, "command": "test"}, []string{"run", "test"}, "TRUST_ACTION_UNAVAILABLE"},
-		{"gen", map[string]any{"dir": f.projectRoot, "kind": "fixture", "name": "thing"}, []string{"gen", "fixture", "thing"}, "TRUST_ACTION_UNAVAILABLE"},
+		{"gen", map[string]any{"dir": f.projectRoot, "kind": "fixture", "name": "thing"}, []string{"gen", "fixture", "thing"}, "TRUST_GENERATION_EXECUTION_UNAVAILABLE"},
 		{"env_setup", map[string]any{"dir": f.projectRoot, "yes": true}, []string{"env", "setup"}, "TRUST_ACTION_UNAVAILABLE"},
 	} {
 		expectFailure(call(40, tc.name, tc.args), tc.code)

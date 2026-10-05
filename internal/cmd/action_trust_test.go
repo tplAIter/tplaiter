@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/tplAIter/tplaiter/internal/state"
+	"github.com/tplAIter/tplaiter/internal/trustload"
 )
 
 // TestComposedRootDeniesLegacyActionsBeforeHooks exercises the installed
@@ -24,21 +25,37 @@ func TestComposedRootDeniesLegacyActionsBeforeHooks(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("SHELL", "CANARY-shell")
 
-	for _, args := range [][]string{
-		{"run", "CANARY-command"},
-		{"gen", "thing", "CANARY", "--no-build"},
-		{"gen", "batch", "--operations", "[]", "--no-build"},
-		{"env", "setup", "--yes"},
+	for _, tc := range []struct {
+		name string
+		args []string
+		want func(error) bool
+	}{
+		{name: "run", args: []string{"run", "CANARY-command"}, want: func(err error) bool {
+			return errors.Is(err, ErrActionUnavailable)
+		}},
+		{name: "gen", args: []string{"gen", "thing", "CANARY", "--no-build"}, want: func(err error) bool {
+			return errors.Is(err, trustload.ErrAnchorMissing)
+		}},
+		{name: "gen batch empty", args: []string{"gen", "batch", "--operations", "[]", "--no-build"}, want: func(err error) bool {
+			var usage *usageError
+			return errors.As(err, &usage) && err.Error() == "gen batch: operation list is empty"
+		}},
+		{name: "gen batch trust guard", args: []string{"gen", "batch", "--operations", `[{"kind":"thing","name":"CANARY"}]`, "--no-build"}, want: func(err error) bool {
+			return errors.Is(err, trustload.ErrAnchorMissing)
+		}},
+		{name: "env setup", args: []string{"env", "setup", "--yes"}, want: func(err error) bool {
+			return errors.Is(err, ErrActionUnavailable)
+		}},
 	} {
-		t.Run(strings.Join(args, "/"), func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			root := newTrustRootCommand(invocation{})
 			var out, stderr bytes.Buffer
 			root.SetOut(&out)
 			root.SetErr(&stderr)
-			root.SetArgs(args)
+			root.SetArgs(tc.args)
 			err := root.Execute()
-			if !errors.Is(err, ErrActionUnavailable) {
-				t.Fatalf("Execute(%q) = %v, want typed denial", args, err)
+			if !tc.want(err) {
+				t.Fatalf("Execute(%q) = %v, unexpected error class", tc.args, err)
 			}
 			if strings.Contains(err.Error(), "CANARY") || strings.Contains(out.String()+stderr.String(), "CANARY") {
 				t.Fatalf("denial leaked untrusted input: err=%q output=%q", err, out.String()+stderr.String())

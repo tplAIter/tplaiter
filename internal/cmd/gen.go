@@ -136,24 +136,24 @@ func newGenBatchCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Validate bounded input before project discovery or generator effects.
 			if operationsJSON == "" {
-				return errors.New("gen batch: --operations with JSON array of operations is required")
+				return &usageError{err: errors.New("gen batch: --operations with JSON array of operations is required")}
 			}
 			if len(operationsJSON) > 1<<20 {
-				return errors.New("gen batch: operations JSON exceeds 1 MiB")
+				return &usageError{err: errors.New("gen batch: operations JSON exceeds 1 MiB")}
 			}
 			var input []genBatchInput
 			if err := json.Unmarshal([]byte(operationsJSON), &input); err != nil {
-				return fmt.Errorf("gen batch: parsing --operations JSON: %w", err)
+				return &usageError{err: fmt.Errorf("gen batch: parsing --operations JSON: %w", err)}
 			}
 			if len(input) > 256 {
-				return errors.New("gen batch: at most 256 operations are supported")
+				return &usageError{err: errors.New("gen batch: at most 256 operations are supported")}
 			}
 			if len(input) == 0 {
-				return errors.New("gen batch: operation list is empty")
+				return &usageError{err: errors.New("gen batch: operation list is empty")}
 			}
 			for i, item := range input {
 				if item.Kind == "" || item.Name == "" {
-					return fmt.Errorf("gen batch: operation %d requires kind and name", i+1)
+					return &usageError{err: fmt.Errorf("gen batch: operation %d requires kind and name", i+1)}
 				}
 			}
 			return runNativeGen(cmd, controls, input, nil)
