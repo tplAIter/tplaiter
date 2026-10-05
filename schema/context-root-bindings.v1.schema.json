@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplaiter.dev/schema/context-root-bindings.v1.schema.json",
+  "title": "Signed installed ROOT context binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "source"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/context-root-bindings/v1"
+    },
+    "kind": {
+      "const": "ContextRootBindings"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alias",
+        "providerID",
+        "parameters",
+        "entriesPath",
+        "payloadDirectory",
+        "toolPath"
+      ],
+      "properties": {
+        "alias": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+        },
+        "providerID": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+        },
+        "parameters": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "entriesPath": {
+          "$ref": "#/$defs/path"
+        },
+        "payloadDirectory": {
+          "$ref": "#/$defs/path"
+        },
+        "toolPath": {
+          "$ref": "#/$defs/path"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?!/)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*[\\\\\\u0000\\r\\n])(?!.*//)[^/]+(?:/[^/]+)*$",
+      "description": "Snapshot-relative path. The compiled consumer additionally enforces the 256-byte UTF-8 bound and authenticated regular-file mode."
+    }
+  }
+}
