@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -18,9 +17,27 @@ import (
 const (
 	DefaultLimit = 8192
 	HardLimit    = 32768
+
+	reasonableMaxSourceBytes = 1 << 20
 )
 
 var ErrBudget = errors.New("contextpack: minimum envelope exceeds byte limit")
+
+type unsupportedSourceReadingError struct {
+	platform string
+}
+
+func (e unsupportedSourceReadingError) Error() string {
+	return "contextpack: confined source reading is unavailable on " + e.platform
+}
+
+func sourceReaderUnsupportedDiagnostic(err error) string {
+	var unsupported unsupportedSourceReadingError
+	if !errors.As(err, &unsupported) {
+		return ""
+	}
+	return "contextpack: source reading unavailable on unsupported platform: " + unsupported.platform
+}
 
 type Request struct {
 	Root          string
@@ -58,6 +75,12 @@ type SourceExcerpt struct {
 
 // Build never returns a successful serialized Pack larger than MaxBytes.
 func Build(d graphdoc.Document, req Request) (Pack, error) {
+	return buildWithSourceReader(d, req, newSourceReader)
+}
+
+type sourceReaderFactory func(string) (sourceReader, error)
+
+func buildWithSourceReader(d graphdoc.Document, req Request, makeReader sourceReaderFactory) (Pack, error) {
 	if err := graphdoc.Verify(d); err != nil {
 		return Pack{}, err
 	}
@@ -94,6 +117,23 @@ func Build(d graphdoc.Document, req Request) (Pack, error) {
 	})
 	sources := []SourceExcerpt{}
 	p := Pack{APIVersion: "tplaiter.dev/context-pack/v1", GraphDigest: d.Digest, Nodes: []graphdoc.Node{}, Relations: []graphdoc.Edge{}, SourceDigests: []Digest{}, Constraints: []string{}, Diagnostics: []string{}}
+	var reader sourceReader
+	if req.IncludeSource {
+		var sourceErr error
+		reader, sourceErr = makeReader(req.Root)
+		if reader != nil {
+			defer reader.close()
+		}
+		if diagnostic := sourceReaderUnsupportedDiagnostic(sourceErr); diagnostic != "" {
+			candidate := p
+			candidate.Diagnostics = append([]string{}, p.Diagnostics...)
+			candidate.Diagnostics = append(candidate.Diagnostics, diagnostic)
+			if !fits(&candidate, limit) {
+				return Pack{}, ErrBudget
+			}
+			p = candidate
+		}
+	}
 	for _, n := range nodes {
 		candidate := p
 		candidate.Nodes = append(append([]graphdoc.Node{}, p.Nodes...), n)
@@ -116,7 +156,7 @@ func Build(d graphdoc.Document, req Request) (Pack, error) {
 	}
 	if req.IncludeSource {
 		for _, n := range p.Nodes {
-			ex, ok := excerpt(req.Root, n)
+			ex, ok := excerpt(reader, n)
 			if !ok {
 				continue
 			}
@@ -139,7 +179,7 @@ func Build(d graphdoc.Document, req Request) (Pack, error) {
 	p.OmittedSources = len(sources) - len(p.Sources)
 	if p.OmittedNodes+p.OmittedRelations+p.OmittedSources > 0 {
 		candidate := p
-		candidate.Diagnostics = []string{"records omitted to satisfy byte limit"}
+		candidate.Diagnostics = append(append([]string{}, p.Diagnostics...), "records omitted to satisfy byte limit")
 		if fits(&candidate, limit) {
 			p = candidate
 		}
@@ -188,12 +228,21 @@ func Verify(d graphdoc.Document, root string, p Pack) error {
 	for _, n := range d.Nodes {
 		byID[n.ID] = n
 	}
+	var reader sourceReader
+	if len(p.Sources) > 0 {
+		var err error
+		reader, err = newSourceReader(root)
+		if err != nil {
+			return fmt.Errorf("contextpack: source drift %s", p.Sources[0].Path)
+		}
+		defer reader.close()
+	}
 	for _, ex := range p.Sources {
 		n, ok := byID[ex.NodeID]
 		if !ok || n.Path != ex.Path {
 			return errors.New("contextpack: excerpt node mismatch")
 		}
-		current, ok := excerpt(root, n)
+		current, ok := excerpt(reader, n)
 		if !ok || current.Digest != ex.Digest || current.Start != ex.Start || current.End != ex.End || current.Content != ex.Content {
 			return fmt.Errorf("contextpack: source drift %s", ex.Path)
 		}
@@ -201,23 +250,21 @@ func Verify(d graphdoc.Document, root string, p Pack) error {
 	return nil
 }
 
-func excerpt(root string, n graphdoc.Node) (SourceExcerpt, bool) {
+type sourceReader interface {
+	read(path string) ([]byte, error)
+	close() error
+}
+
+func excerpt(reader sourceReader, n graphdoc.Node) (SourceExcerpt, bool) {
 	rel := n.Path
-	if root == "" || filepath.IsAbs(rel) || strings.Contains(rel, ".."+string(filepath.Separator)) {
+	if reader == nil || rel == "" || filepath.IsAbs(rel) || strings.ContainsRune(rel, '\x00') {
 		return SourceExcerpt{}, false
 	}
 	clean := filepath.Clean(rel)
-	root, _ = filepath.Abs(root)
-	path := filepath.Join(root, clean)
-	check, err := filepath.Rel(root, path)
-	if err != nil || check == ".." || strings.HasPrefix(check, ".."+string(filepath.Separator)) {
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return SourceExcerpt{}, false
 	}
-	st, err := os.Lstat(path)
-	if err != nil || st.Mode()&os.ModeSymlink != 0 {
-		return SourceExcerpt{}, false
-	}
-	b, err := os.ReadFile(path)
+	b, err := reader.read(clean)
 	if err != nil {
 		return SourceExcerpt{}, false
 	}
@@ -238,12 +285,19 @@ func excerpt(root string, n graphdoc.Node) (SourceExcerpt, bool) {
 	if line < 1 {
 		line = 1
 	}
-	start := line - 2
-	if start < 0 {
-		start = 0
+	start := 0
+	if len(lines) > 0 {
+		lineIndex := line - 1
+		if lineIndex >= len(lines) {
+			lineIndex = len(lines) - 1
+		}
+		start = lineIndex - 1
+		if start < 0 {
+			start = 0
+		}
 	}
 	end := start + 8
-	if end > len(lines) {
+	if end < start || end > len(lines) {
 		end = len(lines)
 	}
 	return SourceExcerpt{NodeID: n.ID, Path: filepath.ToSlash(rel), Start: start + 1, End: end, Content: strings.Join(lines[start:end], "\n"), Digest: dg}, true
