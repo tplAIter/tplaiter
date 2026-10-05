@@ -1,6 +1,6 @@
 # Command reference
 
-This reference records the public CLI at `3ccb11b2a3ac9a6033f45bc940333436a2587f28`. The 80 existing documented routes retain the earlier compiled-help reference; this refresh builds the current source offline and checks only the context group, its two added preview routes, and the operator registration helper. Run `tplaiter <command> --help` for the complete flags of your installed version. Command visibility does not establish that an installation has the authority or execution evidence to run it.
+This reference records the public CLI at `211b17a0d23aba06139cd29fa2150d480121c00f`. Existing routes retain the earlier compiled-help references; this refresh builds the current source offline and captures the added `context select` route. The earlier context/preview and registration-helper checks remain qualified to their original snapshots. Run `tplaiter <command> --help` for the complete flags of your installed version. Command visibility does not establish that an installation has the authority or execution evidence to run it.
 
 ## Installation and admission
 
@@ -31,7 +31,7 @@ The following usage strings come from the compiled help. Groups are included bec
 | `tplaiter init-template <name> [flags]` | Generates an empty tplaiter-compatible template repository: template.manifest.yaml skeleton with sample settings groups, files/ tree with working minimal example, generator, ai-config, environment playbook, NOTES, maintainer README, and GitHub Actions workflow with lint-template check. |
 | `tplaiter link <commit> <project-name> [flags]` | Attach signed native state to an existing project without writing user files |
 | `tplaiter lint-template [flags]` | Finds template repository manifest(s) (single at root or multi via repo.manifest.yaml/scan), validates each template, and runs trial renders across all "corner" settings combinations: defaults, each select/multiselect option, all toggles together (all-on), and full max. For each combo, checks rendering, NOTES, generator parsing, ai-config, and YAML environment playbooks. |
-| `tplaiter mcp-server [flags]` | Runs an MCP server on top of the tplaiter CLI (pattern borrowed from goca, docs/research/clean-codegen.md §1): ~20 tools (repo/template/project/gen/...) are available to AI agents via the MCP protocol over stdio. Each tool executes tplaiter as a separate process with separate arguments (no shell interpolation). |
+| `tplaiter mcp-server [flags]` | Runs an MCP server on top of the tplaiter CLI (pattern borrowed from goca, docs/research/clean-codegen.md §1): tools (repo/template/project/gen/...) are available to AI agents via the MCP protocol over stdio. Each tool executes tplaiter as a separate process with separate arguments (no shell interpolation). |
 | `tplaiter migrate-state --root kind=source:destination [--root ...] \| --apply --plan file --expected-digest sha256 [flags]` | Build or apply explicit state migration |
 | `tplaiter new <ref> <project-name> [flags]` | Creates a project from a signed, pinned native template using --source-input. The target must match the installed project context. Settings use --set/--answers/--defaults or an interactive survey. This foundation supports action-free templates; hooks, tools, environment, generators, AI resources and managed blocks require later lifecycle slices. |
 | `tplaiter projects [command]` | Registry ~/.tplaiter/projects.yaml — a navigation convenience, not the source of truth (the source of truth is .tplaiter/ within each project). The registry is automatically updated by each tplaiter command run inside a project: directory relocation is tracked by stable id from .tplaiter/project.yaml, a project without an entry (cloned by a colleague) is registered on first discovery, and baselineSHA divergence (project updated on another machine) is updated on discovery. |
@@ -68,6 +68,7 @@ The following usage strings come from the compiled help. Groups are included bec
 | `tplaiter context preview-catalog [flags]` | Read explicitly untrusted observed local provider data |
 | `tplaiter context preview-resource [flags]` | Read explicitly untrusted observed local provider data |
 | `tplaiter context schema [flags]` | Context schema |
+| `tplaiter context select [flags]` | Select complete authenticated ROOT task context |
 | `tplaiter context search [flags]` | Context search |
 | `tplaiter deps verify [flags]` | Verify the canonical dependency lock pair offline |
 | `tplaiter env list [flags]` | Show environment playbooks from template manifest |
@@ -173,6 +174,14 @@ The exact full catalog receipt remains internally captured and pin-validated. De
 
 For MCP use `action: "preview-catalog"` or `"preview-resource"` and a typed `preview` object; native actions retain `request`, and mixing the branches refuses. The fresh preview resource template is `tplaiter://context-preview/{projectContext}/{registrationID}/{catalogSHA256}/{sourceID}/{assetID}`. Signed native `tplaiter://context/` remains separate. Preview returns `ContextData.localPreview`, not a verified native packet, authenticated snapshot, C03 source evidence or C04 spending allowance.
 
+## Authenticated ROOT selection
+
+`tplaiter context select` delivers complete read-only task context from the installed signed ROOT source. Its public flags are `--project-context`, `--dir`, `--request` and `--json`; `--dir` must match the registered root. The closed request contains `selections` and optional `bindingsPath`, `maxRecords`, `maxBytes` and `snapshot`. Each selection has `apiVersion: "tplaiter.dev/export-selection/v1"`, a declared `alias.domain.name` selector and explicit scalar `bindings` (use `[]` when none are required).
+
+For MCP, call the existing `context` tool with `action: "select"` and `rootSelection`; mixing `rootSelection` with `request` or `preview` refuses. Success is typed `ContextData.nativeRootSelection`, containing the authenticated body, complete base64 file images and local byte-delivery evidence. Pull the full input/output contract through `context schema` or MCP `action: "schema"`.
+
+The complete successful CLI result/v1 frame, including newline, and the complete MCP JSON-RPC/tool-result frame must fit `maxBytes` (default/maximum 32768), including wrapper overhead and request ID. Mandatory metadata and dependency-closed selected images are not truncated or paged; a missing floor or overbudget result refuses. The read lease survives final serialization and writing, with a source recheck immediately before emission; cancellation and broken output close the lease and child without appending a second success frame. These bounds are specific to ROOT selection; older context actions retain their documented compact-data bounds. See [native ROOT context](native-root-context.md) for examples, binding/source admission, snapshot semantics and qualifications.
+
 ## Pending and unsupported routes
 
-ROOT B1 provides internal source selection/read-lease APIs and a bindings schema. ROOT B2 CLI/MCP batch selection is not yet exposed at this snapshot. Ordinary dependency enrollment, organization read leases and full C02/E07 organization admission remain separate work. Local preview does not close those tasks or full 9.1. Caller endpoint paths, launch commands, code, credentials or trusted booleans are not supported runtime connection authority. This reference does not certify full beta readiness.
+ROOT B1 provides source selection/read-lease APIs and a bindings schema; bounded ROOT B2 CLI/MCP selection is exposed as documented above. Full P09.2 and published template-base proof remain open. Ordinary dependency enrollment, organization read leases and full C02/E07 organization admission remain separate work. Local preview does not close those tasks or full 9.1. Caller endpoint paths, launch commands, code, credentials or trusted booleans are not supported runtime connection authority. This reference does not certify full beta readiness.
