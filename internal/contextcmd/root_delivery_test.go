@@ -1,6 +1,7 @@
 package contextcmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/contextindex"
 	"github.com/tplAIter/tplaiter/internal/contextwindow"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
 )
 
 func TestRootSelectionCompleteByteFloor(t *testing.T) {
@@ -19,8 +21,8 @@ func TestRootSelectionCompleteByteFloor(t *testing.T) {
 	}
 	defer s.Close()
 	out := s.Result()
-	raw := rootGuardBody(out.Body)
-	if out.Delivery.Spending.InputBytes != int64(out.Delivery.EnvelopeBytes) || out.Delivery.Spending.OutputBytes != int64(len(raw)) || out.Delivery.OutputByteReserve != int64(len(raw)) || out.Delivery.Profile.ModelCapacity != "unknown" || out.Delivery.Spending.InputTokens != 0 || out.Delivery.Spending.OutputTokens != 0 || out.Bytes != len(rootJSON(t, out)) {
+	raw := rootJSON(t, resultdto.RootDeliveryReceiptV2{APIVersion: resultdto.RootReceiptV2, BodySHA256: out.Delivery.BodySHA256, PacketSHA256: evidencecas.Digest(rootJSON(t, out.Body.Packet)), GuardSHA256: evidencecas.Digest(mustRootV2Guard(t, out.Body)), ImagesSHA256: evidencecas.Digest(rootJSON(t, out.Body.Files)), FileCount: len(out.Body.Files)})
+	if out.Delivery.Spending.InputBytes != int64(out.Delivery.EnvelopeBytes) || out.Delivery.Spending.OutputBytes != int64(len(raw)) || out.Delivery.OutputByteReserve != int64(len(raw)) || out.Delivery.ResponseSHA256 != evidencecas.Digest(raw) || out.Delivery.Profile.ModelCapacity != "unknown" || out.Delivery.Spending.InputTokens != 0 || out.Delivery.Spending.OutputTokens != 0 || out.Bytes != len(rootJSON(t, out)) {
 		t.Fatal("not actual full-image byte delivery")
 	}
 	// Include the actual Finish-retained response, whose JSON escaping can
@@ -54,7 +56,9 @@ func TestRootSelectionCompleteByteFloor(t *testing.T) {
 	}
 	t.Logf("actual complete floor=%d includes Finish-retained output; DTO=%d; one-byte-short whole refusal", minimum, out.Bytes)
 	large := normalRootFixture(t, "large-image")
-	if bad, err := BeginRootSelection(context.Background(), large.runtime, rootRequest("base.skill.review")); err == nil || bad != nil {
+	largeReq := rootRequest("base.skill.review")
+	largeReq.MaxBytes = minimum
+	if bad, err := BeginRootSelection(context.Background(), large.runtime, largeReq); err == nil || bad != nil {
 		t.Fatal("large full images replaced with excerpts or omitted")
 	}
 }
@@ -68,6 +72,7 @@ func TestRootDeliveryRejectsMissingFloorAndChangedImage(t *testing.T) {
 	defer s.Close()
 	a := s.admitted
 	out := s.Result()
+	out.Body.APIVersion = "tplaiter.dev/context-root-selection/v1" // Exercise the unchanged legacy transport wire.
 	body := rootJSON(t, out.Body)
 	packet := rootJSON(t, out.Body.Packet)
 	idx, err := contextindex.New(a.knowledge, nil)
@@ -161,4 +166,103 @@ func TestRootDeliveryRejectsMissingFloorAndChangedImage(t *testing.T) {
 			}
 		})
 	}
+}
+
+func mustRootV2Guard(t *testing.T, b resultdto.RootContextBody) []byte {
+	t.Helper()
+	raw, e := resultdto.RootGuardV2(b)
+	if e != nil {
+		t.Fatal(e)
+	}
+	return raw
+}
+
+func TestRootV2TransportCompleteReceiptAndTamper(t *testing.T) {
+	f := normalRootFixture(t, "")
+	s, e := BeginRootSelection(context.Background(), f.runtime, rootRequest("base.skill.review"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	out := s.Result()
+	body := out.Body
+	idx, e := contextindex.New(s.admitted.knowledge, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	required := []string{}
+	for _, r := range body.Packet.Records {
+		required = append(required, r.ID)
+	}
+	req := contextindex.Request{Query: contextindex.Query{ID: required[0], One: true}, Limit: 1, MaxRecords: 256, MaxBytes: 32768, Required: required, IncludeExcerpts: true, MaxExcerptBytes: 2048}
+	bound := contextindex.Binding{SourceID: s.admitted.sourceID, Runtime: s.admitted.runtime.TrustRuntime(), Resolution: s.admitted.resolution}
+	selected, e := contextwindow.Select(context.Background(), idx, req, []contextindex.Binding{bound})
+	if e != nil {
+		t.Fatal(e)
+	}
+	selected, e = contextwindow.FactorRootSelectionV2(context.Background(), selected)
+	if e != nil {
+		t.Fatal(e)
+	}
+	guard := mustRootV2Guard(t, body)
+	adapter, e := contextwindow.NewByteAdapter(contextwindow.Scope{Session: body.Snapshot, Model: "local-byte-test"}, contextwindow.Envelope{System: []string{}, ToolSchemas: []json.RawMessage{}, History: []contextwindow.Message{}, PriorResponses: []string{}, Guards: []contextwindow.Guard{{ID: "root-context-body", Content: string(guard)}}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	host := adapter.Host()
+	defer host.Revoke()
+	observation, e := host.Observe(context.Background())
+	if e != nil {
+		t.Fatal(e)
+	}
+	facts, e := contextindex.EncodeRootFactsV2(body.Packet)
+	if e != nil {
+		t.Fatal(e)
+	}
+	projection := rootJSON(t, facts)
+	packet := rootJSON(t, body.Packet)
+	bodyRaw := rootJSON(t, body)
+	receipt := rootJSON(t, resultdto.RootDeliveryReceiptV2{APIVersion: resultdto.RootReceiptV2, BodySHA256: evidencecas.Digest(bodyRaw), PacketSHA256: evidencecas.Digest(packet), GuardSHA256: evidencecas.Digest(guard), ImagesSHA256: evidencecas.Digest(rootJSON(t, body.Files)), FileCount: len(body.Files)})
+	plan, e := host.Preview(context.Background(), observation, contextwindow.Request{ID: "complete-root", Selection: selected, MaxBytes: 32768, OutputByteReserve: len(receipt)})
+	if e != nil {
+		t.Fatal(e)
+	}
+	makeTransport := func() *rootContextTransport {
+		return &rootContextTransport{bodyDigest: evidencecas.Digest(bodyRaw), packetDigest: evidencecas.Digest(packet), guardDigest: evidencecas.Digest(guard), projectionDigest: evidencecas.Digest(projection), v2: true}
+	}
+	positive := makeTransport()
+	response, e := positive.Exchange(context.Background(), plan.Envelope, len(receipt))
+	if e != nil || !bytes.Equal(response, receipt) || !bytes.Equal(positive.assembled, bodyRaw) {
+		t.Fatal("complete body not actually consumed", e)
+	}
+	for _, name := range []string{"missing-image", "missing-floor", "source-pin", "image-count", "packet-hash", "receipt-ceiling", "cancel"} {
+		t.Run(name, func(t *testing.T) {
+			tr := makeTransport()
+			wire := append([]byte(nil), plan.Envelope...)
+			ctx := context.Background()
+			ceiling := len(receipt)
+			switch name {
+			case "missing-image":
+				wire = bytes.Replace(wire, []byte("root-context-body"), []byte("missing-context-body"), 1)
+			case "missing-floor":
+				wire = bytes.Replace(wire, []byte("requiredFloor"), []byte("missingFloor"), 1)
+			case "source-pin":
+				wire = bytes.Replace(wire, []byte(body.Packet.Sources[0].Anchor.Commit), []byte("different-source"), 1)
+			case "image-count":
+				tr.bodyDigest = evidencecas.Digest([]byte("body without required images"))
+			case "packet-hash":
+				tr.packetDigest = evidencecas.Digest([]byte("packet missing required record"))
+			case "receipt-ceiling":
+				ceiling--
+			case "cancel":
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			if got, e := tr.Exchange(ctx, wire, ceiling); e == nil || got != nil || len(tr.assembled) != 0 || len(tr.delivered) != 0 {
+				t.Fatal("partial delivery escaped", name, e)
+			}
+		})
+	}
+	t.Logf("actual complete packet/images consumed before %d-byte receipt; all altered facts/source/body and short-output cases refused before delivery", len(receipt))
 }

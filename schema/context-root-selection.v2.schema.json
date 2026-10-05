@@ -1,0 +1,1153 @@
+{
+  "$defs": {
+    "deliveryReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/context-root-delivery-receipt/v2"
+        },
+        "bodySHA256": {
+          "type": "string"
+        },
+        "fileCount": {
+          "type": "integer"
+        },
+        "guardSHA256": {
+          "type": "string"
+        },
+        "imagesSHA256": {
+          "type": "string"
+        },
+        "packetSHA256": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "apiVersion",
+        "bodySHA256",
+        "packetSHA256",
+        "guardSHA256",
+        "imagesSHA256",
+        "fileCount"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://tplaiter.dev/schema/context-root-selection.v2.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/context-root-selection/v2"
+    },
+    "bindingsDigest": {
+      "type": "string"
+    },
+    "catalogDigest": {
+      "type": "string"
+    },
+    "dependencyLockDigest": {
+      "type": "string"
+    },
+    "files": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "contentEncoding": "base64",
+            "type": "string"
+          },
+          "contentSHA256": {
+            "type": "string"
+          },
+          "exportID": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "selectedIdentity": {
+            "type": "string"
+          },
+          "sourcePath": {
+            "type": "string"
+          },
+          "targetPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selectedIdentity",
+          "exportID",
+          "sourcePath",
+          "targetPath",
+          "mode",
+          "contentSHA256",
+          "content"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "null",
+        "array"
+      ]
+    },
+    "graph": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "edges": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "consumer": {
+                "type": "string"
+              },
+              "dependency": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "dependency",
+              "consumer"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "selected": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "bindingSHA256": {
+                "type": "string"
+              },
+              "chains": {
+                "items": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "contentDigest": {
+                "type": "string"
+              },
+              "contractDigest": {
+                "type": "string"
+              },
+              "domain": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "parameters": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "items": {
+                        "maximum": 255,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "value"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "provider": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "sourceParameterSHA256": {
+                "type": "string"
+              },
+              "toolDigest": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "provider",
+              "id",
+              "domain",
+              "name",
+              "version",
+              "contentDigest",
+              "contractDigest",
+              "parameters",
+              "bindingSHA256",
+              "sourceParameterSHA256",
+              "toolDigest",
+              "chains"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "selected",
+        "edges",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "materializationScope": {
+      "type": "string"
+    },
+    "packet": {
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/context-index-facts/v2"
+        },
+        "descriptorDefaults": {
+          "additionalProperties": false,
+          "properties": {
+            "executor": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "inputContractSHA256": {
+                  "type": "string"
+                },
+                "outputContractSHA256": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "version",
+                "inputContractSHA256",
+                "outputContractSHA256"
+              ],
+              "type": "object"
+            },
+            "inputs": {
+              "additionalProperties": false,
+              "properties": {
+                "apiVersion": {
+                  "type": "string"
+                },
+                "contextFloor": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                },
+                "definitions": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "constraints": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "enum": {
+                            "items": {
+                              "items": {
+                                "maximum": 255,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "type": [
+                                "null",
+                                "array"
+                              ]
+                            },
+                            "type": [
+                              "null",
+                              "array"
+                            ]
+                          },
+                          "maxLength": {
+                            "type": [
+                              "null",
+                              "integer"
+                            ]
+                          },
+                          "maximum": {
+                            "type": [
+                              "null",
+                              "integer"
+                            ]
+                          },
+                          "minLength": {
+                            "type": [
+                              "null",
+                              "integer"
+                            ]
+                          },
+                          "minimum": {
+                            "type": [
+                              "null",
+                              "integer"
+                            ]
+                          },
+                          "pattern": {
+                            "type": [
+                              "null",
+                              "string"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "default": {
+                        "items": {
+                          "maximum": 255,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "nullable": {
+                        "type": "boolean"
+                      },
+                      "required": {
+                        "type": "boolean"
+                      },
+                      "type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "required",
+                      "type",
+                      "nullable",
+                      "constraints"
+                    ],
+                    "type": "object"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                }
+              },
+              "required": [
+                "apiVersion",
+                "contextFloor",
+                "definitions"
+              ],
+              "type": "object"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "ownership": {
+              "additionalProperties": false,
+              "properties": {
+                "ownerId": {
+                  "type": "string"
+                },
+                "policySHA256": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ownerId",
+                "version",
+                "policySHA256"
+              ],
+              "type": "object"
+            },
+            "produces": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "quality": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "contractSHA256": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "version",
+                  "contractSHA256",
+                  "state"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "requires": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "updateTriggers": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "sourceId",
+            "mode",
+            "ownership",
+            "updateTriggers",
+            "requires",
+            "produces",
+            "executor",
+            "inputs",
+            "quality"
+          ],
+          "type": "object"
+        },
+        "exports": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "contentDigest": {
+                "type": "string"
+              },
+              "domain": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "parameters": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "items": {
+                        "maximum": 255,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "value"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "requires": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "compatibleRange": {
+                      "type": "string"
+                    },
+                    "contractDigest": {
+                      "type": "string"
+                    },
+                    "selector": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "selector",
+                    "contractDigest",
+                    "compatibleRange"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "toolDigest": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "domain",
+              "name",
+              "version",
+              "contentDigest",
+              "parameters",
+              "toolDigest",
+              "requires"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "logicalSHA256": {
+          "type": "string"
+        },
+        "packet": {
+          "additionalProperties": false,
+          "properties": {
+            "bytes": {
+              "type": "integer"
+            },
+            "excerpts": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "contentDigest": {
+                    "type": "string"
+                  },
+                  "endLine": {
+                    "type": "integer"
+                  },
+                  "nodeID": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "startLine": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "nodeID",
+                  "path",
+                  "startLine",
+                  "endLine",
+                  "content",
+                  "contentDigest"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "externalReferences": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "state"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "graphDigest": {
+              "type": "string"
+            },
+            "omittedMatches": {
+              "type": "integer"
+            },
+            "requiredFloor": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "sourceEvidence": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "scope": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  },
+                  "statementCAS": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "statementCAS",
+                  "scope"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "sources": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "anchor": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "checkpointCAS": {
+                        "type": "string"
+                      },
+                      "commit": {
+                        "type": "string"
+                      },
+                      "contractSHA256": {
+                        "type": "string"
+                      },
+                      "inclusionProofCAS": {
+                        "type": "string"
+                      },
+                      "keyFingerprint": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "requestedRef": {
+                        "type": "string"
+                      },
+                      "signatureCAS": {
+                        "type": "string"
+                      },
+                      "statementCAS": {
+                        "type": "string"
+                      },
+                      "templatePath": {
+                        "type": "string"
+                      },
+                      "treeSHA256": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "origin",
+                      "templatePath",
+                      "requestedRef",
+                      "commit",
+                      "treeSHA256",
+                      "contractSHA256",
+                      "statementCAS",
+                      "signatureCAS",
+                      "keyFingerprint",
+                      "checkpointCAS",
+                      "inclusionProofCAS"
+                    ],
+                    "type": "object"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "pin": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "alias": {
+                        "type": "string"
+                      },
+                      "apiVersion": {
+                        "type": "string"
+                      },
+                      "commit": {
+                        "type": "string"
+                      },
+                      "commitAlgorithm": {
+                        "type": "string"
+                      },
+                      "contentDigest": {
+                        "type": "string"
+                      },
+                      "contractDigest": {
+                        "type": "string"
+                      },
+                      "dependencies": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "evidenceDigest": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "parameters": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "items": {
+                                "maximum": 255,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "type": [
+                                "null",
+                                "array"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "providerID": {
+                        "type": "string"
+                      },
+                      "requestedRef": {
+                        "type": "string"
+                      },
+                      "templatePath": {
+                        "type": "string"
+                      },
+                      "treeDigest": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "apiVersion",
+                      "alias",
+                      "providerID",
+                      "origin",
+                      "templatePath",
+                      "requestedRef",
+                      "commitAlgorithm",
+                      "commit",
+                      "treeDigest",
+                      "contentDigest",
+                      "contractDigest",
+                      "evidenceDigest",
+                      "parameters",
+                      "dependencies"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "id",
+                  "pin",
+                  "anchor"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "totalMatches": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "graphDigest",
+            "sources",
+            "externalReferences",
+            "requiredFloor",
+            "sourceEvidence",
+            "excerpts",
+            "totalMatches",
+            "omittedMatches",
+            "bytes"
+          ],
+          "type": "object"
+        },
+        "records": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "descriptor": {
+                "additionalProperties": false,
+                "properties": {
+                  "contentSHA256": {
+                    "type": "string"
+                  },
+                  "exportRef": {
+                    "type": [
+                      "null",
+                      "integer"
+                    ]
+                  },
+                  "mode": {
+                    "type": [
+                      "null",
+                      "string"
+                    ]
+                  },
+                  "sourcePath": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "version",
+                  "sourcePath",
+                  "contentSHA256"
+                ],
+                "type": "object"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "line",
+              "state",
+              "descriptor"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "relationFacts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "attributes": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "provenance": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "declared": {
+                      "type": "boolean"
+                    },
+                    "detected": {
+                      "type": "boolean"
+                    },
+                    "evidence": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "relations": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "factRef": {
+                "type": "integer"
+              },
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "factRef"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "logicalSHA256",
+        "descriptorDefaults",
+        "exports",
+        "records",
+        "relationFacts",
+        "relations",
+        "packet"
+      ],
+      "type": "object"
+    },
+    "qualification": {
+      "type": "string"
+    },
+    "rootLockDigest": {
+      "type": "string"
+    },
+    "selections": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "bindings": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "value": {
+                  "items": {
+                    "maximum": 255,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "type": [
+                    "null",
+                    "array"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "selector",
+          "bindings"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "null",
+        "array"
+      ]
+    },
+    "snapshot": {
+      "type": "string"
+    },
+    "sourceGraphDigest": {
+      "type": "string"
+    },
+    "trustProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": {
+          "type": "string"
+        },
+        "assurance": {
+          "type": "string"
+        },
+        "authoritySHA256": {
+          "type": "string"
+        },
+        "configSHA256": {
+          "type": "string"
+        },
+        "definitionVersion": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "evidenceClass": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "policySHA256": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "apiVersion",
+        "id",
+        "definitionVersion",
+        "configSHA256",
+        "policySHA256",
+        "authoritySHA256",
+        "assurance",
+        "evidenceClass"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "trustProfile",
+    "apiVersion",
+    "qualification",
+    "materializationScope",
+    "snapshot",
+    "rootLockDigest",
+    "dependencyLockDigest",
+    "bindingsDigest",
+    "sourceGraphDigest",
+    "catalogDigest",
+    "selections",
+    "graph",
+    "packet",
+    "files"
+  ],
+  "type": "object"
+}

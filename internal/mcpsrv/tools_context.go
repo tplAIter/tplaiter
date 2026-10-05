@@ -51,6 +51,22 @@ func ContextFullSchema() (json.RawMessage, error) {
 		node = next
 	}
 	node["content"] = map[string]any{"type": []string{"null", "string"}, "contentEncoding": "base64"}
+	// v1 and v2 have the same complete logical body, but distinct packet wires.
+	bodyNode := rootSchema["properties"].(map[string]any)["nativeRootSelection"].(map[string]any)["properties"].(map[string]any)
+	legacyBody := bodyNode["body"]
+	v2raw, e := resultdto.ContextRootV2Schema()
+	if e != nil {
+		return nil, e
+	}
+	var v2 map[string]any
+	if e = json.Unmarshal(v2raw, &v2); e != nil {
+		return nil, e
+	}
+	delete(v2, "$id")
+	legacy := legacyBody.(map[string]any)
+	legacy["properties"].(map[string]any)["apiVersion"] = map[string]any{"const": "tplaiter.dev/context-root-selection/v1"}
+	bodyNode["body"] = map[string]any{"oneOf": []any{legacy, v2}}
+
 	data, err = json.Marshal(rootSchema)
 	if err != nil {
 		return nil, err

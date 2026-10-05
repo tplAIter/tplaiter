@@ -183,6 +183,12 @@ func (h *Host) build(ctx context.Context, o *Observation, req Request) (*Reserva
 	if e != nil {
 		return nil, e
 	}
+	if req.Selection.projection != "" {
+		fingerprint, e = encode(struct{ Legacy, Projection, Wire string }{digest(fingerprint), req.Selection.projection, digest(req.Selection.deliveryBytes())})
+		if e != nil {
+			return nil, e
+		}
+	}
 	r := &Reservation{entry: &entry{host: h.hostState, id: req.ID, fingerprint: digest(fingerprint), selection: req.Selection.selectionRecord, maxBytes: maxBytes, reasoning: req.ReasoningReserve, output: req.OutputReserve}}
 	if h.profile != nil && h.profile.byteOnly {
 		r.output = int64(req.OutputByteReserve)
@@ -191,7 +197,7 @@ func (h *Host) build(ctx context.Context, o *Observation, req Request) (*Reserva
 		r.window = h.profile.window
 		r.accounting = h.profile.accounting
 	}
-	p := payload{QuerySHA256: req.Selection.query, Required: req.Selection.raw, Optional: append([]Optional{}, req.Optional...), Omitted: []Omission{}}
+	p := payload{QuerySHA256: req.Selection.query, Required: req.Selection.deliveryBytes(), Optional: append([]Optional{}, req.Optional...), Omitted: []Omission{}}
 	bound := maxBytes
 	reserve := r.reasoning + r.output
 	for id, old := range h.reservations {

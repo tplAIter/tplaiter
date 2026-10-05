@@ -121,3 +121,36 @@ func TestLocalPreviewAddsActionsKeepsNativeActions(t *testing.T) {
 		t.Fatal("typed preview input absent")
 	}
 }
+
+func TestContextRootV2SchemaOnlyAmendsOwnedBody(t *testing.T) {
+	s := New("/nonexistent", "test", nil)
+	before, e := json.Marshal(s.MCP().ListTools()["context"].Tool)
+	if e != nil {
+		t.Fatal(e)
+	}
+	full, e := ContextFullSchema()
+	if e != nil {
+		t.Fatal(e)
+	}
+	var doc map[string]any
+	if e = json.Unmarshal(full, &doc); e != nil {
+		t.Fatal(e)
+	}
+	// Compile the complete advertised schema, including both explicit body versions.
+	raw, _ := json.Marshal(doc["output"])
+	schema := compileToolSchema(t, raw)
+	if schema == nil {
+		t.Fatal("schema unavailable")
+	}
+	text := string(full)
+	for _, version := range []string{"tplaiter.dev/context-root-selection/v1", resultdto.ContextRootV2, "tplaiter.dev/context-index-facts/v2"} {
+		if !strings.Contains(text, version) {
+			t.Fatal("version missing", version)
+		}
+	}
+	after, _ := json.Marshal(s.MCP().ListTools()["context"].Tool)
+	if string(before) != string(after) {
+		t.Fatal("on-demand schema altered compact registration")
+	}
+	t.Log("both closed ROOT body versions advertised; compact context descriptor unchanged")
+}
