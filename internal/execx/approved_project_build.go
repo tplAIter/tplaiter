@@ -8,6 +8,7 @@ import (
 )
 
 type ProjectProcessResult struct {
+	ModuleIndexSHA256    string `json:"moduleIndexSHA256,omitempty"`
 	RequestSHA256        string `json:"requestSHA256"`
 	InputClosureSHA256   string `json:"inputClosureSHA256"`
 	ToolchainIndexSHA256 string `json:"toolchainIndexSHA256"`
@@ -39,7 +40,11 @@ func (r *ApprovedRunner) ExecuteProjectBuild(ctx context.Context, permit *trustv
 	if e := operationtrust.RecheckAction(ctx, r.runtime.TrustRuntime(), permit, request, stagedReader{staged}); e != nil {
 		return nil, e
 	}
-	result, e := executeProjectBuild(ctx, r.runtime.ScratchRoot(), staged, chain)
+	modules, e := material.ProjectModulesFor(ctx, r.runtime, request)
+	if e != nil {
+		return nil, e
+	}
+	result, e := executeProjectBuild(ctx, r.runtime.ScratchRoot(), staged, chain, modules)
 	if e != nil {
 		return nil, e
 	}

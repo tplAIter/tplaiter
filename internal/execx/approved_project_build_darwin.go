@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-func executeProjectBuild(ctx context.Context, scratch string, m trustverify.StagedMaterial, chain *trustload.GoToolchain) (ProjectProcessResult, error) {
+func executeProjectBuild(ctx context.Context, scratch string, m trustverify.StagedMaterial, chain *trustload.GoToolchain, modules *trustload.GoModules) (ProjectProcessResult, error) {
 	failure := func(code string) (ProjectProcessResult, error) { return ProjectProcessResult{}, &ExecutionError{code} }
 	if chain == nil || m.Request.Action.Kind != "command" || m.Request.Action.Shell || m.Request.WorkingDirectoryScope != (trustverify.WorkingDirectoryScope{Root: "project", Path: "."}) || !equalBuildArgs(m.Request.Action.Argv) || m.Request.Tool.ID != "go" || m.Request.TimeoutMillis < 1 || m.Request.TimeoutMillis > 120000 {
 		return failure("TRUST_EXECUTION_MATERIAL_UNAVAILABLE")
@@ -93,6 +93,20 @@ func executeProjectBuild(ctx context.Context, scratch string, m trustverify.Stag
 		}
 		if e := write("toolchain/"+f.Path, data[i], mode); e != nil {
 			return failure("TRUST_STAGE_FAILED")
+		}
+	}
+	if modules != nil {
+		files, data := modules.Files()
+		for i, f := range files {
+			if e := ctx.Err(); e != nil {
+				return ProjectProcessResult{}, e
+			}
+			if evidencecas.Digest(data[i]) != f.SHA256 {
+				return failure("TRUST_GO_MODULE_CLOSURE_UNAVAILABLE")
+			}
+			if e := write("modules/"+f.Path, data[i], 0400); e != nil {
+				return failure("TRUST_STAGE_FAILED")
+			}
 		}
 	}
 	for i, f := range m.Content {
@@ -204,6 +218,9 @@ func executeProjectBuild(ctx context.Context, scratch string, m trustverify.Stag
 		exit = 130
 	}
 	result := ProjectProcessResult{RequestSHA256: m.Request.RequestSHA256, InputClosureSHA256: m.Request.Action.ContentClosureSHA256, ToolchainIndexSHA256: evidencecas.Digest(chain.IndexBytes()), ExitCode: exit, TimedOut: timed, Cancelled: cancelled, Stdout: string(out.b), Stderr: string(serr.b), StdoutSHA256: evidencecas.Digest(out.b), StderrSHA256: evidencecas.Digest(serr.b)}
+	if modules != nil {
+		result.ModuleIndexSHA256 = evidencecas.Digest(modules.IndexBytes())
+	}
 	return result, nil
 }
 func equalBuildArgs(a []string) bool {
@@ -276,5 +293,5 @@ func validProjectGoNative(b []byte) bool {
 
 func projectGoPolicy(stagePath string) string {
 	quote := func(s string) string { b, _ := json.Marshal(s); return string(b) }
-	return "(version 1)\n(allow default)\n(deny network*)\n(deny file-read*)\n(allow file-read* (literal \"/\") (subpath " + quote(stagePath) + ") (subpath \"/System/Library\") (subpath \"/usr/lib\") (literal \"/dev/null\") (literal \"/dev/fd/3\") (literal \"/dev/fd/4\"))\n(deny file-write*)\n(allow file-write* (subpath " + quote(stagePath) + ") (literal \"/dev/null\"))\n(deny file-write* (subpath " + quote(stagePath+"/toolchain") + "))\n(deny process-exec)\n(allow process-exec (subpath " + quote(stagePath+"/toolchain") + ") (literal \"/dev/fd/3\"))\n(deny mach-lookup (global-name \"com.apple.securityd\") (global-name \"com.apple.cfprefsd.daemon\"))\n"
+	return "(version 1)\n(allow default)\n(deny network*)\n(deny file-read*)\n(allow file-read* (literal \"/\") (subpath " + quote(stagePath) + ") (subpath \"/System/Library\") (subpath \"/usr/lib\") (literal \"/dev/null\") (literal \"/dev/fd/3\") (literal \"/dev/fd/4\"))\n(deny file-write*)\n(allow file-write* (subpath " + quote(stagePath) + ") (literal \"/dev/null\"))\n(deny file-write* (subpath " + quote(stagePath+"/toolchain") + ") (subpath " + quote(stagePath+"/modules") + "))\n(deny process-exec)\n(allow process-exec (subpath " + quote(stagePath+"/toolchain") + ") (literal \"/dev/fd/3\"))\n(deny mach-lookup (global-name \"com.apple.securityd\") (global-name \"com.apple.cfprefsd.daemon\"))\n"
 }

@@ -8,6 +8,6 @@ import (
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
-func executeProjectBuild(context.Context, string, trustverify.StagedMaterial, *trustload.GoToolchain) (ProjectProcessResult, error) {
+func executeProjectBuild(context.Context, string, trustverify.StagedMaterial, *trustload.GoToolchain, *trustload.GoModules) (ProjectProcessResult, error) {
 	return ProjectProcessResult{}, &ExecutionError{"TRUST_EXECUTION_UNAVAILABLE"}
 }

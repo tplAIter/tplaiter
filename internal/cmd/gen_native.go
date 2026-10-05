@@ -5,10 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -16,9 +19,12 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/gen"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
+	"github.com/tplAIter/tplaiter/internal/ossinstall"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/resources"
@@ -30,14 +36,14 @@ import (
 )
 
 type nativeGenControls struct {
-	key, dir                     string
-	noBuild, format, hooks, help bool
+	key, dir, approvalCAS, approvalInput  string
+	noBuild, format, hooks, help, prepare bool
 }
 
 // These names belong to the command even if a manifest declares them as params.
 func nativeGenControl(name string) bool {
 	switch name {
-	case "project-context", "dir", "no-build", "format", "hooks", "json", "help", "operations":
+	case "project-context", "dir", "prepare", "approval-cas", "approval-input", "no-build", "format", "hooks", "json", "help", "operations":
 		return true
 	}
 	return false
@@ -48,6 +54,9 @@ func addNativeGenFlags(c *cobra.Command, controls *nativeGenControls) {
 		controls = &nativeGenControls{}
 	}
 	f := c.Flags()
+	f.BoolVar(&controls.prepare, "prepare", false, "prepare exact default-build request without effects")
+	f.StringVar(&controls.approvalCAS, "approval-cas", "", "persistent signed approval digest")
+	f.StringVar(&controls.approvalInput, "approval-input", "", "public signed approval JSON path")
 	f.StringVar(&controls.key, "project-context", "", "key of an authenticated installed project context")
 	f.StringVar(&controls.dir, "dir", "", "locator; must match the installed project root")
 	f.BoolVar(&controls.noBuild, "no-build", false, "request file-only generation without the build gate")
@@ -61,6 +70,9 @@ func parseNativeGenControls(cmd *cobra.Command, args []string) (nativeGenControl
 	var c nativeGenControls
 	fs := pflag.NewFlagSet("gen controls", pflag.ContinueOnError)
 	fs.SetOutput(cmd.ErrOrStderr())
+	fs.BoolVar(&c.prepare, "prepare", false, "")
+	fs.StringVar(&c.approvalCAS, "approval-cas", "", "")
+	fs.StringVar(&c.approvalInput, "approval-input", "", "")
 	fs.StringVar(&c.key, "project-context", "", "")
 	fs.StringVar(&c.dir, "dir", "", "")
 	fs.BoolVar(&c.noBuild, "no-build", false, "")
@@ -92,7 +104,7 @@ func parseNativeGenControls(cmd *cobra.Command, args []string) (nativeGenControl
 		}
 		if (strings.HasPrefix(arg, "--") || arg == "-h") && fs.Lookup(name) != nil {
 			controlArgs = append(controlArgs, arg)
-			if (name == "project-context" || name == "dir") && !hasValue {
+			if (name == "project-context" || name == "dir" || name == "approval-cas" || name == "approval-input") && !hasValue {
 				awaiting = name
 			}
 		} else {
@@ -260,21 +272,34 @@ func parseNativeGenParams(cmd *cobra.Command, g *manifest.Generator, args []stri
 func nativeGenActionPolicy(tpl *manifest.Template, c nativeGenControls) error {
 	// --no-build is an explicit file-only request. Default build must never be
 	// silently omitted, including when the manifest has no build command.
-	if !c.noBuild || c.format || c.hooks {
+	if c.format || c.hooks {
 		return nativeGenUnavailable()
 	}
 	// Configured actions cannot be treated as successful or skipped implicitly.
 	if len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || tpl.AIConfig.Path != "" {
 		return nativeGenUnavailable()
 	}
-	if len(tpl.Commands) != 0 {
+	if !c.noBuild && len(tpl.Commands) == 0 {
 		return nativeGenUnavailable()
+	}
+	if len(tpl.Commands) != 0 {
+		build, ok := tpl.Commands["build"]
+		if len(tpl.Commands) != 1 || !ok || build.Run != strings.Join(operationtrust.ProjectBuildArguments(), " ") {
+			return nativeGenUnavailable()
+		}
 	}
 	return nil
 }
 
 func runNativeGen(cmd *cobra.Command, c nativeGenControls, input []genBatchInput, dynamic []string) error {
-	if !c.noBuild || c.format || c.hooks {
+	if !c.noBuild {
+		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		prior := cmd.Context()
+		cmd.SetContext(ctx)
+		defer cmd.SetContext(prior)
+	}
+	if c.format || c.hooks {
 		return nativeGenUnavailable()
 	}
 	r, err := nativeGenRuntime(cmd, c)
@@ -282,7 +307,7 @@ func runNativeGen(cmd *cobra.Command, c nativeGenControls, input []genBatchInput
 		return err
 	}
 	defer r.Close()
-	tpl, _, err := nativeGenCatalog(cmd.Context(), r)
+	tpl, values, err := nativeGenCatalog(cmd.Context(), r)
 	if err != nil {
 		return err
 	}
@@ -333,6 +358,68 @@ func runNativeGen(cmd *cobra.Command, c nativeGenControls, input []genBatchInput
 	if err != nil {
 		return err
 	}
+	var selected *operationtrust.ProjectBuildSelection
+	var permit *trustverify.ExecutionPermit
+	if c.noBuild && (c.prepare || c.approvalCAS != "" || c.approvalInput != "") {
+		return resultdto.NewError("TRUST_REQUEST_INVALID", resultdto.ExitTrust, nil)
+	}
+	if !c.noBuild {
+		if c.prepare && (c.approvalCAS != "" || c.approvalInput != "") || c.approvalCAS != "" && c.approvalInput != "" {
+			return resultdto.NewError("TRUST_REQUEST_INVALID", resultdto.ExitTrust, nil)
+		}
+		material, _, e := plan.TransactionMaterial(cmd.Context())
+		if e != nil {
+			return e
+		}
+		images := map[string][]byte{}
+		before := map[string][]byte{}
+		for name, f := range material.After {
+			if !f.Directory {
+				images[name] = append([]byte(nil), f.Data...)
+			}
+		}
+		for name, f := range material.Before {
+			if !f.Directory {
+				before[name] = append([]byte(nil), f.Data...)
+			}
+		}
+		source, e := projectBuildSource(cmd.Context(), r)
+		if e != nil {
+			return e
+		}
+		beforeRaw, e := canonicaljson.Canonical(before)
+		if e != nil {
+			return e
+		}
+		selected, e = operationtrust.PrepareProjectedProjectBuild(cmd.Context(), r, source, values, images, evidencecas.Digest(beforeRaw), material.Fingerprint)
+		if e != nil {
+			return e
+		}
+		request := selected.Request()
+		if c.prepare {
+			return emitData(cmd, resultOperation(cmd), &resultdto.Project{ID: r.ProjectContext().ProjectID, Root: r.ProjectContext().RootPath}, resultdto.GenRunData{Created: nonNil(plan.Result().CreatedFiles), Edited: nonNil(plan.Result().EditedFiles), NoBuild: false, PreparedRequest: &request})
+		}
+		refs := trustverify.ApprovalRefs{Kind: "persistent-signed", ApprovalCAS: c.approvalCAS}
+		if c.approvalInput != "" {
+			raw, e := readUntrustedDocument(cmd.Context(), c.approvalInput)
+			if e != nil {
+				return e
+			}
+			in, e := commandInvocation(cmd.Context())
+			if e != nil {
+				return e
+			}
+			refs, e = ossinstall.ImportApproval(cmd.Context(), in.Selection, request, raw, in.Clock.Now())
+			if e != nil {
+				return e
+			}
+		}
+		permits, e := operationtrust.AuthorizeActions(cmd.Context(), r.TrustRuntime(), source, selected.Operation(), []trustverify.ExecutionRequest{request}, []trustverify.ApprovalRefs{refs})
+		if e != nil {
+			return e
+		}
+		permit = permits[0]
+	}
 	// Detached reporting data is captured before any effect but emitted only
 	// after the concrete transaction confirms commit.
 	res := plan.Result()
@@ -346,10 +433,47 @@ func runNativeGen(cmd *cobra.Command, c nativeGenControls, input []genBatchInput
 	if err := tx.Apply(cmd.Context()); err != nil {
 		return rollbackNativeGen(cmd.Context(), tx, err)
 	}
+	var process *execx.ProjectProcessResult
+	if selected != nil {
+		material, e := operationtrust.BindProjectBuildMaterial(cmd.Context(), r, selected)
+		if e != nil {
+			return rollbackNativeGen(cmd.Context(), tx, e)
+		}
+		runner, e := execx.NewApprovedRunner(r)
+		if e != nil {
+			return rollbackNativeGen(cmd.Context(), tx, e)
+		}
+		receipt, e := runner.ExecuteProjectBuild(cmd.Context(), permit, selected.Request(), material)
+		if e != nil {
+			return rollbackNativeGen(cmd.Context(), tx, e)
+		}
+		result, e := receipt.ResultFor(runner, selected.Request())
+		if e != nil {
+			return rollbackNativeGen(cmd.Context(), tx, e)
+		}
+		process = &result
+		if result.ExitCode != 0 {
+			cause := resultdto.NewError("TPL-E-NATIVE-BUILD-FAILED", resultdto.ExitChild, nil)
+			if e := rollbackNativeGen(cmd.Context(), tx, cause); e != cause {
+				return e
+			}
+			if !jsonMode(cmd) {
+				return &ExitError{Code: result.ExitCode, Err: cause}
+			}
+			env := newResult(resultOperation(cmd))
+			env.Project = trustProject(r.ProjectContext())
+			env.Status = resultdto.StatusFailed
+			// Rolled-back files are not reported as committed changes.
+			if e := env.SetData(resultdto.GenRunData{Created: []string{}, Edited: []string{}, NoBuild: false, ProcessReceipt: &result}); e != nil {
+				return e
+			}
+			return emitResult(cmd, env, resultdto.ExitChild, nil)
+		}
+	}
 	if err := tx.Commit(cmd.Context()); err != nil {
 		return rollbackNativeGen(cmd.Context(), tx, err)
 	}
-	return emitNativeGenResult(cmd, r.ProjectContext(), res, c.noBuild)
+	return emitNativeGenResultWithBuild(cmd, r.ProjectContext(), res, c.noBuild, process)
 }
 
 func rollbackNativeGen(ctx context.Context, tx *projecttransaction.Transaction, cause error) error {
@@ -362,6 +486,9 @@ func rollbackNativeGen(ctx context.Context, tx *projecttransaction.Transaction, 
 }
 
 func emitNativeGenResult(cmd *cobra.Command, project trustload.ProjectContext, res gen.BatchResult, noBuild bool) error {
+	return emitNativeGenResultWithBuild(cmd, project, res, noBuild, nil)
+}
+func emitNativeGenResultWithBuild(cmd *cobra.Command, project trustload.ProjectContext, res gen.BatchResult, noBuild bool, process *execx.ProjectProcessResult) error {
 	if !jsonMode(cmd) {
 		return printGenBatchResult(cmd, &res)
 	}
@@ -380,7 +507,7 @@ func emitNativeGenResult(cmd *cobra.Command, project trustload.ProjectContext, r
 	if len(env.Changes) != 0 {
 		env.Status = resultdto.StatusChanges
 	}
-	if err := env.SetData(resultdto.GenRunData{Created: nonNil(res.CreatedFiles), Edited: nonNil(res.EditedFiles), NoBuild: noBuild}); err != nil {
+	if err := env.SetData(resultdto.GenRunData{Created: nonNil(res.CreatedFiles), Edited: nonNil(res.EditedFiles), NoBuild: noBuild, ProcessReceipt: process}); err != nil {
 		return err
 	}
 	return emitResult(cmd, env, resultdto.ExitSuccess, nil)

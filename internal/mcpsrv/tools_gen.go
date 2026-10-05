@@ -11,27 +11,36 @@ import (
 // ── gen ──────────────────────────────────────────────────────────────────
 
 type genArgs struct {
-	Dir     string            `json:"dir"`
-	Kind    string            `json:"kind"`
-	Name    string            `json:"name"`
-	Params  map[string]string `json:"params"`
-	NoBuild bool              `json:"noBuild"`
+	Prepare       bool              `json:"prepare"`
+	ApprovalCAS   string            `json:"approvalCAS"`
+	ApprovalInput string            `json:"approvalInput"`
+	Dir           string            `json:"dir"`
+	Kind          string            `json:"kind"`
+	Name          string            `json:"name"`
+	Params        map[string]string `json:"params"`
+	NoBuild       bool              `json:"noBuild"`
 }
 
 type genBatchArgs struct {
-	Dir        string              `json:"dir"`
-	Operations []genBatchOperation `json:"operations"`
-	NoBuild    bool                `json:"noBuild"`
+	Prepare       bool                `json:"prepare"`
+	ApprovalCAS   string              `json:"approvalCAS"`
+	ApprovalInput string              `json:"approvalInput"`
+	Dir           string              `json:"dir"`
+	Operations    []genBatchOperation `json:"operations"`
+	NoBuild       bool                `json:"noBuild"`
 }
 
 func (s *Server) addGenTools() {
 	s.mcp.AddTool(mcp.NewTool(
 		"gen",
-		mcp.WithDescription("Generate files and anchor insertions from the project's sealed native generator sources. The operation is file-only; formatter, build, hook, and other actions are refused before effects. noBuild is retained as the CLI control."),
+		mcp.WithDescription("Generate files and anchor insertions from the project's sealed native generator sources. Default build uses a signed exact projected-input request and persistent operator approval through the approved Go runner; noBuild requests file-only generation. Formatter and hooks remain refused."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithString("kind", mcp.Required(), mcp.Description("Type of scaffold (see gen_list)")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Name of entity to create")),
 		mcp.WithObject("params", mcp.Description("Generator parameters: key→string value (serialized as dynamic CLI flags --<param>)")),
+		mcp.WithBoolean("prepare", mcp.Description("Prepare exact default-build request without effects")),
+		mcp.WithString("approvalCAS", mcp.Description("Persistent signed gen-build approval digest")),
+		mcp.WithString("approvalInput", mcp.Description("Public signed gen-build approval JSON path")),
 		mcp.WithBoolean("noBuild", mcp.Description("Skip build-gate after generation (--no-build)"), mcp.DefaultBool(false)),
 		outputSchema(resultdto.OperationGenRun),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a genArgs) (*mcp.CallToolResult, error) {
@@ -43,12 +52,13 @@ func (s *Server) addGenTools() {
 			return failure, nil
 		}
 		argv := append(argvGen(a.Kind, a.Name, a.Params, a.NoBuild), "--dir", cwd)
+		argv = appendGenApproval(argv, a.Prepare, a.ApprovalCAS, a.ApprovalInput)
 		return s.callStructured(ctx, resultdto.OperationGenRun, cwd, argv, longCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
 		"gen_batch",
-		mcp.WithDescription("Atomically generate files and anchor insertions from sealed native generator sources. The operation is file-only; formatter, build, hook, and other actions are refused before effects. noBuild is retained as the CLI control."),
+		mcp.WithDescription("Atomically generate files and anchor insertions from sealed native generator sources. Default build uses a signed exact projected-input request and persistent operator approval through the approved Go runner; noBuild requests file-only generation. Formatter and hooks remain refused."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithArray(
 			"operations",
@@ -78,6 +88,9 @@ func (s *Server) addGenTools() {
 				"additionalProperties": false,
 			}),
 		),
+		mcp.WithBoolean("prepare", mcp.Description("Prepare exact default-build request without effects")),
+		mcp.WithString("approvalCAS", mcp.Description("Persistent signed gen-build approval digest")),
+		mcp.WithString("approvalInput", mcp.Description("Public signed gen-build approval JSON path")),
 		mcp.WithBoolean("noBuild", mcp.Description("Skip the final build-gate"), mcp.DefaultBool(false)),
 		outputSchema(resultdto.OperationGenBatch),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a genBatchArgs) (*mcp.CallToolResult, error) {
@@ -94,6 +107,7 @@ func (s *Server) addGenTools() {
 			return failure, nil
 		}
 		argv := append(argvGenBatch(a.Operations, a.NoBuild), "--dir", cwd)
+		argv = appendGenApproval(argv, a.Prepare, a.ApprovalCAS, a.ApprovalInput)
 		return s.callStructured(ctx, resultdto.OperationGenBatch, cwd, argv, longCall), nil
 	}))
 
@@ -114,6 +128,9 @@ func (s *Server) addGenTools() {
 }
 
 var reservedGenCLIControls = map[string]struct{}{
+	"prepare":         {},
+	"approval-cas":    {},
+	"approval-input":  {},
 	"project-context": {},
 	"dir":             {},
 	"no-build":        {},
@@ -131,4 +148,17 @@ func hasReservedGenParam(params map[string]string) bool {
 		}
 	}
 	return false
+}
+
+func appendGenApproval(argv []string, prepare bool, cas, input string) []string {
+	if prepare {
+		argv = append(argv, "--prepare")
+	}
+	if cas != "" {
+		argv = append(argv, "--approval-cas", cas)
+	}
+	if input != "" {
+		argv = append(argv, "--approval-input", input)
+	}
+	return argv
 }

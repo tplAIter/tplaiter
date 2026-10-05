@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"reflect"
 	"sort"
 	"strings"
@@ -34,6 +35,8 @@ type ProjectBuildAction struct {
 	Argv                 []string `json:"argv"`
 	TimeoutMillis        int64    `json:"timeoutMillis"`
 	ToolchainIndexSHA256 string   `json:"toolchainIndexSHA256"`
+	ModuleIndexSHA256    string   `json:"moduleIndexSHA256,omitempty"`
+	GenBuild             bool     `json:"genBuild,omitempty"`
 }
 type ProjectBuildSelection struct {
 	owner     *trustload.Runtime
@@ -44,6 +47,7 @@ type ProjectBuildSelection struct {
 	data      [][]byte
 	action    []byte
 	toolchain *trustload.GoToolchain
+	modules   *trustload.GoModules
 }
 
 func ProjectBuildEnvironment() trustverify.EnvironmentPolicy {
@@ -61,6 +65,19 @@ func ProjectBuildEnvironment() trustverify.EnvironmentPolicy {
 	return e
 }
 func PrepareProjectBuild(ctx context.Context, owner *trustload.Runtime, source *trustverify.VerifiedResolution, name string, values settings.Values) (*ProjectBuildSelection, error) {
+	return prepareProjectBuild(ctx, owner, source, name, values, nil, "", "")
+}
+
+// PrepareProjectedProjectBuild binds a generator owner's authenticated projected
+// inputs to a gen-scoped approval. Input data cannot grant a write capability;
+// the concrete generator plan/transaction must independently authorize writes.
+func PrepareProjectedProjectBuild(ctx context.Context, owner *trustload.Runtime, source *trustverify.VerifiedResolution, values settings.Values, images map[string][]byte, preimage, planDigest string) (*ProjectBuildSelection, error) {
+	if images == nil || len(preimage) != 71 || len(planDigest) != 71 {
+		return nil, ErrProjectBuild
+	}
+	return prepareProjectBuild(ctx, owner, source, "build", values, images, preimage, planDigest)
+}
+func prepareProjectBuild(ctx context.Context, owner *trustload.Runtime, source *trustverify.VerifiedResolution, name string, values settings.Values, images map[string][]byte, preimageOverride, planDigest string) (*ProjectBuildSelection, error) {
 	if ctx == nil || owner == nil || owner.TrustRuntime() == nil || source == nil || name != "build" {
 		return nil, fmt.Errorf("%w: runtime or selection", ErrProjectBuild)
 	}
@@ -99,7 +116,7 @@ func PrepareProjectBuild(ctx context.Context, owner *trustload.Runtime, source *
 		return nil, ErrProjectBuild
 	}
 	var a ProjectBuildAction
-	if canonicaljson.DecodeStrict(actionRaw, &a) != nil || a.APIVersion != "tplaiter.dev/project-build-action/v1" || a.Adapter != "go-project-build-v1" || a.CommandName != name || !reflect.DeepEqual(a.Argv, ProjectBuildArguments()) || a.TimeoutMillis < 1 || a.TimeoutMillis > 120000 {
+	if canonicaljson.DecodeStrict(actionRaw, &a) != nil || !validProjectBuildVersion(a) || a.CommandName != name || !reflect.DeepEqual(a.Argv, ProjectBuildArguments()) || a.TimeoutMillis < 1 || a.TimeoutMillis > 120000 {
 		return nil, ErrProjectBuild
 	}
 	chain, err := owner.ResolveGoToolchain(ctx, source)
@@ -109,22 +126,52 @@ func PrepareProjectBuild(ctx context.Context, owner *trustload.Runtime, source *
 	if evidencecas.Digest(chain.IndexBytes()) != a.ToolchainIndexSHA256 {
 		return nil, fmt.Errorf("%w: index binding", ErrProjectBuild)
 	}
-	entries, data, err := captureProjectBuild(ctx, owner.ProjectContext().RootPath)
+	var entries []trustverify.ContentEntry
+	var data [][]byte
+	if images == nil {
+		entries, data, err = captureProjectBuild(ctx, owner.ProjectContext().RootPath)
+	} else {
+		if a.APIVersion != "tplaiter.dev/project-build-action/v2" || !a.GenBuild {
+			return nil, ErrProjectBuild
+		}
+		entries, data, err = projectedBuildInputs(images)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("project input capture: %w", err)
 	}
-	var mod []byte
+	var mod, sum []byte
 	for i, f := range entries {
 		if f.Path == "go.mod" {
 			mod = data[i]
+		}
+		if f.Path == "go.sum" {
+			sum = data[i]
 		}
 		if strings.Contains(string(data[i]), "//go:embed") || strings.Contains(string(data[i]), `import "C"`) {
 			return nil, ErrProjectBuild
 		}
 	}
 	parsed, err := modfile.Parse("go.mod", mod, nil)
-	if err != nil || parsed.Module == nil || len(parsed.Require) != 0 || len(parsed.Replace) != 0 || len(parsed.Exclude) != 0 || parsed.Toolchain != nil {
+	if err != nil || parsed.Module == nil || len(parsed.Replace) != 0 || len(parsed.Exclude) != 0 || parsed.Toolchain != nil {
 		return nil, fmt.Errorf("%w: dependency-free module required", ErrProjectBuild)
+	}
+	var modules *trustload.GoModules
+	if a.APIVersion == "tplaiter.dev/project-build-action/v2" {
+		modules, err = owner.ResolveGoModules(ctx, source, mod, sum)
+		if err != nil {
+			return nil, err
+		}
+		if evidencecas.Digest(modules.IndexBytes()) != a.ModuleIndexSHA256 {
+			return nil, ErrProjectBuild
+		}
+		for _, req := range parsed.Require {
+			if !modules.Includes(req.Mod.Path, req.Mod.Version) {
+				return nil, ErrProjectBuild
+			}
+		}
+	} else if len(parsed.Require) != 0 {
+		return nil, ErrProjectBuild
 	}
 	preimage, err := trustverify.ComputeContentClosureSHA256(entries)
 	if err != nil {
@@ -137,6 +184,18 @@ func PrepareProjectBuild(ctx context.Context, owner *trustload.Runtime, source *
 		entries = append(entries, trustverify.ContentEntry{Root: "provider", Path: v.path, Mode: "100644", ContentSHA256: evidencecas.Digest(v.bytes)})
 		data = append(data, append([]byte(nil), v.bytes...))
 	}
+	if modules != nil {
+		b := modules.IndexBytes()
+		entries = append(entries, trustverify.ContentEntry{Root: "provider", Path: trustload.GoModuleIndexPath, Mode: "100644", ContentSHA256: evidencecas.Digest(b)})
+		data = append(data, b)
+	}
+	// Content closure ordering is canonical across project and provider roots.
+	for i := 1; i < len(entries); i++ {
+		for j := i; j > 0 && entries[j].Root+"\x00"+entries[j].Path < entries[j-1].Root+"\x00"+entries[j-1].Path; j-- {
+			entries[j], entries[j-1] = entries[j-1], entries[j]
+			data[j], data[j-1] = data[j-1], data[j]
+		}
+	}
 	closure, err := trustverify.ComputeContentClosureSHA256(entries)
 	if err != nil {
 		return nil, err
@@ -145,25 +204,35 @@ func PrepareProjectBuild(ctx context.Context, owner *trustload.Runtime, source *
 	if err != nil {
 		return nil, err
 	}
-	answerRaw, err := canonicaljson.Canonical(values)
+	var answers any = values
+	scope, phase := "run", "standalone"
+	if images != nil {
+		scope, phase = "gen", "after"
+		preimage = preimageOverride
+		answers = struct {
+			Values     settings.Values `json:"values"`
+			PlanSHA256 string          `json:"planSHA256"`
+		}{values, planDigest}
+	}
+	answerRaw, err := canonicaljson.Canonical(answers)
 	if err != nil {
 		return nil, err
 	}
 	envHash, _ := trustverify.ComputeEnvironmentPolicySHA256(ProjectBuildEnvironment())
 	options, _ := trustverify.ComputeToolOptionsSHA256(a.Argv[1:])
 	p := provider(source.Subject())
-	act := trustverify.ActionMaterial{Provider: p, Action: trustverify.Action{ID: "build", Kind: "command", Phase: "standalone", Argv: append([]string(nil), a.Argv...), ContentClosureSHA256: closure}, Tool: trustverify.Tool{ID: "go", Version: chain.Version(), BinarySHA256: evidencecas.Digest(chain.Driver()), OptionsSHA256: options}, WorkingDirectoryScope: trustverify.WorkingDirectoryScope{Root: "project", Path: "."}, EnvironmentPolicySHA256: envHash, TimeoutMillis: a.TimeoutMillis, Migration: trustverify.Migration{Kind: "none"}}
-	op := trustverify.OperationInputs{APIVersion: "tplaiter.dev/operation-inputs/v1", ProfileBindingSHA256: bd, ProjectID: owner.ProjectContext().ProjectID, Scope: "run", PreimageSHA256: preimage, AnswersSHA256: evidencecas.Digest(answerRaw), Subjects: []trustverify.Provider{p}, Actions: []trustverify.ActionMaterial{act}}
+	act := trustverify.ActionMaterial{Provider: p, Action: trustverify.Action{ID: "build", Kind: "command", Phase: phase, Argv: append([]string(nil), a.Argv...), ContentClosureSHA256: closure}, Tool: trustverify.Tool{ID: "go", Version: chain.Version(), BinarySHA256: evidencecas.Digest(chain.Driver()), OptionsSHA256: options}, WorkingDirectoryScope: trustverify.WorkingDirectoryScope{Root: "project", Path: "."}, EnvironmentPolicySHA256: envHash, TimeoutMillis: a.TimeoutMillis, Migration: trustverify.Migration{Kind: "none"}}
+	op := trustverify.OperationInputs{APIVersion: "tplaiter.dev/operation-inputs/v1", ProfileBindingSHA256: bd, ProjectID: owner.ProjectContext().ProjectID, Scope: scope, PreimageSHA256: preimage, AnswersSHA256: evidencecas.Digest(answerRaw), Subjects: []trustverify.Provider{p}, Actions: []trustverify.ActionMaterial{act}}
 	od, err := trustverify.ComputeOperationInputsSHA256(op)
 	if err != nil {
 		return nil, err
 	}
-	req := trustverify.ExecutionRequest{APIVersion: trustverify.ExecutionRequestAPIVersion, ProfileBindingSHA256: bd, OperationInputsSHA256: od, ProjectID: op.ProjectID, Scope: "run", Provider: p, Action: act.Action, Tool: act.Tool, WorkingDirectoryScope: act.WorkingDirectoryScope, EnvironmentPolicySHA256: act.EnvironmentPolicySHA256, TimeoutMillis: act.TimeoutMillis, Migration: act.Migration}
+	req := trustverify.ExecutionRequest{APIVersion: trustverify.ExecutionRequestAPIVersion, ProfileBindingSHA256: bd, OperationInputsSHA256: od, ProjectID: op.ProjectID, Scope: scope, Provider: p, Action: act.Action, Tool: act.Tool, WorkingDirectoryScope: act.WorkingDirectoryScope, EnvironmentPolicySHA256: act.EnvironmentPolicySHA256, TimeoutMillis: act.TimeoutMillis, Migration: act.Migration}
 	req.RequestSHA256, err = req.ComputeRequestSHA256()
 	if err != nil {
 		return nil, err
 	}
-	return &ProjectBuildSelection{owner: owner, source: source, operation: op, request: req, entries: entries, data: data, action: actionRaw, toolchain: chain}, nil
+	return &ProjectBuildSelection{owner: owner, source: source, operation: op, request: req, entries: entries, data: data, action: actionRaw, toolchain: chain, modules: modules}, nil
 }
 func (s *ProjectBuildSelection) Operation() trustverify.OperationInputs {
 	if s == nil {
@@ -215,12 +284,30 @@ func (s *ProjectBuildSelection) recheck(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if len(entries)+2 != len(s.entries) {
+	providerEntries := 2
+	if s.modules != nil {
+		providerEntries++
+	}
+	if len(entries)+providerEntries != len(s.entries) {
 		return ErrProjectBuild
 	}
 	for i := range entries {
 		if entries[i] != s.entries[i] || !bytes.Equal(data[i], s.data[i]) {
 			return ErrProjectBuild
+		}
+	}
+	if s.modules != nil {
+		var mod, sum []byte
+		for i, f := range entries {
+			if f.Path == "go.mod" {
+				mod = data[i]
+			}
+			if f.Path == "go.sum" {
+				sum = data[i]
+			}
+		}
+		if err := s.modules.Recheck(ctx, mod, sum); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -277,14 +364,25 @@ func ValidateProjectBuildDeclaration(snapshot *trustverify.SourceSnapshot, tpl *
 	if !ok {
 		return ErrProjectBuild
 	}
-	return validateProjectBuildRecord(action, index)
+	if err := validateProjectBuildRecord(action, index); err != nil {
+		return err
+	}
+	var a ProjectBuildAction
+	canonicaljson.DecodeStrict(action, &a)
+	if a.APIVersion == "tplaiter.dev/project-build-action/v2" {
+		raw, ok := snapshot.Blob(trustload.GoModuleIndexPath)
+		if !ok || trustload.ValidateGoModuleIndex(raw) != nil || evidencecas.Digest(raw) != a.ModuleIndexSHA256 {
+			return ErrProjectBuild
+		}
+	}
+	return nil
 }
 func validateProjectBuildRecord(raw, index []byte) error {
 	if err := trustload.ValidateGoToolchainIndex(index); err != nil {
 		return err
 	}
 	var a ProjectBuildAction
-	if len(raw) > 1<<20 || len(index) == 0 || len(index) > 8<<20 || canonicaljson.DecodeStrict(raw, &a) != nil || a.APIVersion != "tplaiter.dev/project-build-action/v1" || a.Adapter != "go-project-build-v1" || a.CommandName != "build" || !reflect.DeepEqual(a.Argv, ProjectBuildArguments()) || a.TimeoutMillis < 1 || a.TimeoutMillis > 120000 || a.ToolchainIndexSHA256 != evidencecas.Digest(index) {
+	if len(raw) > 1<<20 || len(index) == 0 || len(index) > 8<<20 || canonicaljson.DecodeStrict(raw, &a) != nil || !validProjectBuildVersion(a) || a.CommandName != "build" || !reflect.DeepEqual(a.Argv, ProjectBuildArguments()) || a.TimeoutMillis < 1 || a.TimeoutMillis > 120000 || a.ToolchainIndexSHA256 != evidencecas.Digest(index) {
 		return ErrProjectBuild
 	}
 	return nil
@@ -309,4 +407,62 @@ func ValidateProjectBuildSource(ctx context.Context, runtime *trustverify.Runtim
 		return err
 	}
 	return ValidateProjectBuildDeclaration(snapshot, tpl)
+}
+
+func validProjectBuildVersion(a ProjectBuildAction) bool {
+	return (a.APIVersion == "tplaiter.dev/project-build-action/v1" && a.Adapter == "go-project-build-v1" && a.ModuleIndexSHA256 == "" && !a.GenBuild) || (a.APIVersion == "tplaiter.dev/project-build-action/v2" && a.Adapter == "go-project-build-v2" && len(a.ModuleIndexSHA256) == 71 && strings.HasPrefix(a.ModuleIndexSHA256, "sha256:"))
+}
+func (m *ExecutionMaterial) ProjectModulesFor(ctx context.Context, owner *trustload.Runtime, request trustverify.ExecutionRequest) (*trustload.GoModules, error) {
+	if ctx == nil || m == nil || m.projectBuild == nil || m.projectBuild.owner != owner || !reflect.DeepEqual(request, m.projectBuild.request) {
+		return nil, ErrProjectBuild
+	}
+	// ProjectBuildFor rechecks the whole selection immediately before this accessor.
+	return m.projectBuild.modules, nil
+}
+
+func projectedBuildInputs(images map[string][]byte) ([]trustverify.ContentEntry, [][]byte, error) {
+	keys := []string{}
+	var total int64
+	for name, b := range images {
+		if !fs.ValidPath(name) || strings.ContainsAny(name, "\\\x00:") {
+			return nil, nil, ErrProjectBuild
+		}
+		parts := strings.Split(name, "/")
+		skip := false
+		for i, p := range parts {
+			if strings.HasPrefix(p, "_") || (strings.HasPrefix(p, ".") && !(i == 0 && p == ".tplaiter")) {
+				skip = true
+			}
+			if p == "vendor" || p == "go.work" {
+				return nil, nil, ErrProjectBuild
+			}
+		}
+		if skip {
+			continue
+		}
+		if strings.HasPrefix(name, ".tplaiter/") {
+			if name != ".tplaiter/project.yaml" && name != ".tplaiter/root-template.lock.json" && name != ".tplaiter/resources.lock.json" {
+				continue
+			}
+		} else if !strings.HasSuffix(name, ".go") && name != "go.mod" && name != "go.sum" {
+			continue
+		}
+		if len(b) > 16<<20 {
+			return nil, nil, ErrProjectBuild
+		}
+		total += int64(len(b))
+		if total > 64<<20 || len(keys) >= 4093 {
+			return nil, nil, ErrProjectBuild
+		}
+		keys = append(keys, name)
+	}
+	sort.Strings(keys)
+	entries := []trustverify.ContentEntry{}
+	data := [][]byte{}
+	for _, name := range keys {
+		b := append([]byte(nil), images[name]...)
+		entries = append(entries, trustverify.ContentEntry{Root: "project", Path: name, Mode: "100644", ContentSHA256: evidencecas.Digest(b)})
+		data = append(data, b)
+	}
+	return entries, data, nil
 }

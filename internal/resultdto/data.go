@@ -165,9 +165,11 @@ type GenListData struct {
 
 // GenRunData is the data of gen.run and gen.batch.
 type GenRunData struct {
-	Created []string `json:"created"`
-	Edited  []string `json:"edited"`
-	NoBuild bool     `json:"noBuild"`
+	PreparedRequest *trustverify.ExecutionRequest `json:"preparedRequest,omitempty"`
+	ProcessReceipt  *execx.ProjectProcessResult   `json:"processReceipt,omitempty"`
+	Created         []string                      `json:"created"`
+	Edited          []string                      `json:"edited"`
+	NoBuild         bool                          `json:"noBuild"`
 }
 
 // AIGenData is the data of ai.gen.

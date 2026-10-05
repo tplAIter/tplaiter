@@ -102,7 +102,7 @@ func captureProjectBuild(ctx context.Context, root string) ([]trustverify.Conten
 			if name == "go.work" {
 				return ErrProjectBuild
 			}
-			if !strings.HasSuffix(name, ".go") && rel != "go.mod" && !strings.HasPrefix(rel, ".tplaiter/") {
+			if !strings.HasSuffix(name, ".go") && rel != "go.mod" && rel != "go.sum" && !strings.HasPrefix(rel, ".tplaiter/") {
 				continue
 			}
 			if len(files) >= 4093 || st.Size < 0 || st.Size > 16<<20 {

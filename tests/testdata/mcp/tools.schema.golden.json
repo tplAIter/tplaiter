@@ -1331,9 +1331,17 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Generate files and anchor insertions from the project's sealed native generator sources. The operation is file-only; formatter, build, hook, and other actions are refused before effects. noBuild is retained as the CLI control.",
+    "description": "Generate files and anchor insertions from the project's sealed native generator sources. Default build uses a signed exact projected-input request and persistent operator approval through the approved Go runner; noBuild requests file-only generation. Formatter and hooks remain refused.",
     "inputSchema": {
       "properties": {
+        "approvalCAS": {
+          "description": "Persistent signed gen-build approval digest",
+          "type": "string"
+        },
+        "approvalInput": {
+          "description": "Public signed gen-build approval JSON path",
+          "type": "string"
+        },
         "dir": {
           "description": "Project directory",
           "type": "string"
@@ -1352,9 +1360,13 @@
           "type": "boolean"
         },
         "params": {
-          "description": "Generator parameters: key→string value (serialized as dynamic CLI flags --<param>)",
+          "description": "Generator parameters: key→string value (serialized as dynamic CLI flags --\u003cparam\u003e)",
           "properties": {},
           "type": "object"
+        },
+        "prepare": {
+          "description": "Prepare exact default-build request without effects",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1487,6 +1499,232 @@
             },
             "noBuild": {
               "type": "boolean"
+            },
+            "preparedRequest": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "argv": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "contentClosureSHA256": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "phase": {
+                      "type": "string"
+                    },
+                    "shell": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "phase",
+                    "shell",
+                    "argv",
+                    "contentClosureSHA256"
+                  ],
+                  "type": "object"
+                },
+                "apiVersion": {
+                  "type": "string"
+                },
+                "environmentPolicySHA256": {
+                  "type": "string"
+                },
+                "migration": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "operationInputsSHA256": {
+                  "type": "string"
+                },
+                "profileBindingSHA256": {
+                  "type": "string"
+                },
+                "projectID": {
+                  "type": "string"
+                },
+                "provider": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "commit": {
+                      "type": "string"
+                    },
+                    "contractSHA256": {
+                      "type": "string"
+                    },
+                    "origin": {
+                      "type": "string"
+                    },
+                    "templatePath": {
+                      "type": "string"
+                    },
+                    "treeSHA256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "origin",
+                    "templatePath",
+                    "commit",
+                    "treeSHA256",
+                    "contractSHA256"
+                  ],
+                  "type": "object"
+                },
+                "requestSHA256": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "timeoutMillis": {
+                  "type": "integer"
+                },
+                "tool": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "binarySHA256": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "optionsSHA256": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "version",
+                    "binarySHA256",
+                    "optionsSHA256"
+                  ],
+                  "type": "object"
+                },
+                "workingDirectoryScope": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "root": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "root",
+                    "path"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "apiVersion",
+                "profileBindingSHA256",
+                "operationInputsSHA256",
+                "projectID",
+                "scope",
+                "provider",
+                "action",
+                "tool",
+                "workingDirectoryScope",
+                "environmentPolicySHA256",
+                "timeoutMillis",
+                "migration",
+                "requestSHA256"
+              ],
+              "type": [
+                "null",
+                "object"
+              ]
+            },
+            "processReceipt": {
+              "additionalProperties": false,
+              "properties": {
+                "cancelled": {
+                  "type": "boolean"
+                },
+                "exitCode": {
+                  "type": "integer"
+                },
+                "inputClosureSHA256": {
+                  "type": "string"
+                },
+                "moduleIndexSHA256": {
+                  "type": "string"
+                },
+                "requestSHA256": {
+                  "type": "string"
+                },
+                "stderr": {
+                  "type": "string"
+                },
+                "stderrSHA256": {
+                  "type": "string"
+                },
+                "stdout": {
+                  "type": "string"
+                },
+                "stdoutSHA256": {
+                  "type": "string"
+                },
+                "timedOut": {
+                  "type": "boolean"
+                },
+                "toolchainIndexSHA256": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "requestSHA256",
+                "inputClosureSHA256",
+                "toolchainIndexSHA256",
+                "exitCode",
+                "timedOut",
+                "cancelled",
+                "stdout",
+                "stderr",
+                "stdoutSHA256",
+                "stderrSHA256"
+              ],
+              "type": [
+                "null",
+                "object"
+              ]
             }
           },
           "required": [
@@ -1628,9 +1866,17 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Atomically generate files and anchor insertions from sealed native generator sources. The operation is file-only; formatter, build, hook, and other actions are refused before effects. noBuild is retained as the CLI control.",
+    "description": "Atomically generate files and anchor insertions from sealed native generator sources. Default build uses a signed exact projected-input request and persistent operator approval through the approved Go runner; noBuild requests file-only generation. Formatter and hooks remain refused.",
     "inputSchema": {
       "properties": {
+        "approvalCAS": {
+          "description": "Persistent signed gen-build approval digest",
+          "type": "string"
+        },
+        "approvalInput": {
+          "description": "Public signed gen-build approval JSON path",
+          "type": "string"
+        },
         "dir": {
           "description": "Project directory",
           "type": "string"
@@ -1671,6 +1917,10 @@
           },
           "minItems": 1,
           "type": "array"
+        },
+        "prepare": {
+          "description": "Prepare exact default-build request without effects",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1802,6 +2052,232 @@
             },
             "noBuild": {
               "type": "boolean"
+            },
+            "preparedRequest": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "argv": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "contentClosureSHA256": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "phase": {
+                      "type": "string"
+                    },
+                    "shell": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "phase",
+                    "shell",
+                    "argv",
+                    "contentClosureSHA256"
+                  ],
+                  "type": "object"
+                },
+                "apiVersion": {
+                  "type": "string"
+                },
+                "environmentPolicySHA256": {
+                  "type": "string"
+                },
+                "migration": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "operationInputsSHA256": {
+                  "type": "string"
+                },
+                "profileBindingSHA256": {
+                  "type": "string"
+                },
+                "projectID": {
+                  "type": "string"
+                },
+                "provider": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "commit": {
+                      "type": "string"
+                    },
+                    "contractSHA256": {
+                      "type": "string"
+                    },
+                    "origin": {
+                      "type": "string"
+                    },
+                    "templatePath": {
+                      "type": "string"
+                    },
+                    "treeSHA256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "origin",
+                    "templatePath",
+                    "commit",
+                    "treeSHA256",
+                    "contractSHA256"
+                  ],
+                  "type": "object"
+                },
+                "requestSHA256": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "timeoutMillis": {
+                  "type": "integer"
+                },
+                "tool": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "binarySHA256": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "optionsSHA256": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "version",
+                    "binarySHA256",
+                    "optionsSHA256"
+                  ],
+                  "type": "object"
+                },
+                "workingDirectoryScope": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "root": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "root",
+                    "path"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "apiVersion",
+                "profileBindingSHA256",
+                "operationInputsSHA256",
+                "projectID",
+                "scope",
+                "provider",
+                "action",
+                "tool",
+                "workingDirectoryScope",
+                "environmentPolicySHA256",
+                "timeoutMillis",
+                "migration",
+                "requestSHA256"
+              ],
+              "type": [
+                "null",
+                "object"
+              ]
+            },
+            "processReceipt": {
+              "additionalProperties": false,
+              "properties": {
+                "cancelled": {
+                  "type": "boolean"
+                },
+                "exitCode": {
+                  "type": "integer"
+                },
+                "inputClosureSHA256": {
+                  "type": "string"
+                },
+                "moduleIndexSHA256": {
+                  "type": "string"
+                },
+                "requestSHA256": {
+                  "type": "string"
+                },
+                "stderr": {
+                  "type": "string"
+                },
+                "stderrSHA256": {
+                  "type": "string"
+                },
+                "stdout": {
+                  "type": "string"
+                },
+                "stdoutSHA256": {
+                  "type": "string"
+                },
+                "timedOut": {
+                  "type": "boolean"
+                },
+                "toolchainIndexSHA256": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "requestSHA256",
+                "inputClosureSHA256",
+                "toolchainIndexSHA256",
+                "exitCode",
+                "timedOut",
+                "cancelled",
+                "stdout",
+                "stderr",
+                "stdoutSHA256",
+                "stderrSHA256"
+              ],
+              "type": [
+                "null",
+                "object"
+              ]
             }
           },
           "required": [
@@ -5483,6 +5959,9 @@
                   "type": "integer"
                 },
                 "inputClosureSHA256": {
+                  "type": "string"
+                },
+                "moduleIndexSHA256": {
                   "type": "string"
                 },
                 "requestSHA256": {
