@@ -57,14 +57,14 @@ dependency-bearing CLI/MCP execution and the scoped authorization contract for
 that fixture, not a replay of subsequently published GitHub metadata, full U13
 completion, other platforms, or provenance for any other source.
 
-## Published source and pending installed replay
+## Published source and owner-audited installed replay
 
 Core [`e49dd1f77492388e02b638ad6db1265224b97fcd`](https://github.com/tplAIter/tplaiter/commit/e49dd1f77492388e02b638ad6db1265224b97fcd)
 publishes the v2 authenticated offline module-closure runner and default native
 CLI/MCP `gen`/`gen batch` build path. Preparation binds the exact projected inputs
 to a gen-scoped persistent approval before applying files; the transaction commits
-only after the approved compiler succeeds. This is published implementation,
-not an installed replay verdict.
+only after the approved compiler succeeds. The bounded installed replay evidence
+is qualified separately below.
 
 Public template-go
 [`57136713797afd1c99c294b97b07da5544cf8a3b`](https://github.com/tplAIter/template-go/commit/57136713797afd1c99c294b97b07da5544cf8a3b)
@@ -82,11 +82,28 @@ refuses before applying files. There is no automatic dependency-free v1 fallback
 ambient cache/toolchain fallback or online dependency resolution. Explicit
 `--no-build` remains file-only generation.
 
-Independent installed CLI/MCP replay against these exact published core/template
-sources remains pending. The historical local metadata-overlay proof above is
-retained under its original qualification and is not relabeled as that replay.
-The default-false module variant, other platforms, formatter, hooks, ordinary
-executable actions, full U13 and whole-beta acceptance remain open.
+Following prior independent code review, fresh installed replay against these
+exact published core/template pins passed in 463.79 seconds. The owner audited
+the recovery record, process receipts and clean exact-source binary image
+SHA-256 `5bc8666c37220a567f9da5d284bf33e6e70d2f95e03b21355d75dc1715534bc6`.
+Fresh HTTPS Git enrollment retained 72 actual objects. Actual CLI and MCP
+`run build` exited 0; CLI and MCP default `gen` applied files and built with
+`noBuild=false`, exit 0 and bound module/toolchain receipts. Unsigned approval
+was refused with `TRUST_APPROVAL_REQUIRED`; a stale build grant after generation
+was refused with `TRUST_APPROVAL_MISMATCH`, without a process receipt. The
+signing/approval authority is a synthetic fixture, not official upstream
+certification. This documentation refresh inspects the owner-audited evidence;
+it does not claim a separate independent runtime replay.
+
+The proof completed before the documentation-only public head move to
+[`33f77490`](https://github.com/tplAIter/tplaiter/commit/33f77490e800fd57c0393a6abec0c91104785c89);
+its binary and enrollment remain pinned to `e49dd1f` and `5713671`. The historical
+LOCAL metadata-overlay proof and failed-compiler rollback counterproof retain
+their original qualification; the negative compiler/rollback case was not
+repeated in this published-pin replay. Temporal service/runtime workflows were
+not executed. Support for the default-false module variant remains in progress;
+other platforms, formatter, hooks, ordinary executable actions, full U13 and
+whole-beta acceptance remain open.
 
 For shared schemas, extract the named `run`, `gen` and `gen_batch` entries from the
 actual installed stdio `tools/list`. The parent must splice only these entries,
