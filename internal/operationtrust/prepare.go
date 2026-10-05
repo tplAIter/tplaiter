@@ -13,6 +13,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
@@ -49,6 +50,9 @@ type PrepareUpdateInput struct {
 	Render                   renderref.Input
 	RendererVersion          string
 	PreimageSHA256           string
+	// RecordedValues is detached calculation context; publication reconstructs it
+	// from authenticated marker or sealed migration records.
+	RecordedValues settings.Values
 }
 type PreparedUpdate struct {
 	source, target                     provenance.RootTemplateLock
@@ -258,7 +262,12 @@ func PrepareUpdate(ctx context.Context, runtime *trustload.Runtime, in PrepareUp
 	if err != nil || unsupportedTemplateActions(tpl, "update") {
 		return nil, ErrSourceAdapterUnsupported
 	}
-	result, err := renderref.RenderInScratch(ctx, targetFS, in.Render, runtime.ScratchRoot())
+	var result *renderref.Result
+	if in.RecordedValues == nil {
+		result, err = renderref.RenderInScratch(ctx, targetFS, in.Render, runtime.ScratchRoot())
+	} else {
+		result, err = renderref.RenderRecordedInScratch(ctx, targetFS, in.Render, runtime.ScratchRoot(), in.RecordedValues)
+	}
 	if err != nil {
 		return nil, err
 	}

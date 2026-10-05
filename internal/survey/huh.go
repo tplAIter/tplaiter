@@ -92,7 +92,7 @@ func (bd *binding) field() (huh.Field, error) {
 	title := groupTitle(bd.g)
 	switch bd.g.Type {
 	case manifest.TypeSelect:
-		opts, planned := selectableOptions(bd.g, nil)
+		opts, planned := selectableOptions(bd.g, []string{bd.s})
 		return huh.NewSelect[string]().
 			Key(bd.g.Group).
 			Title(title).
@@ -153,6 +153,10 @@ func buildForm(groups []manifest.SettingGroup, current settings.Values) (*huh.Fo
 		}
 		bd := newBinding(g, current[g.Group])
 		binds[g.Group] = bd
+		if g.Deprecated {
+			hgroups = append(hgroups, huh.NewGroup(huh.NewNote().Title(groupTitle(g)+" (deprecated, retained read-only)")))
+			return
+		}
 		f, err := bd.field()
 		if err != nil {
 			buildErr = err
@@ -210,7 +214,7 @@ func (p HuhPrompter) Ask(groups []manifest.SettingGroup, current settings.Values
 		return current[id]
 	}
 	walkActive(groups, valueOf, func(g *manifest.SettingGroup) {
-		if bd, ok := binds[g.Group]; ok {
+		if bd, ok := binds[g.Group]; ok && !g.Deprecated {
 			out[g.Group] = bd.value()
 		}
 	})
@@ -257,7 +261,20 @@ func selectableOptions(g *manifest.SettingGroup, preselected []string) (opts []h
 			planned = append(planned, optionTitle(o))
 			continue
 		}
-		opt := huh.NewOption(optionTitle(o), o.ID)
+		title := optionTitle(o)
+		if o.Deprecated {
+			retained := false
+			for _, s := range preselected {
+				if s == o.ID {
+					retained = true
+				}
+			}
+			if !retained {
+				continue
+			}
+			title += " (deprecated, retained)"
+		}
+		opt := huh.NewOption(title, o.ID)
 		for _, sel := range preselected {
 			if sel == o.ID {
 				opt = opt.Selected(true)

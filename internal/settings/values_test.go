@@ -64,3 +64,13 @@ func TestValues_Clone_IsolatesSlices(t *testing.T) {
 		t.Errorf("Clone did not isolate the slice: %v", v["brokers"])
 	}
 }
+
+func TestDeprecatedDefaultsOmitStoredGroup(t *testing.T) {
+	v := DefaultValues(deprecatedResolverTemplate())
+	if _, ok := v["retired"]; ok {
+		t.Fatal("synthesized deprecated answer")
+	}
+	if v["choice"] != "new" {
+		t.Fatal("supported default changed")
+	}
+}

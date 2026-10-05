@@ -5,6 +5,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/stateledger"
 )
 
 func TestResolve_TransitiveChain(t *testing.T) {
@@ -169,5 +174,135 @@ func TestResolve_UnknownExplicitGroupWarns(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected warning about unknown group bogus: %v", res.Report.Warnings)
+	}
+}
+
+func deprecatedResolverTemplate() *manifest.Template {
+	return &manifest.Template{Settings: []manifest.SettingGroup{
+		{Group: "retired", Type: manifest.TypeToggle, Deprecated: true},
+		{Group: "choice", Type: manifest.TypeSelect, Default: "new", Options: []manifest.Option{{ID: "old", Deprecated: true}, {ID: "new"}}},
+		{Group: "multi", Type: manifest.TypeMultiselect, Options: []manifest.Option{{ID: "old", Deprecated: true}, {ID: "new"}}},
+		{Group: "trigger", Type: manifest.TypeSelect, Options: []manifest.Option{{ID: "on", Requires: []string{"retired=false"}}}},
+	}}
+}
+
+func TestDeprecatedFreshAndRecordedRequires(t *testing.T) {
+	tpl := deprecatedResolverTemplate()
+	for _, v := range []Values{{"choice": "old"}, {"multi": []string{"old"}}, {"retired": false}, {"trigger": "on"}} {
+		_, err := Resolve(tpl, v)
+		var retired *DeprecatedAnswerError
+		if !errors.As(err, &retired) {
+			t.Fatalf("fresh retired input admitted: %v", err)
+		}
+	}
+	prior := Values{"retired": false, "choice": "old", "multi": []string{"old"}}
+	candidate := prior.Clone()
+	candidate["trigger"] = "on"
+	candidate["multi"] = []string{"old", "new"}
+	got, err := ResolveRecorded(tpl, prior, candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Report.Warnings) != 3 {
+		t.Fatalf("refs %v", got.Report.Warnings)
+	}
+	candidate["choice"] = "new"
+	candidate["multi"] = []string{"new"}
+	if _, err := ResolveRecorded(tpl, prior, candidate); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveRecorded(tpl, Values{"choice": "new"}, Values{"choice": "old"}); err == nil {
+		t.Fatal("removed retired member reintroduced")
+	}
+	if _, err := ResolveRecorded(tpl, prior, Values{"retired": true}); err == nil {
+		t.Fatal("retired scalar changed")
+	}
+	if _, err := ResolveRecorded(tpl, Values{"retired": "false"}, Values{"retired": "false"}); err == nil {
+		t.Fatal("retired record wrong type admitted")
+	}
+	fresh, err := Resolve(tpl, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fresh.Values["retired"]; ok || fresh.ActiveValues["retired"] != false {
+		t.Fatal("fresh retired record synthesized or render zero absent")
+	}
+}
+
+func TestNoDeprecationRecordedCalculationIdentical(t *testing.T) {
+	tpl := loadFixture(t, "nested3.yaml")
+	v := Values{"auth": []string{"audit"}}
+	fresh, err := Resolve(tpl, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorded, err := ResolveRecorded(tpl, v, v)
+	if err != nil || !reflect.DeepEqual(fresh, recorded) {
+		t.Fatal("ordinary recorded calculation changed", err)
+	}
+}
+
+// Each compatibility route reconstructs the same raw Values map from an
+// authenticated marker and delegates its retained calculation to ResolveRecorded.
+// This covers that shared seam; it does not claim installed Gen/build execution.
+func TestRecordedDeprecatedMultiselectYAMLCompatibility(t *testing.T) {
+	tpl := &manifest.Template{Settings: []manifest.SettingGroup{
+		{Group: "retired", Type: manifest.TypeMultiselect, Deprecated: true, Options: []manifest.Option{{ID: "old"}, {ID: "new"}}},
+	}}
+	for _, caller := range []string{"cmd/gen_native", "gen/native_plan", "operationtrust/project_build"} {
+		t.Run(caller, func(t *testing.T) {
+			var marker stateledger.ProjectV2
+			if err := yaml.Unmarshal([]byte("answers:\n  retired:\n    value: [old]\n    source: user\n"), &marker); err != nil {
+				t.Fatal(err)
+			}
+			values := Values{}
+			for key, answer := range marker.Answers {
+				values[key] = answer.Value
+			}
+			carrier, ok := values["retired"].([]any)
+			if !ok {
+				t.Fatalf("actual YAML carrier = %T", values["retired"])
+			}
+			got, err := ResolveRecorded(tpl, values, values)
+			if err != nil {
+				t.Fatal(err)
+			}
+			control, err := ResolveRecorded(tpl, Values{"retired": []string{"old"}}, Values{"retired": []string{"old"}})
+			if err != nil || !reflect.DeepEqual(got, control) {
+				t.Fatalf("carrier changed retained content: %v", err)
+			}
+			got.Values["retired"].([]string)[0] = "new"
+			if carrier[0] != "old" || marker.Answers["retired"].Source != "user" {
+				t.Fatal("calculation mutated authenticated answer")
+			}
+			if _, err := ResolveRecorded(tpl, nil, values); err == nil {
+				t.Fatal("new retired record admitted")
+			}
+			if _, err := Resolve(tpl, values); err == nil {
+				t.Fatal("fresh retired YAML input admitted")
+			}
+		})
+	}
+}
+
+func TestRecordedYAMLMultiselectStrictMembers(t *testing.T) {
+	tpl := &manifest.Template{Settings: []manifest.SettingGroup{
+		{Group: "retired", Type: manifest.TypeMultiselect, Deprecated: true, Options: []manifest.Option{{ID: "old"}}},
+	}}
+	for _, raw := range []string{"[old, 1]", "[old, true]", "[old, null]", "[old, [old]]", "[old, {key: old}]"} {
+		t.Run(raw, func(t *testing.T) {
+			var marker stateledger.ProjectV2
+			if err := yaml.Unmarshal([]byte("answers:\n  retired:\n    value: "+raw+"\n    source: user\n"), &marker); err != nil {
+				t.Fatal(err)
+			}
+			values := Values{"retired": marker.Answers["retired"].Value}
+			valid := Values{"retired": []string{"old"}}
+			for _, input := range [][2]Values{{values, valid}, {valid, values}, {values, values}} {
+				got, err := ResolveRecorded(tpl, input[0], input[1])
+				if err == nil || !reflect.DeepEqual(got, Resolved{}) {
+					t.Fatal("malformed prior/explicit list coerced or partially returned", err)
+				}
+			}
+		})
 	}
 }

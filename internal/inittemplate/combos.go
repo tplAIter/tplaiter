@@ -46,6 +46,9 @@ func Combos(tpl *manifest.Template) []Combo {
 	walk = func(groups []manifest.SettingGroup) {
 		for i := range groups {
 			g := &groups[i]
+			if g.Deprecated {
+				continue
+			}
 			switch g.Type {
 			case manifest.TypeSelect:
 				selects = append(selects, groupOpts{group: g.Group, opts: nonPlannedOptions(g)})
@@ -55,7 +58,9 @@ func Combos(tpl *manifest.Template) []Combo {
 				toggles = append(toggles, g.Group)
 			}
 			for j := range g.Options {
-				walk(g.Options[j].Settings)
+				if !g.Options[j].Deprecated {
+					walk(g.Options[j].Settings)
+				}
 			}
 		}
 	}
@@ -115,7 +120,7 @@ func Combos(tpl *manifest.Template) []Combo {
 func nonPlannedOptions(g *manifest.SettingGroup) []string {
 	out := make([]string, 0, len(g.Options))
 	for i := range g.Options {
-		if g.Options[i].Status == manifest.StatusPlanned {
+		if g.Options[i].Status == manifest.StatusPlanned || g.Options[i].Deprecated {
 			continue
 		}
 		out = append(out, g.Options[i].ID)
@@ -185,7 +190,11 @@ func satisfyConstraints(tpl *manifest.Template, explicit settings.Values) settin
 				if atom.Op != manifest.OpEq {
 					continue // require with != is not auto-enabled — leave it to Resolve
 				}
-				out[atom.Group] = coerceAtomValue(tpl, atom.Group, atom.Value)
+				value := coerceAtomValue(tpl, atom.Group, atom.Value)
+				if settings.DeprecatedValue(tpl, atom.Group, value) {
+					continue
+				}
+				out[atom.Group] = value
 				changed = true
 			}
 		}

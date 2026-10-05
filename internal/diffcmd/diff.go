@@ -168,7 +168,7 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 	for k, v := range marker.Answers {
 		values[k] = v.Value
 	}
-	prepared, err := operationtrust.PrepareNew(ctx, r, operationtrust.PrepareNewInput{SourceInput: input, RendererVersion: opts.RendererVersion, Render: renderref.Input{Repo: marker.Template.Repo, Values: renderref.Values(values), Project: manifest.ProjectInfo{Name: text("name"), Slug: text("slug"), Module: text("module"), System: text("system"), Domain: text("domain")}, Runtime: manifest.ProjectRuntime{Port: port}}})
+	prepared, err := operationtrust.PrepareSnapshot(ctx, r, operationtrust.PrepareSnapshotInput{SourceInput: input, RendererVersion: opts.RendererVersion, Render: renderref.Input{Repo: marker.Template.Repo, Values: renderref.Values(values), Project: manifest.ProjectInfo{Name: text("name"), Slug: text("slug"), Module: text("module"), System: text("system"), Domain: text("domain")}, Runtime: manifest.ProjectRuntime{Port: port}}})
 	if err != nil {
 		return Report{}, failure(StateCode, err)
 	}

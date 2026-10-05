@@ -140,6 +140,9 @@ func (v *validator) checkGroup(g *SettingGroup, loc string) {
 		v.add(loc+".type", "unknown type %q (select|multiselect|toggle|string|int)", g.Type)
 	}
 
+	if g.Deprecated && g.Default != nil {
+		v.add(loc+".default", "deprecated group cannot declare a default")
+	}
 	optionIDs := v.checkOptions(g, loc)
 	v.checkDefault(g, loc, optionIDs)
 
@@ -192,6 +195,9 @@ func (v *validator) checkOptions(g *SettingGroup, loc string) map[string]bool {
 				ids[opt.ID] = opt.Status == StatusPlanned
 			}
 		}
+		if opt.Deprecated && opt.Status == StatusPlanned {
+			v.add(optLoc+".deprecated", "option cannot be planned and deprecated")
+		}
 		if opt.Status != "" && opt.Status != StatusPlanned {
 			v.add(optLoc+".status", "invalid status %q (empty|planned)", opt.Status)
 		}
@@ -206,6 +212,24 @@ func (v *validator) checkDefault(g *SettingGroup, loc string, optionIDs map[stri
 		return
 	}
 	dloc := loc + ".default"
+	for _, opt := range g.Options {
+		if !opt.Deprecated {
+			continue
+		}
+		s, scalar := g.Default.(string)
+		selected := scalar && s == opt.ID
+		if list, ok := g.Default.([]any); ok {
+			selected = false
+			for _, val := range list {
+				if val == opt.ID {
+					selected = true
+				}
+			}
+		}
+		if selected {
+			v.add(dloc, "deprecated option %q cannot be a default value", opt.ID)
+		}
+	}
 	switch g.Type {
 	case TypeSelect:
 		s, ok := g.Default.(string)

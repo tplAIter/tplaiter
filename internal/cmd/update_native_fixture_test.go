@@ -227,3 +227,73 @@ func nativeUpdateCLISourceVersion(t *testing.T, root, suffix, output string, dir
 	}
 	return contract, trustverify.Subject{Origin: "https://example.test/source", TemplatePath: ".", RequestedRef: commit, Commit: commit, TreeSHA256: treeDigest, ContractSHA256: contractDigest}
 }
+
+const deprecatedSourceSettings = `settings:
+ - {group: label, title: Label, type: string, default: alpha}
+ - {group: retired, title: Retired, type: toggle, default: false}
+ - {group: oldtitle, title: Title, type: string, default: recorded}
+ - {group: obsolete, title: Obsolete, type: string, default: gone}
+ - group: choice
+   title: Choice
+   type: select
+   default: old
+   options: [{id: old, title: Old}, {id: new, title: New}]
+ - group: multi
+   title: Multi
+   type: multiselect
+   default: [old]
+   options: [{id: old, title: Old}, {id: new, title: New}]
+ - group: parent
+   title: Parent
+   type: select
+   default: off
+   options:
+    - {id: off, title: Off}
+    - id: on
+      title: On
+      settings:
+       - {group: child, title: Child, type: toggle, default: true}
+`
+
+const deprecatedTargetSettings = `settings:
+ - {group: label, title: Label, type: string, default: beta}
+ - {group: retired, title: Retired, type: toggle, deprecated: true}
+ - {group: title, title: Title, type: string, deprecated: true}
+ - group: choice
+   title: Choice
+   type: select
+   default: new
+   options: [{id: old, title: Old, deprecated: true}, {id: new, title: New}]
+ - group: multi
+   title: Multi
+   type: multiselect
+   default: []
+   options: [{id: old, title: Old, deprecated: true}, {id: new, title: New}]
+ - group: parent
+   title: Parent
+   type: select
+   default: off
+   options:
+    - {id: off, title: Off}
+    - id: on
+      title: On
+      settings:
+       - {group: child, title: Child, type: toggle, deprecated: true}
+`
+
+const deprecatedMigrations = `migrations:
+ - id: rename-v2
+   from: 1.0.0
+   to: 2.0.0
+   phase: after
+   settings: {rename: {oldtitle: title}}
+ - id: delete-v3
+   from: 2.0.0
+   to: 3.0.0
+   phase: before
+   settings: {delete: [obsolete]}
+`
+
+func nativeDeprecatedFixture(t *testing.T) t5FFixture {
+	return nativeUpdateCLIFixtureVersions(t, false, "1.0.0", "3.0.0", "source {{ index .Settings \"choice\" }}\n", "target {{ index .Settings \"choice\" }} {{ index .Settings \"retired\" }} {{ index .Settings \"child\" }} {{ index .Settings \"title\" }}\n", []string{deprecatedSourceSettings}, deprecatedTargetSettings, deprecatedMigrations)
+}

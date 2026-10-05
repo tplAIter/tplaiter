@@ -17,13 +17,17 @@ import (
 // supply the transformed answer map so removed keys cannot be copied back.
 func ResolveSettingsAnswers(tpl *manifest.Template, before map[string]stateledger.Answer, pairs []string) (settings.Resolved, error) {
 	explicit := settings.Values{}
-	prior := settings.DefaultValues(tpl)
+	prior := settings.Values{}
 	for key, answer := range before {
-		prior[key] = answer.Value
+		value := renderref.Values(settings.Values{key: answer.Value})[key]
+		prior[key] = value
 		switch answer.Source {
 		case "default":
+			if settings.DeprecatedValue(tpl, key, value) {
+				explicit[key] = value
+			}
 		case "user", "legacy", "migration":
-			explicit[key] = answer.Value
+			explicit[key] = value
 		default:
 			return settings.Resolved{}, fmt.Errorf("%w: invalid answer origin", ErrSettingsInput)
 		}
@@ -43,7 +47,7 @@ func ResolveSettingsAnswers(tpl *manifest.Template, before map[string]stateledge
 	// Validate the complete retained snapshot through the same resolver used by
 	// rendering. This preserves constraint checks without making recorded inactive
 	// defaults explicit during the initial active requires calculation.
-	snapshot, err := settings.Resolve(tpl, resolved.Values)
+	snapshot, err := settings.ResolveRecorded(tpl, renderref.Values(prior), resolved.Values)
 	if err != nil {
 		return settings.Resolved{}, fmt.Errorf("%w: %w", ErrSettingsInput, err)
 	}
@@ -84,7 +88,7 @@ func SettingsGroupActive(tpl *manifest.Template, values settings.Values, group s
 func settingsAnswerAfterimages(tpl *manifest.Template, before map[string]stateledger.Answer, values settings.Values, pairs []string) (map[string]stateledger.Answer, error) {
 	submitted := map[string]bool{}
 	for _, pair := range pairs {
-		key, _, err := settings.ParseSet(tpl, pair)
+		key, _, err := settings.ParseRecordedSet(tpl, pair, answerRecordValues(before))
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrSettingsInput, err)
 		}
@@ -121,4 +125,12 @@ func settingsAnswersEqual(a, b map[string]stateledger.Answer) bool {
 		return out
 	}
 	return reflect.DeepEqual(normalize(a), normalize(b))
+}
+
+func answerRecordValues(answers map[string]stateledger.Answer) settings.Values {
+	values := map[string]any{}
+	for key, answer := range answers {
+		values[key] = answer.Value
+	}
+	return renderref.Values(values)
 }

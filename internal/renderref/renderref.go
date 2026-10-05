@@ -83,13 +83,22 @@ func Render(ctx context.Context, src fs.FS, in Input) (*Result, error) {
 	defer func() { _ = os.RemoveAll(tmp) }()
 	return render(ctx, src, in, tmp, func(path string) ([]byte, error) {
 		return os.ReadFile(filepath.Join(tmp, "out", filepath.FromSlash(path)))
-	}, nil)
+	}, nil, nil)
 }
 
 // RenderInScratch renders exclusively below scratchRoot. The root is chosen by
 // the authenticated runtime, never by template input. It leaves no result when
 // cancellation, an output bound, or cleanup fails.
 func RenderInScratch(ctx context.Context, src fs.FS, in Input, scratchRoot string) (_ *Result, err error) {
+	return renderInScratch(ctx, src, in, scratchRoot, nil)
+}
+
+// RenderRecordedInScratch calculates a recorded snapshot without New authority.
+func RenderRecordedInScratch(ctx context.Context, src fs.FS, in Input, scratchRoot string, prior settings.Values) (*Result, error) {
+	return renderInScratch(ctx, src, in, scratchRoot, prior.Clone())
+}
+
+func renderInScratch(ctx context.Context, src fs.FS, in Input, scratchRoot string, prior settings.Values) (_ *Result, err error) {
 	if ctx == nil {
 		return nil, errors.New("renderref: nil context")
 	}
@@ -110,10 +119,10 @@ func RenderInScratch(ctx context.Context, src fs.FS, in Input, scratchRoot strin
 	}
 	return render(ctx, src, in, dir.Path(), func(path string) ([]byte, error) {
 		return dir.ReadFile("out/" + path)
-	}, dir.Check)
+	}, dir.Check, prior)
 }
 
-func render(ctx context.Context, src fs.FS, in Input, scratch string, readOutput func(string) ([]byte, error), checkScratch func() error) (*Result, error) {
+func render(ctx context.Context, src fs.FS, in Input, scratch string, readOutput func(string) ([]byte, error), checkScratch func() error, prior settings.Values) (*Result, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -126,7 +135,12 @@ func render(ctx context.Context, src fs.FS, in Input, scratch string, readOutput
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := settings.Resolve(tpl, in.Values)
+	var resolved settings.Resolved
+	if prior == nil {
+		resolved, err = settings.Resolve(tpl, in.Values)
+	} else {
+		resolved, err = settings.ResolveRecorded(tpl, prior, in.Values)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("renderref: settings resolution: %w", err)
 	}

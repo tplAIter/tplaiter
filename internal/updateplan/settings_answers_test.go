@@ -188,3 +188,76 @@ settings:
 		})
 	}
 }
+
+func TestDeprecatedRecordedDefaultOriginsAndInactiveSnapshots(t *testing.T) {
+	tpl := answerPolicyTemplate(t)
+	tpl.Settings[0].Deprecated = true
+	tpl.Settings[0].Default = nil
+	tpl.Settings[3].Options[1].Settings[0].Deprecated = true
+	tpl.Settings[3].Options[1].Settings[0].Default = nil
+	for _, source := range []string{"default", "user", "legacy", "migration"} {
+		before := map[string]stateledger.Answer{"label": {Value: "alpha", Source: source}, "parent": {Value: "off", Source: "default"}, "child": {Value: "prior", Source: source}}
+		resolved, err := ResolveSettingsAnswers(tpl, before, []string{"enabled=true"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, err := settingsAnswerAfterimages(tpl, before, resolved.Values, []string{"enabled=true"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after["label"] != before["label"] || after["child"] != before["child"] || resolved.ActiveValues["child"] != "" {
+			t.Fatal("retained origin/value/ancestry lost", after)
+		}
+		same, err := ResolveSettingsAnswers(tpl, before, []string{"label=alpha"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		intent, err := settingsAnswerAfterimages(tpl, before, same.Values, []string{"label=alpha"})
+		if err != nil || intent["label"].Source != "user" {
+			t.Fatal("same-value intent lost", err)
+		}
+		for _, pairs := range [][]string{{"label=changed"}, {"child=prior"}} {
+			if _, err := ResolveSettingsAnswers(tpl, before, pairs); !errors.Is(err, ErrSettingsInput) {
+				t.Fatal("retired change/hidden override accepted", err)
+			}
+		}
+	}
+	missing, err := ResolveSettingsAnswers(tpl, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := missing.Values["label"]; exists {
+		t.Fatal("prior default synthesized retired record")
+	}
+}
+
+func TestDeprecatedDefaultOriginYAMLMultiselectRetention(t *testing.T) {
+	tpl := &manifest.Template{Settings: []manifest.SettingGroup{{Group: "many", Type: manifest.TypeMultiselect, Default: []any{}, Options: []manifest.Option{{ID: "old", Deprecated: true}, {ID: "new"}}}}}
+	before := map[string]stateledger.Answer{"many": {Value: []any{"old"}, Source: "default"}}
+	resolved, err := ResolveSettingsAnswers(tpl, before, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(resolved.Values["many"], []string{"old"}) {
+		t.Fatalf("YAML default-origin retired members lost: %v", resolved.Values["many"])
+	}
+	after, err := settingsAnswerAfterimages(tpl, before, resolved.Values, nil)
+	if err != nil || after["many"].Source != "default" {
+		t.Fatal("retained origin lost", err)
+	}
+	changed, err := ResolveSettingsAnswers(tpl, before, []string{"many=old,new"})
+	if err != nil || !reflect.DeepEqual(changed.Values["many"], []string{"old", "new"}) {
+		t.Fatal("mixed supported/retained members", err)
+	}
+	removed, err := ResolveSettingsAnswers(tpl, before, []string{"many=new"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := settingsAnswerAfterimages(tpl, before, removed.Values, []string{"many=new"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveSettingsAnswers(tpl, records, []string{"many=old"}); !errors.Is(err, ErrSettingsInput) {
+		t.Fatal("removed YAML member reintroduced", err)
+	}
+}

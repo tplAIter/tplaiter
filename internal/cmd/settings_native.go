@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -70,6 +71,11 @@ func runNativeSettings(cmd *cobra.Command, c nativeSettingsControls, args []stri
 	if op == resultdto.OperationSettingsShow || op == resultdto.OperationSettingsReanswer && len(args) == 0 {
 		env := newResult(op)
 		env.Project = trustProject(r.ProjectContext())
+		for _, w := range view.Warnings {
+			if strings.HasPrefix(w, "deprecated ") {
+				env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-W-NATIVE-DEPRECATED-ANSWER", Severity: "warning", Message: w, Details: map[string]any{}})
+			}
+		}
 		if err := env.SetData(resultdto.SettingsShowData{Template: resultdto.TemplateRef{Repo: view.Selection.Repo, Name: view.Selection.Name, Version: view.Selection.ResolvedCommit}, Settings: map[string]any(view.Values)}); err != nil {
 			return err
 		}
@@ -110,6 +116,15 @@ func runNativeSettings(cmd *cobra.Command, c nativeSettingsControls, args []stri
 	}
 	env := newResult(op)
 	env.Project = trustProject(r.ProjectContext())
+	for _, w := range view.Warnings {
+		if strings.HasPrefix(w, "deprecated ") {
+			env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-W-NATIVE-DEPRECATED-ANSWER", Severity: "warning", Message: w, Details: map[string]any{}})
+		}
+	}
+	env.Diagnostics = nil
+	for _, w := range report.Deprecations {
+		env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-W-NATIVE-DEPRECATED-ANSWER", Severity: "warning", Message: w, Details: map[string]any{}})
+	}
 	env.PlanSHA256 = plan.Fingerprint()
 	env.CurrentRef = report.Source.Root.Commit
 	env.TargetRef = report.Target.Root.Commit

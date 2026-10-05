@@ -25,6 +25,9 @@ func LoadTemplate(path string) (*Template, error) {
 	if err := decodeStrict(data, &t); err != nil {
 		return nil, fmt.Errorf("parsing template manifest %s: %w", path, err)
 	}
+	if err := checkDeprecatedScalars(data); err != nil {
+		return nil, err
+	}
 	if err := checkKind(t.APIVersion, t.Kind, KindTemplate); err != nil {
 		return nil, err
 	}
@@ -75,6 +78,9 @@ func ParseTemplate(data []byte) (*Template, error) {
 	var t Template
 	if err := decodeStrict(data, &t); err != nil {
 		return nil, fmt.Errorf("parsing template manifest: %w", err)
+	}
+	if err := checkDeprecatedScalars(data); err != nil {
+		return nil, err
 	}
 	if err := checkKind(t.APIVersion, t.Kind, KindTemplate); err != nil {
 		return nil, err
@@ -165,4 +171,84 @@ func parseMajor(version string) (int, bool) {
 		return 0, false
 	}
 	return major, true
+}
+
+// checkDeprecatedScalars checks only the new boolean declaration nodes; normal
+// struct decoding still enforces KnownFields on the complete document.
+func checkDeprecatedScalars(data []byte) error {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return err
+	}
+	var field func(*yaml.Node, string) *yaml.Node
+	field = func(n *yaml.Node, key string) *yaml.Node {
+		if n.Kind == yaml.AliasNode {
+			return field(n.Alias, key)
+		}
+		if n.Kind != yaml.MappingNode {
+			return nil
+		}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			if n.Content[i].Value == key {
+				return n.Content[i+1]
+			}
+		}
+
+		// YAML merges are still decoded by KnownFields; inspect the effective new
+		// declaration too so a merged null cannot masquerade as false.
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			if n.Content[i].Value == "<<" {
+				m := n.Content[i+1]
+				if m.Kind == yaml.AliasNode {
+					m = m.Alias
+				}
+				if m.Kind == yaml.SequenceNode {
+					for _, part := range m.Content {
+						if got := field(part, key); got != nil {
+							return got
+						}
+					}
+				} else if got := field(m, key); got != nil {
+					return got
+				}
+			}
+		}
+		return nil
+	}
+	var walk func(*yaml.Node) error
+	walk = func(groups *yaml.Node) error {
+		if groups == nil {
+			return nil
+		}
+		if groups.Kind == yaml.AliasNode {
+			return walk(groups.Alias)
+		}
+		for _, g := range groups.Content {
+			nodes := []*yaml.Node{g}
+			if opts := field(g, "options"); opts != nil {
+				if opts.Kind == yaml.AliasNode {
+					opts = opts.Alias
+				}
+				nodes = append(nodes, opts.Content...)
+			}
+			for _, n := range nodes {
+				if d := field(n, "deprecated"); d != nil {
+					if d.Kind == yaml.AliasNode {
+						d = d.Alias
+					}
+					if d.Kind != yaml.ScalarNode || d.Tag != "!!bool" {
+						return fmt.Errorf("line %d: deprecated must be a boolean", d.Line)
+					}
+				}
+				if err := walk(field(n, "settings")); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	if len(doc.Content) == 0 {
+		return nil
+	}
+	return walk(field(doc.Content[0], "settings"))
 }

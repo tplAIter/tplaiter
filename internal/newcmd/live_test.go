@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/renderref"
+
 	"gopkg.in/yaml.v3"
 
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
@@ -505,5 +508,17 @@ func TestLiveNewCreatesAbsentTargetAndPreservesExistingFile(t *testing.T) {
 				assertLiveProject(t, f, d)
 			}
 		})
+	}
+}
+
+func TestDeprecatedFreshImageRejectsForgedRecordedPreview(t *testing.T) {
+	tpl := &manifest.Template{Settings: []manifest.SettingGroup{{Group: "retired", Type: manifest.TypeToggle, Deprecated: true}}}
+	resolved, err := settings.ResolveRecorded(tpl, settings.Values{"retired": false}, settings.Values{"retired": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := liveTreeImages("fake", nil, manifest.ProjectInfo{}, 0, &renderref.Result{Template: tpl, Resolved: resolved}, nil, nil, nil, false)
+	if err == nil || files != nil {
+		t.Fatal("recorded preview became fresh image grant")
 	}
 }

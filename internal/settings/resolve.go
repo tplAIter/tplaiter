@@ -79,6 +79,7 @@ func (e *ConstraintError) Error() string { return e.Message }
 
 // resolver holds the working state of one [Resolve] call.
 type resolver struct {
+	prior    Values
 	tpl      *manifest.Template
 	gidx     map[string]groupMeta
 	oidx     map[string]optionMeta
@@ -97,7 +98,58 @@ type resolver struct {
 // constraints, and builds ActiveValues. It returns [Resolved] or a typed error
 // ([*ConflictError]/[*CycleError]/[*ConstraintError]).
 func Resolve(tpl *manifest.Template, explicit Values) (Resolved, error) {
+	return resolve(tpl, nil, explicit)
+}
+
+// ResolveRecorded is a pure retained-snapshot calculation. It never authenticates
+// the supplied prior map or grants New, source or execution authority.
+func ResolveRecorded(tpl *manifest.Template, prior, explicit Values) (Resolved, error) {
+	prior, err := canonicalRecordedValues(tpl, prior)
+	if err != nil {
+		return Resolved{}, err
+	}
+	explicit, err = canonicalRecordedValues(tpl, explicit)
+	if err != nil {
+		return Resolved{}, err
+	}
+	return resolve(tpl, prior, explicit)
+}
+
+// canonicalRecordedValues removes the YAML list carrier without coercing or
+// discarding members. This is calculation data, never authentication evidence.
+func canonicalRecordedValues(tpl *manifest.Template, values Values) (Values, error) {
+	out := values.Clone()
+	groups := indexGroups(tpl)
+	keys := make([]string, 0, len(out))
+	for key := range out {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		group, known := groups[key]
+		if !known || group.g.Type != manifest.TypeMultiselect {
+			continue
+		}
+		list, ok := out[key].([]any)
+		if !ok {
+			continue
+		}
+		canonical := make([]string, len(list))
+		for i, member := range list {
+			value, ok := member.(string)
+			if !ok {
+				return nil, fmt.Errorf("recorded group %s requires string list members", key)
+			}
+			canonical[i] = value
+		}
+		out[key] = canonical
+	}
+	return out, nil
+}
+
+func resolve(tpl *manifest.Template, prior, explicit Values) (Resolved, error) {
 	r := &resolver{
+		prior:    prior,
 		tpl:      tpl,
 		gidx:     indexGroups(tpl),
 		oidx:     indexOptions(tpl),
@@ -107,6 +159,23 @@ func Resolve(tpl *manifest.Template, explicit Values) (Resolved, error) {
 		done:     make(map[string]bool),
 	}
 
+	for id, m := range r.gidx {
+		if v, ok := r.values[id]; ok {
+			if err := checkRetention(m.g, v, nil); err != nil {
+				return Resolved{}, err
+			}
+		}
+		if v, ok := explicit[id]; ok {
+			if DeprecatedValue(tpl, id, v) {
+				if err := checkRecordedType(m.g, v); err != nil {
+					return Resolved{}, err
+				}
+			}
+			if err := checkRetention(m.g, v, prior); err != nil {
+				return Resolved{}, err
+			}
+		}
+	}
 	r.overlayExplicit(explicit)
 
 	if err := r.resolveRequires(); err != nil {
@@ -116,6 +185,19 @@ func Resolve(tpl *manifest.Template, explicit Values) (Resolved, error) {
 		return Resolved{}, err
 	}
 
+	for id, m := range r.gidx {
+		if v, ok := r.values[id]; ok && DeprecatedValue(tpl, id, v) {
+			if m.g.Deprecated {
+				r.warn("deprecated group %s retained", id)
+			} else {
+				for _, o := range m.g.Options {
+					if o.Deprecated && matchValue(v, o.ID) {
+						r.warn("deprecated option %s=%s retained", id, o.ID)
+					}
+				}
+			}
+		}
+	}
 	active := r.activeValues()
 
 	sort.Slice(r.implied, func(i, j int) bool {
@@ -225,6 +307,19 @@ func (r *resolver) ensure(a manifest.Atom, requiredBy string, stack []string) (s
 	if !ok {
 		r.warn("requirement of option %q refers to unknown group %q — skipped", requiredBy, a.Group)
 		return "", nil
+	}
+	// Check before any satisfied-zero/default shortcut.
+	if a.Op == manifest.OpEq {
+		retired := m.g.Deprecated
+		if o, ok := r.oidx[a.Group+manifest.OpEq+a.Value]; ok {
+			retired = retired || o.opt.Deprecated
+		}
+		if retired {
+			_, present := r.prior[a.Group]
+			if !present || !atomHolds(a, r.prior) || !atomHolds(a, r.values) {
+				return "", &DeprecatedAnswerError{Group: a.Group}
+			}
+		}
 	}
 	holds := atomHolds(a, r.values)
 
@@ -363,6 +458,9 @@ func (r *resolver) activeValues() Values {
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
+		if _, present := active[id]; !present {
+			active[id] = zeroValue(r.gidx[id].g.Type)
+		}
 		if r.isActive(id) {
 			continue
 		}

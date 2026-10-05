@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -125,6 +126,36 @@ func TestCheckAPIVersion(t *testing.T) {
 		err := checkAPIVersion(tc.in)
 		if (err != nil) != tc.wantErr {
 			t.Errorf("checkAPIVersion(%q) err=%v, wantErr=%v", tc.in, err, tc.wantErr)
+		}
+	}
+}
+
+func TestDeprecatedDeclarationStrictBoolean(t *testing.T) {
+	for _, where := range []string{"  deprecated: %s\n  type: toggle", "  type: select\n  options:\n    - id: old\n      deprecated: %s"} {
+		for _, val := range []string{"null", "\"true\"", "1", "[]", "{}"} {
+			raw := []byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nsettings:\n- group: feature\n" + fmt.Sprintf(where, val) + "\n")
+			if _, err := ParseTemplate(raw); err == nil {
+				t.Fatal("bad boolean accepted", val)
+			}
+		}
+	}
+	raw := []byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nsettings:\n- group: feature\n  type: toggle\n  deprecated: true\n")
+	tpl, err := ParseTemplate(raw)
+	if err != nil || !tpl.Settings[0].Deprecated {
+		t.Fatalf("bool rejected %v", err)
+	}
+	if _, err := ParseTemplate(append(raw, []byte("  unknown: true\n")...)); err == nil {
+		t.Fatal("KnownFields bypassed")
+	}
+}
+
+func TestDeprecatedMergedBooleanCannotBecomeFalse(t *testing.T) {
+	for _, raw := range []string{
+		"settings:\n - &base {group: a, type: toggle, deprecated: null}\n - {<<: *base, group: b}\n",
+		"settings:\n - &base {group: a, type: toggle, deprecated: false}\n - {<<: *base, group: b, deprecated: null}\n",
+	} {
+		if _, err := ParseTemplate([]byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\n" + raw)); err == nil {
+			t.Fatal("merged null accepted")
 		}
 	}
 }

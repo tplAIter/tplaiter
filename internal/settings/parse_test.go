@@ -98,3 +98,33 @@ func TestTypeAnswers_UnknownGroups(t *testing.T) {
 		t.Fatalf("expected error about unknown groups, got: %v", err)
 	}
 }
+
+func TestDeprecatedCodecsUseCurrentRecordsOnly(t *testing.T) {
+	tpl := deprecatedResolverTemplate()
+	for _, expr := range []string{"choice=old", "multi=old,new", "retired=false"} {
+		if _, _, err := ParseSet(tpl, expr); err == nil {
+			t.Fatal("fresh codec admitted", expr)
+		}
+		if _, _, err := ParseRecordedSet(tpl, expr, Values{"choice": "old", "multi": []string{"old"}, "retired": false}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := typeAnswers(tpl, map[string]any{"choice": "old"}); err == nil {
+		t.Fatal("answers file became prior authority")
+	}
+	if _, _, err := ParseRecordedSet(tpl, "choice=old", Values{"choice": "new"}); err == nil {
+		t.Fatal("old history became retention authority")
+	}
+}
+
+func TestDeprecatedFreshSupportedCodecsRemainAvailable(t *testing.T) {
+	tpl := deprecatedResolverTemplate()
+	for _, expr := range []string{"choice=new", "multi=new"} {
+		if _, _, err := ParseSet(tpl, expr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := typeAnswers(tpl, map[string]any{"choice": "new", "multi": []any{"new"}}); err != nil {
+		t.Fatal(err)
+	}
+}

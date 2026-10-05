@@ -91,6 +91,7 @@ type Report struct {
 	Target                provenance.RootTemplateLock `json:"target"`
 	Preimages             []Image                     `json:"preimages"`
 	Changes               []Change                    `json:"changes"`
+	Deprecations          []string                    `json:"deprecations,omitempty"`
 	Migrations            []string                    `json:"migrations,omitempty"`
 	Registry              RegistryImage               `json:"registry"`
 }
@@ -241,7 +242,7 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := operationtrust.PrepareUpdate(ctx, b.runtime, operationtrust.PrepareUpdateInput{SourceInput: in.SourceInput, TargetInput: in.TargetInput, Render: targetRender, RendererVersion: b.rendererVersion, PreimageSHA256: preimage})
+	prepared, err := operationtrust.PrepareUpdate(ctx, b.runtime, operationtrust.PrepareUpdateInput{SourceInput: in.SourceInput, TargetInput: in.TargetInput, Render: targetRender, RecordedValues: answerRecordValues(targetAnswers), RendererVersion: b.rendererVersion, PreimageSHA256: preimage})
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +250,7 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 		return nil, ErrUnsafe
 	}
 	// Render the independently verified source as the actual three-way base.
-	base, err := operationtrust.PrepareNew(ctx, b.runtime, operationtrust.PrepareNewInput{SourceInput: in.SourceInput, Render: render, RendererVersion: b.rendererVersion})
+	base, err := operationtrust.PrepareSnapshot(ctx, b.runtime, operationtrust.PrepareSnapshotInput{SourceInput: in.SourceInput, Render: render, RendererVersion: b.rendererVersion})
 	if err != nil {
 		return nil, err
 	}
@@ -329,6 +330,11 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 		}
 	}
 	report := Report{Adoption: protection, Publishable: publishable, Registry: registry, APIVersion: APIVersion, ProjectID: marker.ID, Root: root, PreimageSHA256: preimage, OperationInputsSHA256: prepared.OperationInputsSHA256(), Source: prepared.SourceRootLock(), Target: prepared.TargetRootLock(), Preimages: observed.images, Changes: changes}
+	for _, warning := range prepared.Rendered().Resolved.Report.Warnings {
+		if strings.HasPrefix(warning, "deprecated ") {
+			report.Deprecations = append(report.Deprecations, warning)
+		}
+	}
 	if migrationPlan != nil {
 		selected := append(append([]migrations.PlannedMigration(nil), migrationPlan.Before...), migrationPlan.After...)
 		sort.Slice(selected, func(i, j int) bool { return selected[i].Order < selected[j].Order })

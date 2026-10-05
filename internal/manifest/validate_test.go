@@ -243,3 +243,21 @@ func TestSignedMigrationDeclarations(t *testing.T) {
 		t.Fatal("unknown migration field accepted")
 	}
 }
+
+func TestDeprecatedDefaultsAndPlannedCannotIntroduceAnswers(t *testing.T) {
+	for _, g := range []SettingGroup{
+		{Group: "flag", Type: TypeToggle, Deprecated: true, Default: false},
+		{Group: "choice", Type: TypeSelect, Default: "old", Options: []Option{{ID: "old", Deprecated: true}}},
+		{Group: "many", Type: TypeMultiselect, Default: []any{"old"}, Options: []Option{{ID: "old", Deprecated: true}}},
+		{Group: "choice", Type: TypeSelect, Options: []Option{{ID: "old", Deprecated: true, Status: StatusPlanned}}},
+	} {
+		tpl, err := LoadTemplate(fixture("full.yaml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tpl.Settings = append(tpl.Settings, g)
+		if err := tpl.Validate(); err == nil || !strings.Contains(err.Error(), "deprecated") {
+			t.Fatalf("retired default/planned accepted: %v", err)
+		}
+	}
+}

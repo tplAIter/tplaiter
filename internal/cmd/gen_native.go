@@ -232,7 +232,7 @@ func nativeGenCatalog(ctx context.Context, r *trustload.Runtime) (*manifest.Temp
 	for k, a := range marker.Answers {
 		values[k] = a.Value
 	}
-	resolved, err := settings.Resolve(tpl, values)
+	resolved, err := settings.ResolveRecorded(tpl, values, values)
 	if err != nil {
 		return nil, nil, err
 	}

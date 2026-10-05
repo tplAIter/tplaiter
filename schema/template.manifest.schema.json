@@ -394,6 +394,7 @@
       "required": ["group", "type"],
       "additionalProperties": false,
       "properties": {
+        "deprecated": { "type": "boolean", "default": false },
         "group": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
         "title": { "type": "string" },
         "description": { "type": "string" },
@@ -427,6 +428,7 @@
       "required": ["id"],
       "additionalProperties": false,
       "properties": {
+        "deprecated": { "type": "boolean", "default": false },
         "id": { "type": "string" },
         "title": { "type": "string" },
         "description": { "type": "string" },

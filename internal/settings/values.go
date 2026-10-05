@@ -102,7 +102,9 @@ func indexOptions(tpl *manifest.Template) map[string]optionMeta {
 func DefaultValues(tpl *manifest.Template) Values {
 	v := make(Values)
 	for id, m := range indexGroups(tpl) {
-		v[id] = defaultFor(m.g)
+		if !m.g.Deprecated {
+			v[id] = defaultFor(m.g)
+		}
 	}
 	return v
 }
@@ -191,6 +193,38 @@ func toInt(v any) (int, bool) {
 func contains(list []string, value string) bool {
 	for _, s := range list {
 		if s == value {
+			return true
+		}
+	}
+	return false
+}
+
+// HasDeprecations reports whether this declaration needs recorded retention.
+func HasDeprecations(tpl *manifest.Template) bool {
+	for _, m := range indexGroups(tpl) {
+		if m.g.Deprecated {
+			return true
+		}
+		for _, o := range m.g.Options {
+			if o.Deprecated {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// DeprecatedValue reports declared retired references selected by a value.
+func DeprecatedValue(tpl *manifest.Template, group string, value any) bool {
+	m, ok := indexGroups(tpl)[group]
+	if !ok {
+		return false
+	}
+	if m.g.Deprecated {
+		return true
+	}
+	for _, o := range m.g.Options {
+		if o.Deprecated && matchValue(value, o.ID) {
 			return true
 		}
 	}

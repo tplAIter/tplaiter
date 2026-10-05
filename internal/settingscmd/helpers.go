@@ -63,6 +63,9 @@ func printSettingsTable(out io.Writer, pal ui.Palette, tpl *manifest.Template, v
 	tbl := ui.NewTable("GROUP", "VALUE", "ACTIVE")
 	walkGroups(tpl.Settings, values, true, 0, func(g *manifest.SettingGroup, active bool, depth int) {
 		name := strings.Repeat("  ", depth) + g.Group
+		if g.Deprecated {
+			name += " (deprecated, retained read-only)"
+		}
 		val := formatValue(values[g.Group])
 		activeCell := "yes"
 		if !active {

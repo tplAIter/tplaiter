@@ -38,7 +38,7 @@ func surveyReanswer(view *NativeView, group string, d Deps) ([]string, error) {
 			activeValues[key] = value
 		}
 		walkGroups(selected, activeValues, true, 0, func(g *manifest.SettingGroup, active bool, _ int) {
-			if active {
+			if active && !g.Deprecated {
 				if value, ok := asked[g.Group]; ok {
 					pairs = append(pairs, g.Group+"="+settingTransport(value))
 				}
@@ -49,6 +49,7 @@ func surveyReanswer(view *NativeView, group string, d Deps) ([]string, error) {
 			return nil, err
 		}
 		printSettingsTable(d.Out, d.Palette, view.Template, resolved.Values)
+		printResolveReport(d, resolved.Report)
 		yes, err := d.Prompter.Confirm("Apply authenticated settings plan?")
 		if err != nil {
 			return nil, err
@@ -70,4 +71,7 @@ func settingTransport(value any) string {
 // PrintNativeView renders only the already authenticated settings facts.
 func PrintNativeView(d Deps, v *NativeView) {
 	printSettingsTable(d.Out, d.Palette, v.Template, v.Values)
+	for _, w := range v.Warnings {
+		fmt.Fprintln(d.Err, "warning: "+w)
+	}
 }

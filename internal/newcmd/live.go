@@ -26,6 +26,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/resources"
+	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/sourceadapter"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
@@ -237,6 +238,12 @@ func vacantLive(target string) error {
 }
 
 func liveTreeImages(id string, src *sourceadapter.Source, info manifest.ProjectInfo, port int, result *renderref.Result, prepared *operationtrust.PreparedNew, resourceImages *resources.ResourceImages, sources map[string]survey.Source, interactive bool) (files map[string][]byte, err error) {
+	if result == nil || result.Template == nil {
+		return nil, newtransaction.ErrUnsafe
+	}
+	if _, err := settings.Resolve(result.Template, result.Resolved.Values); err != nil {
+		return nil, err
+	}
 	files = make(map[string][]byte, len(result.Files)+12)
 	write := func(path string, raw []byte) error {
 		if _, exists := files[path]; exists {

@@ -52,6 +52,9 @@ func AskFlow(
 	if preset == nil {
 		preset = settings.Values{}
 	}
+	if err := settings.ValidateFreshValues(tpl, preset); err != nil {
+		return settings.Resolved{}, err
+	}
 	defaults := settings.DefaultValues(tpl)
 
 	if opts.Defaults {
@@ -65,7 +68,7 @@ func AskFlow(
 		return settings.Resolve(tpl, preset)
 	}
 
-	pruned := pruneForPrompt(tpl.Settings, preset)
+	pruned := pruneForPrompt(FreshGroups(tpl.Settings), preset)
 	current := mergeValues(defaults, preset)
 	for {
 		asked, err := p.Ask(pruned, current)
@@ -108,7 +111,7 @@ func requiredMissing(tpl *manifest.Template, defaults, preset settings.Values) [
 
 	var missing []string
 	walkActive(tpl.Settings, valueOf, func(g *manifest.SettingGroup) {
-		if g.Type != manifest.TypeString {
+		if g.Deprecated || g.Type != manifest.TypeString {
 			return
 		}
 		if _, set := preset[g.Group]; set {
@@ -211,4 +214,26 @@ func formatValue(v any) string {
 	default:
 		return fmt.Sprintf("%v", x)
 	}
+}
+
+// FreshGroups detaches the fresh questionnaire tree and removes retired branches.
+// Recorded reanswer instead retains declarations and uses authenticated answers.
+func FreshGroups(groups []manifest.SettingGroup) []manifest.SettingGroup {
+	var out []manifest.SettingGroup
+	for _, g := range groups {
+		if g.Deprecated {
+			continue
+		}
+		opts := make([]manifest.Option, 0, len(g.Options))
+		for _, o := range g.Options {
+			if o.Deprecated {
+				continue
+			}
+			o.Settings = FreshGroups(o.Settings)
+			opts = append(opts, o)
+		}
+		g.Options = opts
+		out = append(out, g)
+	}
+	return out
 }

@@ -94,3 +94,20 @@ settings:
 		t.Fatal("reanswer mutated prior snapshot")
 	}
 }
+
+func TestDeprecatedNativeReanswerRetainedChoicesAndReadonlyGroup(t *testing.T) {
+	tpl := &manifest.Template{Settings: []manifest.SettingGroup{{Group: "choice", Type: manifest.TypeSelect, Default: "new", Options: []manifest.Option{{ID: "old", Deprecated: true}, {ID: "new"}}}, {Group: "retired", Type: manifest.TypeToggle, Deprecated: true}}}
+	view := &settingscmd.NativeView{Template: tpl, Values: settings.Values{"choice": "old", "retired": false}, Answers: map[string]stateledger.Answer{"choice": {Value: "old", Source: "default"}, "retired": {Value: false, Source: "default"}}}
+	for _, choice := range []string{"old", "new"} {
+		p := &survey.ScriptedPrompter{Answers: []settings.Values{{"choice": choice}}}
+		pairs, err := settingscmd.Reanswer(view, "choice", settingscmd.Deps{Interactive: true, Prompter: p, Out: io.Discard, Err: io.Discard})
+		if err != nil || !reflect.DeepEqual(pairs, []string{"choice=" + choice}) {
+			t.Fatal("retained/replacement prompt failed", err, pairs)
+		}
+	}
+	p := &survey.ScriptedPrompter{Answers: []settings.Values{{"retired": true}}}
+	pairs, err := settingscmd.Reanswer(view, "retired", settingscmd.Deps{Interactive: true, Prompter: p, Out: io.Discard, Err: io.Discard})
+	if err != nil || len(pairs) != 0 {
+		t.Fatal("readonly group submitted", err, pairs)
+	}
+}

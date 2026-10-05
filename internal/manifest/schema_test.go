@@ -85,3 +85,24 @@ func TestSchemaClosedMigrationContract(t *testing.T) {
 		t.Fatal("open executable schema")
 	}
 }
+
+func TestDeprecatedSchemaClosedBoolean(t *testing.T) {
+	raw, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s map[string]any
+	if err := json.Unmarshal(raw, &s); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"settingGroup", "option"} {
+		d := s["$defs"].(map[string]any)[key].(map[string]any)
+		if d["additionalProperties"] != false {
+			t.Fatal("schema opened")
+		}
+		prop := d["properties"].(map[string]any)["deprecated"].(map[string]any)
+		if prop["type"] != "boolean" || prop["default"] != false {
+			t.Fatal(prop)
+		}
+	}
+}

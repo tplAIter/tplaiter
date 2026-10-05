@@ -64,7 +64,7 @@ project state are rejected before publication.
 An explicit `settings set` pair or `settings edit --value` records a `user`
 answer even when its value equals the signed default or its previous value.
 Untouched answers retain their recorded source (`user`, `legacy`, `migration`,
-or `default`). Default-origin answers are resolved from the current signed
+or `default`). Except for declared deprecated values described below, default-origin answers are resolved from the current signed
 manifest defaults and requirements; a previously implied default-origin value
 can return to its default when the requiring selection is removed. User,
 legacy, and migration origins remain explicit, including default-equal values.
@@ -134,9 +134,9 @@ This page documents the bounded native settings sidecar. It does not claim full
 U07 acceptance, workspace settings operations, executable actions, hooks,
 environment setup, or general lifecycle recovery. The native settings path
 also does not provide a dedicated settings recovery or continuation command.
-General crash recovery, deprecated or secret question attributes, template
-answer migrations, and an operator keep/drop/rename codec remain outside this
-bounded path.
+General crash recovery, secret question attributes, and an operator
+keep/drop/rename codec remain outside this bounded path. Signed data-only
+answer migrations and deprecated-answer retention are described below.
 
 
 ## Signed data-only answer migration history
@@ -152,4 +152,43 @@ origins and inactive snapshots remain recorded; inactive answers stay outside
 active rendering. Deleted records are not copied back. Active default-origin
 answers still follow signed defaults and requires. See [Native Update](native-update.md)
 for selection, authored phase ordering, the single transaction and cold recovery.
-Deprecated/secret and managed-block decision policies remain separate work.
+Secret and managed-block decision policies remain separate work.
+
+## Deprecated answers
+
+A signed manifest may declare `deprecated: true` on a setting group or option.
+The attribute is a strict boolean, independent of `status: planned`. A group
+cannot declare both deprecation and a default; a default cannot select a
+retired option. An option cannot be both planned and deprecated.
+
+Fresh New, `--set`, answers files and questionnaires cannot introduce retired
+answers. Fresh stored defaults omit deprecated groups, while the rendering view
+uses their type-zero values. Retired options and their branches are absent from
+fresh prompts and lint combinations. Lint never synthesizes a retired positive
+constraint value or hides an invalid supported combination.
+
+Native reanswer permits only values retained in authenticated current records.
+A retired option can be confirmed unchanged or replaced with a supported option;
+a multiselect can retain its current retired members while selecting supported
+members. Once removed, a retired member cannot be reintroduced. A deprecated
+group is read-only in the questionnaire; explicit CLI/MCP same-value confirmation
+is permitted and records `user` intent. Changing that group's value is refused.
+Original and final ancestry checks still prevent direct inactive descendant edits.
+
+Untouched retired values retain their original answer source, including
+`default` even when it equals a former default. This is the deliberate exception
+to ordinary active default recomputation. Inactive values and origins remain
+recorded but render zero. Requires cannot introduce a retired target, including
+an already-satisfied type-zero requirement without a retained record.
+
+Settings Read and mutation results report deterministic declaration references
+through `TPL-W-NATIVE-DEPRECATED-ANSWER`, without scalar answer values. Update
+uses the same diagnostic. Optional deprecation references are reconstructed and
+fingerprinted in the internal plan; they are omitted when empty. Existing result
+DTO fields and `filesChanged` semantics are unchanged.
+
+Recorded rendering uses a separate opaque source/baseline snapshot calculation.
+It cannot become a fresh New preview or grant source, execution or publication
+authority. Settings transactions still reconstruct exact recorded beforeimages
+and explicit pairs during same-ID cold authentication. Secret values, managed
+conflict decisions and full lifecycle acceptance remain separate work.

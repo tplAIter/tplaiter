@@ -101,6 +101,9 @@ func runNativeUpdate(cmd *cobra.Command, c nativeUpdateControls) error {
 	}
 	env := newResult(op)
 	env.Project = trustProject(r.ProjectContext())
+	for _, w := range report.Deprecations {
+		env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-W-NATIVE-DEPRECATED-ANSWER", Severity: "warning", Message: w, Details: map[string]any{}})
+	}
 	env.PlanSHA256, env.CurrentRef, env.TargetRef = plan.Fingerprint(), report.Source.Root.Commit, report.Target.Root.Commit
 	for _, change := range report.Changes {
 		if change.Operation != "keep" {

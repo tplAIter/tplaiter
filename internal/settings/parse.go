@@ -34,6 +34,12 @@ func (e *UnknownSetGroupError) Error() string {
 // It returns the group id and typed value. Errors list permitted values (the
 // option list for select/multiselect).
 func ParseSet(tpl *manifest.Template, expr string) (group string, value any, err error) {
+	return ParseRecordedSet(tpl, expr, nil)
+}
+
+// ParseRecordedSet permits only retired values present in the supplied computation snapshot.
+// The lifecycle owner authenticates that snapshot; this codec grants no authority.
+func ParseRecordedSet(tpl *manifest.Template, expr string, prior Values) (group string, value any, err error) {
 	eq := strings.IndexByte(expr, '=')
 	if eq < 0 {
 		return "", nil, fmt.Errorf("value %q not in group=value format", expr)
@@ -53,6 +59,9 @@ func ParseSet(tpl *manifest.Template, expr string) (group string, value any, err
 	value, err = typeString(m.g, raw)
 	if err != nil {
 		return "", nil, fmt.Errorf("group %q: %w", group, err)
+	}
+	if err := checkRetention(m.g, value, prior); err != nil {
+		return "", nil, err
 	}
 	return group, value, nil
 }
@@ -96,6 +105,9 @@ func typeAnswers(tpl *manifest.Template, raw map[string]any) (Values, error) {
 		val, err := typeNative(m.g, raw[k])
 		if err != nil {
 			return nil, fmt.Errorf("group %q: %w", k, err)
+		}
+		if err := checkRetention(m.g, val, nil); err != nil {
+			return nil, err
 		}
 		out[k] = val
 	}
@@ -227,4 +239,78 @@ func parseBool(raw string) (bool, error) {
 	default:
 		return false, fmt.Errorf("value %q not boolean (true/false/yes/no/on/off/1/0)", raw)
 	}
+}
+
+// DeprecatedAnswerError names a declaration, never a scalar answer value.
+type DeprecatedAnswerError struct{ Group, Option string }
+
+func (e *DeprecatedAnswerError) Error() string {
+	if e.Option != "" {
+		return fmt.Sprintf("deprecated option %s=%s cannot be introduced", e.Group, e.Option)
+	}
+	return fmt.Sprintf("deprecated group %s cannot be introduced or changed", e.Group)
+}
+
+func checkRetention(g *manifest.SettingGroup, value any, prior Values) error {
+	old, present := prior[g.Group]
+	if g.Deprecated && (!present || !equalValue(old, value)) {
+		return &DeprecatedAnswerError{Group: g.Group}
+	}
+	for _, opt := range g.Options {
+		if opt.Deprecated && matchValue(value, opt.ID) && (!present || !matchValue(old, opt.ID)) {
+			return &DeprecatedAnswerError{Group: g.Group, Option: opt.ID}
+		}
+	}
+	return nil
+}
+
+func checkRecordedType(g *manifest.SettingGroup, value any) error {
+	switch g.Type {
+	case manifest.TypeToggle:
+		if _, ok := value.(bool); !ok {
+			return fmt.Errorf("recorded group %s requires bool", g.Group)
+		}
+	case manifest.TypeInt:
+		if _, ok := value.(int); !ok {
+			return fmt.Errorf("recorded group %s requires int", g.Group)
+		}
+	case manifest.TypeMultiselect:
+		list, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("recorded group %s requires list", g.Group)
+		}
+		for _, v := range list {
+			if err := checkOption(g, v); err != nil {
+				return err
+			}
+		}
+	default:
+		s, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("recorded group %s requires string", g.Group)
+		}
+		if g.Type == manifest.TypeSelect && s != "" {
+			return checkOption(g, s)
+		}
+	}
+	return nil
+}
+
+// ValidateFreshValues checks acquisition before an interactive form, without
+// prematurely resolving requires or constraints that the operator may change.
+func ValidateFreshValues(tpl *manifest.Template, values Values) error {
+	ids := make([]string, 0, len(values))
+	for id := range values {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	idx := indexGroups(tpl)
+	for _, id := range ids {
+		if m, ok := idx[id]; ok {
+			if err := checkRetention(m.g, values[id], nil); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

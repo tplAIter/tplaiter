@@ -10,6 +10,8 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"github.com/tplAIter/tplaiter/internal/settings"
 )
 
 func templateFixture(t *testing.T) fs.FS {
@@ -164,4 +166,23 @@ func testContext(t *testing.T) (context.Context, context.CancelFunc) {
 		return context.WithCancel(context.Background())
 	}
 	return context.WithDeadline(context.Background(), deadline.Add(-10*time.Second))
+}
+
+func TestDeprecatedRecordedScratchCannotBecomeFreshRender(t *testing.T) {
+	src := fstest.MapFS{"template.manifest.yaml": {Data: []byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata: {name: retired, version: 1.0.0, description: fixture}\nengine: {type: gotemplate, root: files}\nsettings:\n - {group: retired, title: Retired, type: toggle, deprecated: true}\n")}, "files/value.txt.tmpl": {Data: []byte("{{ index .Settings \"retired\" }}")}}
+	scratch := t.TempDir()
+	if err := os.Chmod(scratch, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	in := Input{Values: settings.Values{"retired": false}}
+	if _, err := RenderInScratch(context.Background(), src, in, scratch); err == nil {
+		t.Fatal("fresh render accepted retired record")
+	}
+	got, err := RenderRecordedInScratch(context.Background(), src, in, scratch, in.Values)
+	if err != nil || string(got.Files["value.txt"]) != "false" {
+		t.Fatal("recorded render refused", err)
+	}
+	if _, err := RenderRecordedInScratch(context.Background(), src, in, scratch, settings.Values{}); err == nil {
+		t.Fatal("absent record gained retention")
+	}
 }

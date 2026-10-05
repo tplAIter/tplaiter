@@ -105,3 +105,22 @@ func TestNoMigrationReportWireCompatibility(t *testing.T) {
 		t.Fatalf("ordinary migration framing changed: %v", err)
 	}
 }
+
+func TestDeprecatedSignedRecordTransformRetainsOnlyMovedRecords(t *testing.T) {
+	plan := &migrations.Plan{Before: []migrations.PlannedMigration{{Order: 0, Settings: migrations.MigrationSettings{Rename: map[string]string{"old": "retired"}, Delete: []string{"removed"}}}}}
+	moved, err := migrateAnswerRecords(plan, map[string]stateledger.Answer{"old": {Value: false, Source: "default"}, "removed": {Value: "x", Source: "user"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl := &manifest.Template{Settings: []manifest.SettingGroup{{Group: "retired", Type: manifest.TypeToggle, Deprecated: true}, {Group: "removed", Type: manifest.TypeString, Deprecated: true}}}
+	resolved, err := ResolveSettingsAnswers(tpl, moved, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved["retired"].Source != "migration" || resolved.Values["retired"] != false {
+		t.Fatal("signed transform retention lost")
+	}
+	if _, ok := resolved.Values["removed"]; ok {
+		t.Fatal("deleted record resurrected")
+	}
+}

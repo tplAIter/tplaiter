@@ -506,3 +506,33 @@ func t5DWriteCAS(t *testing.T, root, digest string, raw []byte) {
 		t.Fatal(err)
 	}
 }
+
+func TestDeprecatedSnapshotSeparateFromNewCapability(t *testing.T) {
+	testfixture.RequireTrustStore(t)
+	f := t5DNewIntegrationFixture(t, "  - {group: retired, title: Retired, type: toggle, deprecated: true}\n")
+	runtime, err := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: t5DClock{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	render := t5DRenderInput()
+	render.Values["retired"] = false
+	if _, err := PrepareNew(context.Background(), runtime, PrepareNewInput{SourceInput: t5DSelection(f.source, f.sourceRefs), Render: render, RendererVersion: "v1"}); err == nil {
+		t.Fatal("fresh native preparation accepted fake retained map")
+	}
+	snapshot, err := PrepareSnapshot(context.Background(), runtime, PrepareSnapshotInput{SourceInput: t5DSelection(f.source, f.sourceRefs), Render: render, RendererVersion: "v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !snapshot.ValidFor(runtime.TrustRuntime()) || snapshot.RootLock().Root.Commit != f.source.Commit {
+		t.Fatal("snapshot escaped signed source")
+	}
+	if _, ok := any(snapshot).(*PreparedNew); ok {
+		t.Fatal("snapshot convertible to fresh New")
+	}
+	copy := snapshot.Rendered()
+	copy.Resolved.Values["retired"] = true
+	if snapshot.Rendered().Resolved.Values["retired"] != false {
+		t.Fatal("snapshot aliases caller")
+	}
+}

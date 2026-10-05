@@ -59,7 +59,7 @@ func resolveSettingsExplicit(tpl *manifest.Template, explicit settings.Values, p
 	seen := map[string]bool{}
 	var submitted []string
 	for _, pair := range pairs {
-		key, value, err := settings.ParseSet(tpl, pair)
+		key, value, err := settings.ParseRecordedSet(tpl, pair, prior)
 		if err != nil {
 			return settings.Resolved{}, fmt.Errorf("%w: %w", ErrSettingsInput, err)
 		}
@@ -79,7 +79,7 @@ func resolveSettingsExplicit(tpl *manifest.Template, explicit settings.Values, p
 			return settings.Resolved{}, fmt.Errorf("%w: inactive group %q", ErrSettingsInput, key)
 		}
 	}
-	resolved, err := settings.Resolve(tpl, explicit)
+	resolved, err := settings.ResolveRecorded(tpl, prior, explicit)
 	if err != nil {
 		return settings.Resolved{}, fmt.Errorf("%w: %w", ErrSettingsInput, err)
 	}

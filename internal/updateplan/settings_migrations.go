@@ -11,6 +11,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/migrations"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/renderref"
+	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 )
 
@@ -115,10 +116,10 @@ func (b *Backend) migrationRender(ctx context.Context, in Input, old renderref.I
 	if err != nil {
 		return old, nil, nil, err
 	}
-	if plan == nil || len(plan.Before)+len(plan.After) == 0 {
+	if (plan == nil || len(plan.Before)+len(plan.After) == 0) && !settings.HasDeprecations(target) {
 		return old, migrated, plan, nil
 	}
-	resolved, err := ResolveSettingsAnswers(target, migrated, nil)
+	resolved, err := ResolveSettingsAnswers(target, migrated, in.SettingsPairs)
 	if err != nil {
 		return old, nil, nil, err
 	}

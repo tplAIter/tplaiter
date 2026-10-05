@@ -316,3 +316,24 @@ func containsStr(list []string, s string) bool {
 	}
 	return false
 }
+
+func TestDeprecatedFreshFlowOmitsRetiredBranches(t *testing.T) {
+	tpl := &manifest.Template{Settings: []manifest.SettingGroup{{Group: "old", Type: manifest.TypeString, Deprecated: true}, {Group: "choice", Type: manifest.TypeSelect, Default: "new", Options: []manifest.Option{{ID: "old", Deprecated: true, Settings: []manifest.SettingGroup{{Group: "child", Type: manifest.TypeString}}}, {ID: "new"}}}}}
+	groups := FreshGroups(tpl.Settings)
+	if len(groups) != 1 || len(groups[0].Options) != 1 || groups[0].Options[0].ID != "new" {
+		t.Fatal(groups)
+	}
+	var out bytes.Buffer
+	res, err := AskFlow(tpl, nil, FlowOptions{}, nil, &out, plainPalette())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := res.Values["old"]; ok {
+		t.Fatal("fresh group synthesized")
+	}
+	for _, opts := range []FlowOptions{{Defaults: true}, {Interactive: false}} {
+		if _, err := AskFlow(tpl, settings.Values{"choice": "old"}, opts, nil, &out, plainPalette()); err == nil {
+			t.Fatal("fresh flow accepted retired preset")
+		}
+	}
+}

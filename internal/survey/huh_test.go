@@ -131,3 +131,24 @@ func equalAny(a, b any) bool {
 	}
 	return a == b
 }
+
+func TestDeprecatedNativeChoiceBindings(t *testing.T) {
+	g := &manifest.SettingGroup{Group: "choice", Type: manifest.TypeSelect, Options: []manifest.Option{{ID: "old", Title: "Old", Deprecated: true}, {ID: "other", Title: "Other", Deprecated: true}, {ID: "new", Title: "New"}}}
+	fresh, _ := selectableOptions(g, nil)
+	if len(fresh) != 1 || fresh[0].Value != "new" {
+		t.Fatal("fresh retired choices", fresh)
+	}
+	retained, _ := selectableOptions(g, []string{"old"})
+	if len(retained) != 2 || retained[0].Value != "old" || !strings.Contains(retained[0].Key, "deprecated") {
+		t.Fatal("retained choices", retained)
+	}
+	bd := newBinding(g, "old")
+	if _, err := bd.field(); err != nil {
+		t.Fatal(err)
+	}
+	g.Deprecated = true
+	form, binds, err := buildForm([]manifest.SettingGroup{*g}, settings.Values{"choice": "old"})
+	if err != nil || form == nil || binds["choice"].value() != "old" {
+		t.Fatal("read-only binding missing", err)
+	}
+}

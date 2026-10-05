@@ -123,6 +123,7 @@ type SettingGroup struct {
 	Title       string `yaml:"title"`
 	Description string `yaml:"description"`
 	Type        string `yaml:"type"`
+	Deprecated  bool   `yaml:"deprecated,omitempty"`
 	// Default is the default value; its concrete type depends on Type (string for
 	// select/string, []any for multiselect, bool for toggle, int for int). The
 	// validator checks consistency.
@@ -137,6 +138,7 @@ type Option struct {
 	Title       string            `yaml:"title"`
 	Description string            `yaml:"description"`
 	Status      string            `yaml:"status"`
+	Deprecated  bool              `yaml:"deprecated,omitempty"`
 	Requires    []string          `yaml:"requires"`
 	Settings    []SettingGroup    `yaml:"settings"`
 	Vars        map[string]string `yaml:"vars"`

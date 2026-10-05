@@ -145,3 +145,31 @@ func names(combos []Combo) []string {
 	}
 	return out
 }
+
+func TestDeprecatedCombosExcludeBranchesWithoutHidingInvalidSupported(t *testing.T) {
+	tpl := &manifest.Template{Settings: []manifest.SettingGroup{
+		{Group: "retired", Type: manifest.TypeToggle, Deprecated: true},
+		{Group: "choice", Type: manifest.TypeSelect, Options: []manifest.Option{{ID: "old", Deprecated: true, Settings: []manifest.SettingGroup{{Group: "hidden", Type: manifest.TypeToggle}}}, {ID: "new"}}},
+	}, Constraints: []manifest.Constraint{{If: "choice=new", Require: "retired=true"}}}
+	found := false
+	for _, c := range Combos(tpl) {
+		if _, ok := c.Explicit["retired"]; ok {
+			t.Fatal("retired constraint synthesized", c)
+		}
+		if _, ok := c.Explicit["hidden"]; ok {
+			t.Fatal("retired branch generated", c)
+		}
+		if c.Name == "choice=old" {
+			t.Fatal("retired choice generated")
+		}
+		if c.Name == "choice=new" {
+			found = true
+			if _, err := settings.Resolve(tpl, c.Explicit); err == nil {
+				t.Fatal("invalid supported combo silently accepted")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("invalid supported combo silently dropped")
+	}
+}

@@ -115,5 +115,31 @@ existing wire version and omits the optional migration report field.
 Settings Read/reanswer and offline Diff verify retained applied history against
 the current signed manifest. They do not reapply migrations. Ordered migration
 IDs are reported as diagnostics without answer values. This supported slice is
-data-only: deprecated/secret answers, managed-block keep/drop/rename, and other
+data-only: secret answers, managed-block keep/drop/rename, and other
 lifecycle views remain separate work.
+
+## Recorded deprecated answers across Update
+
+Signed target declarations may retire groups or options with `deprecated: true`.
+The original signed source and its recorded answers still form the three-way
+base. Selected data-only migrations transform complete answer records first;
+only those retained or moved records supply the target's deprecated retention
+context. Deleted records are not resurrected, and missing defaults cannot confer
+retention rights. Retirement without a selected key migration also retains
+existing answers. Ordinary supported active defaults still follow target defaults
+and requires; inactive snapshots keep exact values and origins while rendering
+zero. Untouched retired default-origin values deliberately retain their records.
+
+Source-before rendering uses a read-only opaque snapshot carrier, separate from
+fresh New preparation. Target retention is detached calculation context rebuilt
+from authenticated marker or sealed beforeimages at publication and cold replay.
+No caller boolean, origin label, answers file or decoded preview grants authority.
+
+Dry-run remains read-only. Answer records, migration ledger, rendered files,
+baseline, ownership and locks publish in the existing transaction. Same-ID cold
+continuation reconstructs the exact fingerprint, including optional deprecation
+references. Stale preimages, caller-rehashed origins, references or source
+bindings are refused. Non-deprecated no-migration materials retain their existing
+shape and behavior. `TPL-W-NATIVE-DEPRECATED-ANSWER` reports declaration references
+without scalar answer values. See [Native Settings](native-settings.md) for
+retained reanswer choices, fresh input refusals and the default-origin exception.
