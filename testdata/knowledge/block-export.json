@@ -1,0 +1,31 @@
+{
+  "apiVersion": "tplater.dev/block-export/v1",
+  "kind": "BlockExport",
+  "metadata": {
+    "id": "synthetic",
+    "version": "1.0.0"
+  },
+  "compatibility": {
+    "tplater": ">=1.0.0",
+    "markerSchema": "tplater.dev/managed-block/v1"
+  },
+  "mergeStrategy": "managed-blocks-v1",
+  "formatter": {
+    "adapter": "none",
+    "optionsDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "targets": [
+    {
+      "path": "README.md",
+      "blocks": [
+        {
+          "id": "intro",
+          "provider": "synthetic",
+          "layout": "per_entity",
+          "body": "blocks/intro.md",
+          "order": 1
+        }
+      ]
+    }
+  ]
+}

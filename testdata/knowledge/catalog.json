@@ -1,0 +1,247 @@
+{
+  "apiVersion": "tplaiter.dev/knowledge/v1",
+  "kind": "KnowledgeCatalog",
+  "id": "example:catalog:core",
+  "version": "1.0.0",
+  "sources": [
+    {
+      "id": "example:source:template",
+      "pin": {
+        "apiVersion": "tplaiter.dev/pinned-source/v1",
+        "alias": "synthetic",
+        "providerID": "synthetic",
+        "origin": "https://example.test/templates.git",
+        "templatePath": ".",
+        "requestedRef": "v1.0.0",
+        "commitAlgorithm": "sha1",
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "treeDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "contentDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "contractDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "evidenceDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "parameters": [],
+        "dependencies": []
+      },
+      "anchor": {
+        "origin": "https://example.test/templates.git",
+        "templatePath": ".",
+        "requestedRef": "v1.0.0",
+        "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "treeSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "contractSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "statementCAS": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "signatureCAS": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "keyFingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "checkpointCAS": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "inclusionProofCAS": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      }
+    }
+  ],
+  "items": [
+    {
+      "id": "example:block:intro",
+      "kind": "block",
+      "version": "1.0.0",
+      "sourceId": "example:source:template",
+      "sourcePath": "blocks/intro.md",
+      "contentSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "mode": "100644",
+      "ownership": {
+        "ownerId": "example:owner:publisher",
+        "version": "1.0.0",
+        "policySHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "updateTriggers": [
+        "source",
+        "content",
+        "contract",
+        "version"
+      ],
+      "requires": [],
+      "produces": [],
+      "executor": {
+        "id": "example:executor:reader",
+        "version": "1.0.0",
+        "inputContractSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "outputContractSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "quality": [
+        {
+          "id": "example:quality:lint",
+          "version": "1.0.0",
+          "contractSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "state": "unresolved"
+        }
+      ],
+      "export": {
+        "id": "intro",
+        "domain": "block",
+        "name": "intro",
+        "version": "1.0.0",
+        "contentDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "parameters": [],
+        "toolDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "requires": [
+          {
+            "selector": "synthetic.skill.review",
+            "contractDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "compatibleRange": "^1.0.0"
+          }
+        ]
+      },
+      "inputs": {
+        "apiVersion": "tplaiter.dev/knowledge-inputs/v1",
+        "contextFloor": [],
+        "definitions": []
+      }
+    },
+    {
+      "id": "example:skill:review",
+      "kind": "skill",
+      "version": "1.0.0",
+      "sourceId": "example:source:template",
+      "sourcePath": "skills/review.md",
+      "contentSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "mode": "100644",
+      "ownership": {
+        "ownerId": "example:owner:publisher",
+        "version": "1.0.0",
+        "policySHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "updateTriggers": [
+        "source",
+        "content",
+        "contract",
+        "version"
+      ],
+      "requires": [
+        "example:block:intro"
+      ],
+      "produces": [
+        "example:resource:checklist"
+      ],
+      "executor": {
+        "id": "example:executor:reader",
+        "version": "1.0.0",
+        "inputContractSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "outputContractSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "quality": [
+        {
+          "id": "example:quality:lint",
+          "version": "1.0.0",
+          "contractSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "state": "unresolved"
+        }
+      ],
+      "inputs": {
+        "apiVersion": "tplaiter.dev/knowledge-inputs/v1",
+        "contextFloor": [
+          "example:block:intro"
+        ],
+        "definitions": [
+          {
+            "name": "review-target",
+            "required": true,
+            "type": "string",
+            "nullable": false,
+            "constraints": {
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9/-]*$"
+            }
+          },
+          {
+            "name": "format",
+            "required": false,
+            "type": "boolean",
+            "nullable": false,
+            "default": false,
+            "constraints": {}
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "type": "integer",
+            "nullable": true,
+            "default": null,
+            "constraints": {
+              "minimum": 0,
+              "maximum": 20,
+              "enum": [
+                null,
+                0,
+                10,
+                20
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "example:resource:checklist",
+      "kind": "resource",
+      "version": "1.0.0",
+      "sourceId": "example:source:template",
+      "sourcePath": "resources/checklist.md",
+      "contentSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "mode": "100644",
+      "ownership": {
+        "ownerId": "example:owner:publisher",
+        "version": "1.0.0",
+        "policySHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "updateTriggers": [
+        "source",
+        "content",
+        "contract",
+        "version"
+      ],
+      "requires": [],
+      "produces": [],
+      "executor": {
+        "id": "example:executor:reader",
+        "version": "1.0.0",
+        "inputContractSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "outputContractSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "quality": [
+        {
+          "id": "example:quality:lint",
+          "version": "1.0.0",
+          "contractSHA256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "state": "unresolved"
+        }
+      ],
+      "inputs": {
+        "apiVersion": "tplaiter.dev/knowledge-inputs/v1",
+        "contextFloor": [],
+        "definitions": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "example:block:intro",
+      "to": "example:skill:review",
+      "layer": "export",
+      "relation": "selected-by",
+      "state": "declared"
+    },
+    {
+      "from": "example:block:intro",
+      "to": "example:resource:checklist",
+      "layer": "semantic",
+      "relation": "references",
+      "state": "static"
+    },
+    {
+      "from": "example:skill:review",
+      "to": "example:resource:missing",
+      "layer": "package",
+      "relation": "includes",
+      "state": "unresolved"
+    }
+  ]
+}
