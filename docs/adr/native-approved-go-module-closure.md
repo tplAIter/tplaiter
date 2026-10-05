@@ -37,7 +37,7 @@ compiler failure retains its process receipt and reports no committed changes;
 a rollback conflict remains a transaction failure. `--no-build` continues to be
 an explicit file-only operation, without approval or preparation controls.
 
-## Public evidence qualification
+## Historical local metadata-overlay evidence
 
 The focused Temporal fixture renders the actual public template-go main
 `d0179547cd2e47b7564b0011bc5045799fc036bd` with workflow enabled. Its exact
@@ -48,13 +48,45 @@ uses proxy.golang.org and sum.golang.org before enrollment. Runtime execution is
 offline. The acquired graph and checksum evidence remain separate from source
 publication evidence.
 
-That published template has no native build declaration. The isolated template
-change adds only literal build metadata, the two indexes and the updated manifest
-contract digest. Until the parent publishes it, the installed proof authenticates
-an explicitly named LOCAL unpublished metadata-overlay fixture with synthetic
-publisher/approver keys. It proves actual dependency-bearing CLI/MCP execution
-and the scoped authorization contract, not publication of new GitHub metadata,
-full U13 completion, other platforms, or private Astra provenance.
+At that historical `d0179547` checkpoint, the published template had no native
+build declaration. The isolated template change added only literal build
+metadata, the two indexes and the updated manifest contract digest. The installed
+proof authenticated an explicitly named LOCAL unpublished metadata-overlay
+fixture with synthetic publisher/approver keys. It remains evidence of actual
+dependency-bearing CLI/MCP execution and the scoped authorization contract for
+that fixture, not a replay of subsequently published GitHub metadata, full U13
+completion, other platforms, or provenance for any other source.
+
+## Published source and pending installed replay
+
+Core [`e49dd1f77492388e02b638ad6db1265224b97fcd`](https://github.com/tplAIter/tplaiter/commit/e49dd1f77492388e02b638ad6db1265224b97fcd)
+publishes the v2 authenticated offline module-closure runner and default native
+CLI/MCP `gen`/`gen batch` build path. Preparation binds the exact projected inputs
+to a gen-scoped persistent approval before applying files; the transaction commits
+only after the approved compiler succeeds. This is published implementation,
+not an installed replay verdict.
+
+Public template-go
+[`57136713797afd1c99c294b97b07da5544cf8a3b`](https://github.com/tplAIter/template-go/commit/57136713797afd1c99c294b97b07da5544cf8a3b)
+publishes the literal [v2 build declaration](https://github.com/tplAIter/template-go/blob/57136713797afd1c99c294b97b07da5544cf8a3b/actions/run/build.json)
+with `genBuild: true` and authenticated toolchain/module index digests. Its bounded
+scope is the exact `workflow=true` module manifest, including Temporal Go SDK
+v1.29.1, on Darwin/arm64 with the pinned Go 1.27.1 toolchain. Compilation does not
+establish Temporal client/worker execution or all-variant acceptance.
+
+The published [README qualification](https://github.com/tplAIter/template-go/blob/57136713797afd1c99c294b97b07da5544cf8a3b/README.md#native-offline-build-scope)
+keeps `workflow=false` as the template default, unsupported by this v2 build
+metadata. Native `run build` and default generation refuse with
+`TRUST_GO_MODULE_CLOSURE_UNAVAILABLE` before compiler execution; default generation
+refuses before applying files. There is no automatic dependency-free v1 fallback,
+ambient cache/toolchain fallback or online dependency resolution. Explicit
+`--no-build` remains file-only generation.
+
+Independent installed CLI/MCP replay against these exact published core/template
+sources remains pending. The historical local metadata-overlay proof above is
+retained under its original qualification and is not relabeled as that replay.
+The default-false module variant, other platforms, formatter, hooks, ordinary
+executable actions, full U13 and whole-beta acceptance remain open.
 
 For shared schemas, extract the named `run`, `gen` and `gen_batch` entries from the
 actual installed stdio `tools/list`. The parent must splice only these entries,
