@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/tplAIter/tplaiter/internal/adoptionpolicy"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
@@ -31,23 +32,24 @@ type UpdateFile struct {
 	Inode     uint64      `json:"inode"`
 }
 type UpdateMaterial struct {
-	SettingsPairs       []string                 `json:"settingsPairs,omitempty"`
-	RegistryDevice      uint64                   `json:"registryDevice"`
-	RegistryInode       uint64                   `json:"registryInode"`
-	Version             int                      `json:"version"`
-	Root                string                   `json:"root"`
-	Home                string                   `json:"home"`
-	ProjectID           string                   `json:"projectID"`
-	Binding             bootstrap.ProfileBinding `json:"binding"`
-	RendererVersion     string                   `json:"rendererVersion"`
-	SourceInput         UpdateBytes              `json:"sourceInput"`
-	TargetInput         UpdateBytes              `json:"targetInput"`
-	ExpectedFingerprint string                   `json:"expectedFingerprint"`
-	ControlAdded        bool                     `json:"controlAdded"`
-	Before              map[string]UpdateFile    `json:"before"`
-	After               map[string]UpdateFile    `json:"after"`
-	Registry            UpdateRegistry           `json:"registry"`
-	Fingerprint         string                   `json:"fingerprint"`
+	Protection          *adoptionpolicy.Protection `json:"protection,omitempty"`
+	SettingsPairs       []string                   `json:"settingsPairs,omitempty"`
+	RegistryDevice      uint64                     `json:"registryDevice"`
+	RegistryInode       uint64                     `json:"registryInode"`
+	Version             int                        `json:"version"`
+	Root                string                     `json:"root"`
+	Home                string                     `json:"home"`
+	ProjectID           string                     `json:"projectID"`
+	Binding             bootstrap.ProfileBinding   `json:"binding"`
+	RendererVersion     string                     `json:"rendererVersion"`
+	SourceInput         UpdateBytes                `json:"sourceInput"`
+	TargetInput         UpdateBytes                `json:"targetInput"`
+	ExpectedFingerprint string                     `json:"expectedFingerprint"`
+	ControlAdded        bool                       `json:"controlAdded"`
+	Before              map[string]UpdateFile      `json:"before"`
+	After               map[string]UpdateFile      `json:"after"`
+	Registry            UpdateRegistry             `json:"registry"`
+	Fingerprint         string                     `json:"fingerprint"`
 }
 
 // TransactionMaterial is available only on an opaque authenticated plan. The
@@ -160,6 +162,10 @@ func materialFromPlan(p *Plan, actual *observation, added bool) (UpdateMaterial,
 		return UpdateMaterial{}, err
 	}
 	m := UpdateMaterial{SettingsPairs: append([]string(nil), p.input.SettingsPairs...), Version: 1, Root: p.report.Root, Home: p.owner.home, ProjectID: p.report.ProjectID, Binding: p.owner.runtime.TrustRuntime().Binding(), RendererVersion: p.owner.rendererVersion, SourceInput: bytes.Clone(p.input.SourceInput), TargetInput: bytes.Clone(p.input.TargetInput), ExpectedFingerprint: p.digest, ControlAdded: added, Before: map[string]UpdateFile{}, After: map[string]UpdateFile{}, Registry: updateRegistry(intent.registry)}
+	if p.policy != nil {
+		m.Version = 2
+		m.Protection = p.protection
+	}
 	for _, i := range actual.images {
 		device, inode := updateFileID(actual.identities[i.Path])
 		f := UpdateFile{Data: bytes.Clone(actual.files[i.Path]), Mode: i.Mode, Directory: i.Kind == "directory", Device: device, Inode: inode}
@@ -187,7 +193,11 @@ func materialFromPlan(p *Plan, actual *observation, added bool) (UpdateMaterial,
 
 func updateMaterialFingerprint(m UpdateMaterial) (string, error) {
 	m.Fingerprint = ""
-	return bootstrap.DomainDigest(updateMaterialDomain, m)
+	domain := updateMaterialDomain
+	if m.Version == 2 {
+		domain = "tplaiter.dev/native-update-material/v2"
+	}
+	return bootstrap.DomainDigest(domain, m)
 }
 
 // AuthenticateUpdateMaterial freshly reconstructs signed source AND target and
@@ -195,7 +205,10 @@ func updateMaterialFingerprint(m UpdateMaterial) (string, error) {
 // tree as stable and cannot authorize publication or recovery. Actual root/phase
 // ownership belongs to the authenticated engine receipt and retained lease.
 func AuthenticateUpdateMaterial(ctx context.Context, r *trustload.Runtime, actualRendererVersion string, m UpdateMaterial) error {
-	if ctx == nil || r == nil || r.TrustRuntime() == nil || m.Version != 1 || actualRendererVersion == "" || m.RendererVersion != actualRendererVersion || r.ProjectContext().RootPath != m.Root || !r.TrustRuntime().Binding().Equal(m.Binding) || len(m.SourceInput) == 0 || len(m.SourceInput) > 1<<20 || len(m.TargetInput) == 0 || len(m.TargetInput) > 1<<20 {
+	if ctx == nil || r == nil || r.TrustRuntime() == nil || (m.Version != 1 && m.Version != 2) || actualRendererVersion == "" || m.RendererVersion != actualRendererVersion || r.ProjectContext().RootPath != m.Root || !r.TrustRuntime().Binding().Equal(m.Binding) || len(m.SourceInput) == 0 || len(m.SourceInput) > 1<<20 || len(m.TargetInput) == 0 || len(m.TargetInput) > 1<<20 {
+		return ErrInvalid
+	}
+	if (m.Version == 2) != (m.Protection != nil) {
 		return ErrInvalid
 	}
 	if err := r.TrustRuntime().CheckProjectIdentity(ctx, m.Root, m.ProjectID); err != nil {
@@ -227,7 +240,7 @@ func AuthenticateUpdateMaterial(ctx context.Context, r *trustload.Runtime, actua
 		return err
 	}
 	reg := &registryObservation{raw: bytes.Clone(m.Registry.BeforeContent), mode: m.Registry.Before.Mode}
-	p, err := b.reconstruct(ctx, Input{SourceInput: m.SourceInput, TargetInput: m.TargetInput, SettingsPairs: m.SettingsPairs}, observed, reg)
+	p, err := b.reconstruct(ctx, Input{SourceInput: m.SourceInput, TargetInput: m.TargetInput, SettingsPairs: m.SettingsPairs}, observed, reg, m.Protection)
 	if err != nil {
 		return err
 	}

@@ -32,7 +32,7 @@ func (s *Server) addLinkTools() {
 	data, _ := schemaOf[resultdto.ProjectLinkData]()
 	output, _ := resultdto.OperationsSchema([]resultdto.Operation{resultdto.OperationProjectLink, resultdto.OperationProjectAdopt}, data)
 	s.mcp.AddTool(mcp.NewTool("project_link",
-		mcp.WithDescription("Link/adopt signed state only; preserves user files. Conflicts require ownership path=track. Exclusions unavailable. Cold recovery uses qualified CLI commands."),
+		mcp.WithDescription("Link/adopt signed state only; preserves user files. Conflicts require explicit ownership path=track or path=user-owned. User-owned adoption preserves full signed baseline lineage and excludes those paths from Update writes. Cold recovery uses qualified CLI commands."),
 		mcp.WithString("action", mcp.Required(), mcp.Enum("link", "adopt")), mcp.WithString("dir", mcp.Required()), mcp.WithString("projectContext"), mcp.WithString("ref", mcp.Required()), mcp.WithString("name", mcp.Required()), mcp.WithString("sourceInput", mcp.Required()), mcp.WithString("module"), mcp.WithObject("ownership"), mcp.WithBoolean("dryRun", mcp.DefaultBool(false)),
 		mcp.WithReadOnlyHintAnnotation(false), mcp.WithDestructiveHintAnnotation(false), mcp.WithIdempotentHintAnnotation(false), mcp.WithOpenWorldHintAnnotation(false), mcp.WithRawOutputSchema(output),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

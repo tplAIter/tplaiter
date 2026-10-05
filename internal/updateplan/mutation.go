@@ -75,6 +75,9 @@ func buildMutation(p *Plan) (*mutationIntent, error) {
 			}
 			continue
 		}
+		if protectsMutation(p.policy, c.Path) {
+			return nil, ErrUnsafe
+		}
 		item := mutationImage{path: c.Path}
 		if exists {
 			if before.Kind != "file" || before.SHA256 != evidencecas.Digest(p.observed.files[c.Path]) {
@@ -107,6 +110,9 @@ func buildMutation(p *Plan) (*mutationIntent, error) {
 		out.changes = append(out.changes, item)
 	}
 	for parent := range parents {
+		if protectsMutation(p.policy, parent) {
+			return nil, ErrUnsafe
+		}
 		if seen[parent] {
 			return nil, ErrUnsafe
 		}

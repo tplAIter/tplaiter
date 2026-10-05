@@ -36,7 +36,7 @@ func newDiffCmd() *cobra.Command {
 		if len(env.Changes) > 0 {
 			env.Status = resultdto.StatusChanges
 		}
-		if err = env.SetData(resultdto.ProjectDiffData{Offline: true, FilesChecked: report.FilesChecked, BlocksChecked: report.BlocksChecked}); err != nil {
+		if err = env.SetData(resultdto.ProjectDiffData{Excluded: report.Excluded, Offline: true, FilesChecked: report.FilesChecked, BlocksChecked: report.BlocksChecked}); err != nil {
 			return err
 		}
 		code := resultdto.ExitSuccess

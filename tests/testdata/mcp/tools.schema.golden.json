@@ -509,7 +509,411 @@
       "type": "object"
     }
   },
-  {"annotations":{"readOnlyHint":false,"destructiveHint":false,"idempotentHint":false,"openWorldHint":false},"description":"Link/adopt signed state only; preserves user files. Conflicts require ownership path=track. Exclusions unavailable. Cold recovery uses qualified CLI commands.","inputSchema":{"properties":{"action":{"enum":["link","adopt"],"type":"string"},"dir":{"type":"string"},"dryRun":{"default":false,"type":"boolean"},"module":{"type":"string"},"name":{"type":"string"},"ownership":{"properties":{},"type":"object"},"projectContext":{"type":"string"},"ref":{"type":"string"},"sourceInput":{"type":"string"}},"required":["action","dir","ref","name","sourceInput"],"type":"object"},"name":"project_link","outputSchema":{"$defs":{"project":{"properties":{"id":{"type":"string"},"root":{"type":"string"}},"required":["id","root"],"type":"object"}},"allOf":[{"if":{"properties":{"operation":{"const":"project.link"}},"required":["operation"]},"then":{"properties":{"kind":{"const":"ProjectLink"}}}},{"if":{"properties":{"operation":{"const":"project.adopt"}},"required":["operation"]},"then":{"properties":{"kind":{"const":"ProjectAdopt"}}}},{"if":{"properties":{"operation":{"enum":["project.link","project.adopt"]},"status":{"enum":["ok","changes","conflicted"]}},"required":["operation","status"]},"then":{"properties":{"project":{"$ref":"#/$defs/project"}}}}],"properties":{"apiVersion":{"const":"tplaiter.dev/result/v1"},"artifacts":{"items":{"properties":{"name":{"type":"string"},"path":{"type":"string"},"sha256":{"type":"string"}},"required":["name","path","sha256"],"type":"object"},"type":"array"},"changes":{"items":{"properties":{"action":{"type":"string"},"blockId":{"type":"string"},"path":{"type":"string"},"provider":{"type":"string"}},"required":["path","action"],"type":"object"},"type":"array"},"data":{"additionalProperties":false,"properties":{"action":{"type":"string"},"dryRun":{"type":"boolean"},"ref":{"type":"string"},"trackedConflicts":{"items":{"additionalProperties":false,"properties":{"choice":{"type":"string"},"path":{"type":"string"},"state":{"type":"string"}},"required":["path","state","choice"],"type":"object"},"type":["null","array"]}},"required":["action","dryRun","ref","trackedConflicts"],"type":"object"},"diagnostics":{"items":{"properties":{"blockId":{"type":"string"},"code":{"type":"string"},"details":{"type":"object"},"hint":{"type":"string"},"message":{"type":"string"},"path":{"type":"string"},"severity":{"enum":["error","warning","info"]}},"required":["code","severity","message","details"],"type":"object"},"type":"array"},"kind":{"enum":["ProjectAdopt","ProjectLink"]},"meta":{"properties":{"schemaVersion":{"const":1},"tplaiterVersion":{"type":"string"}},"required":["tplaiterVersion","schemaVersion"],"type":"object"},"operation":{"enum":["project.link","project.adopt"]},"project":{"anyOf":[{"type":"null"},{"$ref":"#/$defs/project"}]},"status":{"enum":["ok","changes","conflicted","blocked","failed","not-applicable"]},"summary":{"properties":{"blocksChanged":{"minimum":0,"type":"integer"},"conflicts":{"minimum":0,"type":"integer"},"filesChanged":{"minimum":0,"type":"integer"}},"required":["filesChanged","blocksChanged","conflicts"],"type":"object"},"transactionId":{"type":["string","null"]}},"required":["apiVersion","kind","operation","status","project","transactionId","summary","changes","diagnostics","artifacts","meta"],"type":"object"}},
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Link/adopt signed state only; preserves user files. Conflicts require explicit ownership path=track or path=user-owned. User-owned adoption preserves full signed baseline lineage and excludes those paths from Update writes. Cold recovery uses qualified CLI commands.",
+    "inputSchema": {
+      "properties": {
+        "action": {
+          "enum": [
+            "link",
+            "adopt"
+          ],
+          "type": "string"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "dryRun": {
+          "default": false,
+          "type": "boolean"
+        },
+        "module": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ownership": {
+          "properties": {},
+          "type": "object"
+        },
+        "projectContext": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "sourceInput": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "dir",
+        "ref",
+        "name",
+        "sourceInput"
+      ],
+      "type": "object"
+    },
+    "name": "project_link",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "project.link"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "ProjectLink"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "project.adopt"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "ProjectAdopt"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "project.link",
+                  "project.adopt"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "excludedPaths": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "ownershipChoices": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "choice": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path",
+                  "state",
+                  "choice"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "ref": {
+              "type": "string"
+            },
+            "trackedConflicts": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "choice": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path",
+                  "state",
+                  "choice"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "action",
+            "dryRun",
+            "ref",
+            "trackedConflicts"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "enum": [
+            "ProjectAdopt",
+            "ProjectLink"
+          ]
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "enum": [
+            "project.link",
+            "project.adopt"
+          ]
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
   {
     "annotations": {
       "destructiveHint": false,
@@ -3683,6 +4087,57 @@
           "properties": {
             "blocksChecked": {
               "type": "integer"
+            },
+            "excluded": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "currentSHA256": {
+                    "type": "string"
+                  },
+                  "drift": {
+                    "type": "boolean"
+                  },
+                  "expectedSHA256": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "policy": {
+                    "type": "string"
+                  },
+                  "present": {
+                    "type": "boolean"
+                  },
+                  "referenceCommit": {
+                    "type": "string"
+                  },
+                  "referenceScope": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path",
+                  "policy",
+                  "present",
+                  "mode",
+                  "expectedSHA256",
+                  "referenceCommit",
+                  "referenceScope",
+                  "drift"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
             },
             "filesChecked": {
               "type": "integer"

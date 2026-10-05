@@ -104,7 +104,15 @@ func (t *Transaction) authenticate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fresh, err := linkcmd.Reconstruct(ctx, t.runtime, t.home, t.intent.Input, t.intent.Renderer)
+	stamp, err := time.Parse(time.RFC3339Nano, t.intent.Stamp)
+	if err != nil {
+		return engine.ErrAuthentication
+	}
+	before := map[string]linkcmd.File{}
+	for path, f := range m.Before {
+		before[path] = linkcmd.File{Data: bytes.Clone(f.Data), Mode: f.Mode, Directory: f.Directory, Device: f.Device, Inode: f.Inode}
+	}
+	fresh, err := linkcmd.ReconstructProjected(ctx, t.runtime, t.home, t.intent.Input, t.intent.Renderer, stamp, before)
 	if err != nil {
 		return err
 	}

@@ -136,17 +136,23 @@ func prepare(ctx context.Context, r *trustload.Runtime, home string, in Input, r
 		}
 		choice := in.Choices[name]
 		expected[name] = true
-		if choice == "user-owned" {
-			return nil, ErrExclusion
-		}
-		if in.Action != "adopt" || choice != "track" {
+		if in.Action != "adopt" || choice != "track" && choice != "user-owned" {
 			return nil, fmt.Errorf("%w: %s (%s)", ErrConflict, name, status)
 		}
 		report.Conflicts = append(report.Conflicts, Conflict{name, status, choice})
 	}
 	for name, choice := range in.Choices {
-		if !expected[name] || choice != "track" {
+		if !expected[name] || choice != "track" && choice != "user-owned" {
 			return nil, ErrInput
+		}
+	}
+	projected, err := ProjectAdoption(images, in, renderer, stamp, before)
+	if err != nil {
+		return nil, err
+	}
+	for path, raw := range projected {
+		if strings.HasPrefix(path, ".tplaiter/") {
+			managed[path] = raw
 		}
 	}
 	managed[".tplaiter/update.lock"] = []byte{}
@@ -290,4 +296,31 @@ func cloneInput(in Input) Input {
 	}
 	in.Choices = v
 	return in
+}
+
+// ReconstructProjected uses authenticated original observations, never a partial tree.
+func ReconstructProjected(ctx context.Context, r *trustload.Runtime, home string, in Input, renderer string, stamp time.Time, before map[string]File) (map[string][]byte, error) {
+	sel, err := operationtrust.DecodeSourceSelection(in.Source)
+	if err != nil {
+		return nil, err
+	}
+	if in.Ref != sel.Subject.Commit || sel.Subject.RequestedRef != in.Ref {
+		return nil, ErrInput
+	}
+	images, err := newcmd.PrepareNativeImage(ctx, newcmd.Options{Ref: in.Ref, ProjectName: in.Name, Dir: r.ProjectContext().RootPath, Module: in.Module, Port: in.Port, Sets: in.Sets, Defaults: true, CLIVersion: renderer}, newcmd.Deps{Runtime: r, Home: home, SourceInput: in.Source})
+	if err != nil {
+		return nil, err
+	}
+	projected, err := ProjectAdoption(images, in, renderer, stamp, before)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]byte{}
+	for p, b := range projected {
+		if strings.HasPrefix(p, ".tplaiter/") {
+			out[p] = b
+		}
+	}
+	out[".tplaiter/update.lock"] = []byte{}
+	return out, nil
 }

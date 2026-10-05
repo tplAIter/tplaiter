@@ -119,7 +119,7 @@ func newLinkCmd(action string) *cobra.Command {
 	f.StringVar(&source, "source-input", "", "pinned signed source selection")
 	f.StringVar(&module, "module", "", "project module used to reconstruct signed baseline")
 	f.StringArrayVar(&sets, "set", nil, "setting group=value")
-	f.StringArrayVar(&choices, "ownership", nil, "explicit conflict choice path=track; user-owned template exclusions are unavailable")
+	f.StringArrayVar(&choices, "ownership", nil, "explicit conflict choice path=track or path=user-owned")
 	f.IntVar(&port, "port", 0, "project port used in signed rendering")
 	f.BoolVar(&dry, "dry-run", false, "authenticate and prepare without publication")
 	for _, verb := range []string{"continue", "abort"} {
@@ -130,7 +130,13 @@ func newLinkCmd(action string) *cobra.Command {
 func linkData(action string, dry bool, ref string, report linkcmd.Report) resultdto.ProjectLinkData {
 	data := resultdto.ProjectLinkData{Action: action, DryRun: dry, Ref: ref, TrackedConflicts: []resultdto.LinkOwnershipChoice{}}
 	for _, v := range report.Conflicts {
-		data.TrackedConflicts = append(data.TrackedConflicts, resultdto.LinkOwnershipChoice{Path: v.Path, State: v.State, Choice: v.Choice})
+		choice := resultdto.LinkOwnershipChoice{Path: v.Path, State: v.State, Choice: v.Choice}
+		data.OwnershipChoices = append(data.OwnershipChoices, choice)
+		if v.Choice == "track" {
+			data.TrackedConflicts = append(data.TrackedConflicts, choice)
+		} else if v.Choice == "user-owned" {
+			data.ExcludedPaths = append(data.ExcludedPaths, v.Path)
+		}
 	}
 	return data
 }

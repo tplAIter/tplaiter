@@ -56,7 +56,17 @@ func BeginUpdate(ctx context.Context, p *updateplan.Plan, expected string) (*Upd
 	if err := physical.ValidateLocked(ctx, m); err != nil {
 		return fail(err)
 	}
-	if err := physical.Seal(ctx, m); err != nil {
+	var sealErr error
+	if fresh.Version == 2 {
+		scope, e := engine.ScopeAdoption(ctx, physical)
+		if e != nil {
+			return fail(e)
+		}
+		sealErr = scope.Seal(ctx, m)
+	} else {
+		sealErr = physical.Seal(ctx, m)
+	}
+	if err := sealErr; err != nil {
 		return fail(err)
 	}
 	return t, nil
@@ -75,7 +85,28 @@ func OpenUpdate(ctx context.Context, r *trustload.Runtime, home, id, actualRende
 		t.Release()
 		return nil, err
 	}
-	if err := physical.Admit(ctx); err != nil {
+	var admitErr error
+	checked, e := physical.CheckedMaterial()
+	if e != nil {
+		t.Release()
+		return nil, e
+	}
+	var intent updateplan.UpdateMaterial
+	if e = canonicaljson.DecodeStrict(checked.Intent, &intent); e != nil {
+		t.Release()
+		return nil, e
+	}
+	if intent.Version == 2 {
+		scope, e := engine.ScopeAdoption(ctx, physical)
+		if e != nil {
+			t.Release()
+			return nil, e
+		}
+		admitErr = scope.Admit(ctx)
+	} else {
+		admitErr = physical.Admit(ctx)
+	}
+	if err := admitErr; err != nil {
 		t.Release()
 		return nil, err
 	}
@@ -127,7 +158,7 @@ func updateEngineMaterial(m updateplan.UpdateMaterial) (engine.Material, error) 
 	// Registry remains explicitly in signed intent, not disguised as a project
 	// path or silently omitted from transaction commit semantics.
 	pair := &engine.RegistryPair{Before: engine.File{Data: append(engine.Bytes{}, m.Registry.BeforeContent...), Mode: m.Registry.Before.Mode, Device: m.RegistryDevice, Inode: m.RegistryInode}, After: engine.File{Data: append(engine.Bytes{}, m.Registry.AfterContent...), Mode: m.Registry.After.Mode}}
-	return engine.Material{Registry: pair, Root: m.Root, Home: m.Home, ProjectID: m.ProjectID, Binding: m.Binding, Before: convert(m.Before), After: convert(m.After), Fingerprint: m.Fingerprint, ReadOnlyPaths: []string{}, Intent: raw}, nil
+	return engine.Material{Registry: pair, Root: m.Root, Home: m.Home, ProjectID: m.ProjectID, Binding: m.Binding, Before: convert(m.Before), After: convert(m.After), Fingerprint: m.Fingerprint, ReadOnlyPaths: updateReadOnlyPaths(m), Intent: raw}, nil
 }
 
 func (t *UpdateTransaction) ID() string {
@@ -147,6 +178,11 @@ func (t *UpdateTransaction) Apply(ctx context.Context) error {
 	if err := t.authenticateUpdate(ctx); err != nil {
 		return err
 	}
+	if scope, e := t.adoptionScope(ctx); e != nil {
+		return e
+	} else if scope != nil {
+		return scope.Apply(ctx)
+	}
 	return t.physical.Apply(ctx)
 }
 
@@ -156,12 +192,22 @@ func (t *UpdateTransaction) Commit(ctx context.Context) error {
 	if err := t.authenticateUpdate(context.WithoutCancel(ctx)); err != nil {
 		return err
 	}
+	if scope, e := t.adoptionScope(ctx); e != nil {
+		return e
+	} else if scope != nil {
+		return scope.Commit(ctx)
+	}
 	return t.physical.Commit(ctx)
 }
 
 func (t *UpdateTransaction) Rollback(ctx context.Context) error {
 	if err := t.authenticateUpdate(ctx); err != nil {
 		return err
+	}
+	if scope, e := t.adoptionScope(ctx); e != nil {
+		return e
+	} else if scope != nil {
+		return scope.Rollback(ctx)
 	}
 	return t.physical.Rollback(ctx)
 }
@@ -175,4 +221,30 @@ func ApplyUpdate(ctx context.Context, p *updateplan.Plan, expected string) error
 	}
 	defer t.Release()
 	return t.Commit(ctx)
+}
+
+func updateReadOnlyPaths(m updateplan.UpdateMaterial) []string {
+	out := []string{}
+	if m.Protection != nil {
+		for _, p := range m.Protection.Paths {
+			if p.Observation.Exists {
+				out = append(out, p.Path)
+			}
+		}
+	}
+	return out
+}
+func (t *UpdateTransaction) adoptionScope(ctx context.Context) (*engine.AdoptionTransaction, error) {
+	m, err := t.physical.CheckedMaterial()
+	if err != nil {
+		return nil, err
+	}
+	var in updateplan.UpdateMaterial
+	if err = canonicaljson.DecodeStrict(m.Intent, &in); err != nil {
+		return nil, err
+	}
+	if in.Version == 1 {
+		return nil, nil
+	}
+	return engine.ScopeAdoption(ctx, t.physical)
 }

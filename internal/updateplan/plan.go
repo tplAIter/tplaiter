@@ -16,6 +16,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/tplAIter/tplaiter/internal/adoptionpolicy"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/engine"
@@ -79,6 +80,7 @@ type Change struct {
 
 type Report struct {
 	// Publishable describes image consistency only; it grants no write authority.
+	Adoption              *adoptionpolicy.Protection  `json:"adoption,omitempty"`
 	Publishable           bool                        `json:"publishable"`
 	APIVersion            string                      `json:"apiVersion"`
 	ProjectID             string                      `json:"projectID"`
@@ -95,6 +97,8 @@ type Report struct {
 // Plan retains private preparation and root identity. Marshal returns only a
 // detached fingerprinted report; no decoder turns report bytes into a Plan.
 type Plan struct {
+	policy           *adoptionpolicy.Policy
+	protection       *adoptionpolicy.Protection
 	homeIdentity     os.FileInfo
 	registryIdentity os.FileInfo
 	owner            *Backend
@@ -178,7 +182,7 @@ func (b *Backend) Prepare(ctx context.Context, in Input) (*Plan, error) {
 // reconstruct verifies both signed selections against exact supplied preimages.
 // Live admission first verifies stable state; cold admission requires the engine's
 // authenticated immutable receipt and phase classification, never caller trust.
-func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observation, registryObserved *registryObservation) (*Plan, error) {
+func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observation, registryObserved *registryObservation, cold ...*adoptionpolicy.Protection) (*Plan, error) {
 	stable := b.runtime.TrustRuntime()
 	root := b.runtime.ProjectContext().RootPath
 	var marker stateledger.ProjectV2
@@ -188,8 +192,20 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err := stable.CheckProjectIdentity(ctx, root, marker.ID); err != nil {
 		return nil, err
 	}
-	if len(marker.Ownership) != 0 {
-		return nil, operationtrust.ErrSourceAdapterUnsupported
+	policy, err := adoptionpolicy.Parse(marker.Ownership)
+	if err != nil {
+		return nil, err
+	}
+	var prior *adoptionpolicy.Protection
+	if len(cold) > 1 {
+		return nil, ErrInvalid
+	}
+	if len(cold) == 1 {
+		prior = cold[0]
+	}
+	protection, err := b.protection(ctx, policy, observed, prior)
+	if err != nil {
+		return nil, err
 	}
 	current, err := provenance.DecodeRootTemplateLock(observed.files[".tplaiter/root-template.lock.json"])
 	if err != nil {
@@ -257,15 +273,19 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err := appendResources(afterFiles, targetImages); err != nil {
 		return nil, err
 	}
-	if err := validateOwned(observed, beforeFiles, base.Rendered(), sourceImages); err != nil {
+	if err := validateOwned(observed, beforeFiles, base.Rendered(), sourceImages, policy); err != nil {
 		return nil, err
 	}
-	changes, err := computeChanges(observed, beforeFiles, afterFiles)
+	changes, err := computeChanges(observed, beforeFiles, afterFiles, policy)
 	if err != nil {
 		return nil, err
 	}
 	if len(in.SettingsPairs) > 0 {
-		changes = settingsDecisions(changes, observed, beforeFiles, afterFiles)
+		for i := range changes {
+			if !policy.Contains(changes[i].Path) {
+				settingsDecisions(changes[i:i+1], observed, beforeFiles, afterFiles)
+			}
+		}
 	}
 	metadata, err := targetMetadata(marker, prepared, targetImages, len(in.SettingsPairs) > 0)
 	if err != nil {
@@ -296,12 +316,12 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 			publishable = false
 		}
 	}
-	report := Report{Publishable: publishable, Registry: registry, APIVersion: APIVersion, ProjectID: marker.ID, Root: root, PreimageSHA256: preimage, OperationInputsSHA256: prepared.OperationInputsSHA256(), Source: prepared.SourceRootLock(), Target: prepared.TargetRootLock(), Preimages: observed.images, Changes: changes}
+	report := Report{Adoption: protection, Publishable: publishable, Registry: registry, APIVersion: APIVersion, ProjectID: marker.ID, Root: root, PreimageSHA256: preimage, OperationInputsSHA256: prepared.OperationInputsSHA256(), Source: prepared.SourceRootLock(), Target: prepared.TargetRootLock(), Preimages: observed.images, Changes: changes}
 	digest, err := bootstrap.DomainDigest(APIVersion, report)
 	if err != nil {
 		return nil, err
 	}
-	return &Plan{homeIdentity: registryObserved.identity, registryIdentity: registryObserved.fileIdentity, owner: b, input: in, report: report, digest: digest, observed: observed, prepared: prepared}, nil
+	return &Plan{policy: policy, protection: protection, homeIdentity: registryObserved.identity, registryIdentity: registryObserved.fileIdentity, owner: b, input: in, report: report, digest: digest, observed: observed, prepared: prepared}, nil
 }
 
 // Recheck rebuilds the plan with fresh authority and actual project bytes.
@@ -412,7 +432,7 @@ func appendResources(files map[string][]byte, images *resources.ResourceImages) 
 	return nil
 }
 
-func validateOwned(observed *observation, base map[string][]byte, result *renderref.Result, images *resources.ResourceImages) error {
+func validateOwned(observed *observation, base map[string][]byte, result *renderref.Result, images *resources.ResourceImages, policies ...*adoptionpolicy.Policy) error {
 	for _, image := range observed.images {
 		if image.Path == updateControlPath && image.Kind == "file" && image.Mode == 0o600 && len(observed.files[image.Path]) == 0 {
 			info := observed.identities[image.Path]
@@ -426,20 +446,12 @@ func validateOwned(observed *observation, base map[string][]byte, result *render
 			return ErrUnsafe
 		}
 	}
-	var inventory ownership.Inventory
-	if err := canonicaljson.DecodeStrict(observed.files[ownership.InventoryRelPath], &inventory); err != nil {
+	var policy *adoptionpolicy.Policy
+	if len(policies) > 0 {
+		policy = policies[0]
+	}
+	if err := adoptionpolicy.ValidateInventory(observed.files[ownership.InventoryRelPath], base, policy); err != nil {
 		return err
-	}
-	if inventory.Version != 1 || len(inventory.Skipped) != 0 || len(inventory.Tombstones) != 0 || len(inventory.Artifacts) != len(base) {
-		return operationtrust.ErrSourceAdapterUnsupported
-	}
-	seen := map[string]bool{}
-	for _, a := range inventory.Artifacts {
-		raw, ok := base[a.Path]
-		if !ok || seen[a.Path] || a.Mode != 0o644 || (a.Kind != "" && a.Kind != ownership.KindFile) || a.Target != "" || a.SHA256 != strings.TrimPrefix(evidencecas.Digest(raw), "sha256:") {
-			return ErrUnsafe
-		}
-		seen[a.Path] = true
 	}
 	expected, err := canonicaljson.Canonical(result.Baseline)
 	if err != nil {
@@ -501,6 +513,23 @@ func targetMetadata(marker stateledger.ProjectV2, p *operationtrust.PreparedUpda
 		inv.Artifacts = append(inv.Artifacts, ownership.Artifact{Path: a.Path, Mode: a.Mode, SHA256: strings.TrimPrefix(a.SHA256, "sha256:")})
 	}
 	sort.Slice(inv.Artifacts, func(i, j int) bool { return inv.Artifacts[i].Path < inv.Artifacts[j].Path })
+	policy, err := adoptionpolicy.Parse(marker.Ownership)
+	if err != nil {
+		return nil, err
+	}
+	if policy != nil {
+		keep := make([]ownership.Artifact, 0, len(inv.Artifacts))
+		for _, a := range inv.Artifacts {
+			if !policy.Contains(a.Path) {
+				keep = append(keep, a)
+			}
+		}
+		inv.Artifacts = keep
+		inv.Tombstones = policy.Missing()
+		for _, rel := range policy.Paths() {
+			inv.Skipped = append(inv.Skipped, ownership.Decision{Path: rel, Reason: "user-owned"})
+		}
+	}
 	for k, v := range result.Resolved.Values {
 		previous, ok := marker.Answers[k]
 		if !ok {
@@ -564,7 +593,7 @@ func decision(observed *observation, path string, raw []byte, exists bool, reaso
 	return change
 }
 
-func computeChanges(observed *observation, base, target map[string][]byte) ([]Change, error) {
+func computeChanges(observed *observation, base, target map[string][]byte, policies ...*adoptionpolicy.Policy) ([]Change, error) {
 	if err := validateOutput(base); err != nil {
 		return nil, err
 	}
@@ -574,6 +603,15 @@ func computeChanges(observed *observation, base, target map[string][]byte) ([]Ch
 	if err := validateObservedNamespace(observed, target); err != nil {
 		return nil, err
 	}
+	var policy *adoptionpolicy.Policy
+	if len(policies) > 0 {
+		policy = policies[0]
+	}
+	for rel := range target {
+		if protectsMutation(policy, rel) && !policy.Contains(rel) {
+			return nil, ErrUnsafe
+		}
+	}
 	paths := map[string]bool{}
 	for p := range base {
 		paths[p] = true
@@ -581,12 +619,23 @@ func computeChanges(observed *observation, base, target map[string][]byte) ([]Ch
 	for p := range target {
 		paths[p] = true
 	}
+	for _, rel := range policy.Paths() {
+		paths[rel] = true
+	}
 	changes := make([]Change, 0, len(paths))
 	for p := range paths {
 		for _, image := range observed.images {
 			if image.Path == p && image.Kind != "file" {
 				return nil, ErrUnsafe
 			}
+		}
+		if policy.Contains(p) {
+			c := decision(observed, p, observed.files[p], false, "user-owned exclusion preserved", false)
+			c.Operation = "keep"
+			c.After = c.Before
+			c.Content = nil
+			changes = append(changes, c)
+			continue
 		}
 		old, owned := base[p]
 		next, wanted := target[p]

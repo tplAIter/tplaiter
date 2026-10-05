@@ -14,6 +14,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/tplAIter/tplaiter/internal/adoptionpolicy"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/engine"
@@ -22,6 +23,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/ownership"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/adoption"
 	"github.com/tplAIter/tplaiter/internal/projectverify"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
@@ -52,6 +54,7 @@ type Change struct {
 	AfterSHA256  string `json:"afterSHA256,omitempty"`
 }
 type Report struct {
+	Excluded                    []resultdto.DiffExclusion
 	Changes                     []Change
 	FilesChecked, BlocksChecked int
 	CurrentRef                  string
@@ -136,8 +139,17 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 	if err = dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return Report{}, failure(StateCode, err)
 	}
-	if marker.ID != r.ProjectContext().ProjectID || marker.Template.ResolvedCommit != s.Commit || marker.Template.RequestedRef != s.RequestedRef || len(marker.Ownership) != 0 {
+	if marker.ID != r.ProjectContext().ProjectID || marker.Template.ResolvedCommit != s.Commit || marker.Template.RequestedRef != s.RequestedRef {
 		return Report{}, failure(StateCode, stateledger.ErrProjectIdentity)
+	}
+	policy, err := adoptionpolicy.Parse(marker.Ownership)
+	if err != nil {
+		return Report{}, failure(StateCode, err)
+	}
+	if policy != nil {
+		if _, err = adoption.Read(ctx, r, opts.Home, policy); err != nil {
+			return Report{}, failure(StateCode, err)
+		}
 	}
 	text := func(k string) string { v, _ := marker.Project[k].(string); return v }
 	port, ok := marker.Runtime["port"].(int)
@@ -197,17 +209,8 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 	if err != nil {
 		return Report{}, failure(StateCode, err)
 	}
-	var inv ownership.Inventory
-	if canonicaljson.DecodeStrict(raw, &inv) != nil || inv.Version != 1 || len(inv.Artifacts) != len(files) || len(inv.Skipped) != 0 || len(inv.Tombstones) != 0 {
-		return Report{}, operationtrust.ErrSourceAdapterUnsupported
-	}
-	seen := map[string]bool{}
-	for _, a := range inv.Artifacts {
-		b, ok := files[a.Path]
-		if !ok || seen[a.Path] || a.SHA256 != strings.TrimPrefix(evidencecas.Digest(b), "sha256:") || a.Mode != 0o644 || (a.Kind != "" && a.Kind != ownership.KindFile) || a.Target != "" {
-			return Report{}, failure(StateCode, stateledger.ErrUnsafe)
-		}
-		seen[a.Path] = true
+	if err = adoptionpolicy.ValidateInventory(raw, files, policy); err != nil {
+		return Report{}, failure(StateCode, err)
 	}
 	paths := make([]string, 0, len(files))
 	for p := range files {
@@ -215,6 +218,14 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 			return Report{}, failure(StateCode, stateledger.ErrUnsafe)
 		}
 		paths = append(paths, p)
+	}
+	for _, p := range policy.Paths() {
+		if _, ok := files[p]; !ok {
+			paths = append(paths, p)
+		}
+	}
+	if len(paths) > 4096 {
+		return Report{}, failure(StateCode, stateledger.ErrUnsafe)
 	}
 	sort.Strings(paths)
 	report := Report{Changes: []Change{}, CurrentRef: s.Commit}
@@ -233,6 +244,21 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 			return Report{}, failure(StateCode, stateledger.ErrUnsafe)
 		}
 		observed[p] = actual
+		if policy.Contains(p) {
+			x := exclusionObservation(p, files, policy, s, actual)
+			report.Excluded = append(report.Excluded, x)
+			if _, ok := files[p]; !ok {
+				if x.Drift {
+					action := "modify"
+					if !actual.Exists {
+						action = "delete"
+					}
+					report.Changes = append(report.Changes, Change{Path: p, Action: action, BeforeSHA256: x.ExpectedSHA256, AfterSHA256: x.CurrentSHA256})
+				}
+				report.FilesChecked++
+				continue
+			}
+		}
 		changes, blocks, e := compare(p, files[p], actual)
 		if e != nil {
 			return Report{}, failure(BlockCode, e)
@@ -256,6 +282,11 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 	}
 	if err = ctx.Err(); err != nil {
 		return Report{}, failure(projectverify.CancelledCode, err)
+	}
+	if policy != nil {
+		if _, err = adoption.Read(ctx, r, opts.Home, policy); err != nil {
+			return Report{}, failure(StaleCode, err)
+		}
 	}
 	return report, nil
 }
@@ -352,4 +383,22 @@ func compare(path string, expected []byte, actual ownership.State) ([]Change, in
 		changes = append(changes, Change{Path: path, Action: "skeleton", BeforeSHA256: evidencecas.Digest(beforeSkeleton), AfterSHA256: evidencecas.Digest(afterSkeleton)})
 	}
 	return changes, len(base.Regions), nil
+}
+
+func exclusionObservation(p string, files map[string][]byte, policy *adoptionpolicy.Policy, source provenance.RootSubject, actual ownership.State) resultdto.DiffExclusion {
+	x := resultdto.DiffExclusion{Path: p, Policy: "user-owned", Present: actual.Exists, ReferenceCommit: source.Commit, ReferenceScope: "current-signed-source", ExpectedSHA256: evidencecas.Digest(files[p]), Mode: uint32(actual.Mode)}
+	if actual.Exists {
+		x.CurrentSHA256 = evidencecas.Digest(actual.Data)
+	}
+	if _, ok := files[p]; !ok {
+		x.ReferenceScope = "adoption-origin"
+		x.ReferenceCommit = policy.Origin.SourceCommit
+		for _, origin := range policy.Origin.Exclusions {
+			if origin.Path == p {
+				x.ExpectedSHA256 = origin.SourceSHA256
+			}
+		}
+	}
+	x.Drift = !actual.Exists || x.CurrentSHA256 != x.ExpectedSHA256 || actual.Mode != 0o644
+	return x
 }
