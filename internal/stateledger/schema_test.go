@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
@@ -62,6 +63,123 @@ func validateWire(t *testing.T, s *jsonschema.Schema, name string, raw []byte) {
 func TestStateLedgerSchemasCompile(t *testing.T) {
 	for _, name := range stateLedgerSchemas {
 		compileSchema(t, name)
+	}
+}
+
+func TestProjectIDSchemaAndRuntimeLexicalContract(t *testing.T) {
+	plan, err := Plan(legacyProjectRoot(t), migrationOptions(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var marker ProjectV2
+	if err := yaml.Unmarshal(plan.ProjectYAML, &marker); err != nil {
+		t.Fatal(err)
+	}
+	schema := compileSchema(t, "state-ledger-project.v2.schema.json")
+	cases := []struct {
+		name, id string
+		valid    bool
+	}{
+		{"uuid", marker.ID, true}, {"native", "project-t5f", true},
+		{"punctuation", "project.test:1", true}, {"dot", ".", true},
+		{"dotdot", "..", true}, {"unicode", "项目-é", true},
+		{"nonASCIIspace", "a\u00a0b", true}, {"empty", "", false},
+		{"space", "a b", false}, {"slash", "a/b", false},
+		{"backslash", "a\\b", false}, {"nul", "a\x00b", false},
+		{"cr", "a\rb", false}, {"lf", "a\nb", false},
+		{"trailingLF", "a\n", false}, {"tab", "a\tb", false},
+		{"invalidUTF8", string([]byte{0xff}), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := marker
+			p.ID = tc.id
+			if got := validateV2(p) == nil; got != tc.valid {
+				t.Fatalf("runtime accepted=%v want=%v", got, tc.valid)
+			}
+			// JSON represents Unicode strings; Marshal replaces invalid UTF-8.
+			// Test the original invalid bytes at the runtime boundary above.
+			if !utf8.ValidString(tc.id) {
+				return
+			}
+			raw, err := json.Marshal(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			value, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := schema.Validate(value) == nil; got != tc.valid {
+				t.Fatalf("schema accepted=%v want=%v", got, tc.valid)
+			}
+		})
+	}
+}
+
+func TestLegacyProjectIDMigrationPreservesUUIDAndRefusesInvalidTokens(t *testing.T) {
+	for _, tc := range []struct {
+		name, id string
+		valid    bool
+	}{
+		{"lowerUUID", "123e4567-e89b-42d3-a456-426614174000", true},
+		{"upperUUID", "123E4567-E89B-42D3-A456-426614174000", true},
+		{"empty", "", false}, {"space", "legacy project", false},
+		{"slash", "legacy/project", false}, {"backslash", "legacy\\project", false},
+		{"nul", "legacy\x00project", false}, {"cr", "legacy\rproject", false},
+		{"lf", "legacy\nproject", false}, {"tab", "legacy\tproject", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := legacyProjectRoot(t)
+			path := filepath.Join(root, StateDir, "project.yaml")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var old legacyProject
+			if err := yaml.Unmarshal(raw, &old); err != nil {
+				t.Fatal(err)
+			}
+			old.ID = tc.id
+			raw, err = yaml.Marshal(old)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, raw, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			opts := migrationOptions(t)
+			plan, err := Plan(root, opts)
+			if !tc.valid {
+				if err == nil {
+					t.Fatal("invalid legacy ID admitted")
+				}
+				after, e := os.ReadFile(path)
+				if e != nil || !bytes.Equal(raw, after) {
+					t.Fatal("refused legacy marker changed")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var p ProjectV2
+			if err := yaml.Unmarshal(plan.ProjectYAML, &p); err != nil {
+				t.Fatal(err)
+			}
+			if plan.ProjectID != tc.id || p.ID != tc.id {
+				t.Fatal("migration regenerated ID")
+			}
+			wire, _ := json.Marshal(p)
+			validateWire(t, compileSchema(t, "state-ledger-project.v2.schema.json"), "migrated project", wire)
+			if _, err := ApplyPlan(root, opts, plan.PlanSHA256); err != nil {
+				t.Fatal(err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(after, plan.ProjectYAML) {
+				t.Fatal("applied marker differs from exact migration plan")
+			}
+		})
 	}
 }
 

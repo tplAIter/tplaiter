@@ -36,6 +36,15 @@ explicit `"dependencies": []`; the lock is never omitted and never `null`.
 
 ## Project marker migration (v1alpha1 to project/v2)
 
+Project IDs are nonempty valid UTF-8 tokens excluding NUL, CR, LF, tab,
+ASCII space, slash and backslash, matching installed project-context admission.
+Legacy UUIDs remain valid and migration preserves the exact ID. Native new
+and adopt write the authenticated installed context's ID without replacing it.
+Syntax grants no authority: runtime admission still requires the exact ID,
+profile binding and authenticated root. IDs, including `.` / `..` and Unicode,
+are opaque data, never path components; transaction directories use generated
+receipt IDs and writer-lock names hash the authenticated root path.
+
 `stateledger.Plan` builds a sealed, pure migration plan. It needs a verifier
 that re-checks the root lock against its source and, when the dependency lock
 is missing, a proof that the root template has no dependencies, extends or

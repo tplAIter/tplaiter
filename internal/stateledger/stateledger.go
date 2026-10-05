@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 
@@ -712,7 +713,7 @@ func PlanTargetContext(ctx context.Context, projectRoot string, opts Options, ta
 	if e = decodeYAMLStrict(data, &old); e != nil {
 		return nil, fmt.Errorf("%w: v1 marker: %w", ErrUnsafe, e)
 	}
-	if old.Kind != "Project" || old.ID == "" {
+	if old.Kind != "Project" || !validProjectID(old.ID) {
 		return nil, fmt.Errorf("%w: invalid v1 project", ErrUnsafe)
 	}
 	if opts.RootVerifier == nil {
@@ -911,8 +912,14 @@ func rejectYAMLNode(n *yaml.Node) error {
 
 var commitRE = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 
+// Project IDs are opaque installed-context tokens, not filesystem components.
+// Keep this grammar aligned with trustload's project-context admission.
+func validProjectID(id string) bool {
+	return id != "" && utf8.ValidString(id) && !strings.ContainsAny(id, "\x00\r\n\t /\\")
+}
+
 func validateV2(p ProjectV2) error {
-	if p.APIVersion != ProjectV2APIVersion || p.Kind != "Project" || p.ID == "" || p.Template.Repo == "" || p.Template.Name == "" || p.Template.RequestedRef == "" || !commitRE.MatchString(p.Template.ResolvedCommit) || p.Project == nil || p.Answers == nil || p.State != StandardPointers() {
+	if p.APIVersion != ProjectV2APIVersion || p.Kind != "Project" || !validProjectID(p.ID) || p.Template.Repo == "" || p.Template.Name == "" || p.Template.RequestedRef == "" || !commitRE.MatchString(p.Template.ResolvedCommit) || p.Project == nil || p.Answers == nil || p.State != StandardPointers() {
 		return fmt.Errorf("%w: incomplete/noncanonical v2 marker", ErrUnsafe)
 	}
 	for _, a := range p.Answers {
