@@ -15,7 +15,13 @@ type File struct {
 	Device    uint64 `json:"device"`
 	Inode     uint64 `json:"inode"`
 }
+type RegistryPair struct {
+	Before File `json:"before"`
+	After  File `json:"after"`
+}
+
 type Material struct {
+	Registry      *RegistryPair            `json:"registry,omitempty"`
 	Root          string                   `json:"root"`
 	Home          string                   `json:"home"`
 	ProjectID     string                   `json:"projectID"`

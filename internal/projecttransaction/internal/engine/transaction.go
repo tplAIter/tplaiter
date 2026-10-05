@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 
@@ -52,6 +51,8 @@ type immutable struct {
 	Material     Material `json:"material"`
 }
 type step struct {
+	Delete        bool     `json:"delete,omitempty"`
+	Registry      bool     `json:"registry,omitempty"`
 	Path          string   `json:"path"`
 	Slot          string   `json:"slot"`
 	AfterIdentity Identity `json:"afterIdentity"`
@@ -60,31 +61,34 @@ type step struct {
 	Undone        bool     `json:"undone"`
 }
 type progress struct {
-	APIVersion    string   `json:"apiVersion"`
-	Kind          string   `json:"kind"`
-	ID            string   `json:"id"`
-	Fingerprint   string   `json:"fingerprint"`
-	Phase         string   `json:"phase"`
-	ImageIdentity Identity `json:"imageIdentity"`
-	Steps         []step   `json:"steps"`
+	ReceiptIdentity Identity `json:"receiptIdentity,omitempty"`
+	APIVersion      string   `json:"apiVersion"`
+	Kind            string   `json:"kind"`
+	ID              string   `json:"id"`
+	Fingerprint     string   `json:"fingerprint"`
+	Phase           string   `json:"phase"`
+	ImageIdentity   Identity `json:"imageIdentity"`
+	Steps           []step   `json:"steps"`
 }
 type envelope struct {
 	Payload json.RawMessage `json:"payload"`
 	MAC     string          `json:"mac"`
 }
 type Transaction struct {
-	mu            sync.Mutex
-	runtime       *trustload.Runtime
-	plan          immutable
-	state         progress
-	dir, images   string
-	lease         *os.File
-	admitted      bool
-	durable       bool
-	pendingCommit *progress
-	commitFault   commitWriteFault
-	writerLocks   []*os.File
-	key           []byte // runtime-owned secret; never exposed, logged or accepted as input
+	mu                sync.Mutex
+	runtime           *trustload.Runtime
+	plan              immutable
+	state             progress
+	dir, images       string
+	lease             *os.File
+	admitted          bool
+	durable           bool
+	pendingCommit     *progress
+	commitFault       commitWriteFault
+	rollbackFault     commitWriteFault
+	rollbackSyncFault receiptSyncFault
+	writerLocks       []*os.File
+	key               []byte // runtime-owned secret; never exposed, logged or accepted as input
 }
 
 func (t *Transaction) ID() string {
@@ -161,6 +165,9 @@ func Acquire(ctx context.Context, runtime *trustload.Runtime, kind string, m Mat
 	if err := t.authenticate(ctx); err != nil {
 		return fail(err)
 	}
+	if err := t.rejectActiveJournals(); err != nil {
+		return fail(err)
+	}
 	return t, nil
 }
 
@@ -171,27 +178,33 @@ func (t *Transaction) Seal(ctx context.Context, m Material) error {
 	if t.lease == nil || t.admitted || m.Root != t.plan.Material.Root || m.Home != t.plan.Material.Home || m.ProjectID != t.plan.Material.ProjectID {
 		return ErrAuthentication
 	}
+	if err := t.rejectActiveJournals(); err != nil {
+		return err
+	}
 	if err := t.recheckLockedMaterial(m); err != nil {
 		return err
 	}
 	for name, before := range m.Before {
 		after, ok := m.After[name]
-		if !ok || before.Directory && !sameFile(before, after) {
+		if (!ok && (t.plan.Kind != NativeUpdateKind || before.Directory)) || before.Directory && !sameFile(before, after) {
 			return ErrUnsupported
 		}
+	}
+	if err := t.checkRegistryMaterial(m); err != nil {
+		return err
 	}
 	t.plan.Material = m
 	if err := t.authenticate(ctx); err != nil {
 		return err
 	}
-	err := t.prepare(m)
+	err := t.prepare(ctx, m)
 	if err == nil {
 		t.admitted = true
 	}
 	return err
 }
 
-func (t *Transaction) prepare(m Material) error {
+func (t *Transaction) prepare(ctx context.Context, m Material) error {
 	fail := func(err error) error { return err }
 	var err error
 	kind := t.plan.Kind
@@ -213,33 +226,36 @@ func (t *Transaction) prepare(m Material) error {
 		return fail(err)
 	}
 	t.durable = true
-	names := make([]string, 0, len(m.After))
-	for name, after := range m.After {
-		before, ok := m.Before[name]
-		if !ok || !sameFile(before, after) {
-			names = append(names, name)
-		}
+	receiptInfo, err := confinedLstat(t.dir)
+	if err != nil {
+		return err
 	}
-	sort.Strings(names)
-	for i, name := range names {
-		after := m.After[name]
-		slot := fmt.Sprintf("%06d", i)
-		pathname := filepath.Join(t.images, slot)
-		if after.Directory {
-			err = confinedMkdir(pathname, os.FileMode(after.Mode))
+	t.state.ReceiptIdentity = fileID(receiptInfo)
+	steps := t.expectedSteps()
+	for i, s := range steps {
+		s.Slot = fmt.Sprintf("%06d", i)
+		before, after, _ := t.stepFiles(s)
+		if s.Delete {
+			s.AfterIdentity = Identity{before.Device, before.Inode}
 		} else {
-			err = durableExclusive(pathname, after.Data, os.FileMode(after.Mode))
+			pathname := t.slotPath(s)
+			if after.Directory {
+				err = stageDirectory(ctx, pathname, os.FileMode(after.Mode))
+			} else {
+				err = durableExclusive(pathname, after.Data, os.FileMode(after.Mode))
+			}
+			if err != nil {
+				return err
+			}
+			info, e := confinedLstat(pathname)
+			if e != nil {
+				return e
+			}
+			s.AfterIdentity = fileID(info)
 		}
-		if err != nil {
-			return fail(err)
-		}
-		info, err := confinedLstat(pathname)
-		if err != nil {
-			return fail(err)
-		}
-		t.state.Steps = append(t.state.Steps, step{Path: name, Slot: slot, AfterIdentity: fileID(info)})
+		t.state.Steps = append(t.state.Steps, s)
 		if err := t.save(); err != nil {
-			return fail(err)
+			return err
 		}
 	}
 	t.state.Phase = "prepared"
@@ -339,24 +355,16 @@ func (t *Transaction) authenticate(ctx context.Context) error {
 }
 
 func (t *Transaction) validateSteps() error {
-	expected := map[string]bool{}
-	for name, a := range t.plan.Material.After {
-		b, ok := t.plan.Material.Before[name]
-		if !ok || !sameFile(a, b) {
-			expected[name] = true
-		}
-	}
-	if t.state.ImageIdentity.Inode == 0 {
-		return ErrAuthentication
-	}
-	if len(expected) != len(t.state.Steps) && t.state.Phase != "preparing" {
+	expected := t.expectedSteps()
+	partial := t.state.Phase == "preparing" || t.state.Phase == "rolling-back" || t.state.Phase == "rollback-conflicts" || t.state.Phase == "rolled-back"
+	if t.state.ImageIdentity.Inode == 0 || len(t.state.Steps) > len(expected) || (!partial && len(expected) != len(t.state.Steps)) {
 		return ErrAuthentication
 	}
 	for i, s := range t.state.Steps {
-		if !expected[s.Path] || s.Slot != fmt.Sprintf("%06d", i) || s.AfterIdentity.Inode == 0 {
+		e := expected[i]
+		if s.Path != e.Path || s.Delete != e.Delete || s.Registry != e.Registry || s.Slot != fmt.Sprintf("%06d", i) || s.AfterIdentity.Inode == 0 {
 			return ErrAuthentication
 		}
-		delete(expected, s.Path)
 	}
 	return nil
 }
@@ -380,6 +388,9 @@ func (t *Transaction) Apply(ctx context.Context) error {
 		return ErrAuthentication
 	}
 	if err := t.authenticate(ctx); err != nil {
+		if t.state.Phase == "applying" {
+			return t.rollbackAfter(err)
+		}
 		return err
 	}
 	t.state.Phase = "applying"
@@ -424,11 +435,16 @@ func (t *Transaction) Commit(ctx context.Context) error {
 	if err := t.authenticate(ctx); err != nil {
 		return t.rollbackAfter(err)
 	}
+	if t.plan.Kind == NativeUpdateKind {
+		if err := t.checkObservations(ctx); err != nil {
+			return t.rollbackAfter(err)
+		}
+	}
 	if err := t.readonlyBindings(); err != nil {
 		return t.rollbackAfter(err)
 	}
 	for _, step := range t.state.Steps {
-		if err := t.checkTarget(step, t.plan.Material.After[step.Path], step.AfterIdentity); err != nil {
+		if err := t.checkStepFinal(step); err != nil {
 			return t.rollbackAfter(err)
 		}
 	}
@@ -494,6 +510,36 @@ func (t *Transaction) Rollback(ctx context.Context) error {
 	}
 	return t.rollback()
 }
+
+// Terminal retries authenticate and durably confirm the actual bound receipt,
+// including fresh handles loaded after uncertain terminal publication.
+func (t *Transaction) confirmRollback() error {
+	if t.lease == nil || !t.admitted {
+		return ErrActive
+	}
+	var actual progress
+	if err := t.readSigned("state.json", &actual); err != nil {
+		return err
+	}
+	want, err := canonicaljson.Canonical(t.state)
+	if err != nil {
+		return err
+	}
+	got, err := canonicaljson.Canonical(actual)
+	if err != nil || actual.Phase != "rolled-back" || !bytes.Equal(want, got) {
+		return ErrAuthentication
+	}
+	sealed, err := t.signedBytes("state.json", actual)
+	if err != nil {
+		return err
+	}
+	if err := syncReceiptExact(filepath.Join(t.dir, "state.json"), sealed, t.rollbackSyncFault); err != nil {
+		return err
+	}
+	t.state = actual
+	return nil
+}
+
 func (t *Transaction) rollbackAfter(cause error) error { return errors.Join(cause, t.rollback()) }
 func (t *Transaction) rollback() error {
 	if t.pendingCommit != nil {
@@ -503,7 +549,7 @@ func (t *Transaction) rollback() error {
 		return ErrAuthentication
 	}
 	if t.state.Phase == "rolled-back" {
-		return nil
+		return t.confirmRollback()
 	}
 	t.state.Phase = "rolling-back"
 	if err := t.save(); err != nil {
@@ -515,24 +561,34 @@ func (t *Transaction) rollback() error {
 			failures = append(failures, fmt.Errorf("%s: %w", t.state.Steps[i].Path, err))
 		}
 	}
+	terminal := t.state
+	terminal.Steps = append([]step(nil), t.state.Steps...)
 	if len(failures) == 0 {
-		t.state.Phase = "rolled-back"
+		terminal.Phase = "rolled-back"
 	} else {
-		t.state.Phase = "rollback-conflicts"
+		terminal.Phase = "rollback-conflicts"
 	}
-	return errors.Join(errors.Join(failures...), t.save())
+	// A terminal rollback becomes live only after its durable receipt succeeds.
+	// On failure retry repeats owned-state checks and persists the receipt again.
+	persistErr := t.writeSigned("state.json", terminal, false)
+	if persistErr == nil {
+		t.state = terminal
+	}
+	return errors.Join(errors.Join(failures...), persistErr)
 }
 
 func (t *Transaction) applyStep(ctx context.Context, i int) error {
 	s := &t.state.Steps[i]
-	after := t.plan.Material.After[s.Path]
-	before, exists := t.plan.Material.Before[s.Path]
+	if s.Delete {
+		return t.applyDelete(ctx, i)
+	}
+	before, after, exists := t.stepFiles(*s)
 	if s.Done {
 		return t.checkTarget(*s, after, s.AfterIdentity)
 	}
 	// Reconcile a crash after exchange but before the completion record.
 	if s.Intent && t.checkTarget(*s, after, s.AfterIdentity) == nil {
-		if exists && checkPath(filepath.Join(t.images, s.Slot), before, Identity{before.Device, before.Inode}) != nil {
+		if exists && checkPath(t.slotPath(*s), before, Identity{before.Device, before.Inode}) != nil {
 			return ErrConflict
 		}
 		s.Done = true
@@ -547,7 +603,7 @@ func (t *Transaction) applyStep(ctx context.Context, i int) error {
 			return ErrConflict
 		}
 	}
-	if err := checkPath(filepath.Join(t.images, s.Slot), after, s.AfterIdentity); err != nil {
+	if err := checkPath(t.slotPath(*s), after, s.AfterIdentity); err != nil {
 		return err
 	}
 	s.Intent = true
@@ -560,7 +616,7 @@ func (t *Transaction) applyStep(ctx context.Context, i int) error {
 	if err := t.publish(*s, exists); err != nil {
 		return err
 	}
-	if exists && checkPath(filepath.Join(t.images, s.Slot), before, Identity{before.Device, before.Inode}) != nil {
+	if exists && checkPath(t.slotPath(*s), before, Identity{before.Device, before.Inode}) != nil {
 		// A foreign replacement raced the exchange. Put that exact inode back only
 		// while the destination still contains our prepared inode.
 		if t.checkTarget(*s, after, s.AfterIdentity) == nil {
@@ -580,10 +636,12 @@ func (t *Transaction) undoStep(i int) error {
 	if s.Undone {
 		return nil
 	}
-	after := t.plan.Material.After[s.Path]
-	before, existed := t.plan.Material.Before[s.Path]
-	target := filepath.Join(t.plan.Material.Root, s.Path)
-	slot := filepath.Join(t.images, s.Slot)
+	if s.Delete {
+		return t.undoDelete(i)
+	}
+	before, after, existed := t.stepFiles(*s)
+	target := t.targetPath(*s)
+	slot := t.slotPath(*s)
 	// A step not published (or already reverted before a crash) needs no write.
 	if existed && t.checkTarget(*s, before, Identity{before.Device, before.Inode}) == nil && checkPath(slot, after, s.AfterIdentity) == nil {
 		s.Undone = true
@@ -631,6 +689,12 @@ func (t *Transaction) undoStep(i int) error {
 }
 
 func (t *Transaction) checkTarget(s step, file File, id Identity) error {
+	if err := t.checkNamespace(s); err != nil {
+		return err
+	}
+	if s.Registry {
+		return checkPath(t.targetPath(s), file, id)
+	}
 	if err := t.checkParents(s.Path); err != nil {
 		return err
 	}
@@ -712,27 +776,40 @@ func journalDir(home, id string) string {
 	return filepath.Join(home, "transactions", "project", "tx-"+id)
 }
 func (t *Transaction) save() error { return t.writeSigned("state.json", t.state, false) }
-func (t *Transaction) writeSigned(name string, value any, exclusive bool) error {
+func (t *Transaction) signedBytes(name string, value any) ([]byte, error) {
 	raw, err := canonicaljson.Canonical(value)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	mac := hmac.New(sha256.New, t.key)
 	mac.Write([]byte(APIVersion + "\x00" + t.plan.Kind + "\x00" + t.dir + "\x00" + name + "\x00"))
 	mac.Write(raw)
 	data, err := canonicaljson.Canonical(envelope{Payload: raw, MAC: hex.EncodeToString(mac.Sum(nil))})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(data) > 128<<20 {
-		return ErrAuthentication
+		return nil, ErrAuthentication
+	}
+	return data, nil
+}
+
+func (t *Transaction) writeSigned(name string, value any, exclusive bool) error {
+	data, err := t.signedBytes(name, value)
+	if err != nil {
+		return err
 	}
 	if exclusive {
 		return durableExclusive(filepath.Join(t.dir, name), data, 0o600)
 	}
 	fault := commitWriteOK
-	if state, ok := value.(progress); ok && name == "state.json" && state.Phase == "committed" {
-		fault = t.commitFault
+	if state, ok := value.(progress); ok && name == "state.json" {
+		switch state.Phase {
+		case "committed":
+			fault = t.commitFault
+		case "rolled-back":
+			fault = t.rollbackFault
+		}
 	}
 	return durableReplace(filepath.Join(t.dir, name), data, fault)
 }
@@ -778,11 +855,21 @@ func (t *Transaction) readonlyBindings() error {
 func (t *Transaction) checkObservations(ctx context.Context) error {
 	steps := map[string]step{}
 	for _, s := range t.state.Steps {
-		steps[s.Path] = s
+		if !s.Registry {
+			steps[s.Path] = s
+		}
 	}
 	for name, original := range t.plan.Material.Before {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if s, ok := steps[name]; ok && s.Delete {
+			if s.Done || (s.Intent && t.checkDeleted(s) == nil) {
+				if err := t.checkDeleted(s); err != nil {
+					return err
+				}
+				continue
+			}
 		}
 		want := original
 		id := Identity{original.Device, original.Inode}
@@ -810,6 +897,9 @@ func (t *Transaction) checkObservations(ctx context.Context) error {
 			return ErrConflict
 		}
 	}
+	if err := t.checkRegistryObservation(); err != nil {
+		return err
+	}
 	return t.readonlyBindings()
 }
 
@@ -834,6 +924,9 @@ func (t *Transaction) Material() Material {
 }
 
 func (t *Transaction) recheckLockedMaterial(fresh Material) error {
+	if err := t.sameRegistryMaterial(fresh); err != nil {
+		return err
+	}
 	old := t.plan.Material
 	for name, file := range old.Before {
 		actual, ok := fresh.Before[name]
@@ -873,4 +966,26 @@ func (t *Transaction) recheckLockedMaterial(fresh Material) error {
 		}
 	}
 	return nil
+}
+
+// ValidateLocked is restricted to the concrete adapter by the nested internal
+// boundary. It proves the exact post-lease control image before durable staging.
+func (t *Transaction) ValidateLocked(ctx context.Context, m Material) error {
+	if err := t.authenticate(ctx); err != nil {
+		return err
+	}
+	if err := t.recheckLockedMaterial(m); err != nil {
+		return err
+	}
+	return t.checkRegistryMaterial(m)
+}
+
+func (t *Transaction) CheckedMaterial() (Material, error) {
+	raw, err := canonicaljson.Canonical(t.plan.Material)
+	if err != nil {
+		return Material{}, err
+	}
+	var out Material
+	err = canonicaljson.DecodeStrict(raw, &out)
+	return out, err
 }

@@ -1,11 +1,12 @@
-# Bounded native update protocol — first backend packet
+# Bounded signed native update planning and application
 
-This package implements signed preparation and fingerprinted afterimage planning.
-It also plans exact bounded registry before/after images and refuses unfinished
-global new journals. It does **not** implement live mutation, registry publication, recovery, CLI/MCP
-wiring, settings updates, managed-block codecs, generation or actions. `Apply`
-rechecks the actual plan and refuses conflicts, then returns `ErrApplyUnsupported`
-without creating locks, journals or files. Do not mark the update leaf complete.
+The planner produces an opaque signed, fingerprinted plan. The concrete
+`projecttransaction.ApplyUpdate` library facade now seals and applies that plan
+using the existing-tree neutral engine on public Gen v5 (e9590a5). The project
+root stays present. CLI/MCP wiring, settings, managed blocks, actions and broad
+update readiness remain outside this packet. `updateplan.Backend.Apply` retains
+its typed unsupported compatibility boundary; composition roots call the concrete
+facade, keeping the dependency direction facade → planner + nested engine.
 
 ## Implemented preparation boundary
 
@@ -56,48 +57,78 @@ preparation allocates and removes scratch below the authenticated scratch root;
 this is not a claim that planning makes zero filesystem syscalls or writes zero
 transient scratch bytes. The observation is not an atomic whole-tree snapshot.
 
-## Required next owned transaction seam (review before use)
+## Concrete admission and durable mutation
 
-The empty-target `newtransaction.BeginSealedWithFault` API cannot update an
-existing tree. Neither its rename/abort path nor legacy `update.Plan.applyLegacy`
-is appropriate for this task. Do not bypass them with write-then-unlink rollback.
+`BeginUpdate(ctx, plan, fingerprint)` requires the real opaque Plan. It acquires
+actual runtime/project, project update.lock and home registry writer leases,
+then rebuilds current/target signed preparation under those leases. Only an
+initially absent empty regular 0600 single-link update.lock may be introduced
+by acquisition; its exact identity must match the engine's retained descriptor.
+The full preimage read set, actual marker identity, resource images and exact
+registry pair are freshly checked before Seal. No report decoder, caller trusted
+boolean, arbitrary material constructor, signing key or callback grants mutation.
 
-The separately owned `internal/projecttransaction` primitive is the intended
-future consumer after its API is accepted. This planner does not import or
-implement it. Its mutation-image contract must be derived from a freshly
-rechecked opaque plan under real writer locks: exact path/kind/bytes/mode
-beforeimages and sealed afterimages, installed project authority, retained
-root/parent identities, and the exact registry pair. Detached report JSON or
-`publishable` alone cannot supply that contract or cold-recovery authority.
+Afterimages include exact verified target snippets, typed provenance lock, source
+locks, baseline, ownership, manifest and marker. All bytes/modes/kinds and both
+signed selections are bound into the authenticated immutable receipt. Staging
+never replaces these expected images with an ambient resnapshot. Newly staged
+0755 parents use the fixed child mkdir with child-only umask; existing and foreign
+directories are never chmodded. The registry stages separately under retained
+home authority and publishes after project images. The terminal commit receipt
+is written only after exact publication checks; project and registry form one
+recoverable transaction, not an atomic simultaneous multi-file rename.
 
-An existing-project transaction owner must:
+Conditional replacements retain original owned inodes in slots. Deletion moves
+an exact owned before inode into an exclusive quarantine slot under held parent
+and image-directory descriptors; it never blindly unlinks the target. A foreign
+replacement at the publication boundary is restored exclusively or retained in
+a recoverable slot if a second foreign creation prevents restoration. Abort
+restores exact owned before bytes/modes/inodes while preserving foreign images.
+Conflicts keep durable evidence. Root and existing directories are never removed.
 
-- Hold the real project `update.lock` and home registry writer lock, checking the
-  held descriptor identities against actual canonical root/parent observations.
-  Locks serialize cooperating writers; they do not prove foreign file ownership.
-- Rebuild this preparation under those locks; refuse changed marker, authority,
-  file bytes/modes, root/parent identity, registry image or durable journal state.
-- Prepare a bounded journal of exact before/after bytes and modes, **including**
-  target resource bytes and all ledger afterimages. Journal inputs must be derived
-  from this fresh opaque plan, never a caller-decoded mutation list.
-- Seal the exact current registry preimage and planned afterimage: match one
-  registered project by installed identity/root, preserve all unrelated entries,
-  and update source/baseline status consistently with the project commit.
-- Durably stage the afterimages before publishing; retain beforeimages and durable
-  phase evidence through file and registry publication. Do not recapture arbitrary
-  staging bytes as an expected afterimage.
-- Use a reviewed held-parent conditional publication primitive. A check followed
-  by ordinary rename/unlink is not a foreign-safe compare-and-swap. If ownership
-  or content becomes ambiguous, retain both images/journal and return recoverable
-  ownership uncertainty; never delete or chmod a foreign replacement.
-- Define continue/abort for every durable phase and crash window. Recovery must
-  verify journal integrity and fresh installed authority/current file identity;
-  exact before/after classification is required, and foreign bytes must survive.
-- Cover deterministic crashes before/after each file/ledger/registry publication,
-  rollback and registry failures, foreign concurrent creation/replacement, tampered
-  journals/CAS, marker swaps and inode replacement with actual signed versions.
+Acquisition and pre-Seal checks authenticate bounded prior native journal metadata
+under real leases. Unresolved native Gen/Update receipts refuse `ErrActive`;
+terminal committed/rolled-back receipts do not require their historical targets
+to remain current. This internal guard is distinct from the separately owned
+read-only inventory API; receipt observations are not mutation grants.
 
-Live apply, durable registry transaction and rollback/crash tests are intentionally absent
-from this first planner freeze. They require this separate transaction seam; the
-refusal is not evidence that those operations work. No hook/tool/env/AI action is
-implicitly approved by either the prepared source proof or a plan fingerprint.
+## Cold recovery
+
+`OpenUpdate(ctx, runtime, home, id, actualRendererVersion)` authenticates the
+kind-bound receipt and actual root/home/lease identities, then freshly verifies
+both signed selections and actual installed project/principal/profile/policy/
+bootstrap binding. It reconstructs the plan from sealed original observations,
+including three-way choices, exact target resource lock/images and registry pair,
+and compares the complete material/fingerprint. It strictly rereads the rooted
+marker as an exact sealed before/after image and rechecks its observed ID. The
+renderer version comes from the trusted composition root, never the receipt.
+The engine admits only authenticated phase/slot ownership. Continue reconciles
+persisted intent whose publication occurred before its completion record; abort
+restores owned images, retaining unexpected foreign states and journal evidence.
+
+Preparing receipts can be cold-aborted; resuming an interrupted staging phase
+is not currently supported. Foreign or corrupted preparation slots are never
+adopted. A terminal receipt is evidence of the historical operation, not a promise
+that later legitimate tree state equals that operation's afterimages. Live Commit
+on a cancelled context still freshly authenticates semantics and lets the engine
+conditionally roll back any already published owned images.
+
+## Focused evidence and remaining scope
+
+Actual signed fixtures exercise replacement, creation of an empty file and exact
+0755 parent, deletion, registry publication, fresh-runtime cold commit, cold abort,
+foreign project/registry replacements, signed B→B no-op after a terminal receipt,
+current/target source and installed policy/renderer drift refusals, cancellation
+after Apply, terminal rollback receipt persistence failures/retries, cold abort
+of a preparing prefix, and real killed
+child processes at deletion/registry publication before the completion record.
+Continue and abort retain exact original inodes/modes and foreign images. The
+corrected case-fold/ancestor namespace and exact-resource-lock counterexamples
+remain covered by signed planner race tests. Only the Gen final-commit concern
+and new journal guard are repeated where shared engine behavior changed.
+
+This library packet does not wire installed CLI/MCP Update, grant actions/hooks/
+environment/AI execution, implement managed-block migrations, or claim all crash
+windows, cross-platform filesystems, full U07/U13 or beta readiness. Inspection
+files and inventory integration remain separately owned. Independent review of
+the actual writer delta is still required before publication.

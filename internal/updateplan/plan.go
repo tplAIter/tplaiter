@@ -136,6 +136,40 @@ func (b *Backend) Prepare(ctx context.Context, in Input) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
+	registryObserved, err := readRegistry(ctx, b.home)
+	if err != nil {
+		return nil, err
+	}
+	p, err := b.reconstruct(ctx, in, observed, registryObserved)
+	if err != nil {
+		return nil, err
+	}
+	fresh, err := observe(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	if !equalObservation(observed, fresh) {
+		return nil, ErrStale
+	}
+	if _, err := stateledger.VerifyStable(ctx, root, stable, stateledger.StableVerifyOptions{}); err != nil {
+		return nil, err
+	}
+	freshRegistry, err := readRegistry(ctx, b.home)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(freshRegistry.raw, p.report.Registry.BeforeContent) || freshRegistry.mode != p.report.Registry.Before.Mode || !os.SameFile(registryObserved.identity, freshRegistry.identity) || !os.SameFile(registryObserved.fileIdentity, freshRegistry.fileIdentity) {
+		return nil, ErrStale
+	}
+	return p, nil
+}
+
+// reconstruct verifies both signed selections against exact supplied preimages.
+// Live admission first verifies stable state; cold admission requires the engine's
+// authenticated immutable receipt and phase classification, never caller trust.
+func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observation, registryObserved *registryObservation) (*Plan, error) {
+	stable := b.runtime.TrustRuntime()
+	root := b.runtime.ProjectContext().RootPath
 	var marker stateledger.ProjectV2
 	if err := decodeMarker(observed.files[".tplaiter/project.yaml"], &marker); err != nil {
 		return nil, err
@@ -236,7 +270,7 @@ func (b *Backend) Prepare(ctx context.Context, in Input) (*Plan, error) {
 		changes = append(changes, decision(observed, path, raw, true, "metadata", false))
 	}
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
-	registry, registryObserved, err := planRegistry(ctx, b.home, marker, prepared, observed.files[engine.BaselineRelPath], root)
+	registry, registryObserved, err := planRegistryObserved(registryObserved, b.home, marker, prepared, observed.files[engine.BaselineRelPath], root)
 	if err != nil {
 		return nil, err
 	}
@@ -251,23 +285,6 @@ func (b *Backend) Prepare(ctx context.Context, in Input) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	fresh, err := observe(ctx, root)
-	if err != nil {
-		return nil, err
-	}
-	if !equalObservation(observed, fresh) {
-		return nil, ErrStale
-	}
-	if _, err := stateledger.VerifyStable(ctx, root, stable, stateledger.StableVerifyOptions{}); err != nil {
-		return nil, err
-	}
-	freshRegistry, err := readRegistry(ctx, b.home)
-	if err != nil {
-		return nil, err
-	}
-	if !bytes.Equal(freshRegistry.raw, registry.BeforeContent) || freshRegistry.mode != registry.Before.Mode || !os.SameFile(registryObserved.identity, freshRegistry.identity) || !os.SameFile(registryObserved.fileIdentity, freshRegistry.fileIdentity) {
-		return nil, ErrStale
-	}
 	return &Plan{homeIdentity: registryObserved.identity, registryIdentity: registryObserved.fileIdentity, owner: b, input: Input{SourceInput: bytes.Clone(in.SourceInput), TargetInput: bytes.Clone(in.TargetInput)}, report: report, digest: digest, observed: observed, prepared: prepared}, nil
 }
 
@@ -275,28 +292,36 @@ func (b *Backend) Prepare(ctx context.Context, in Input) (*Plan, error) {
 // A matching report hash alone is insufficient: runtime and root identities
 // must still match the private in-memory preparation.
 func (b *Backend) Recheck(ctx context.Context, p *Plan, expected string) error {
-	if b == nil || p == nil || p.owner != b || expected == "" || p.digest != expected || !p.prepared.ValidFor(b.runtime.TrustRuntime()) {
-		return ErrInvalid
+	_, err := b.recheckPlan(ctx, p, expected)
+	return err
+}
+
+// Return the freshly authenticated preparation, never material from a detached
+// report or an old preparation that merely has a matching stored digest.
+func (b *Backend) recheckPlan(ctx context.Context, p *Plan, expected string) (*Plan, error) {
+	if ctx == nil || b == nil || b.runtime == nil || p == nil || p.prepared == nil || p.owner != b || expected == "" || p.digest != expected || !p.prepared.ValidFor(b.runtime.TrustRuntime()) {
+		return nil, ErrInvalid
+	}
+	digest, err := bootstrap.DomainDigest(APIVersion, p.report)
+	if err != nil || digest != expected {
+		return nil, ErrInvalid
 	}
 	current, err := b.Prepare(ctx, p.input)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if current.digest != expected || !equalObservation(p.observed, current.observed) || !os.SameFile(p.homeIdentity, current.homeIdentity) || !os.SameFile(p.registryIdentity, current.registryIdentity) {
-		return ErrStale
+		return nil, ErrStale
 	}
-	return nil
+	return current, nil
 }
 
-// Apply remains a typed refusal until an existing-project transaction owner
-// can atomically bind exact images, registry publication and foreign-safe
-// recovery. The empty-target new transaction is deliberately not reused.
+// Apply validates exact transaction images but remains a typed refusal until
+// the separate existing-tree primitive admits signed update intent, deletions,
+// registry publication and cold recovery. No creation transaction is reused.
 func (b *Backend) Apply(ctx context.Context, p *Plan, expected string) error {
-	if err := b.Recheck(ctx, p, expected); err != nil {
+	if _, err := b.prepareMutation(ctx, p, expected); err != nil {
 		return err
-	}
-	if !p.report.Publishable {
-		return ErrConflict
 	}
 	return ErrApplyUnsupported
 }
@@ -373,6 +398,14 @@ func appendResources(files map[string][]byte, images *resources.ResourceImages) 
 
 func validateOwned(observed *observation, base map[string][]byte, result *renderref.Result, images *resources.ResourceImages) error {
 	for _, image := range observed.images {
+		if image.Path == updateControlPath && image.Kind == "file" && image.Mode == 0o600 && len(observed.files[image.Path]) == 0 {
+			info := observed.identities[image.Path]
+			if info == nil || updateSingleLink(info) {
+				// Cold semantic images have no live FileInfo. The receipt owner
+				// separately verifies actual held control identity/link count.
+				continue
+			}
+		}
 		if strings.HasPrefix(image.Path, ".tplaiter/") && image.Kind == "file" && image.Mode != 0o644 {
 			return ErrUnsafe
 		}

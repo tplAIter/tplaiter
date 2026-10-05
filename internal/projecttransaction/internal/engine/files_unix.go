@@ -85,18 +85,19 @@ func (t *Transaction) parent(name string) (int, string, error) {
 }
 
 func (t *Transaction) publish(s step, exchange bool) error {
-	target, name, err := t.parent(s.Path)
+	target, name, err := t.stepParent(s)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(target)
-	images, err := unix.Open(t.images, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW, 0)
+	directory, identity := t.slotDirectory(s)
+	images, err := directoryDescriptor(directory, identity)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(images)
 	var imageStat unix.Stat_t
-	if err := unix.Fstat(images, &imageStat); err != nil || (Identity{deviceID(imageStat.Dev), imageStat.Ino}) != t.state.ImageIdentity {
+	if err := unix.Fstat(images, &imageStat); err != nil || (Identity{deviceID(imageStat.Dev), imageStat.Ino}) != identity {
 		return ErrConflict
 	}
 	if exchange {
@@ -111,18 +112,19 @@ func (t *Transaction) publish(s step, exchange bool) error {
 }
 
 func (t *Transaction) quarantine(s step) error {
-	target, name, err := t.parent(s.Path)
+	target, name, err := t.stepParent(s)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(target)
-	images, err := unix.Open(t.images, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW, 0)
+	directory, identity := t.slotDirectory(s)
+	images, err := directoryDescriptor(directory, identity)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(images)
 	var imageStat unix.Stat_t
-	if err := unix.Fstat(images, &imageStat); err != nil || (Identity{deviceID(imageStat.Dev), imageStat.Ino}) != t.state.ImageIdentity {
+	if err := unix.Fstat(images, &imageStat); err != nil || (Identity{deviceID(imageStat.Dev), imageStat.Ino}) != identity {
 		return ErrConflict
 	}
 	if err := exclusiveRenameAt(target, name, images, s.Slot); err != nil {
@@ -171,4 +173,38 @@ func (t *Transaction) acquireWriterLocks() error {
 		}
 	}
 	return nil
+}
+
+// Registry has a fixed separate home authority; no arbitrary external paths.
+func (t *Transaction) stepParent(s step) (int, string, error) {
+	if !s.Registry {
+		return t.parent(s.Path)
+	}
+	if s.Path != "projects.yaml" {
+		return -1, "", ErrAuthentication
+	}
+	fd, err := directoryDescriptor(t.plan.Material.Home, t.plan.HomeIdentity)
+	return fd, "projects.yaml", err
+}
+
+func directoryDescriptor(name string, want Identity) (int, error) {
+	root, _, err := confinedParent(filepath.Join(name, "slot"))
+	if err != nil {
+		return -1, err
+	}
+	defer root.Close()
+	info, err := root.Stat(".")
+	if err != nil || fileID(info) != want || checkStorageParent(root, filepath.Join(name, "slot")) != nil {
+		return -1, ErrConflict
+	}
+	f, err := root.Open(".")
+	if err != nil {
+		return -1, err
+	}
+	defer f.Close()
+	held, err := f.Stat()
+	if err != nil || fileID(held) != want {
+		return -1, ErrConflict
+	}
+	return unix.Dup(int(f.Fd()))
 }

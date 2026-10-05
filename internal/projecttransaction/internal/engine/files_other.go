@@ -2,7 +2,10 @@
 
 package engine
 
-import "os"
+import (
+	"context"
+	"os"
+)
 
 func fileID(os.FileInfo) Identity               { return Identity{} }
 func singleLink(os.FileInfo) bool               { return false }
@@ -14,3 +17,5 @@ func (t *Transaction) publish(step, bool) error { return ErrAuthentication }
 func (t *Transaction) quarantine(step) error    { return ErrAuthentication }
 
 func (t *Transaction) acquireWriterLocks() error { return ErrAuthentication }
+
+func stageDirectory(context.Context, string, os.FileMode) error { return ErrAuthentication }

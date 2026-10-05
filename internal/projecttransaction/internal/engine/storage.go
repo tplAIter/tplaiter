@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -227,8 +228,11 @@ func confinedReadDir(name string) ([]os.DirEntry, error) {
 	if err != nil || !os.SameFile(info, opened) {
 		return nil, ErrConflict
 	}
-	entries, err := f.ReadDir(-1)
-	if err != nil {
+	entries, err := f.ReadDir(4097)
+	if len(entries) > 4096 {
+		return nil, ErrConflict
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	}
 	if err := checkStorageParent(root, name); err != nil {
@@ -391,6 +395,85 @@ func syncReceipt(name string) error {
 		return err
 	}
 	return syncStorageRoot(root)
+}
+
+type receiptSyncFault uint8
+
+const (
+	receiptSyncOK receiptSyncFault = iota
+	receiptSyncBeforeDirectory
+)
+
+var errReceiptSyncFault = errors.New("project transaction: injected receipt directory sync failure")
+
+// Confirm the exact authenticated bytes through the descriptor being synced.
+// No write, chmod or replacement is performed on an unexpected receipt.
+func syncReceiptExact(name string, expected []byte, fault receiptSyncFault) error {
+	root, base, err := confinedParent(name)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	info, err := root.Lstat(base)
+	if err != nil {
+		return err
+	}
+	f, err := root.OpenFile(base, readNoFollow(), 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	opened, err := f.Stat()
+	if err != nil || !os.SameFile(info, opened) || !opened.Mode().IsRegular() || !singleLink(opened) || opened.Mode().Perm() != 0o600 {
+		return ErrAuthentication
+	}
+	data, err := io.ReadAll(io.LimitReader(f, 128<<20+1))
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(data, expected) {
+		return ErrAuthentication
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	data, err = io.ReadAll(io.LimitReader(f, 128<<20+1))
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(data, expected) {
+		return ErrAuthentication
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	current, err := root.Lstat(base)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(opened, current) || !singleLink(current) || current.Mode().Perm() != 0o600 {
+		return ErrAuthentication
+	}
+	if err := checkStorageParent(root, name); err != nil {
+		return err
+	}
+	if fault == receiptSyncBeforeDirectory {
+		return errReceiptSyncFault
+	}
+	if err := syncStorageRoot(root); err != nil {
+		return err
+	}
+	current, err = root.Lstat(base)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(opened, current) || !singleLink(current) || current.Mode().Perm() != 0o600 {
+		return ErrAuthentication
+	}
+	return checkStorageParent(root, name)
 }
 
 func syncStorageRoot(root *os.Root) error {

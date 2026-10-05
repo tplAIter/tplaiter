@@ -121,11 +121,8 @@ func readRegistry(ctx context.Context, home string) (*registryObservation, error
 	return &registryObservation{raw: raw, mode: uint32(opened.Mode().Perm()), identity: held, fileIdentity: opened}, nil
 }
 
-func planRegistry(ctx context.Context, home string, marker stateledger.ProjectV2, p *operationtrust.PreparedUpdate, baseline []byte, projectRoot string) (RegistryImage, *registryObservation, error) {
-	observed, err := readRegistry(ctx, home)
-	if err != nil {
-		return RegistryImage{}, nil, err
-	}
+// Shared semantic reconstruction; observed data alone never supplies authority.
+func planRegistryObserved(observed *registryObservation, home string, marker stateledger.ProjectV2, p *operationtrust.PreparedUpdate, baseline []byte, projectRoot string) (RegistryImage, *registryObservation, error) {
 	var projects state.Projects
 	decoder := yaml.NewDecoder(bytes.NewReader(observed.raw))
 	decoder.KnownFields(true)
