@@ -4890,9 +4890,17 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Execute a template manifest command at the project root (dir). WARNING: long-running commands (dev servers) will be interrupted on timeout.",
+    "description": "Prepare or execute an authenticated signed pure-Go project build with a persistent operator approval; no shell fallback.",
     "inputSchema": {
       "properties": {
+        "approvalCAS": {
+          "description": "persistent signed approval digest",
+          "type": "string"
+        },
+        "approvalInput": {
+          "description": "public signed approval JSON path",
+          "type": "string"
+        },
         "args": {
           "description": "Additional arguments passed to the command after --",
           "items": {
@@ -4906,6 +4914,14 @@
         },
         "dir": {
           "description": "Project directory (working directory)",
+          "type": "string"
+        },
+        "prepare": {
+          "description": "prepare request without executing",
+          "type": "boolean"
+        },
+        "projectContext": {
+          "description": "authenticated installed project key",
           "type": "string"
         }
       },
@@ -5046,6 +5062,229 @@
               "type": [
                 "null",
                 "array"
+              ]
+            },
+            "preparedRequest": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "argv": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "null",
+                        "array"
+                      ]
+                    },
+                    "contentClosureSHA256": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "phase": {
+                      "type": "string"
+                    },
+                    "shell": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "phase",
+                    "shell",
+                    "argv",
+                    "contentClosureSHA256"
+                  ],
+                  "type": "object"
+                },
+                "apiVersion": {
+                  "type": "string"
+                },
+                "environmentPolicySHA256": {
+                  "type": "string"
+                },
+                "migration": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "operationInputsSHA256": {
+                  "type": "string"
+                },
+                "profileBindingSHA256": {
+                  "type": "string"
+                },
+                "projectID": {
+                  "type": "string"
+                },
+                "provider": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "commit": {
+                      "type": "string"
+                    },
+                    "contractSHA256": {
+                      "type": "string"
+                    },
+                    "origin": {
+                      "type": "string"
+                    },
+                    "templatePath": {
+                      "type": "string"
+                    },
+                    "treeSHA256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "origin",
+                    "templatePath",
+                    "commit",
+                    "treeSHA256",
+                    "contractSHA256"
+                  ],
+                  "type": "object"
+                },
+                "requestSHA256": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "timeoutMillis": {
+                  "type": "integer"
+                },
+                "tool": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "binarySHA256": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "optionsSHA256": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "version",
+                    "binarySHA256",
+                    "optionsSHA256"
+                  ],
+                  "type": "object"
+                },
+                "workingDirectoryScope": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "root": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "root",
+                    "path"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "apiVersion",
+                "profileBindingSHA256",
+                "operationInputsSHA256",
+                "projectID",
+                "scope",
+                "provider",
+                "action",
+                "tool",
+                "workingDirectoryScope",
+                "environmentPolicySHA256",
+                "timeoutMillis",
+                "migration",
+                "requestSHA256"
+              ],
+              "type": [
+                "null",
+                "object"
+              ]
+            },
+            "processReceipt": {
+              "additionalProperties": false,
+              "properties": {
+                "cancelled": {
+                  "type": "boolean"
+                },
+                "exitCode": {
+                  "type": "integer"
+                },
+                "inputClosureSHA256": {
+                  "type": "string"
+                },
+                "requestSHA256": {
+                  "type": "string"
+                },
+                "stderr": {
+                  "type": "string"
+                },
+                "stderrSHA256": {
+                  "type": "string"
+                },
+                "stdout": {
+                  "type": "string"
+                },
+                "stdoutSHA256": {
+                  "type": "string"
+                },
+                "timedOut": {
+                  "type": "boolean"
+                },
+                "toolchainIndexSHA256": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "requestSHA256",
+                "inputClosureSHA256",
+                "toolchainIndexSHA256",
+                "exitCode",
+                "timedOut",
+                "cancelled",
+                "stdout",
+                "stderr",
+                "stdoutSHA256",
+                "stderrSHA256"
+              ],
+              "type": [
+                "null",
+                "object"
               ]
             }
           },

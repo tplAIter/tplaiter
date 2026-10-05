@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -12,6 +13,9 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/operationtrust"
+	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
@@ -239,5 +243,104 @@ func TestNativeResourceClosedDecode(t *testing.T) {
 		if _, err := DecodeResourceLockV2([]byte(raw)); err == nil {
 			t.Fatal("unbound/unknown wire accepted")
 		}
+	}
+}
+
+// Admission is inert: this fixture contains no host executable or execution
+// policy/approval. Acceptance can only expose the declared generator bytes.
+func TestNativeGeneratorProjectBuildAdmission(t *testing.T) {
+	idx := trustload.ToolchainIndex{APIVersion: trustload.ToolchainIndexVersion, GoVersion: "go1.27.1", GOOS: "darwin", GOARCH: "arm64"}
+	for _, name := range []string{"VERSION", "bin/go", "pkg/tool/darwin_arm64/asm", "pkg/tool/darwin_arm64/compile", "pkg/tool/darwin_arm64/link", "src/runtime/runtime.go"} {
+		mode := "100644"
+		if name == "bin/go" || strings.HasPrefix(name, "pkg/tool/") {
+			mode = "100755"
+		}
+		idx.Files = append(idx.Files, trustload.ToolchainFile{Path: name, Mode: mode, Size: 1, SHA256: evidencecas.Digest([]byte("inert")), Chunks: []string{evidencecas.Digest([]byte("unavailable inert CAS"))}})
+	}
+	index, _ := json.Marshal(idx)
+	action := operationtrust.ProjectBuildAction{APIVersion: "tplaiter.dev/project-build-action/v1", Adapter: "go-project-build-v1", CommandName: "build", Argv: operationtrust.ProjectBuildArguments(), TimeoutMillis: 1000, ToolchainIndexSHA256: evidencecas.Digest(index)}
+	encode := func(v any) []byte {
+		b, e := json.Marshal(v)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return b
+	}
+	exact := "commands:\n  build:\n    run: go build -mod=readonly -buildvcs=false ./...\n"
+	for _, name := range []string{"empty", "exact", "malformed-toolchain", "unknown-command", "shell", "extra-argv", "wrong-adapter", "wrong-command-record", "index-drift", "missing-record", "foreign-policy", "unknown-shell-record", "tools", "playbooks", "hooks", "ai"} {
+		t.Run(name, func(t *testing.T) {
+			extra := exact
+			a := action
+			a.Argv = append([]string(nil), action.Argv...)
+			files := map[string][]byte{"toolchain/index.json": index}
+			switch name {
+			case "malformed-toolchain":
+				files["toolchain/index.json"] = []byte(`{"shell":true}`)
+				a.ToolchainIndexSHA256 = evidencecas.Digest(files["toolchain/index.json"])
+			case "empty":
+				extra = ""
+			case "unknown-command":
+				extra = "commands:\n  deploy:\n    run: go build -mod=readonly -buildvcs=false ./...\n"
+			case "shell":
+				extra = exact + "    shell: true\n"
+			case "extra-argv":
+				a.Argv = append(a.Argv, "-o", "outside")
+			case "wrong-adapter":
+				a.Adapter = "native-snapshot-tool-v1"
+			case "wrong-command-record":
+				a.CommandName = "deploy"
+			case "index-drift":
+				a.ToolchainIndexSHA256 = evidencecas.Digest([]byte("other source"))
+			case "tools":
+				extra += "requires:\n  tools:\n    - name: git\n"
+			case "playbooks":
+				extra += "environment:\n  playbooks:\n    - name: setup\n      file: setup.yml\n"
+			case "hooks":
+				extra += "hooks:\n  postCreate:\n    - run: forbidden\n"
+			case "ai":
+				extra += "aiConfig:\n  path: ai\n"
+			}
+			raw := encode(a)
+			if name == "foreign-policy" || name == "unknown-shell-record" {
+				var obj map[string]any
+				json.Unmarshal(raw, &obj)
+				if name == "foreign-policy" {
+					obj["policy"] = "caller-choice"
+				} else {
+					obj["shell"] = true
+				}
+				raw = encode(obj)
+			}
+			if name != "missing-record" {
+				files[operationtrust.ProjectBuildActionPath] = raw
+			}
+			snapshot, e := nativeSnapshotFixture(t, extra, files, false)
+			if e != nil {
+				t.Fatal(e)
+			}
+			got, e := nativeGeneratorFiles(snapshot)
+			allowed := name == "empty" || name == "exact"
+			if allowed {
+				if e != nil || len(got) != 0 {
+					t.Fatalf("inert admission: %v %v", got, e)
+				}
+			} else if e == nil {
+				t.Fatal("unsafe declaration admitted")
+			}
+		})
+	}
+}
+
+func TestNativeGeneratorBuildCannotUseForeignManifest(t *testing.T) {
+	snapshot, e := nativeSnapshotFixture(t, "", nil, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	foreign, e := manifest.ParseTemplate([]byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata:\n  name: foreign\n  version: 1.0.0\n  description: foreign fixture\nengine:\n  type: gotemplate\n  root: files\n"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if operationtrust.ValidateProjectBuildDeclaration(snapshot, foreign) == nil {
+		t.Fatal("foreign caller manifest admitted")
 	}
 }

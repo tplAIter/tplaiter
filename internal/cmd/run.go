@@ -29,24 +29,20 @@ func init() {
 
 // newRunCmd creates `tplater run` (SPEC-01 §5, SPEC-04 §4).
 func newRunCmd() *cobra.Command {
-	return withResult(&cobra.Command{
+	var native nativeRunControls
+	c := withResult(&cobra.Command{
 		Annotations: prerunAnnotations(prerunLegacyAction, prerunReadonly),
 
 		Use:   "run [name] [-- args...]",
 		Short: "Show project commands or execute one",
-		Long: "Without arguments, prints a list of commands from the template manifest (commands, SPEC-01 §5) — " +
-			"name, description, and availability status based on the when condition and current project settings.\n\n" +
-			"With a command name, executes its `run` through $SHELL -c in the project root: " +
-			"`tplater run build -- --race` passes `--race` to the command itself. " +
-			"INT/TERM signals received by tplater are forwarded to the executed process; " +
-			"the command's exit code becomes tplater's exit code.",
-		Args: cobra.ArbitraryArgs,
+		Long:  "List commands, prepare a signed pure-Go build request, or compile the authenticated project with a persistent operator approval. No shell command execution.",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// The composed root rejects this before its hooks.  Keep the same
 			// ordering when callers construct newRunCmd directly: a named action
 			// must not discover cwd, HOME, or a manifest before fixed material.
 			if len(args) != 0 {
-				return actionUnavailable()
+				return runNativeBuild(cmd, args, native)
 			}
 			tpl, proj, _, err := loadRunContext()
 			if err != nil {
@@ -60,6 +56,8 @@ func newRunCmd() *cobra.Command {
 			return listRunCommands(cmd, tpl.Commands, values)
 		},
 	}, resultdto.OperationProjectRun)
+	addNativeRunFlags(c, &native)
+	return c
 }
 
 // emitRunCommands prints the manifest commands as project.run data (the

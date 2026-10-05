@@ -192,6 +192,11 @@ func init() {
 // --upgrade); `tplaiter --upgrade` (also a bare root invocation, but with the
 // flag) runs first-run/suggest like a normal command.
 func rootPreRun(cmd *cobra.Command, args []string) error {
+	// The single restored native command owns its fixed trust composition.
+	// All other named run commands retain the legacy no-effects denial.
+	if cmd.Name() == "run" && len(args) > 0 && args[0] == "build" {
+		return nil
+	}
 	// This classification precedes every legacy root hook.  A command that
 	// could execute manifest-derived input must not initialize process state,
 	// inspect HOME, or synchronize a project before it has fixed material.

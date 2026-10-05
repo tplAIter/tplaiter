@@ -30,9 +30,13 @@ type projectNewArgs struct {
 }
 
 type runArgs struct {
-	Dir     string   `json:"dir"`
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
+	ProjectContext string   `json:"projectContext"`
+	Prepare        bool     `json:"prepare"`
+	ApprovalCAS    string   `json:"approvalCAS"`
+	ApprovalInput  string   `json:"approvalInput"`
+	Dir            string   `json:"dir"`
+	Command        string   `json:"command"`
+	Args           []string `json:"args"`
 }
 
 type dirArgs struct {
@@ -93,9 +97,13 @@ func (s *Server) addProjectTools() {
 
 	s.mcp.AddTool(mcp.NewTool(
 		"run",
-		mcp.WithDescription("Execute a template manifest command at the project root (dir). WARNING: long-running commands (dev servers) will be interrupted on timeout."),
+		mcp.WithDescription("Prepare or execute an authenticated signed pure-Go project build with a persistent operator approval; no shell fallback."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory (working directory)")),
 		mcp.WithString("command", mcp.Required(), mcp.Description("Manifest command name")),
+		mcp.WithString("projectContext", mcp.Description("authenticated installed project key")),
+		mcp.WithBoolean("prepare", mcp.Description("prepare request without executing")),
+		mcp.WithString("approvalCAS", mcp.Description("persistent signed approval digest")),
+		mcp.WithString("approvalInput", mcp.Description("public signed approval JSON path")),
 		mcp.WithArray("args", mcp.Description("Additional arguments passed to the command after --"),
 			mcp.Items(map[string]any{"type": "string"})),
 		outputSchema(resultdto.OperationProjectRun),
@@ -107,7 +115,23 @@ func (s *Server) addProjectTools() {
 		// Building/testing with a clean Go cache easily exceeds the short
 		// deadline, so manifest commands receive the same longer timeout as
 		// new/update.
-		return s.callStructured(ctx, resultdto.OperationProjectRun, cwd, argvRun(a.Command, a.Args), longCall), nil
+		argv := []string{"run", a.Command, "--dir", cwd}
+		if len(a.Args) > 0 {
+			return s.argumentFailure(resultdto.OperationProjectRun, "args"), nil
+		}
+		if a.ProjectContext != "" {
+			argv = append(argv, "--project-context", a.ProjectContext)
+		}
+		if a.Prepare {
+			argv = append(argv, "--prepare")
+		}
+		if a.ApprovalCAS != "" {
+			argv = append(argv, "--approval-cas", a.ApprovalCAS)
+		}
+		if a.ApprovalInput != "" {
+			argv = append(argv, "--approval-input", a.ApprovalInput)
+		}
+		return s.callStructured(ctx, resultdto.OperationProjectRun, cwd, argv, longCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(

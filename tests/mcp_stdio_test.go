@@ -428,7 +428,7 @@ func TestMCPStdioContract(t *testing.T) {
 		{"init_template", map[string]any{"name": "fresh", "dir": filepath.Join(workdir, "fresh")}, "template.init"},
 		{"trust_inspect", nil, "trust.inspect"},
 		{"project_new", map[string]any{"ref": "single-basic", "name": "created", "dir": workdir, "defaults": true, "noHooks": true, "noDepsCheck": true, "noEnvSetup": true}, "project.new"},
-		{"run", map[string]any{"dir": project, "command": "test"}, "project.run"},
+		{"run", map[string]any{"dir": project, "command": "build"}, "project.run"},
 		{"ai_gen", map[string]any{"dir": project}, "ai.gen"},
 		{"settings_set", map[string]any{"dir": project, "values": map[string]any{"database": "postgres"}}, "settings.set"},
 		{"settings_edit", map[string]any{"dir": project, "group": "database", "value": "postgres"}, "settings.reanswer"},
@@ -442,8 +442,9 @@ func TestMCPStdioContract(t *testing.T) {
 		t.Run("tools/call "+tc.tool, func(t *testing.T) {
 			settingsCall := tc.tool == "settings_list" || tc.tool == "settings_set" || tc.tool == "settings_edit"
 			workspaceCall := tc.tool == "workspace_add_service"
+			runCall := tc.tool == "run"
 			var before map[string]string
-			if settingsCall || workspaceCall {
+			if settingsCall || workspaceCall || runCall {
 				before = stockSnapshot(t, project, home)
 			}
 			res := c.callTool(tc.tool, tc.args)
@@ -451,7 +452,7 @@ func TestMCPStdioContract(t *testing.T) {
 			if op != tc.op {
 				t.Fatalf("%s: operation=%s, want %s", tc.tool, op, tc.op)
 			}
-			if tc.tool == "update" || settingsCall || workspaceCall {
+			if tc.tool == "update" || settingsCall || workspaceCall || runCall {
 				// This unsigned discovery fixture is outside the installed project root.
 				if !res.IsError || status != "blocked" || len(codes) != 1 || codes[0] != "TRUST_PROJECT_CONTEXT_MISMATCH" {
 					t.Fatalf("static discovery project context refusal: isError=%v op=%s status=%s codes=%v result=%+v", res.IsError, op, status, codes, res.StructuredContent)
@@ -462,7 +463,16 @@ func TestMCPStdioContract(t *testing.T) {
 				if changes, ok := res.StructuredContent["changes"].([]any); !ok || len(changes) != 0 {
 					t.Fatalf("context refusal reported changes: %+v", res.StructuredContent)
 				}
-				if (settingsCall || workspaceCall) && !reflect.DeepEqual(before, stockSnapshot(t, project, home)) {
+				if runCall {
+					// Literal native build must refuse this unsigned, out-of-context
+					// discovery project before preparation or compiler execution.
+					if data, ok := res.StructuredContent["data"].(map[string]any); ok {
+						if data["processReceipt"] != nil || data["preparedRequest"] != nil {
+							t.Fatalf("unsigned run claimed preparation or execution: %+v", data)
+						}
+					}
+				}
+				if (settingsCall || workspaceCall || runCall) && !reflect.DeepEqual(before, stockSnapshot(t, project, home)) {
 					t.Fatalf("%s context refusal changed project or home", tc.tool)
 				}
 				return

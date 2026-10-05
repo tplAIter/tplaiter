@@ -112,8 +112,10 @@ type Publisher struct {
 
 // Options control Generate.
 type Options struct {
-	LocalSources []sourcepackage.CaptureInput
-	localRecord  []byte
+	Approvers         []trustverify.Approver
+	ExecutionEvidence []ExecutionEvidence
+	LocalSources      []sourcepackage.CaptureInput
+	localRecord       []byte
 	// SourcePackages are untrusted public signatures and raw immutable objects.
 	// They are accepted only against Publishers, during a fresh installation.
 	SourcePackages []SourcePackage
@@ -198,6 +200,11 @@ func GenerateWithContext(ctx context.Context, options Options) (Result, error) {
 	}
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
+	}
+	var executionErr error
+	ctx, executionErr = executionContext(ctx, options)
+	if executionErr != nil {
+		return Result{}, executionErr
 	}
 	if options.LocalSources != nil {
 		return generateLocal(ctx, options)
@@ -622,10 +629,20 @@ func (g *generator) run(ctx context.Context, configured []Publisher) (Result, er
 	sort.Slice(issuerPrincipals, func(i, j int) bool { return issuerPrincipals[i].Issuer < issuerPrincipals[j].Issuer })
 	sort.Slice(rules, func(i, j int) bool { return ruleKey(rules[i]) < ruleKey(rules[j]) })
 	policy := trustverify.ExecutionPolicy{APIVersion: trustverify.ExecutionPolicyAPIVersion, PolicyID: "local-oss-policy", Profile: string(bootstrap.ProfileOSS), MinimumProfile: string(bootstrap.ProfileOSS), Validity: trustverify.Validity{NotBefore: window.NotBefore, NotAfter: window.NotAfter}, Principals: []trustverify.Principal{{ID: operatorPrincipal}, {ID: publisherPrincipal}}, IssuerPrincipals: issuerPrincipals, SourceRules: rules, Approvers: []trustverify.Approver{}, AllowInvocationHuman: false, MaxTimeoutMillis: 120000}
+	if err := g.applyExecutionInputs(&policy); err != nil {
+		return Result{}, err
+	}
 	if policy.PolicySHA256, err = policy.ComputePolicySHA256(); err != nil {
 		return Result{}, fmt.Errorf("ossinstall: policy: %w", err)
 	}
 
+	policyRaw, policyErr := marshal(policy)
+	if policyErr != nil {
+		return Result{}, policyErr
+	}
+	if _, policyErr = trustverify.DecodeExecutionPolicy(policyRaw); policyErr != nil {
+		return Result{}, policyErr
+	}
 	if err := g.verifyEnrollment(ctx, descriptor, provisioning, state, envelopeRaw, receiptRaw, checkpointRef, proofs); err != nil {
 		return Result{}, err
 	}

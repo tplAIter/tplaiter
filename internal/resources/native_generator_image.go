@@ -122,7 +122,7 @@ func nativeGeneratorFiles(snapshot *trustverify.SourceSnapshot) (map[string][]by
 	if err != nil || tpl.Validate() != nil {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
-	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || len(tpl.Commands) != 0 || tpl.AIConfig.Path != "" {
+	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || operationtrust.ValidateProjectBuildDeclaration(snapshot, tpl) != nil || tpl.AIConfig.Path != "" {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
 	refs := make(map[string]string)

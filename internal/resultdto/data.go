@@ -1,5 +1,10 @@
 package resultdto
 
+import (
+	"github.com/tplAIter/tplaiter/internal/execx"
+	"github.com/tplAIter/tplaiter/internal/trustverify"
+)
+
 // Operation-specific data payloads carried in Result.Data. Each type is the
 // source of the `data` schema that the matching MCP tool declares in its
 // outputSchema. Fields are additive: a new optional field is a compatible
@@ -175,9 +180,11 @@ type AIGenData struct {
 // child's exit status; without one (`run --json`) it lists the manifest
 // commands instead.
 type ProjectRunData struct {
-	Command       string            `json:"command,omitempty"`
-	ChildExitCode int               `json:"childExitCode"`
-	Commands      []TemplateCommand `json:"commands,omitempty"`
+	PreparedRequest *trustverify.ExecutionRequest `json:"preparedRequest,omitempty"`
+	ProcessReceipt  *execx.ProjectProcessResult   `json:"processReceipt,omitempty"`
+	Command         string                        `json:"command,omitempty"`
+	ChildExitCode   int                           `json:"childExitCode"`
+	Commands        []TemplateCommand             `json:"commands,omitempty"`
 }
 
 // EnvSetupData is the data of env.setup.

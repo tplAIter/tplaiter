@@ -30,8 +30,9 @@ type FixedCompositionSelection struct {
 }
 
 type ExecutionMaterial struct {
-	selection *FixedCompositionSelection
-	formatter *FormatterSelection
+	selection    *FixedCompositionSelection
+	formatter    *FormatterSelection
+	projectBuild *ProjectBuildSelection
 }
 
 func ResolveFixedComposition(ctx context.Context, runtime *trustverify.Runtime, resolution *trustverify.VerifiedResolution, operation trustverify.OperationInputs, request trustverify.ExecutionRequest) (*FixedCompositionSelection, error) {
@@ -122,6 +123,13 @@ func BindExecutionMaterial(ctx context.Context, runtime *trustverify.Runtime, re
 }
 
 func (m *ExecutionMaterial) StagedFor(ctx context.Context, runtime *trustverify.Runtime, request trustverify.ExecutionRequest) (trustverify.StagedMaterial, error) {
+	if m != nil && m.projectBuild != nil {
+		if ctx == nil || m.projectBuild.owner == nil || m.projectBuild.owner.TrustRuntime() != runtime {
+			return trustverify.StagedMaterial{}, ErrExecutionMaterialUnavailable
+		}
+		staged, _, err := m.ProjectBuildFor(ctx, m.projectBuild.owner, request)
+		return staged, err
+	}
 	if m != nil && m.formatter != nil {
 		return m.stagedFormatter(ctx, runtime, request)
 	}

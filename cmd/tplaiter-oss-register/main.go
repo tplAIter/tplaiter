@@ -44,6 +44,8 @@ func runWithContext(ctx context.Context, args []string, stdout io.Writer) error 
 	sources := flags.String("source-packages", "", "public initial signed-source package JSON (fresh source-built installation only)")
 	local := flags.String("local-sources", "", "explicit public local source JSON; one offline operator-attested source, fresh absent root only")
 	projects := flags.String("project-contexts", "", "finite operator-approved project context JSON")
+	approvers := flags.String("approvers", "", "public explicit approver JSON, fresh signed-source registration only")
+	executionEvidence := flags.String("execution-evidence", "", "public digest/base64 chunk JSON, fresh registration only")
 	rotate := flags.Bool("rotate", false, "discard an existing installation (and its trust store) and generate a new one")
 	output := flags.String("output", "", "write the linker pins to this file instead of stdout")
 	if err := flags.Parse(args); err != nil {
@@ -103,6 +105,21 @@ func runWithContext(ctx context.Context, args []string, stdout io.Writer) error 
 		options.ProjectContexts, err = ossinstall.DecodeProjectContexts(raw)
 		if err != nil {
 			return err
+		}
+	}
+	for _, item := range []struct {
+		path   string
+		target any
+		limit  int64
+	}{{*approvers, &options.Approvers, 1 << 20}, {*executionEvidence, &options.ExecutionEvidence, 768 << 20}} {
+		if item.path != "" {
+			raw, e := readPublicInput(item.path, item.limit)
+			if e != nil {
+				return e
+			}
+			if e = canonicaljson.DecodeStrict(raw, item.target); e != nil {
+				return e
+			}
 		}
 	}
 	result, err := ossinstall.GenerateWithContext(ctx, options)
