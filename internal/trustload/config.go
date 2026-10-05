@@ -22,6 +22,7 @@ import (
 )
 
 const (
+	RuntimeInstallV2APIVersion  = "tplaiter.dev/runtime-install/v2"
 	RuntimeInstallAPIVersion    = "tplaiter.dev/runtime-install/v1"
 	OperatorPinRecordAPIVersion = "tplaiter.dev/operator-pin-record/v1"
 	maxDocument                 = 1 << 20
@@ -66,6 +67,8 @@ type ProtectedInstall struct {
 	AdapterID string `json:"adapterID"`
 }
 type RuntimeInstall struct {
+	// LocalProviders is present only in explicitly selected OSS install v2.
+	LocalProviders  []FilePin           `json:"localProviders,omitempty"`
 	APIVersion      string              `json:"apiVersion"`
 	InstallationID  string              `json:"installationID"`
 	Profile         bootstrap.ProfileID `json:"profile"`
@@ -95,6 +98,18 @@ func DecodeRuntimeInstall(raw []byte) (*RuntimeInstall, error) {
 	if err := canonicaljson.DecodeStrict(raw, &v); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConfigInvalid, err)
 	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, ErrConfigInvalid
+	}
+	local, present := fields["localProviders"]
+	if v.APIVersion == RuntimeInstallAPIVersion && present {
+		return nil, ErrConfigInvalid
+	}
+	if v.APIVersion == RuntimeInstallV2APIVersion && (!present || bytes.Equal(bytes.TrimSpace(local), []byte("null"))) {
+		return nil, ErrConfigInvalid
+	}
 	if err := v.Validate(); err != nil {
 		return nil, err
 	}
@@ -102,7 +117,14 @@ func DecodeRuntimeInstall(raw []byte) (*RuntimeInstall, error) {
 }
 
 func (v RuntimeInstall) Validate() error {
-	if v.APIVersion != RuntimeInstallAPIVersion || !token(v.InstallationID) || !validProfile(v.Profile) || !validProfile(v.MinimumProfile) || v.Profile == bootstrap.ProfileDevelopment {
+	if (v.APIVersion != RuntimeInstallAPIVersion && v.APIVersion != RuntimeInstallV2APIVersion) || !token(v.InstallationID) || !validProfile(v.Profile) || !validProfile(v.MinimumProfile) || v.Profile == bootstrap.ProfileDevelopment {
+		return ErrConfigInvalid
+	}
+
+	if v.APIVersion == RuntimeInstallAPIVersion && v.LocalProviders != nil {
+		return ErrConfigInvalid
+	}
+	if v.APIVersion == RuntimeInstallV2APIVersion && (v.Profile != bootstrap.ProfileOSS || v.LocalProviders == nil || len(v.LocalProviders) > 8) {
 		return ErrConfigInvalid
 	}
 	if bootstrap.RequireProfile(v.MinimumProfile, v.Profile) != nil {
@@ -116,6 +138,13 @@ func (v RuntimeInstall) Validate() error {
 	paths := map[string]bool{}
 	for _, p := range []FilePin{v.Descriptor, v.Provisioning, v.OperatorRecord, v.ExecutionPolicy} {
 		if paths[p.Path] {
+			return ErrConfigInvalid
+		}
+		paths[p.Path] = true
+	}
+
+	for _, p := range v.LocalProviders {
+		if !validFilePin(p) || paths[p.Path] {
 			return ErrConfigInvalid
 		}
 		paths[p.Path] = true
@@ -192,6 +221,9 @@ func (v RuntimeInstall) Validate() error {
 	for _, p := range []FilePin{v.Descriptor, v.Provisioning, v.OperatorRecord, v.ExecutionPolicy} {
 		authorityRoots = append(authorityRoots, p.Path)
 	}
+	for _, p := range v.LocalProviders {
+		authorityRoots = append(authorityRoots, p.Path)
+	}
 	if v.OSS != nil {
 		authorityRoots = append(authorityRoots, v.OSS.StorePath, v.OSS.InitialStatePath, v.OSS.InitialBundlePath)
 	}
@@ -209,8 +241,20 @@ func (v RuntimeInstall) Validate() error {
 	return nil
 }
 
+// MarshalJSON preserves the v1 document shape and explicit v2 empty arrays.
+func (v RuntimeInstall) MarshalJSON() ([]byte, error) {
+	type legacy RuntimeInstall
+	if v.APIVersion != RuntimeInstallV2APIVersion {
+		return json.Marshal(legacy(v))
+	}
+	return json.Marshal(struct {
+		legacy
+		LocalProviders []FilePin `json:"localProviders"`
+	}{legacy(v), v.LocalProviders})
+}
+
 func (v RuntimeInstall) Digest() (string, error) {
-	return bootstrap.DomainDigest(RuntimeInstallAPIVersion, v)
+	return bootstrap.DomainDigest(v.APIVersion, v)
 }
 
 func validOSS(v OSSInstall) bool {

@@ -20,6 +20,7 @@ func newContextCmd() *cobra.Command {
 	for _, action := range []string{"discover", "search", "get", "plan", "continue", "schema"} {
 		c.AddCommand(newContextActionCmd(action))
 	}
+	c.AddCommand(newContextPreviewCmd("preview-catalog"), newContextPreviewCmd("preview-resource"))
 	return c
 }
 

@@ -94,3 +94,63 @@ func TestRuntimeDigestIsIndependentOfRawBytes(t *testing.T) {
 		t.Fatalf("bad digest %q", d)
 	}
 }
+
+func TestRuntimeInstallV2ExplicitLocalRegistration(t *testing.T) {
+	v1 := validInstall()
+	before, err := json.Marshal(v1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v2 := v1
+	v2.APIVersion = RuntimeInstallV2APIVersion
+	v2.LocalProviders = []FilePin{{Path: "/var/tmp/local-provider-registration.json", SHA256: v1.Descriptor.SHA256}}
+	raw, err := json.Marshal(v2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeRuntimeInstall(raw)
+	if err != nil || len(got.LocalProviders) != 1 {
+		t.Fatal("v2", err)
+	}
+	h1, _ := v1.Digest()
+	h2, _ := v2.Digest()
+	if h1 == h2 {
+		t.Fatal("digest domain collision")
+	}
+	empty := v2
+	empty.LocalProviders = []FilePin{}
+	rawEmpty, _ := json.Marshal(empty)
+	if _, err = DecodeRuntimeInstall(rawEmpty); err != nil {
+		t.Fatal("explicit empty v2", err)
+	}
+	for _, mutate := range []func(map[string]any){
+		func(m map[string]any) { delete(m, "localProviders") },
+		func(m map[string]any) { m["localProviders"] = nil },
+		func(m map[string]any) { m["apiVersion"] = RuntimeInstallAPIVersion },
+		func(m map[string]any) { m["localProviders"] = []any{m["descriptor"]} },
+		func(m map[string]any) {
+			m["localProviders"] = []any{map[string]any{"path": v1.ProjectContexts[0].RootPath + "/providers.json", "sha256": v1.Descriptor.SHA256}}
+		},
+		func(m map[string]any) { m["profile"] = "organization" },
+		func(m map[string]any) { m["socketPath"] = "/var/tmp/session.sock" },
+	} {
+		var m map[string]any
+		_ = json.Unmarshal(raw, &m)
+		mutate(m)
+		bad, _ := json.Marshal(m)
+		if _, err = DecodeRuntimeInstall(bad); err == nil {
+			t.Fatal("accepted invalid v2")
+		}
+	}
+	var legacy map[string]any
+	_ = json.Unmarshal(before, &legacy)
+	legacy["localProviders"] = nil
+	bad, _ := json.Marshal(legacy)
+	if _, err = DecodeRuntimeInstall(bad); err == nil {
+		t.Fatal("v1 accepts v2 field")
+	}
+	after, _ := json.Marshal(v1)
+	if string(before) != string(after) {
+		t.Fatal("v1 serialization changed")
+	}
+}

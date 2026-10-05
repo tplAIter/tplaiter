@@ -14,11 +14,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/tplAIter/tplaiter/internal/bootstrap"
+	"github.com/tplAIter/tplaiter/internal/trustload"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/tplAIter/tplaiter/internal/contextcmd"
 	"github.com/tplAIter/tplaiter/internal/ossinstall"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
@@ -228,8 +233,8 @@ func TestContextInstalledCLIAndStdioSignedZeroWrites(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(list.Tools) != 29 {
-		t.Fatalf("published run/diff 28 tools not preserved plus context: %d", len(list.Tools))
+	if len(list.Tools) != 30 {
+		t.Fatalf("published 30-tool inventory not preserved: %d", len(list.Tools))
 	}
 	found := false
 	for _, rawTool := range list.Tools {
@@ -476,4 +481,329 @@ func contextReadImage(t *testing.T, roots ...string) map[string]string {
 		}
 	}
 	return image
+}
+
+// This preview test uses the actual build-time registration command, its
+// writer-produced linker pins, trust provision, and the installed CLI/MCP.
+func TestLocalPreviewInstalledCommandAndMCP(t *testing.T)      { testLocalPreviewInstalled(t, 2) }
+func TestLocalPreviewLargeCatalogSparseInstalled(t *testing.T) { testLocalPreviewInstalled(t, 12) }
+func testLocalPreviewInstalled(t *testing.T, sourceCount int) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("bounded Darwin local preview")
+	}
+	fixture := startPreviewSynthetic(t, sourceCount)
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectRoot := filepath.Join(base, "project")
+	if err = os.Mkdir(projectRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(base, "home")
+	if err = os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	projects := []trustload.ProjectContext{{Key: "preview", ProjectID: "project.preview", SubmitterPrincipalID: "principal:operator", MinimumProfile: bootstrap.ProfileOSS, RootPath: projectRoot}}
+	spec := ossinstall.LocalProviderSpec{RegistrationID: "synthetic", ProjectKeys: []string{"preview"}, Protocol: "local-provider.session/v1", Qualification: trustload.LocalObserved, Limits: trustload.LocalReadLimits{FrameBytes: 32768, TotalBytes: 2097152, Pages: 128, SourceBytes: 8192, DeadlineMs: 2000}}
+	spec.Endpoint.Kind = "unix"
+	spec.Endpoint.SocketPath = fixture.socket
+	spec.Endpoint.OwnerUID = uint32(os.Geteuid())
+	projectInput := filepath.Join(base, "projects.json")
+	providerInput := filepath.Join(base, "providers.json")
+	if err = os.WriteFile(projectInput, previewJSON(t, projects), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(providerInput, previewJSON(t, []ossinstall.LocalProviderSpec{spec}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writer := exec.CommandContext(ctx, testfixture.GoBinary(t), "run", "./cmd/tplaiter-oss-register", "--root", filepath.Join(base, "installation"), "--project-contexts", projectInput, "--local-providers", providerInput)
+	writer.Dir = filepath.Join("..", "..")
+	writer.Env = testBuildEnv(home)
+	pins, err := writer.Output()
+	if err != nil {
+		if e, ok := err.(*exec.ExitError); ok {
+			t.Fatal("real operator writer", e, string(e.Stderr))
+		}
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(pins)), "\n") {
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) != 2 {
+			t.Fatal("writer pins")
+		}
+		values[kv[0]] = kv[1]
+	}
+	bin := filepath.Join(base, "tplaiter")
+	build := exec.CommandContext(ctx, testfixture.GoBinary(t), "build", "-trimpath", "-ldflags", "-X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationPath="+values["REGISTRATION_PATH"]+" -X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationSHA256="+values["REGISTRATION_SHA256"], "-o", bin, ".")
+	build.Dir = filepath.Join("..", "..")
+	build.Env = testBuildEnv(home)
+	if out, e := build.CombinedOutput(); e != nil {
+		t.Fatal(e, string(out))
+	}
+	run := func(args ...string) ([]byte, error) {
+		c := exec.CommandContext(ctx, bin, args...)
+		c.Dir = base
+		c.Env = testProcessEnv(home)
+		return c.Output()
+	}
+	if out, e := run("trust", "provision"); e != nil {
+		if x, ok := e.(*exec.ExitError); ok {
+			t.Fatal("provision", string(out), string(x.Stderr))
+		}
+		t.Fatal(e)
+	}
+	before := contextReadImage(t, projectRoot, filepath.Join(base, "installation"), home)
+	catalogRequest := contextcmd.LocalPreviewRequest{RegistrationID: "synthetic"}
+	if sourceCount > 2 {
+		catalogRequest.Limit = 1
+	}
+	raw, e := run("context", "preview-catalog", "--request", string(previewJSON(t, catalogRequest)), "--json")
+	if e != nil {
+		if x, ok := e.(*exec.ExitError); ok {
+			t.Fatal("preview catalog", string(raw), string(x.Stderr))
+		}
+		t.Fatal(e)
+	}
+	schemaRaw, err := os.ReadFile("../../schema/context-local-preview.v1.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaDoc, err := jsonschema.UnmarshalJSON(bytes.NewReader(schemaRaw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err = compiler.AddResource("preview.json", schemaDoc); err != nil {
+		t.Fatal(err)
+	}
+	previewSchema, err := compiler.Compile("preview.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decode := func(raw []byte) resultdto.ContextData {
+		env, e := resultdto.Decode(raw)
+		if e != nil {
+			t.Fatal(e, string(raw))
+		}
+		var data resultdto.ContextData
+		if e = json.Unmarshal(env.Data, &data); e != nil {
+			t.Fatal(e)
+		}
+		if data.LocalPreview == nil || data.LocalPreview.Qualification != trustload.LocalObserved || data.LocalPreview.SourceAuthentication != "none" || data.Packet != nil || len(data.LocalPreview.Metadata.SourceEvidence) != 0 || data.LocalPreview.Selection.CodeIdentity != "unchecked" {
+			t.Fatal("false qualification")
+		}
+		payload := previewJSON(t, data.LocalPreview)
+		value, e := jsonschema.UnmarshalJSON(bytes.NewReader(payload))
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = previewSchema.Validate(value); e != nil {
+			t.Fatal("actual preview schema", e)
+		}
+		return data
+	}
+	catalog := decode(raw)
+	if catalog.LocalPreview.CatalogWire != nil || catalog.LocalPreview.Observation.CatalogSHA256 != previewDigest(fixture.catalog) || catalog.LocalPreview.Observation.CatalogByteLength != len(fixture.catalog) {
+		t.Fatal("default must retain receipt pin without delivering whole wire")
+	}
+	if sourceCount > 2 && (len(fixture.catalog) <= 32768 || len(catalog.LocalPreview.Metadata.Records) != 2 || len(catalog.LocalPreview.Assets) != 1) {
+		t.Fatalf("large complete catalog must support sparse selected output: wire=%d records=%d assets=%d", len(fixture.catalog), len(catalog.LocalPreview.Metadata.Records), len(catalog.LocalPreview.Assets))
+	}
+	if len(raw) > 32768 {
+		t.Fatal("complete envelope bound")
+	}
+	diagnostic := catalogRequest
+	diagnostic.IncludeCatalogWire = true
+	diagnosticRaw, diagnosticErr := run("context", "preview-catalog", "--request", string(previewJSON(t, diagnostic)), "--json")
+	if sourceCount > 2 {
+		if diagnosticErr == nil || bytes.Contains(diagnosticRaw, []byte(`"localPreview"`)) {
+			t.Fatal("oversized complete diagnostic must refuse")
+		}
+	} else {
+		if diagnosticErr != nil {
+			t.Fatal("explicit diagnostic", diagnosticErr)
+		}
+		d := decode(diagnosticRaw)
+		if d.LocalPreview.CatalogWire == nil {
+			t.Fatal("missing explicit diagnostic")
+		}
+		observed, e := base64.StdEncoding.DecodeString(d.LocalPreview.CatalogWire.Data)
+		if e != nil || !bytes.Equal(observed, fixture.catalog) {
+			t.Fatal("diagnostic wire bytes changed")
+		}
+	}
+	asset := catalog.LocalPreview.Assets[0]
+	req := contextcmd.LocalPreviewRequest{RegistrationID: "synthetic", SourceID: asset.SourceID, AssetID: asset.AssetID, ExpectedCatalogSHA256: catalog.Snapshot, MaxBytes: 32768}
+	for _, a := range catalog.LocalPreview.Assets {
+		req.Required = append(req.Required, a.ItemID)
+	}
+	if sourceCount > 2 {
+		alias := strings.TrimPrefix(asset.SourceID, "example:source:")
+		req.Required = []string{"example:resource:" + alias + "-readme", "example:resource:" + alias + "-guide"}
+	}
+	raw, e = run("context", "preview-resource", "--request", string(previewJSON(t, req)), "--json")
+	if e != nil {
+		t.Fatal("resource", e, string(raw))
+	}
+	resource := decode(raw)
+	expectedBodies := 4
+	if sourceCount > 2 {
+		expectedBodies = 2
+	}
+	if len(resource.LocalPreview.Resources) != expectedBodies {
+		t.Fatalf("body floor got %d want %d; selected=%s", len(resource.LocalPreview.Resources), expectedBodies, asset.ItemID)
+	}
+	for _, observed := range resource.LocalPreview.Resources {
+		body, e := base64.StdEncoding.DecodeString(observed.Data)
+		if e != nil || string(body) != fixture.bodies[observed.AssetID] || previewDigest(body) != observed.ContentSHA256 {
+			t.Fatal("body observation")
+		}
+	}
+	for _, bad := range []string{`{"registrationID":"synthetic","socketPath":"/caller"}`, `{"registrationID":"missing"}`, `{"registrationID":"synthetic","maxBytes":1}`, `{"registrationID":"synthetic","required":["example:resource:absent"]}`, `{"registrationID":"synthetic","required":["example:resource:preview-00-readme","example:resource:preview-00-guide"],"maxRecords":1}`} {
+		if _, e = run("context", "preview-catalog", "--request", bad, "--json"); e == nil {
+			t.Fatal("invalid local request succeeded")
+		}
+	}
+	for _, fault := range []int32{1, 2} {
+		fixture.fault.Store(fault)
+		started := time.Now()
+		failed, e := run("context", "preview-catalog", "--registration", "synthetic", "--json")
+		if e == nil || time.Since(started) > 4*time.Second || bytes.Contains(failed, []byte(`"localPreview"`)) {
+			t.Fatal("slow/partial peer must refuse within deadline without partial preview")
+		}
+	}
+	fixture.fault.Store(0)
+	server := exec.CommandContext(ctx, bin, "mcp-server")
+	server.Dir = base
+	server.Env = testProcessEnv(home)
+	stdin, e := server.StdinPipe()
+	if e != nil {
+		t.Fatal(e)
+	}
+	stdout, e := server.StdoutPipe()
+	if e != nil {
+		t.Fatal(e)
+	}
+	var stderr bytes.Buffer
+	server.Stderr = &stderr
+	if e = server.Start(); e != nil {
+		t.Fatal(e)
+	}
+	waited := false
+	defer func() {
+		if !waited {
+			_ = stdin.Close()
+			_ = server.Wait()
+		}
+	}()
+	encoder := json.NewEncoder(stdin)
+	decoder := json.NewDecoder(stdout)
+	next := 0
+	call := func(method string, params any) map[string]json.RawMessage {
+		next++
+		id := next
+		if e = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); e != nil {
+			t.Fatal(e)
+		}
+		for {
+			var reply map[string]json.RawMessage
+			if e = decoder.Decode(&reply); e != nil {
+				t.Fatal(e, stderr.String())
+			}
+			var got int
+			_ = json.Unmarshal(reply["id"], &got)
+			if got == id {
+				if reply["error"] != nil {
+					t.Fatal("MCP error", string(reply["error"]))
+				}
+				return reply
+			}
+		}
+	}
+	call("initialize", map[string]any{"protocolVersion": "2024-11-05", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "public-local-preview", "version": "1"}})
+	if e = encoder.Encode(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"}); e != nil {
+		t.Fatal(e)
+	}
+	listed := call("tools/list", map[string]any{})
+	var inventory struct {
+		Tools []json.RawMessage `json:"tools"`
+	}
+	_ = json.Unmarshal(listed["result"], &inventory)
+	if len(inventory.Tools) != 30 {
+		t.Fatal("native tool inventory changed", len(inventory.Tools))
+	}
+	reply := call("tools/call", map[string]any{"name": "context", "arguments": map[string]any{"action": "preview-catalog", "preview": catalogRequest}})
+	var result struct {
+		Structured json.RawMessage `json:"structuredContent"`
+		IsError    bool            `json:"isError"`
+	}
+	result.IsError = false
+	if e = json.Unmarshal(reply["result"], &result); e != nil || result.IsError {
+		t.Fatal("MCP preview failed", string(reply["result"]))
+	}
+	mcpData := decode(result.Structured)
+	if mcpData.Snapshot != catalog.Snapshot {
+		t.Fatal("shared route pins changed")
+	}
+	reply = call("tools/call", map[string]any{"name": "context", "arguments": map[string]any{"action": "preview-catalog", "preview": diagnostic}})
+	result.IsError = false
+	if e = json.Unmarshal(reply["result"], &result); e != nil {
+		t.Fatal(e)
+	}
+	if sourceCount > 2 {
+		if !result.IsError || bytes.Contains(result.Structured, []byte(`"localPreview"`)) {
+			t.Fatal("MCP oversized full diagnostic must refuse")
+		}
+	} else {
+		if result.IsError {
+			t.Fatal("MCP explicit diagnostic", string(reply["result"]))
+		}
+		d := decode(result.Structured)
+		if d.LocalPreview.CatalogWire == nil {
+			t.Fatal("MCP diagnostic absent")
+		}
+		observed, e := base64.StdEncoding.DecodeString(d.LocalPreview.CatalogWire.Data)
+		if e != nil || !bytes.Equal(observed, fixture.catalog) {
+			t.Fatal("MCP exact diagnostic")
+		}
+	}
+
+	reply = call("resources/read", map[string]any{"uri": asset.ResourceURI})
+	var read struct {
+		Contents []struct {
+			Text string `json:"text"`
+		} `json:"contents"`
+	}
+	if e = json.Unmarshal(reply["result"], &read); e != nil || len(read.Contents) != 1 {
+		t.Fatal("resource callback", e)
+	}
+	var callback resultdto.ContextData
+	if e = json.Unmarshal([]byte(read.Contents[0].Text), &callback); e != nil || callback.LocalPreview == nil || len(callback.LocalPreview.Resources) == 0 {
+		t.Fatal("resource preview callback", e)
+	}
+	reply = call("tools/call", map[string]any{"name": "context", "arguments": map[string]any{"action": "preview-resource", "preview": req}})
+	result.IsError = false
+	if e = json.Unmarshal(reply["result"], &result); e != nil || result.IsError {
+		t.Fatal("MCP body", string(reply["result"]))
+	}
+	decode(result.Structured)
+	reply = call("tools/call", map[string]any{"name": "context", "arguments": map[string]any{"action": "preview-catalog", "preview": map[string]any{"registrationID": "synthetic", "maxBytes": 1}}})
+	_ = json.Unmarshal(reply["result"], &result)
+	if !result.IsError {
+		t.Fatal("MCP full envelope budget ignored")
+	}
+	_ = stdin.Close()
+	err = server.Wait()
+	waited = true
+	if err != nil {
+		t.Fatal("MCP shutdown", err, stderr.String())
+	}
+	if !reflect.DeepEqual(before, contextReadImage(t, projectRoot, filepath.Join(base, "installation"), home)) {
+		t.Fatal("preview mutated persistent state")
+	}
+	t.Log("actual operator-command v2 pins, installed CLI/MCP two-page catalog/body/resource callback/refusals, 30 tools and zero writes PASS")
 }

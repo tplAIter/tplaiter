@@ -40,6 +40,7 @@ func run(args []string, stdout io.Writer) error {
 func runWithContext(ctx context.Context, args []string, stdout io.Writer) error {
 	flags := flag.NewFlagSet("tplaiter-oss-register", flag.ContinueOnError)
 	root := flags.String("root", "", "absolute install root for the trust material (required)")
+	localProviders := flags.String("local-providers", "", "bounded operator-selected local preview host specs (requires explicit project contexts)")
 	publishers := flags.String("publishers", "", "optional JSON file with a list of trusted template publishers")
 	sources := flags.String("source-packages", "", "public initial signed-source package JSON (fresh source-built installation only)")
 	local := flags.String("local-sources", "", "explicit public local source JSON; one offline operator-attested source, fresh absent root only")
@@ -105,6 +106,19 @@ func runWithContext(ctx context.Context, args []string, stdout io.Writer) error 
 		options.ProjectContexts, err = ossinstall.DecodeProjectContexts(raw)
 		if err != nil {
 			return err
+		}
+	}
+	if *localProviders != "" {
+		if *projects == "" || *rotate {
+			return errors.New("--local-providers requires --project-contexts and forbids rotation")
+		}
+		raw, e := readPublicInput(*localProviders, 131072)
+		if e != nil {
+			return e
+		}
+		options.LocalProviders, e = ossinstall.DecodeLocalProviders(raw)
+		if e != nil {
+			return e
 		}
 	}
 	for _, item := range []struct {

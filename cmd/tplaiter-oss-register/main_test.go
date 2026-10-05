@@ -125,3 +125,20 @@ func TestPinOutputFailurePreservesCommittedInstallation(t *testing.T) {
 		t.Fatal("external exact enrollment cannot reauthenticate after output failure")
 	}
 }
+
+func TestLocalProviderInputRequiresExplicitContext(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := filepath.Join(base, "local.json")
+	if err = os.WriteFile(input, []byte(`[]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = run([]string{"--root", filepath.Join(base, "install"), "--local-providers", input}, &bytes.Buffer{}); err == nil {
+		t.Fatal("implicit project registration")
+	}
+	if _, err = os.Stat(filepath.Join(base, "install")); !os.IsNotExist(err) {
+		t.Fatal("invalid operator input mutated root")
+	}
+}

@@ -23,6 +23,7 @@ type ContextEntry struct {
 // ContextData reports serialized bytes. Window admission is a separate host
 // contract; these observations cannot manufacture a token/window allowance.
 type ContextData struct {
+	LocalPreview *LocalPreviewData `json:"localPreview,omitempty"`
 	// BytePlan and Spending describe this invocation's local retrieval transport.
 	// They never represent the caller model's complete context or remaining tokens.
 	BytePlan       *contextwindow.Plan     `json:"bytePlan,omitempty"`

@@ -156,3 +156,16 @@ func TestCompactSummaryIsBounded(t *testing.T) {
 		t.Fatalf("summary has %d lines, bound is %d:\n%s", n, maxSummaryLines, summary)
 	}
 }
+
+func TestLocalPreviewKeepsAllNativeOutputSchemas(t *testing.T) {
+	s := New("/nonexistent", "test", nil)
+	if len(s.MCP().ListTools()) != 30 {
+		t.Fatal("native tool inventory")
+	}
+	for name, tool := range s.MCP().ListTools() {
+		if len(tool.Tool.RawOutputSchema) == 0 {
+			t.Fatal("output contract removed", name)
+		}
+		_ = compileToolSchema(t, tool.Tool.RawOutputSchema)
+	}
+}

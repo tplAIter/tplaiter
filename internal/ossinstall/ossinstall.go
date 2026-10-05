@@ -112,6 +112,8 @@ type Publisher struct {
 
 // Options control Generate.
 type Options struct {
+	LocalProviders []LocalProviderSpec
+
 	Approvers         []trustverify.Approver
 	ExecutionEvidence []ExecutionEvidence
 	LocalSources      []sourcepackage.CaptureInput
@@ -208,6 +210,14 @@ func GenerateWithContext(ctx context.Context, options Options) (Result, error) {
 	}
 	if options.LocalSources != nil {
 		return generateLocal(ctx, options)
+	}
+	if len(options.LocalProviders) > 0 {
+		if len(options.ProjectContexts) == 0 || options.Rotate {
+			return Result{}, errors.New("ossinstall: local providers require explicit project contexts and forbid rotation")
+		}
+		if _, err := normalizeLocalProviders(options.LocalProviders, options.ProjectContexts); err != nil {
+			return Result{}, err
+		}
 	}
 	if options.SourcePackages != nil || options.ProjectContexts != nil {
 		return generateEnrollment(ctx, options)
@@ -425,6 +435,7 @@ type generator struct {
 	disk           string
 	contractDigest string
 	sources        []SourcePackage
+	localProviders []LocalProviderSpec
 	projects       []trustload.ProjectContext
 	selections     []operationtrust.SourceSelection
 	now            time.Time
@@ -727,6 +738,25 @@ func (g *generator) run(ctx context.Context, configured []Publisher) (Result, er
 		EvidenceRoot:    filepath.Join(g.root, "evidence"), ScratchRoot: filepath.Join(g.root, "scratch"),
 		OSS: &trustload.OSSInstall{StorePath: filepath.Join(g.root, "store"), InitialStatePath: pins["state.json"].Path, InitialStateSHA256: state.StateSHA256, InitialBundlePath: pins["bundle.json"].Path, InitialBundleSHA256: bundleDigest},
 	}
+	if len(g.localProviders) > 0 {
+		specs, err := normalizeLocalProviders(g.localProviders, projects)
+		if err != nil {
+			return Result{}, err
+		}
+		install.APIVersion = trustload.RuntimeInstallV2APIVersion
+		install.LocalProviders = []trustload.FilePin{}
+		for i, spec := range specs {
+			raw, err := localProviderDocument(spec, installationID)
+			if err != nil {
+				return Result{}, err
+			}
+			p, err := g.writeDocument(filepath.Join(config, fmt.Sprintf("local-provider-%d.json", i)), raw)
+			if err != nil {
+				return Result{}, err
+			}
+			install.LocalProviders = append(install.LocalProviders, p)
+		}
+	}
 	if err := install.Validate(); err != nil {
 		return Result{}, fmt.Errorf("ossinstall: runtime install: %w", err)
 	}
@@ -918,4 +948,96 @@ func writeCAS(root, digest string, raw []byte) error {
 	}
 	x := strings.TrimPrefix(digest, "sha256:")
 	return publishImmutable(root, filepath.Join("sha256", x[:2], x[2:]), raw)
+}
+
+// LocalProviderSpec is build-time operator selection data, never an installed
+// request or a source-authentication claim. Generate assigns installationID.
+type LocalProviderSpec struct {
+	RegistrationID string   `json:"registrationID"`
+	ProjectKeys    []string `json:"projectKeys"`
+	Protocol       string   `json:"protocol"`
+	Qualification  string   `json:"qualification"`
+	Endpoint       struct {
+		Kind       string `json:"kind"`
+		SocketPath string `json:"socketPath"`
+		OwnerUID   uint32 `json:"ownerUID"`
+	} `json:"endpoint"`
+	Limits trustload.LocalReadLimits `json:"limits"`
+}
+
+func DecodeLocalProviders(raw []byte) ([]LocalProviderSpec, error) {
+	var out []LocalProviderSpec
+	if len(raw) == 0 || len(raw) > 131072 || canonicaljson.DecodeStrict(raw, &out) != nil || out == nil || len(out) > 8 {
+		return nil, errors.New("ossinstall: invalid local provider input")
+	}
+	var objects []json.RawMessage
+	_ = json.Unmarshal(raw, &objects)
+	for _, obj := range objects {
+		var fields map[string]json.RawMessage
+		_ = json.Unmarshal(obj, &fields)
+		for _, key := range []string{"registrationID", "projectKeys", "protocol", "qualification", "endpoint", "limits"} {
+			if _, ok := fields[key]; !ok {
+				return nil, errors.New("ossinstall: missing local provider input field")
+			}
+		}
+		// Preserve original nested bytes so null scalar fields cannot become zero.
+		fields["apiVersion"] = json.RawMessage(`"tplaiter.dev/local-provider-registration/v1"`)
+		fields["kind"] = json.RawMessage(`"LocalProviderRegistration"`)
+		fields["installationID"] = json.RawMessage(`"install.validation"`)
+		document, err := json.Marshal(fields)
+		if err != nil {
+			return nil, err
+		}
+		if err = trustload.ValidateLocalProviderDocument(document); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+func localProviderDocument(spec LocalProviderSpec, installationID string) ([]byte, error) {
+	document := struct {
+		APIVersion     string `json:"apiVersion"`
+		Kind           string `json:"kind"`
+		InstallationID string `json:"installationID"`
+		LocalProviderSpec
+	}{"tplaiter.dev/local-provider-registration/v1", "LocalProviderRegistration", installationID, spec}
+	raw, err := json.Marshal(document)
+	if err != nil {
+		return nil, err
+	}
+	if err = trustload.ValidateLocalProviderDocument(raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func normalizeLocalProviders(specs []LocalProviderSpec, projects []trustload.ProjectContext) ([]LocalProviderSpec, error) {
+	if len(specs) > 8 {
+		return nil, errors.New("ossinstall: local provider count")
+	}
+	out := append([]LocalProviderSpec(nil), specs...)
+	seen := map[string]bool{}
+	keys := map[string]bool{}
+	for _, p := range projects {
+		keys[p.Key] = true
+	}
+	for i, spec := range out {
+		if _, err := localProviderDocument(spec, "install.validation"); err != nil {
+			return nil, err
+		}
+		if seen[spec.RegistrationID] {
+			return nil, errors.New("ossinstall: duplicate local provider")
+		}
+		seen[spec.RegistrationID] = true
+		out[i].ProjectKeys = append([]string(nil), spec.ProjectKeys...)
+		sort.Strings(out[i].ProjectKeys)
+		for _, key := range spec.ProjectKeys {
+			if !keys[key] {
+				return nil, errors.New("ossinstall: unregistered local provider project")
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].RegistrationID < out[j].RegistrationID })
+	return out, nil
 }

@@ -103,3 +103,21 @@ func TestContextPreservesSharedToolSurface(t *testing.T) {
 	}
 	t.Logf("inherited %d named tools preserved; context and project_link are the named additions", len(inherited))
 }
+
+func TestLocalPreviewAddsActionsKeepsNativeActions(t *testing.T) {
+	s := New("/nonexistent", "test", nil)
+	tools := s.MCP().ListTools()
+	if len(tools) != 30 {
+		t.Fatal("tool inventory")
+	}
+	action := tools["context"].Tool.InputSchema.Properties["action"].(map[string]any)
+	raw, _ := json.Marshal(action)
+	for _, name := range []string{"discover", "search", "get", "continue", "plan", "schema", "preview-catalog", "preview-resource"} {
+		if !strings.Contains(string(raw), `"`+name+`"`) {
+			t.Fatal("action removed", name)
+		}
+	}
+	if _, ok := tools["context"].Tool.InputSchema.Properties["preview"]; !ok {
+		t.Fatal("typed preview input absent")
+	}
+}

@@ -336,7 +336,19 @@ func contractForWithContext(ctx context.Context, o Options) (enrollmentContract,
 		Sources              []string                   `json:"sources"`
 		Projects             []trustload.ProjectContext `json:"projects"`
 	}{localRecordDigest(o.localRecord), defaultKey, sources, projects})
-	return enrollmentContract{APIVersion: "tplaiter.dev/initial-enrollment-contract/v1", Digest: d, LocalPublisherSHA256: localRecordDigest(o.localRecord)}, err
+	contract := enrollmentContract{APIVersion: "tplaiter.dev/initial-enrollment-contract/v1", Digest: d, LocalPublisherSHA256: localRecordDigest(o.localRecord)}
+	if err == nil && len(o.LocalProviders) > 0 {
+		specs, e := normalizeLocalProviders(o.LocalProviders, o.ProjectContexts)
+		if e != nil {
+			return enrollmentContract{}, e
+		}
+		contract.APIVersion = "tplaiter.dev/initial-enrollment-contract/v2"
+		contract.Digest, err = bootstrap.DomainDigest(contract.APIVersion, struct {
+			Prior          string              `json:"prior"`
+			LocalProviders []LocalProviderSpec `json:"localProviders"`
+		}{d, specs})
+	}
+	return contract, err
 }
 
 func generateEnrollment(ctx context.Context, o Options) (Result, error) {
@@ -433,7 +445,7 @@ func generateEnrollment(ctx context.Context, o Options) (Result, error) {
 	if entropy == nil {
 		entropy = defaultEntropy()
 	}
-	g := &generator{ctx: ctx, root: o.Root, disk: stage, contractDigest: contract.Digest, sources: o.SourcePackages, projects: o.ProjectContexts, now: now.UTC().Truncate(time.Second), validity: validity, rand: entropy, evidence: map[string][]byte{}}
+	g := &generator{ctx: ctx, root: o.Root, disk: stage, contractDigest: contract.Digest, sources: o.SourcePackages, projects: o.ProjectContexts, localProviders: o.LocalProviders, now: now.UTC().Truncate(time.Second), validity: validity, rand: entropy, evidence: map[string][]byte{}}
 	result, err := g.run(ctx, o.Publishers)
 	if err != nil {
 		return Result{}, err

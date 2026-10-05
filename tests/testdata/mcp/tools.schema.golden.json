@@ -279,7 +279,7 @@
       "openWorldHint": true,
       "readOnlyHint": true
     },
-    "description": "Read installed signed context with bounded local byte plans. Model window stays unknown. Actions discover/search/get/continue/plan; pull schema on demand.",
+    "description": "Read installed signed context with bounded local byte plans. Model window stays unknown. Local preview-catalog/preview-resource return explicitly untrusted observed data; signed actions discover/search/get/continue/plan; pull schema on demand.",
     "inputSchema": {
       "properties": {
         "action": {
@@ -289,13 +289,20 @@
             "get",
             "continue",
             "plan",
-            "schema"
+            "schema",
+            "preview-catalog",
+            "preview-resource"
           ],
           "type": "string"
         },
         "dir": {
           "description": "Optional locator, must match the installed root",
           "type": "string"
+        },
+        "preview": {
+          "description": "Local preview selectors/bounds and installed registration ID; never endpoints or authentication",
+          "properties": {},
+          "type": "object"
         },
         "projectContext": {
           "description": "Exact installed context key; default is registered",

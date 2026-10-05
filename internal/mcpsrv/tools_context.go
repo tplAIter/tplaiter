@@ -19,10 +19,11 @@ func init() {
 }
 
 type contextToolArgs struct {
-	Action         string             `json:"action"`
-	ProjectContext string             `json:"projectContext,omitempty"`
-	Dir            string             `json:"dir,omitempty"`
-	Request        contextcmd.Request `json:"request,omitempty"`
+	Preview        *contextcmd.LocalPreviewRequest `json:"preview,omitempty"`
+	Action         string                          `json:"action"`
+	ProjectContext string                          `json:"projectContext,omitempty"`
+	Dir            string                          `json:"dir,omitempty"`
+	Request        contextcmd.Request              `json:"request,omitempty"`
 }
 
 func ContextFullSchema() (json.RawMessage, error) {
@@ -45,12 +46,14 @@ func ContextFullSchema() (json.RawMessage, error) {
 }
 
 func (s *Server) addContextTools() {
+	frames := s.installPreviewFrames()
 	s.mcp.AddTool(mcp.NewTool(
 		"context",
-		mcp.WithDescription("Read installed signed context with bounded local byte plans. Model window stays unknown. Actions discover/search/get/continue/plan; pull schema on demand."),
-		mcp.WithString("action", mcp.Required(), mcp.Enum("discover", "search", "get", "continue", "plan", "schema")),
+		mcp.WithDescription("Read installed signed context with bounded local byte plans. Model window stays unknown. Local preview-catalog/preview-resource return explicitly untrusted observed data; signed actions discover/search/get/continue/plan; pull schema on demand."),
+		mcp.WithString("action", mcp.Required(), mcp.Enum("discover", "search", "get", "continue", "plan", "schema", "preview-catalog", "preview-resource")),
 		mcp.WithString("projectContext", mcp.Description("Exact installed context key; default is registered")),
 		mcp.WithString("dir", mcp.Description("Optional locator, must match the installed root")),
+		mcp.WithObject("preview", mcp.Description("Local preview selectors/bounds and installed registration ID; never endpoints or authentication")),
 		mcp.WithObject("request", mcp.Description("Typed selectors/byte bounds; action=schema gives full contract")),
 		mcp.WithReadOnlyHintAnnotation(true), outputSchema(resultdto.OperationContextQuery),
 	), func(ctx context.Context, call mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -63,6 +66,17 @@ func (s *Server) addContextTools() {
 		var a contextToolArgs
 		if canonicaljson.DecodeStrict(raw, &a) != nil {
 			return s.argumentFailure(resultdto.OperationContextQuery, "request"), nil //nolint:nilerr // MCP decoding failures are typed tool results, not protocol errors
+		}
+		if a.Action == "preview-catalog" || a.Action == "preview-resource" {
+			var outer map[string]json.RawMessage
+			_ = json.Unmarshal(raw, &outer)
+			if a.Preview == nil || outer["request"] != nil || len(raw) > 16384 {
+				return s.argumentFailure(resultdto.OperationContextQuery, "preview"), nil
+			}
+			return s.callLocalPreview(ctx, a, call, frames), nil
+		}
+		if a.Preview != nil {
+			return s.argumentFailure(resultdto.OperationContextQuery, "preview"), nil
 		}
 		switch a.Action {
 		case "discover", "search", "get", "continue", "plan", "schema":
@@ -92,6 +106,9 @@ func (s *Server) addContextTools() {
 			argv = append(argv, "--dir="+cwd)
 		}
 		return s.callStructured(ctx, resultdto.OperationContextQuery, cwd, argv, shortCall), nil
+	})
+	s.mcp.AddResourceTemplate(mcp.NewResourceTemplate("tplaiter://context-preview/{projectContext}/{registrationID}/{catalogSHA256}/{sourceID}/{assetID}", "local untrusted resource preview", mcp.WithTemplateDescription("Observed local content; source and code identity unauthenticated"), mcp.WithTemplateMIMEType("application/json")), func(ctx context.Context, call mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return s.readLocalPreviewResource(ctx, call, frames)
 	})
 	s.mcp.AddResourceTemplate(mcp.NewResourceTemplate("tplaiter://context/{projectContext}/{snapshot}/{id}", "signed context entry", mcp.WithTemplateDescription("Snapshot-addressed signed context; exact registered project key, no caller path"), mcp.WithTemplateMIMEType("application/json")), s.readContextResource)
 }

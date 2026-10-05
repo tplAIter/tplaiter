@@ -658,3 +658,19 @@ func TestEnrollmentContractBindsDefaultKeyAndRawStatementCAS(t *testing.T) {
 		t.Fatal("explicit empty package input accepted")
 	}
 }
+
+func TestLocalProviderZeroInputKeepsEnrollmentDigest(t *testing.T) {
+	plain := Options{}
+	legacy, err := contractFor(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain.LocalProviders = []LocalProviderSpec{}
+	empty, err := contractFor(plain)
+	if err != nil || legacy != empty {
+		t.Fatal("zero input changed legacy digest", err)
+	}
+	if _, err := DecodeLocalProviders([]byte(`[{"registrationID":"synthetic","installationID":"caller"}]`)); err == nil {
+		t.Fatal("caller installation authority")
+	}
+}

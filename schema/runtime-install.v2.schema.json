@@ -1,0 +1,259 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/runtime-install/v2"
+    },
+    "installationID": {
+      "type": "string"
+    },
+    "profile": {
+      "const": "oss"
+    },
+    "minimumProfile": {
+      "const": "oss"
+    },
+    "descriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^/"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ]
+    },
+    "provisioning": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^/"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ]
+    },
+    "operatorRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^/"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ]
+    },
+    "executionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^/"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ]
+    },
+    "projectContexts": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^\u0000\t\r\n /\\\\]+$",
+            "not": {
+              "pattern": "[\u0000\t\r\n /\\\\]"
+            },
+            "$comment": "Matches the existing host token exclusions. No 64-byte key cap is imposed by global runtime config admission; local registration projectKeys have their separate 64 UTF-8 byte cap."
+          },
+          "projectID": {
+            "type": "string"
+          },
+          "submitterPrincipalID": {
+            "type": "string"
+          },
+          "minimumProfile": {
+            "const": "oss"
+          },
+          "rootPath": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^/"
+          },
+          "workspaceContext": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "projectID",
+          "submitterPrincipalID",
+          "minimumProfile",
+          "rootPath"
+        ]
+      }
+    },
+    "objectOrigins": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "origin": {
+            "type": "string"
+          },
+          "rootPath": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^/"
+          }
+        },
+        "required": [
+          "origin",
+          "rootPath"
+        ]
+      }
+    },
+    "evidenceRoot": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^/"
+    },
+    "scratchRoot": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^/"
+    },
+    "oss": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "storePath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^/"
+        },
+        "initialStatePath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^/"
+        },
+        "initialStateSHA256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "initialBundlePath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^/"
+        },
+        "initialBundleSHA256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "storePath",
+        "initialStatePath",
+        "initialStateSHA256",
+        "initialBundlePath",
+        "initialBundleSHA256"
+      ]
+    },
+    "localProviders": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^/"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "path",
+          "sha256"
+        ]
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "apiVersion",
+    "installationID",
+    "profile",
+    "minimumProfile",
+    "descriptor",
+    "provisioning",
+    "operatorRecord",
+    "executionPolicy",
+    "projectContexts",
+    "objectOrigins",
+    "evidenceRoot",
+    "scratchRoot",
+    "oss",
+    "localProviders"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/runtime-install/v2"
+}

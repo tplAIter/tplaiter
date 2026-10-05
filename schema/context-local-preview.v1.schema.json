@@ -1,0 +1,282 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/context-local-preview/v1"
+    },
+    "kind": {
+      "const": "LocalContextPreview"
+    },
+    "qualification": {
+      "const": "local-untrusted-observed"
+    },
+    "sourceAuthentication": {
+      "const": "none"
+    },
+    "publisherAuthentication": {
+      "const": "none"
+    },
+    "organizationAdmission": {
+      "const": "none"
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "registrationID": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\u0000\t\r\n /\\\\]+$",
+          "not": {
+            "pattern": "[\u0000\t\r\n /\\\\]"
+          },
+          "maxLength": 64,
+          "$comment": "maxLength counts Unicode code points. Installed admission additionally requires valid UTF-8 and at most 64 UTF-8 bytes; e.g. 33 two-byte characters satisfy this scalar schema but are refused by admission. Schema acceptance is not connection authority."
+        },
+        "registrationSHA256": {
+          "type": "string"
+        },
+        "installationID": {
+          "type": "string"
+        },
+        "projectContext": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\u0000\t\r\n /\\\\]+$",
+          "not": {
+            "pattern": "[\u0000\t\r\n /\\\\]"
+          },
+          "maxLength": 64,
+          "$comment": "maxLength counts Unicode code points. Installed admission additionally requires valid UTF-8 and at most 64 UTF-8 bytes; e.g. 33 two-byte characters satisfy this scalar schema but are refused by admission. Schema acceptance is not connection authority."
+        },
+        "endpointIdentity": {
+          "const": "installed-path-observed-kernel-peer"
+        },
+        "codeIdentity": {
+          "const": "unchecked"
+        },
+        "peerUID": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "peerPID": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "registrationID",
+        "registrationSHA256",
+        "installationID",
+        "projectContext",
+        "endpointIdentity",
+        "codeIdentity",
+        "peerUID",
+        "peerPID"
+      ]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "catalogSHA256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "handshakeResultSHA256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "schemaSHA256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "catalogByteLength": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "catalogSHA256",
+        "handshakeResultSHA256",
+        "schemaSHA256",
+        "observedAt",
+        "catalogByteLength"
+      ]
+    },
+    "catalogWire": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "encoding": {
+          "const": "base64"
+        },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "encoding",
+        "data",
+        "sha256",
+        "byteLength"
+      ]
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "sourceEvidence": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "excerpts": {
+          "type": "array",
+          "maxItems": 0
+        }
+      },
+      "required": [
+        "sourceEvidence",
+        "excerpts"
+      ]
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sourceID": {
+            "type": "string"
+          },
+          "assetID": {
+            "type": "string"
+          },
+          "itemID": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "contentSHA256": {
+            "type": "string"
+          },
+          "descriptorDigest": {
+            "type": "string"
+          },
+          "resourceURI": {
+            "type": "string"
+          },
+          "byteLength": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "sourceID",
+          "assetID",
+          "itemID",
+          "path",
+          "revision",
+          "contentSHA256",
+          "descriptorDigest",
+          "resourceURI",
+          "byteLength"
+        ]
+      }
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sourceID": {
+            "type": "string"
+          },
+          "assetID": {
+            "type": "string"
+          },
+          "itemID": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "declaredMode": {
+            "type": "string"
+          },
+          "contentSHA256": {
+            "type": "string"
+          },
+          "descriptorDigest": {
+            "type": "string"
+          },
+          "resourceURI": {
+            "type": "string"
+          },
+          "encoding": {
+            "const": "base64"
+          },
+          "data": {
+            "type": "string",
+            "contentEncoding": "base64"
+          },
+          "byteLength": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "sourceID",
+          "assetID",
+          "itemID",
+          "path",
+          "declaredMode",
+          "contentSHA256",
+          "descriptorDigest",
+          "resourceURI",
+          "encoding",
+          "data",
+          "byteLength"
+        ]
+      }
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "qualification",
+    "sourceAuthentication",
+    "publisherAuthentication",
+    "organizationAdmission",
+    "selection",
+    "observation",
+    "metadata",
+    "assets",
+    "resources",
+    "bytes"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tplaiter.dev/context-local-preview/v1"
+}

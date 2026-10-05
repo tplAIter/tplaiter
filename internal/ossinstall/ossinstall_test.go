@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 )
@@ -472,5 +474,127 @@ func TestDecodeRegistrationRejectsDevelopmentAndUnknownFields(t *testing.T) {
 func TestGenerateFailsOnEntropyError(t *testing.T) {
 	if _, err := Generate(Options{Root: tempRoot(t), Rand: io.LimitReader(&recordingRand{}, 8)}); err == nil {
 		t.Fatal("Generate succeeded without entropy")
+	}
+}
+
+func TestLocalProviderWriterRealV2AndReuse(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := trustload.ProjectContext{Key: "local-preview", ProjectID: "project.local-preview", SubmitterPrincipalID: "principal:operator", MinimumProfile: bootstrap.ProfileOSS, RootPath: filepath.Join(base, "project")}
+	spec := LocalProviderSpec{RegistrationID: "public-synthetic", ProjectKeys: []string{project.Key}, Protocol: "local-provider.session/v1", Qualification: trustload.LocalObserved, Limits: trustload.LocalReadLimits{FrameBytes: 32768, TotalBytes: 2097152, Pages: 128, SourceBytes: 8192, DeadlineMs: 2000}}
+	spec.Endpoint.Kind = "unix"
+	spec.Endpoint.SocketPath = "/private/tmp/public-synthetic/session.sock"
+	spec.Endpoint.OwnerUID = uint32(os.Geteuid())
+	opts := Options{Root: filepath.Join(base, "install"), ProjectContexts: []trustload.ProjectContext{project}, LocalProviders: []LocalProviderSpec{spec}}
+	result, err := GenerateWithContext(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(result.RegistrationPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registration, err := DecodeRegistration(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := trustload.Load(context.Background(), registration.Selection())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Install.APIVersion != trustload.RuntimeInstallV2APIVersion || len(loaded.Install.LocalProviders) != 1 {
+		t.Fatal("writer did not produce registered v2")
+	}
+	doc, err := os.ReadFile(loaded.Install.LocalProviders[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	_ = json.Unmarshal(doc, &document)
+	if document["installationID"] != result.InstallationID {
+		t.Fatal("generator installation binding")
+	}
+	again, err := GenerateWithContext(context.Background(), opts)
+	if err != nil || !again.Reused || again.RegistrationSHA256 != result.RegistrationSHA256 {
+		t.Fatal("real reuse", err)
+	}
+	changed := opts
+	changed.LocalProviders = append([]LocalProviderSpec(nil), opts.LocalProviders...)
+	changed.LocalProviders[0].Endpoint.SocketPath = "/private/tmp/public-synthetic/changed.sock"
+	if _, err = GenerateWithContext(context.Background(), changed); !errors.Is(err, ErrEnrollmentChanged) {
+		t.Fatal("changed selection accepted", err)
+	}
+}
+
+// Exercises actual emitted documents, not manufactured installed authority.
+func TestLocalProviderActualGenerateSchemaLexicalParity(t *testing.T) {
+	registrationSchema, err := jsonschema.NewCompiler().Compile("../../schema/local-provider-registration.v1.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeSchema, err := jsonschema.NewCompiler().Compile("../../schema/runtime-install.v2.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, token    string
+		extraGlobalKey bool
+	}{
+		{"form-feed", "host\fpreview", false},
+		{"vertical-tab", "host\vpreview", false},
+		{"non-ascii-whitespace", "host\u00a0preview", false},
+		{"unicode", "hôte", false},
+		{"utf8-64-bytes", strings.Repeat("é", 32), false},
+		{"global-key-over-64", "host", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base, e := filepath.EvalSymlinks(t.TempDir())
+			if e != nil {
+				t.Fatal(e)
+			}
+			pc := trustload.ProjectContext{Key: "counter", ProjectID: "project.counter", SubmitterPrincipalID: "principal:operator", MinimumProfile: bootstrap.ProfileOSS, RootPath: filepath.Join(base, "project")}
+			contexts := []trustload.ProjectContext{pc}
+			if tc.extraGlobalKey {
+				contexts = append(contexts, trustload.ProjectContext{Key: strings.Repeat("k", 65), ProjectID: "project.extra", SubmitterPrincipalID: "principal:operator", MinimumProfile: bootstrap.ProfileOSS, RootPath: filepath.Join(base, "extra")})
+			}
+			spec := LocalProviderSpec{RegistrationID: tc.token, ProjectKeys: []string{pc.Key}, Protocol: "local-provider.session/v1", Qualification: trustload.LocalObserved, Limits: trustload.LocalReadLimits{FrameBytes: 32768, TotalBytes: 2097152, Pages: 128, SourceBytes: 8192, DeadlineMs: 2000}}
+			spec.Endpoint.Kind = "unix"
+			spec.Endpoint.SocketPath = "/private/tmp/public-synthetic/session.sock"
+			spec.Endpoint.OwnerUID = uint32(os.Geteuid())
+			generated, e := Generate(Options{Root: filepath.Join(base, "installation"), ProjectContexts: contexts, LocalProviders: []LocalProviderSpec{spec}})
+			if e != nil {
+				t.Fatal("actual Generate", e)
+			}
+			launchRaw, e := os.ReadFile(generated.RegistrationPath)
+			if e != nil {
+				t.Fatal(e)
+			}
+			launch, e := DecodeRegistration(launchRaw)
+			if e != nil {
+				t.Fatal(e)
+			}
+			loaded, e := trustload.Load(context.Background(), launch.Selection())
+			if e != nil {
+				t.Fatal(e)
+			}
+			for _, doc := range []struct {
+				path   string
+				schema *jsonschema.Schema
+			}{{loaded.Install.LocalProviders[0].Path, registrationSchema}, {launch.RuntimeConfig.Path, runtimeSchema}} {
+				raw, e := os.ReadFile(doc.path)
+				if e != nil {
+					t.Fatal(e)
+				}
+				value, e := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+				if e != nil {
+					t.Fatal(e)
+				}
+				if e = doc.schema.Validate(value); e != nil {
+					t.Fatal("actual emitted schema mismatch", e)
+				}
+			}
+		})
 	}
 }
