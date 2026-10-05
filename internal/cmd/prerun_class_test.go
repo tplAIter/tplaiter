@@ -20,9 +20,9 @@ var wantPrerunClass = map[string]prerunClass{
 	"tplaiter doctor":              prerunReadonly,
 	"tplaiter env list":            prerunReadonly,
 	"tplaiter env setup":           prerunLegacyAction,
-	"tplaiter gen":                 prerunLegacyAction,
-	"tplaiter gen batch":           prerunLegacyAction,
-	"tplaiter gen list":            prerunReadonly,
+	"tplaiter gen":                 prerunTrustOwned,
+	"tplaiter gen batch":           prerunTrustOwned,
+	"tplaiter gen list":            prerunTrustOwned,
 	"tplaiter migrate-state":       prerunTrustOwned,
 	"tplaiter new":                 prerunTrustOwned,
 	"tplaiter repo update":         prerunTrustOwned, // preserved name collision, see repo.go
@@ -90,9 +90,9 @@ func TestPreRunClassification(t *testing.T) {
 // TestPreRunClassificationMatchesLegacySwitch proves the annotation classifier
 // reproduces the removed name-based switch (legacyActionCommand,
 // descriptiveCommand and the migrate-state/new/update/trust checks) for every
-// command, so the refactor changed no pre-run behavior. The only difference
-// the legacy switch could not express is readonly vs trust-owned; both skip
-// the hooks, so they compare as "skip".
+// command except the explicitly delivered native gen/gen batch transition.
+// Those commands now own authenticated composition instead of blanket denial.
+// Readonly and trust-owned both skip legacy hooks and compare as "skip".
 func TestPreRunClassificationMatchesLegacySwitch(t *testing.T) {
 	legacy := func(cmd *cobra.Command, args []string) string {
 		switch cmd.Name() {
@@ -135,7 +135,14 @@ func TestPreRunClassificationMatchesLegacySwitch(t *testing.T) {
 			return
 		}
 		for _, args := range [][]string{nil, {"arg"}} {
-			if got, want := current(c, args), legacy(c, args); got != want {
+			want := legacy(c, args)
+			if c.CommandPath() == "tplaiter gen" || c.CommandPath() == "tplaiter gen batch" {
+				if want != "refuse" {
+					t.Errorf("%q: historical gen baseline=%s, want refuse", c.CommandPath(), want)
+				}
+				want = "skip" // Native composition owns its action/refusal boundary.
+			}
+			if got := current(c, args); got != want {
 				t.Errorf("%q args=%v: classifier=%s legacy=%s", c.CommandPath(), args, got, want)
 			}
 		}

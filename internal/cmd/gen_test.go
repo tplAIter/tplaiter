@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/state"
+	"github.com/tplAIter/tplaiter/internal/trustload"
 )
 
 // runGenArgs calls runGen directly with the given arguments (without a project)
@@ -19,6 +21,7 @@ import (
 func runGenArgs(t *testing.T, args ...string) error {
 	t.Helper()
 	cmd := &cobra.Command{Use: "gen"}
+	cmd.SetContext(context.Background())
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	return runGen(cmd, args)
@@ -60,6 +63,7 @@ func TestRunGen_ArgValidation(t *testing.T) {
 // project.
 func TestRunGen_HelpArg(t *testing.T) {
 	cmd := &cobra.Command{Use: "gen"}
+	cmd.SetContext(context.Background())
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	if err := runGen(cmd, []string{"-h"}); err != nil {
@@ -135,11 +139,12 @@ func TestRunGen_PatternFailureDoesNotWriteFile(t *testing.T) {
 	t.Chdir(dir)
 	t.Setenv(state.HomeEnv, filepath.Join(t.TempDir(), "tplater-home"))
 	cmd := &cobra.Command{Use: "gen"}
+	cmd.SetContext(context.Background())
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	err := runGen(cmd, []string{"migration", "create_rides", "--table", "rides; DROP TABLE rides", "--no-build"})
-	if !errors.Is(err, ErrActionUnavailable) {
-		t.Fatalf("expected typed denial, got %v", err)
+	if !errors.Is(err, trustload.ErrAnchorMissing) {
+		t.Fatalf("expected missing authenticated launcher, got %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "migrations", "create_rides.sql")); !os.IsNotExist(statErr) {
 		t.Errorf("single gen wrote a file after pattern rejection: %v", statErr)
@@ -158,8 +163,8 @@ func TestGenBatch_PatternFailureDoesNotWriteFiles(t *testing.T) {
 	c.SetErr(&bytes.Buffer{})
 	c.SetArgs([]string{"--operations", `[{"kind":"migration","name":"create_rides","params":{"table":"rides -- comment"}}]`, "--no-build"})
 	err := c.Execute()
-	if !errors.Is(err, ErrActionUnavailable) {
-		t.Fatalf("expected typed denial, got %v", err)
+	if !errors.Is(err, trustload.ErrAnchorMissing) {
+		t.Fatalf("expected missing authenticated launcher, got %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "migrations", "create_rides.sql")); !os.IsNotExist(statErr) {
 		t.Errorf("batch gen wrote a file after pattern rejection: %v", statErr)

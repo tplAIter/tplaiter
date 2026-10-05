@@ -42,7 +42,8 @@ import (
 // path lands in a later work package (trust registration, live lifecycle,
 // trusted actions). The suite still calls each of them and requires a typed
 // result/v1 failure envelope carrying exactly the diagnostic codes pinned in
-// the file; once a tool is removed from the file its call must succeed.
+// the file. Implemented tools must succeed or have an explicit fixture-specific
+// refusal assertion outside that pending list.
 
 const (
 	toolsGoldenFile  = "testdata/mcp/tools.schema.golden.json"
@@ -420,7 +421,6 @@ func TestMCPStdioContract(t *testing.T) {
 		{"projects_list", nil, "projects.list"},
 		{"doctor", map[string]any{"dir": project}, "doctor.check"},
 		{"settings_list", map[string]any{"dir": project}, "settings.show"},
-		{"gen_list", map[string]any{"dir": project}, "gen.list"},
 		{"update", map[string]any{"dir": project, "check": true}, "update.check"},
 		{"stats", map[string]any{"dir": project}, "project.stats"},
 		{"lint_template", map[string]any{"path": origin}, "template.lint"},
@@ -430,8 +430,6 @@ func TestMCPStdioContract(t *testing.T) {
 		{"run", map[string]any{"dir": project, "command": "test"}, "project.run"},
 		{"ai_gen", map[string]any{"dir": project}, "ai.gen"},
 		{"settings_set", map[string]any{"dir": project, "values": map[string]any{"database": "postgres"}}, "settings.set"},
-		{"gen", map[string]any{"dir": project, "kind": "crud", "name": "Ride", "noBuild": true}, "gen.run"},
-		{"gen_batch", map[string]any{"dir": project, "operations": []any{map[string]any{"kind": "crud", "name": "Ride"}}, "noBuild": true}, "gen.batch"},
 		{"workspace_add_service", map[string]any{"dir": project, "name": "billing"}, "workspace.add-service"},
 		{"env_setup", map[string]any{"dir": project, "yes": true}, "env.setup"},
 		{"repo_remove", map[string]any{"alias": "fixture"}, "repo.remove"},
@@ -468,6 +466,35 @@ func TestMCPStdioContract(t *testing.T) {
 			if res.IsError || (status != "ok" && status != "changes") {
 				t.Fatalf("%s: isError=%v status=%s codes=%v", tc.tool, res.IsError, status, codes)
 			}
+		})
+	}
+	// Native generation already has signed installed CLI/MCP acceptance in
+	// internal/cmd.TestNativeGenInstalledCLIAndMCP. This legacy unsigned
+	// discovery project is outside the installed registration's project root.
+	// Explicit MCP --dir forwarding must therefore refuse that context before
+	// catalog reads or generation; it must not fall back to the CWD snapshot.
+	for _, tc := range []struct {
+		name, operation string
+		args            map[string]any
+	}{
+		{"gen_list", "gen.list", map[string]any{"dir": project}},
+		{"gen", "gen.run", map[string]any{"dir": project, "kind": "crud", "name": "Ride", "noBuild": true}},
+		{"gen_batch", "gen.batch", map[string]any{"dir": project, "operations": []any{map[string]any{"kind": "crud", "name": "Ride"}}, "noBuild": true}},
+	} {
+		called[tc.name] = true
+		t.Run("tools/call "+tc.name, func(t *testing.T) {
+			res := c.callTool(tc.name, tc.args)
+			op, status, codes := requireEnvelope(t, tc.name, res)
+			if !res.IsError || op != tc.operation || status != "blocked" || len(codes) != 1 || codes[0] != "TRUST_PROJECT_CONTEXT_MISMATCH" {
+				t.Fatalf("static discovery project context refusal: isError=%v op=%s status=%s codes=%v result=%+v", res.IsError, op, status, codes, res.StructuredContent)
+			}
+			if res.StructuredContent["project"] != nil || res.StructuredContent["transactionId"] != nil {
+				t.Fatalf("context refusal claimed a project or transaction: %+v", res.StructuredContent)
+			}
+			if changes, ok := res.StructuredContent["changes"].([]any); !ok || len(changes) != 0 {
+				t.Fatalf("context refusal reported changes: %+v", res.StructuredContent)
+			}
+			t.Logf("%s static discovery project: %s %v", tc.name, status, codes)
 		})
 	}
 	// These tools have dedicated signed stock-project acceptance. This legacy

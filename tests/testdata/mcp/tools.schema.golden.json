@@ -1094,7 +1094,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Scaffolder: create file(s) of type kind with name according to project manifest generators (dir). After writing, commands.build.run or legacy Go fallback is executed; error rolls back changes. noBuild=true skips build-gate and saves changes.",
+    "description": "Generate files and anchor insertions from the project's sealed native generator sources. The operation is file-only; formatter, build, hook, and other actions are refused before effects. noBuild is retained as the CLI control.",
     "inputSchema": {
       "properties": {
         "dir": {
@@ -1391,7 +1391,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Atomically generate multiple scaffolds. All operations are planned before writing, then a single build-gate from manifest commands.build.run (legacy Go fallback: go build ./...) is executed; on error, all batch changes are rolled back.",
+    "description": "Atomically generate files and anchor insertions from sealed native generator sources. The operation is file-only; formatter, build, hook, and other actions are refused before effects. noBuild is retained as the CLI control.",
     "inputSchema": {
       "properties": {
         "dir": {
@@ -1706,7 +1706,7 @@
       "openWorldHint": true,
       "readOnlyHint": true
     },
-    "description": "List of available scaffold types from project template manifest (dir).",
+    "description": "List available generator kinds from the project's sealed native generator sources.",
     "inputSchema": {
       "properties": {
         "dir": {

@@ -27,7 +27,7 @@ type genBatchArgs struct {
 func (s *Server) addGenTools() {
 	s.mcp.AddTool(mcp.NewTool(
 		"gen",
-		mcp.WithDescription("Scaffolder: create file(s) of type kind with name according to project manifest generators (dir). After writing, commands.build.run or legacy Go fallback is executed; error rolls back changes. noBuild=true skips build-gate and saves changes."),
+		mcp.WithDescription("Generate files and anchor insertions from the project's sealed native generator sources. The operation is file-only; formatter, build, hook, and other actions are refused before effects. noBuild is retained as the CLI control."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithString("kind", mcp.Required(), mcp.Description("Type of scaffold (see gen_list)")),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Name of entity to create")),
@@ -35,16 +35,20 @@ func (s *Server) addGenTools() {
 		mcp.WithBoolean("noBuild", mcp.Description("Skip build-gate after generation (--no-build)"), mcp.DefaultBool(false)),
 		outputSchema(resultdto.OperationGenRun),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a genArgs) (*mcp.CallToolResult, error) {
+		if hasReservedGenParam(a.Params) {
+			return s.argumentFailure(resultdto.OperationGenRun, "params"), nil
+		}
 		cwd, failure := s.workDir(resultdto.OperationGenRun, "dir", a.Dir)
 		if failure != nil {
 			return failure, nil
 		}
-		return s.callStructured(ctx, resultdto.OperationGenRun, cwd, argvGen(a.Kind, a.Name, a.Params, a.NoBuild), longCall), nil
+		argv := append(argvGen(a.Kind, a.Name, a.Params, a.NoBuild), "--dir", cwd)
+		return s.callStructured(ctx, resultdto.OperationGenRun, cwd, argv, longCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
 		"gen_batch",
-		mcp.WithDescription("Atomically generate multiple scaffolds. All operations are planned before writing, then a single build-gate from manifest commands.build.run (legacy Go fallback: go build ./...) is executed; on error, all batch changes are rolled back."),
+		mcp.WithDescription("Atomically generate files and anchor insertions from sealed native generator sources. The operation is file-only; formatter, build, hook, and other actions are refused before effects. noBuild is retained as the CLI control."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithArray(
 			"operations",
@@ -80,16 +84,22 @@ func (s *Server) addGenTools() {
 		if len(a.Operations) == 0 {
 			return s.argumentFailure(resultdto.OperationGenBatch, "operations"), nil
 		}
+		for _, operation := range a.Operations {
+			if hasReservedGenParam(operation.Params) {
+				return s.argumentFailure(resultdto.OperationGenBatch, "operations"), nil
+			}
+		}
 		cwd, failure := s.workDir(resultdto.OperationGenBatch, "dir", a.Dir)
 		if failure != nil {
 			return failure, nil
 		}
-		return s.callStructured(ctx, resultdto.OperationGenBatch, cwd, argvGenBatch(a.Operations, a.NoBuild), longCall), nil
+		argv := append(argvGenBatch(a.Operations, a.NoBuild), "--dir", cwd)
+		return s.callStructured(ctx, resultdto.OperationGenBatch, cwd, argv, longCall), nil
 	}))
 
 	s.mcp.AddTool(mcp.NewTool(
 		"gen_list",
-		mcp.WithDescription("List of available scaffold types from project template manifest (dir)."),
+		mcp.WithDescription("List available generator kinds from the project's sealed native generator sources."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithReadOnlyHintAnnotation(true),
 		outputSchema(resultdto.OperationGenList),
@@ -98,6 +108,27 @@ func (s *Server) addGenTools() {
 		if failure != nil {
 			return failure, nil
 		}
-		return s.callStructured(ctx, resultdto.OperationGenList, cwd, argvGenList(), shortCall), nil
+		argv := append(argvGenList(), "--dir", cwd)
+		return s.callStructured(ctx, resultdto.OperationGenList, cwd, argv, shortCall), nil
 	}))
+}
+
+var reservedGenCLIControls = map[string]struct{}{
+	"project-context": {},
+	"dir":             {},
+	"no-build":        {},
+	"format":          {},
+	"hooks":           {},
+	"json":            {},
+	"help":            {},
+	"operations":      {},
+}
+
+func hasReservedGenParam(params map[string]string) bool {
+	for name := range params {
+		if _, reserved := reservedGenCLIControls[name]; reserved {
+			return true
+		}
+	}
+	return false
 }

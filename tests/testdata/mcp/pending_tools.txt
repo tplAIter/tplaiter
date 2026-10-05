@@ -1,7 +1,8 @@
 # Tools whose success path lands in a later work package. The stdio suite
 # (mcp_stdio_test.go) still calls every tool listed here and requires a typed
 # result/v1 refusal carrying exactly the pinned diagnostic codes; a tool
-# removed from this file must succeed. U12 requires this file to be empty.
+# removed from this file must succeed or assert a fixture-specific refusal
+# in its dedicated subtest. U12 requires this file to be empty.
 #
 # <tool> <CODE[,CODE...]> <owner: reason>
 project_new TRUST_SOURCE_ADAPTER_UNSUPPORTED U07: unsigned discovery fixture has no installed authenticated source selection
@@ -9,6 +10,4 @@ settings_set TRUST_LIFECYCLE_UNAVAILABLE U07: live settings through the transact
 workspace_add_service CLI_OPERATION_FAILED U07: the static fixture is not a workspace; U07 adds a workspace fixture and a typed lifecycle refusal
 run TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted manifest command execution
 ai_gen TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted AI artifact generation
-gen TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted generation with build gate
-gen_batch TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted batch generation
 env_setup TRUST_ACTION_UNAVAILABLE,TRUST_PROVENANCE_UNAVAILABLE U13: trusted environment playbooks

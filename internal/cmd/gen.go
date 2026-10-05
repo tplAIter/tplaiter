@@ -15,9 +15,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
-// genRunner — runner for formatter/build-gate post-steps of [gen.Generate].
-// A package variable like runRunner (run.go), replaceable in command-level
-// gen tests.
+// genRunner is retained as a regression canary for legacy command tests.
+// Native command composition uses the concrete project transaction API.
 var genRunner execx.Runner = execx.Exec{}
 
 func init() {
@@ -25,8 +24,7 @@ func init() {
 }
 
 // newGenCmd creates `tplater gen <kind> <name> [--<param> ...]` (SPEC-01 §6,
-// CG-1): a project scaffolder based on the linked template's Generators
-// manifest (see [loadRunContext]).
+// CG-1): a project scaffolder based on the authenticated native manifest.
 //
 // Dynamic flags are handled manually because the set depends on the selected
 // generator's parameters (Generator.Params), while kind is known only at run
@@ -37,7 +35,7 @@ func init() {
 // parsing the parent's flags.
 func newGenCmd() *cobra.Command {
 	c := &cobra.Command{
-		Annotations: prerunAnnotations(prerunLegacyAction),
+		Annotations: prerunAnnotations(prerunTrustOwned),
 
 		Use:   "gen <kind> <name> [--<param> ...]",
 		Short: "Template scaffolder: create file(s) of kind <kind> with name <name>",
@@ -48,12 +46,12 @@ func newGenCmd() *cobra.Command {
 			"and arbitrary `--<param>`; required parameters without a value are an error.\n\n" +
 			"Idempotency: running gen again with the same name is an error (target file already " +
 			"exists or insertion marker is already present in the anchor file). " +
-			"After writing, Go projects are formatted with gofumpt (best-effort), then " +
-			"commands.build.run from the manifest is executed (or legacy fallback `go build ./...`); " +
-			"an error rolls back changes — see --no-build.",
+			"Native generation currently supports file-only transactions with --no-build. " +
+			"Build, formatter and hook execution are unavailable and refuse before writes.",
 		DisableFlagParsing: true,
 		RunE:               runGen,
 	}
+	addNativeGenFlags(c, nil)
 	c.AddCommand(newGenListCmd())
 	c.AddCommand(newGenBatchCmd())
 	// DisableFlagParsing: --json is recognized from the raw arguments by the
@@ -77,62 +75,14 @@ func runGen(cmd *cobra.Command, args []string) error {
 	if len(name) > 0 && name[0] == '-' {
 		return fmt.Errorf("gen: second argument expected <name>, got flag %q", name)
 	}
-	return actionUnavailable()
-	/*
-		rest := args[2:]
-
-		tpl, proj, root, err := loadRunContext()
-		if err != nil {
-			return err
-		}
-		g, err := gen.Lookup(tpl, kind)
-		if err != nil {
-			return err
-		}
-
-		// Build the FlagSet from generator params plus the shared --no-build.
-		fs := pflag.NewFlagSet("gen "+kind, pflag.ContinueOnError)
-		fs.SetOutput(cmd.OutOrStderr())
-		noBuild := fs.Bool("no-build", false, "skip the build gate after generation")
-		for i := range g.Params {
-			p := &g.Params[i]
-			fs.String(p.Name, gen.DefaultFor(p), paramUsage(p))
-		}
-		if err := fs.Parse(rest); err != nil {
-			return fmt.Errorf("gen %s: flag parsing: %w", kind, err)
-		}
-
-		// Collect only EXPLICITLY set parameter flags (Changed) for ResolveParams.
-		provided := make(map[string]string)
-		fs.Visit(func(f *pflag.Flag) {
-			if f.Name == "no-build" {
-				return
-			}
-			provided[f.Name] = f.Value.String()
-		})
-		params, fields, err := gen.ResolveParams(g, provided)
-		if err != nil {
-			return fmt.Errorf("gen %s: %w", kind, err)
-		}
-
-		res, err := gen.Generate(cmd.Context(), tpl, kind, name, gen.Options{
-			ProjectRoot:   root,
-			GeneratorsDir: filepath.Join(root, gen.GeneratorsRelPath),
-			Values:        settingsValues(proj.Settings),
-			Project:       proj.Project,
-			Fields:        fields,
-			Params:        params,
-			NoBuild:       *noBuild,
-			Runner:        genRunner,
-			Logf: func(format string, a ...any) {
-				fmt.Fprintf(cmd.OutOrStdout(), format+"\n", a...)
-			},
-		})
-		if err != nil {
-			return err
-		}
-		return printGenResult(cmd, res)
-	*/
+	controls, rest, err := parseNativeGenControls(cmd, args[2:])
+	if err != nil {
+		return &usageError{err: err}
+	}
+	if controls.help {
+		return cmd.Help()
+	}
+	return runNativeGen(cmd, controls, []genBatchInput{{Kind: kind, Name: name}}, rest)
 }
 
 // paramUsage builds parameter-flag help text (type plus description).
@@ -149,36 +99,14 @@ func paramUsage(p *manifest.Param) string {
 
 // newGenListCmd creates `tplater gen list`.
 func newGenListCmd() *cobra.Command {
-	return withResult(&cobra.Command{
-		Annotations: prerunAnnotations(prerunReadonly),
-
-		Use:   "list",
-		Short: "List of scaffold kinds from template manifest (kind/description/available)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			tpl, proj, _, err := loadRunContext()
-			if err != nil {
-				return err
-			}
-			values := settingsValues(proj.Settings)
-			statuses := gen.List(tpl, values)
-			if jsonMode(cmd) {
-				return emitGenList(cmd, statuses)
-			}
-			return printGenList(cmd, statuses)
-		},
-	}, resultdto.OperationGenList)
-}
-
-// emitGenList prints the generators of the project template as gen.list
-// data, sorted by kind.
-func emitGenList(cmd *cobra.Command, statuses []gen.Status) error {
-	sort.Slice(statuses, func(i, j int) bool { return statuses[i].Kind < statuses[j].Kind })
-	data := resultdto.GenListData{Generators: []resultdto.GeneratorInfo{}}
-	for _, st := range statuses {
-		data.Generators = append(data.Generators, resultdto.GeneratorInfo{Kind: st.Kind, Description: st.Description, Available: st.Available, Reason: st.Reason})
+	var controls nativeGenControls
+	c := &cobra.Command{
+		Annotations: prerunAnnotations(prerunTrustOwned),
+		Use:         "list", Short: "List generators from the authenticated native project", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error { return listNativeGen(cmd, controls) },
 	}
-	return emitData(cmd, resultdto.OperationGenList, currentProject(), data)
+	addNativeGenFlags(c, &controls)
+	return withResult(c, resultdto.OperationGenList)
 }
 
 // genBatchInput — JSON representation of one CLI/MCP batch operation. Parameters
@@ -195,26 +123,30 @@ type genBatchInput struct {
 // a typed operations array on top (see gen_batch).
 func newGenBatchCmd() *cobra.Command {
 	var operationsJSON string
-	var noBuild bool
+	var controls nativeGenControls
 	c := &cobra.Command{
-		Annotations: prerunAnnotations(prerunLegacyAction),
+		Annotations: prerunAnnotations(prerunTrustOwned),
 
 		Use:   "batch --operations <JSON> [--no-build]",
-		Short: "Generate multiple scaffolds with single build and atomic rollback",
-		Long: "Plans all operations before the first write, then creates files and executes a single final " +
-			"build-gate (commands.build.run from manifest or legacy fallback `go build ./...`). " +
-			"On error at any step, changes from all operations are rolled back.\n\n" +
+		Short: "Generate multiple scaffolds in one native transaction",
+		Long: "Plans all operations before the first write and commits them in one native transaction. " +
+			"File-only generation requires --no-build; executable actions are unavailable.\n\n" +
 			"Format --operations: '[{\"kind\":\"crud\",\"name\":\"Ride\",\"params\":{\"fields\":\"status:string\"}}]'.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Keep input-only validation available to direct callers.  The
-			// denial follows before project discovery or any generator effect.
+			// Validate bounded input before project discovery or generator effects.
 			if operationsJSON == "" {
 				return errors.New("gen batch: --operations with JSON array of operations is required")
+			}
+			if len(operationsJSON) > 1<<20 {
+				return errors.New("gen batch: operations JSON exceeds 1 MiB")
 			}
 			var input []genBatchInput
 			if err := json.Unmarshal([]byte(operationsJSON), &input); err != nil {
 				return fmt.Errorf("gen batch: parsing --operations JSON: %w", err)
+			}
+			if len(input) > 256 {
+				return errors.New("gen batch: at most 256 operations are supported")
 			}
 			if len(input) == 0 {
 				return errors.New("gen batch: operation list is empty")
@@ -224,59 +156,11 @@ func newGenBatchCmd() *cobra.Command {
 					return fmt.Errorf("gen batch: operation %d requires kind and name", i+1)
 				}
 			}
-			return actionUnavailable()
-			/*
-				if operationsJSON == "" {
-					return errors.New("gen batch: --operations with a JSON array of operations is required")
-				}
-				var input []genBatchInput
-				if err := json.Unmarshal([]byte(operationsJSON), &input); err != nil {
-					return fmt.Errorf("gen batch: parsing --operations JSON: %w", err)
-				}
-				if len(input) == 0 {
-					return errors.New("gen batch: operation list is empty")
-				}
-				for i, item := range input {
-					if item.Kind == "" || item.Name == "" {
-						return fmt.Errorf("gen batch: operation %d requires kind and name", i+1)
-					}
-				}
-
-				tpl, proj, root, err := loadRunContext()
-				if err != nil {
-					return err
-				}
-				operations := make([]gen.Operation, 0, len(input))
-				for i, item := range input {
-					g, lookupErr := gen.Lookup(tpl, item.Kind)
-					if lookupErr != nil {
-						return fmt.Errorf("gen batch: operation %d: %w", i+1, lookupErr)
-					}
-					if err := validateGenBatchParams(g.Params, item.Params); err != nil {
-						return fmt.Errorf("gen batch: operation %d (%s %s): %w", i+1, item.Kind, item.Name, err)
-					}
-					params, fields, resolveErr := gen.ResolveParams(g, item.Params)
-					if resolveErr != nil {
-						return fmt.Errorf("gen batch: operation %d (%s %s): %w", i+1, item.Kind, item.Name, resolveErr)
-					}
-					operations = append(operations, gen.Operation{Kind: item.Kind, Name: item.Name, Params: params, Fields: fields})
-				}
-
-				res, generateErr := gen.GenerateBatch(cmd.Context(), tpl, operations, gen.Options{
-					ProjectRoot: root, GeneratorsDir: filepath.Join(root, gen.GeneratorsRelPath),
-					Values: settingsValues(proj.Settings), Project: proj.Project, NoBuild: noBuild,
-					Runner: genRunner,
-					Logf:   func(format string, a ...any) { fmt.Fprintf(cmd.OutOrStdout(), format+"\n", a...) },
-				})
-				if generateErr != nil {
-					return generateErr
-				}
-				return printGenBatchResult(cmd, res)
-			*/
+			return runNativeGen(cmd, controls, input, nil)
 		},
 	}
 	c.Flags().StringVar(&operationsJSON, "operations", "", "JSON array of operations {kind,name,params}")
-	c.Flags().BoolVar(&noBuild, "no-build", false, "skip the single final build-gate")
+	addNativeGenFlags(c, &controls)
 	return withResult(c, resultdto.OperationGenBatch)
 }
 
@@ -289,18 +173,6 @@ func validateGenBatchParams(declared []manifest.Param, provided map[string]strin
 		if _, ok := known[name]; !ok {
 			return fmt.Errorf("unknown parameter --%s", name)
 		}
-	}
-	return nil
-}
-
-// printGenResult prints created/changed files.
-func printGenResult(cmd *cobra.Command, res *gen.Result) error {
-	out := cmd.OutOrStdout()
-	for _, f := range res.CreatedFiles {
-		fmt.Fprintf(out, "created %s\n", f)
-	}
-	for _, f := range res.EditedFiles {
-		fmt.Fprintf(out, "edited %s\n", f)
 	}
 	return nil
 }

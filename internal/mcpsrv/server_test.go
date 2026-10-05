@@ -145,7 +145,7 @@ func TestProjectNewAndGenLifecycleFlags(t *testing.T) {
 	runner := execx.NewRecordingRunner()
 	projectDir := t.TempDir()
 	projectArgv := withJSONFlag(argvProjectNewInvocation(projectNewInvocation{Ref: "go/service", Name: "billing", NoHooks: true, NoDepsCheck: true, NoEnvSetup: true, Yes: true, TargetDir: projectDir + "/billing"}))
-	genArgv := withJSONFlag(argvGen("rust-module", "billing", nil, true))
+	genArgv := withJSONFlag(append(argvGen("rust-module", "billing", nil, true), "--dir", projectDir))
 	runner.On(fakeExe, projectArgv, execx.Response{Result: execx.Result{Stdout: envelopeJSON(t, resultdto.OperationProjectNew, func(r *resultdto.Result) {
 		r.Project = &resultdto.Project{ID: "billing", Root: projectDir + "/billing"}
 	}), ExitCode: 0}})
@@ -243,7 +243,7 @@ func TestGenBatchSuccess(t *testing.T) {
 		{Kind: "crud", Name: "Ride", Params: map[string]string{"fields": "status:string"}},
 		{Kind: "workflow", Name: "MatchRide"},
 	}
-	runner.On(fakeExe, withJSONFlag(argvGenBatch(operations, false)), execx.Response{Result: execx.Result{Stdout: envelopeJSON(t, resultdto.OperationGenBatch, func(r *resultdto.Result) {
+	runner.On(fakeExe, withJSONFlag(append(argvGenBatch(operations, false), "--dir", dir)), execx.Response{Result: execx.Result{Stdout: envelopeJSON(t, resultdto.OperationGenBatch, func(r *resultdto.Result) {
 		r.Project = &resultdto.Project{ID: "ride", Root: dir}
 		r.Status = resultdto.StatusChanges
 		r.Changes = []resultdto.Change{{Path: "internal/ride.go", Action: "create"}}

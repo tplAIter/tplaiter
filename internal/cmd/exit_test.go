@@ -104,7 +104,8 @@ func TestMainJSONSuccessAndFailureEnvelopes(t *testing.T) {
 		{"doctor", []string{"doctor", "--json"}, resultdto.ExitSuccess, resultdto.OperationDoctorCheck, resultdto.StatusOK, ""},
 		{"update check clean", []string{"update", "--check", "--json"}, resultdto.ExitSuccess, resultdto.OperationUpdateCheck, resultdto.StatusOK, ""},
 		{"usage", []string{"repo", "list", "--bogus", "--json"}, resultdto.ExitUsage, resultdto.OperationRepoList, resultdto.StatusFailed, "CLI_USAGE"},
-		{"legacy action", []string{"gen", "crud", "Ride", "--json"}, resultdto.ExitUnavailable, resultdto.OperationGenRun, resultdto.StatusBlocked, "TRUST_ACTION_UNAVAILABLE"},
+		{"native default build unavailable", []string{"gen", "crud", "Ride", "--json"}, resultdto.ExitUnavailable, resultdto.OperationGenRun, resultdto.StatusBlocked, "TRUST_GENERATION_EXECUTION_UNAVAILABLE"},
+		{"native file-only anchor missing", []string{"gen", "crud", "Ride", "--no-build", "--json"}, resultdto.ExitTrust, resultdto.OperationGenRun, resultdto.StatusBlocked, "TRUST_ANCHOR_MISSING"},
 		{"trust anchor", []string{"new", "ref", "name", "--json"}, resultdto.ExitTrust, resultdto.OperationProjectNew, resultdto.StatusBlocked, "TRUST_ANCHOR_MISSING"},
 		{"not in project", []string{"settings", "list", "--json"}, resultdto.ExitOperational, resultdto.OperationSettingsShow, resultdto.StatusFailed, "TPL-E-PROJECT-NOT-FOUND"},
 		{"update dry-run names update.plan", []string{"update", "--dry-run", "--json"}, resultdto.ExitTrust, resultdto.OperationUpdatePlan, resultdto.StatusBlocked, "TRUST_ANCHOR_MISSING"},
@@ -136,8 +137,12 @@ func TestMainJSONSuccessAndFailureEnvelopes(t *testing.T) {
 
 func TestMainTextModeKeepsStdoutFreeOfEnvelopes(t *testing.T) {
 	code, stdout, stderr := mainHarness(t, "gen", "crud", "Ride")
-	if resultdto.ExitCode(code) != resultdto.ExitUnavailable || stdout != "" || !strings.Contains(stderr, "TRUST_ACTION_UNAVAILABLE") {
+	if resultdto.ExitCode(code) != resultdto.ExitUnavailable || stdout != "" || !strings.Contains(stderr, "TRUST_GENERATION_EXECUTION_UNAVAILABLE") {
 		t.Fatalf("exit=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	code, stdout, stderr = mainHarness(t, "gen", "crud", "Ride", "--no-build")
+	if resultdto.ExitCode(code) != resultdto.ExitTrust || stdout != "" || !strings.Contains(stderr, "TRUST_ANCHOR_MISSING") {
+		t.Fatalf("unauthenticated file-only gen: exit=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	code, _, _ = mainHarness(t, "no-such-command")
 	if resultdto.ExitCode(code) != resultdto.ExitUsage {
