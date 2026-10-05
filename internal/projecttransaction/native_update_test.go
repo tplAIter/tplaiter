@@ -3,6 +3,7 @@ package projecttransaction
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -412,4 +413,136 @@ func TestSignedUpdateActualThreeWay(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSignedUpdateSharedHomeProjects(t *testing.T) {
+	testfixture.RequireTrustStore(t)
+	f := t5DNewIntegrationFixture(t)
+	ctx := context.Background()
+	var install trustload.RuntimeInstall
+	raw, err := os.ReadFile(f.selection.RuntimeConfig.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &install); err != nil {
+		t.Fatal(err)
+	}
+	second := filepath.Join(f.dir, "second-project")
+	pc := install.ProjectContexts[0]
+	pc.Key = "second"
+	pc.ProjectID = "project-second"
+	pc.RootPath = second
+	install.ProjectContexts = append(install.ProjectContexts, pc)
+	if err := os.WriteFile(f.selection.RuntimeConfig.Path, t5DJSON(t, install), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.selection.RuntimeConfig.SHA256, err = install.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(f.dir, "shared-home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runtimes := map[string]*trustload.Runtime{}
+	for key, root := range map[string]string{"project": f.project, "second": second} {
+		r, err := trustload.OpenRuntime(ctx, trustload.RuntimeOptions{Selection: f.selection, ProjectKey: key, Clock: t5DClock{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		runtimes[key] = r
+		t.Cleanup(func() { _ = r.Close() })
+		if err := newcmd.Run(ctx, newcmd.Options{Ref: f.source.Commit, ProjectName: "Ordinary " + key, Dir: root, Module: "example.test/ordinary", Defaults: true, NoHooks: true, NoDepsCheck: true, CLIVersion: "v1"}, newcmd.Deps{Runtime: r, Home: home, SourceInput: t5DSelection(f.source, f.sourceRefs), Out: &bytes.Buffer{}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	apply := func(key string, source trustverify.Subject, refs trustverify.EvidenceRefs) string {
+		t.Helper()
+		b, err := updateplan.New(runtimes[key], home, "v1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := b.Prepare(ctx, updateplan.Input{SourceInput: t5DSelection(source, refs), TargetInput: t5DSelection(f.target, f.targetRefs)})
+		if err != nil {
+			t.Fatalf("%s Prepare: %v", key, err)
+		}
+		tx, err := BeginUpdate(ctx, p, p.Fingerprint())
+		if err != nil {
+			t.Fatalf("%s Begin: %v", key, err)
+		}
+		defer tx.Release()
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatalf("%s Commit: %v", key, err)
+		}
+		return tx.ID()
+	}
+	apply("project", f.source, f.sourceRefs)
+	firstID := apply("project", f.target, f.targetRefs)
+	before := sharedHomeProjectImages(t, f.project)
+	apply("second", f.source, f.sourceRefs)
+	secondID := apply("second", f.target, f.targetRefs)
+	for path, original := range before {
+		current, err := os.Stat(filepath.Join(f.project, path))
+		if err != nil || !os.SameFile(original.info, current) || original.info.Mode() != current.Mode() {
+			t.Fatalf("other project inode/mode changed: %s", path)
+		}
+		if !current.IsDir() {
+			raw, err := os.ReadFile(filepath.Join(f.project, path))
+			if err != nil || string(raw) != original.data {
+				t.Fatalf("other project bytes changed: %s", path)
+			}
+		}
+	}
+	for key, id := range map[string]string{"project": firstID, "second": secondID} {
+		fresh, err := trustload.OpenRuntime(ctx, trustload.RuntimeOptions{Selection: f.selection, ProjectKey: key, Clock: t5DClock{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = fresh.Close() }()
+		cold, err := OpenUpdate(ctx, fresh, home, id, "v1")
+		if err != nil {
+			t.Fatalf("%s no-op receipt: %v", key, err)
+		}
+		if err := cold.Commit(ctx); err != nil {
+			t.Fatalf("%s terminal confirmation: %v", key, err)
+		}
+		cold.Release()
+	}
+	if tx, err := OpenUpdate(ctx, runtimes["second"], home, firstID, "v1"); err == nil {
+		tx.Release()
+		t.Fatal("other project receipt granted admission")
+	}
+}
+
+type sharedHomeImage struct {
+	info os.FileInfo
+	data string
+}
+
+func sharedHomeProjectImages(t *testing.T, root string) map[string]sharedHomeImage {
+	t.Helper()
+	out := map[string]sharedHomeImage{}
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		image := sharedHomeImage{info: info}
+		if !info.IsDir() {
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			image.data = string(raw)
+		}
+		out[rel] = image
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }

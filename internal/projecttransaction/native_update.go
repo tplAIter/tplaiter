@@ -10,6 +10,11 @@ import (
 	"github.com/tplAIter/tplaiter/internal/updateplan"
 )
 
+// ErrUpdatePreparingContinue identifies an authenticated preparing receipt whose
+// staging cannot be continued. OpenUpdate still admits it for safe Abort. Other
+// authentication, ownership and receipt errors must not be mapped to this error.
+var ErrUpdatePreparingContinue = engine.ErrPreparingContinue
+
 // UpdateTransaction cannot be constructed with arbitrary material, callbacks or
 // a signing key. Only fresh signed Plan admission or authenticated cold recovery
 // can obtain an admitted mutable handle.

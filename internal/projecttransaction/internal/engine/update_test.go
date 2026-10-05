@@ -367,24 +367,39 @@ func TestSignedUpdateRollbackReceiptRetry(t *testing.T) {
 }
 
 func TestSignedUpdatePreparingColdAbort(t *testing.T) {
-	tx, _, r, home := signedUpdateEngine(t)
-	// A receipt persisted after only the first staged step is a valid preparing
-	// prefix; unpublished orphan stage images grant no ownership of project paths.
-	tx.state.Phase = "preparing"
-	tx.state.Steps = tx.state.Steps[:1]
-	if err := tx.save(); err != nil {
-		t.Fatal(err)
-	}
-	tx.Release()
-	cold := coldSignedUpdate(t, r, home, tx.ID())
-	if err := cold.Rollback(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	cold.Release()
-	terminal := coldSignedUpdate(t, r, home, tx.ID())
-	defer terminal.Release()
-	if err := terminal.Rollback(context.Background()); err != nil {
-		t.Fatal(err)
+	for _, count := range []int{0, 1} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			tx, _, r, home := signedUpdateEngine(t)
+			// A receipt persisted after only the first staged step is a valid preparing
+			// prefix; unpublished orphan stage images grant no ownership of project paths.
+			tx.state.Phase = "preparing"
+			tx.state.Steps = tx.state.Steps[:count]
+			if err := tx.save(); err != nil {
+				t.Fatal(err)
+			}
+			tx.Release()
+			cold := coldSignedUpdate(t, r, home, tx.ID())
+			before, err := os.ReadFile(filepath.Join(cold.dir, "state.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cold.Commit(context.Background()); !errors.Is(err, ErrPreparingContinue) {
+				t.Fatalf("authenticated preparing Continue refusal: %v", err)
+			}
+			after, err := os.ReadFile(filepath.Join(cold.dir, "state.json"))
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("preparing refusal mutated receipt")
+			}
+			if err := cold.Rollback(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			cold.Release()
+			terminal := coldSignedUpdate(t, r, home, tx.ID())
+			defer terminal.Release()
+			if err := terminal.Rollback(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

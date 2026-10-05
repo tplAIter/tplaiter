@@ -31,11 +31,12 @@ const (
 )
 
 var (
-	ErrConflict        = errors.New("project transaction: foreign ownership; preserved")
-	ErrAuthentication  = errors.New("project transaction: authentication refused")
-	ErrCommitUncertain = errors.New("project transaction: terminal receipt publication uncertain")
-	ErrUnsupported     = errors.New("project transaction: operation not supported")
-	ErrActive          = errors.New("project transaction: lease held")
+	ErrConflict          = errors.New("project transaction: foreign ownership; preserved")
+	ErrAuthentication    = errors.New("project transaction: authentication refused")
+	ErrCommitUncertain   = errors.New("project transaction: terminal receipt publication uncertain")
+	ErrUnsupported       = errors.New("project transaction: operation not supported")
+	ErrActive            = errors.New("project transaction: lease held")
+	ErrPreparingContinue = errors.New("project transaction: preparing Continue unsupported")
 )
 
 type Identity struct {
@@ -384,6 +385,12 @@ func (t *Transaction) Apply(ctx context.Context) error {
 	if t.state.Phase == "committed" {
 		return nil
 	}
+	if t.plan.Kind == NativeUpdateKind && t.state.Phase == "preparing" {
+		if err := t.authenticate(ctx); err != nil {
+			return err
+		}
+		return ErrPreparingContinue
+	}
 	if t.state.Phase != "prepared" && t.state.Phase != "applying" {
 		return ErrAuthentication
 	}
@@ -449,7 +456,7 @@ func (t *Transaction) Commit(ctx context.Context) error {
 		}
 	}
 	terminal := t.state
-	terminal.Steps = append([]step(nil), t.state.Steps...)
+	terminal.Steps = append([]step{}, t.state.Steps...)
 	terminal.Phase = "committed"
 	// The live phase changes only after a successful durable publication.
 	if err := t.writeSigned("state.json", terminal, false); err != nil {
@@ -562,7 +569,7 @@ func (t *Transaction) rollback() error {
 		}
 	}
 	terminal := t.state
-	terminal.Steps = append([]step(nil), t.state.Steps...)
+	terminal.Steps = append([]step{}, t.state.Steps...)
 	if len(failures) == 0 {
 		terminal.Phase = "rolled-back"
 	} else {
