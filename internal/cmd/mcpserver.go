@@ -31,7 +31,7 @@ func newMCPServerCmd() *cobra.Command {
 		Use:   "mcp-server",
 		Short: "MCP server: tplaiter commands as tools for AI agents (stdio JSON-RPC)",
 		Long: "Runs an MCP server on top of the tplaiter CLI (pattern borrowed from goca, " +
-			"docs/research/clean-codegen.md §1): ~20 tools (repo/template/project/gen/...) " +
+			"docs/research/clean-codegen.md §1): repository, template, project, generator and context tools " +
 			"are available to AI agents via the MCP protocol over stdio. Each tool executes tplaiter " +
 			"as a separate process with separate arguments (no shell interpolation).\n\n" +
 			"Server logs go to stderr (stdout is occupied by the protocol). " +
@@ -94,6 +94,6 @@ func newMCPServerCmd() *cobra.Command {
 	c.Flags().StringVar(&printConfig, "print-config", "",
 		"print JSON configuration snippet for MCP client ("+strings.Join(mcpsrv.SupportedPrintConfigClients(), "|")+") and exit")
 	c.Flags().BoolVar(&direct, "direct", false,
-		"do not inherit HTTP(S)_PROXY/ALL_PROXY/NO_PROXY in MCP tools and their child processes")
+		"retained compatibility flag; installed MCP tools always use a fixed child environment")
 	return c
 }
