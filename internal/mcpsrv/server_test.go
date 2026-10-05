@@ -122,7 +122,7 @@ func TestProtocolListTools(t *testing.T) {
 		"trust_inspect",
 		"repo_add", "repo_list", "repo_update", "repo_remove",
 		"template_list", "template_show",
-		"project_new", "project_verify", "project_check", "deps_verify",
+		"project_new", "project_link", "project_verify", "project_check", "deps_verify",
 		"run", "settings_list", "settings_set",
 		"update", "stats", "gen", "gen_batch", "gen_list",
 		"workspace_add_service",
