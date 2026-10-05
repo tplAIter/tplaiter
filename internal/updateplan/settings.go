@@ -10,6 +10,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/settings"
+	"github.com/tplAIter/tplaiter/internal/stateledger"
 )
 
 // ErrSettingsInput identifies invalid operator settings, never writer authority.
@@ -44,7 +45,19 @@ func ResolveSettingsPairs(tpl *manifest.Template, old settings.Values, pairs []s
 			explicit[k] = v
 		}
 	}
+	return resolveSettingsExplicit(tpl, explicit, pairs, renderref.Values(old))
+}
+
+func resolveSettingsExplicit(tpl *manifest.Template, explicit settings.Values, pairs []string, prior settings.Values) (settings.Resolved, error) {
+	if _, err := cloneSettingsInput(Input{SettingsPairs: pairs}); err != nil {
+		return settings.Resolved{}, err
+	}
+	intent := settings.DefaultValues(tpl)
+	for key, value := range prior {
+		intent[key] = value
+	}
 	seen := map[string]bool{}
+	var submitted []string
 	for _, pair := range pairs {
 		key, value, err := settings.ParseSet(tpl, pair)
 		if err != nil {
@@ -54,16 +67,31 @@ func ResolveSettingsPairs(tpl *manifest.Template, old settings.Values, pairs []s
 			return settings.Resolved{}, fmt.Errorf("%w: duplicate group %q", ErrSettingsInput, key)
 		}
 		seen[key] = true
+		submitted = append(submitted, key)
 		explicit[key] = value
+		intent[key] = value
+	}
+	// Only recorded ancestry plus explicit parent choices may expose a group.
+	// Default recomputation or requires implication alone cannot authorize an
+	// originally hidden descendant override.
+	for _, key := range submitted {
+		if !SettingsGroupActive(tpl, intent, key) {
+			return settings.Resolved{}, fmt.Errorf("%w: inactive group %q", ErrSettingsInput, key)
+		}
 	}
 	resolved, err := settings.Resolve(tpl, explicit)
 	if err != nil {
 		return settings.Resolved{}, fmt.Errorf("%w: %w", ErrSettingsInput, err)
 	}
+	for _, key := range submitted {
+		if !SettingsGroupActive(tpl, resolved.Values, key) {
+			return settings.Resolved{}, fmt.Errorf("%w: inactive group %q", ErrSettingsInput, key)
+		}
+	}
 	return resolved, nil
 }
 
-func (b *Backend) settingsRender(ctx context.Context, in Input, old renderref.Input) (renderref.Input, error) {
+func (b *Backend) settingsRender(ctx context.Context, in Input, old renderref.Input, answers map[string]stateledger.Answer) (renderref.Input, error) {
 	if len(in.SettingsPairs) == 0 {
 		return old, nil
 	}
@@ -81,7 +109,7 @@ func (b *Backend) settingsRender(ctx context.Context, in Input, old renderref.In
 	if err := tpl.Validate(); err != nil {
 		return renderref.Input{}, err
 	}
-	resolved, err := ResolveSettingsPairs(tpl, old.Values, in.SettingsPairs)
+	resolved, err := ResolveSettingsAnswers(tpl, answers, in.SettingsPairs)
 	if err != nil {
 		return renderref.Input{}, err
 	}

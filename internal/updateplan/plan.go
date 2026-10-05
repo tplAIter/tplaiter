@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -232,7 +231,7 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
-	targetRender, err := b.settingsRender(ctx, in, render)
+	targetRender, err := b.settingsRender(ctx, in, render, marker.Answers)
 	if err != nil {
 		return nil, err
 	}
@@ -287,11 +286,15 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 			}
 		}
 	}
-	metadata, err := targetMetadata(marker, prepared, targetImages, len(in.SettingsPairs) > 0)
+	answers, err := settingsAnswerAfterimages(prepared.Rendered().Template, marker.Answers, prepared.Rendered().Resolved.Values, in.SettingsPairs)
 	if err != nil {
 		return nil, err
 	}
-	if current.RootLockSHA256 == prepared.TargetRootLock().RootLockSHA256 && settingsValuesEqual(base.Rendered().Resolved.Values, prepared.Rendered().Resolved.Values) {
+	metadata, err := targetMetadata(marker, prepared, targetImages, answers)
+	if err != nil {
+		return nil, err
+	}
+	if current.RootLockSHA256 == prepared.TargetRootLock().RootLockSHA256 && settingsValuesEqual(base.Rendered().Resolved.Values, prepared.Rendered().Resolved.Values) && settingsAnswersEqual(marker.Answers, answers) {
 		// Preserve exact valid existing metadata encoding for a genuine no-op.
 		for p := range metadata {
 			metadata[p] = observed.files[p]
@@ -499,7 +502,7 @@ func validateOwned(observed *observation, base map[string][]byte, result *render
 	return nil
 }
 
-func targetMetadata(marker stateledger.ProjectV2, p *operationtrust.PreparedUpdate, images *resources.ResourceImages, settingsChange bool) (map[string][]byte, error) {
+func targetMetadata(marker stateledger.ProjectV2, p *operationtrust.PreparedUpdate, images *resources.ResourceImages, answers map[string]stateledger.Answer) (map[string][]byte, error) {
 	result := p.Rendered()
 	inv := ownership.Inventory{Version: 1, Artifacts: []ownership.Artifact{}}
 	for path, raw := range result.Files {
@@ -530,17 +533,7 @@ func targetMetadata(marker stateledger.ProjectV2, p *operationtrust.PreparedUpda
 			inv.Skipped = append(inv.Skipped, ownership.Decision{Path: rel, Reason: "user-owned"})
 		}
 	}
-	for k, v := range result.Resolved.Values {
-		previous, ok := marker.Answers[k]
-		if !ok {
-			previous = stateledger.Answer{Source: "default"}
-		}
-		if settingsChange && !reflect.DeepEqual(previous.Value, v) {
-			previous.Source = "user"
-		}
-		previous.Value = v
-		marker.Answers[k] = previous
-	}
+	marker.Answers = answers
 	root := p.TargetRootLock()
 	marker.Template.RequestedRef = root.Root.RequestedRef
 	marker.Template.ResolvedCommit = root.Root.Commit

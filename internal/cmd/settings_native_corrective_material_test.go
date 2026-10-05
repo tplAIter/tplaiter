@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,7 +12,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction"
 	"github.com/tplAIter/tplaiter/internal/state"
+	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/updateplan"
+	"gopkg.in/yaml.v3"
 )
 
 func TestNativeSettingsCorrectiveColdMaterialAndFreshPreimage(t *testing.T) {
@@ -158,4 +161,133 @@ func TestNativeSettingsCorrectiveColdMaterialAndFreshPreimage(t *testing.T) {
 		t.Fatalf("cold marker bytes: %v %q", err, actual)
 	}
 	t.Logf("fresh after-lease + cold prepared commit preserved authenticated decisions; tx=%s", id)
+}
+
+func TestNativeSettingsProvenanceColdSameIDAndStaleRefusal(t *testing.T) {
+	f := nativeSettingsFixture(t)
+	home := filepath.Join(filepath.Dir(f.projectRoot), "provenance-home")
+	t.Setenv(state.HomeEnv, home)
+	in := invocation{Selection: f.selection, ProjectKey: "project", Clock: f.clock}
+	ctx := withInvocation(context.Background(), in)
+	if _, err := executeNativeGenCLI(in, "trust", "provision"); err != nil {
+		t.Fatal(err)
+	}
+	sourcePath := filepath.Join(filepath.Dir(f.projectRoot), "selection.json")
+	if err := os.WriteFile(sourcePath, t5FSelection(f.source, f.sourceRefs), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := executeNativeGenCLI(in, "new", f.source.Commit, "project", "--dir", f.projectRoot, "--source-input", sourcePath, "--defaults", "--no-hooks", "--json"); err != nil {
+		t.Fatalf("new: %v %s", err, out)
+	}
+	r, err := composeRuntimeForProject(ctx, "project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	input, err := registeredSourceInput(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, err := updateplan.New(r, home, resolveVersion())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pairs := []string{"label=alpha", "tls=false"}
+	plan, err := backend.Prepare(ctx, updateplan.Input{SourceInput: input, TargetInput: input, SettingsPairs: pairs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	material, _, err := plan.TransactionMaterial(ctx, plan.Fingerprint())
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := material.After[".tplaiter/project.yaml"].Data
+	if bytes.Equal(expected, material.Before[".tplaiter/project.yaml"].Data) {
+		t.Fatal("provenance-only marker was discarded")
+	}
+	var marker stateledger.ProjectV2
+	if err := yaml.Unmarshal(expected, &marker); err != nil {
+		t.Fatal(err)
+	}
+	if marker.Answers["label"].Source != "user" || marker.Answers["tls"].Source != "user" || marker.Answers["database"].Source != "default" {
+		t.Fatalf("provenance afterimage: %+v", marker.Answers)
+	}
+	// Caller-rehashed metadata must not substitute a different answer origin.
+	forged := material
+	forged.After = make(map[string]updateplan.UpdateFile, len(material.After))
+	for key, file := range material.After {
+		forged.After[key] = file
+	}
+	marker.Answers["label"] = stateledger.Answer{Value: "alpha", Source: "default"}
+	file := forged.After[".tplaiter/project.yaml"]
+	file.Data, err = yaml.Marshal(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged.After[".tplaiter/project.yaml"] = file
+	forged.Fingerprint = ""
+	forged.Fingerprint, err = bootstrap.DomainDigest("tplaiter.dev/native-update-material/v1", forged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := updateplan.AuthenticateUpdateMaterial(ctx, r, resolveVersion(), forged); err == nil {
+		t.Fatal("forged answer origin admitted")
+	}
+	opaque, err := projecttransaction.PlanSettings(ctx, r, home, resolveVersion(), input, pairs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opaque.Fingerprint() != plan.Fingerprint() {
+		t.Fatal("same immutable preparation changed fingerprint")
+	}
+	hello := filepath.Join(f.projectRoot, "hello.txt")
+	original, err := os.ReadFile(hello)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hello, []byte("stale after preview\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if tx, err := projecttransaction.BeginSettings(ctx, opaque, opaque.Fingerprint()); err == nil {
+		tx.Release()
+		t.Fatal("stale provenance-only plan admitted")
+	}
+	if err := os.WriteFile(hello, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opaque, err = projecttransaction.PlanSettings(ctx, r, home, resolveVersion(), input, pairs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := projecttransaction.BeginSettings(ctx, opaque, opaque.Fingerprint())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := tx.ID()
+	tx.Release()
+	r.Close()
+	cold, err := composeRuntimeForProject(ctx, "project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cold.Close()
+	receipt, err := projecttransaction.OpenUpdate(ctx, cold, home, id, resolveVersion())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer receipt.Release()
+	if receipt.ID() != id {
+		t.Fatal("cold carrier replaced transaction ID")
+	}
+	if err := receipt.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := os.ReadFile(filepath.Join(f.projectRoot, ".tplaiter/project.yaml"))
+	if err != nil || !bytes.Equal(expected, actual) {
+		t.Fatalf("cold provenance bytes differ: %v", err)
+	}
+	if err := receipt.Commit(ctx); err != nil {
+		t.Fatalf("committed continuation: %v", err)
+	}
+	t.Logf("cold provenance verified: txn=%s plan=%s markerSHA256=%x; forged-origin and stale-preview refused", id, opaque.Fingerprint(), sha256.Sum256(actual))
 }

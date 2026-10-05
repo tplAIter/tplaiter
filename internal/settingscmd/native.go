@@ -33,6 +33,7 @@ type Native struct {
 type NativeView struct {
 	Template  *manifest.Template
 	Values    settings.Values
+	Answers   map[string]stateledger.Answer
 	Selection stateledger.TemplateIdentity
 	source    []byte
 }
@@ -151,7 +152,7 @@ func (n *Native) Read(ctx context.Context) (*NativeView, error) {
 	for key, a := range marker.Answers {
 		values[key] = a.Value
 	}
-	resolved, err := settings.Resolve(tpl, values)
+	resolved, err := settings.Resolve(tpl, renderref.Values(values))
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +168,7 @@ func (n *Native) Read(ctx context.Context) (*NativeView, error) {
 	if err != nil || !bytes.Equal(before, after) {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
-	return &NativeView{Template: tpl, Values: resolved.Values.Clone(), Selection: marker.Template, source: input}, nil
+	return &NativeView{Template: tpl, Values: resolved.Values.Clone(), Answers: marker.Answers, Selection: marker.Template, source: input}, nil
 }
 
 func (n *Native) Prepare(ctx context.Context, pairs []string) (*projecttransaction.SettingsPlan, error) {

@@ -18,8 +18,10 @@ import (
 	"github.com/tplAIter/tplaiter/internal/ossinstall"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
+	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
+	"gopkg.in/yaml.v3"
 )
 
 // Installed child processes authenticate actual disk registration and provision
@@ -199,6 +201,64 @@ func TestNativeSettingsCorrectiveInstalledCLIAndMCP(t *testing.T) {
 			}
 		}
 	}
+
+	// Same-value explicit intent changes only authenticated marker provenance.
+	assertAnswerReceipt := func(root, key, h string, env resultdto.Result) {
+		t.Helper()
+		if env.TransactionID == nil || env.PlanSHA256 == "" || env.Summary.FilesChanged != 1 || env.Summary.BlocksChanged != 0 || env.Summary.Conflicts != 0 || len(env.Changes) != 1 || env.Changes[0].Path != ".tplaiter/project.yaml" || env.Changes[0].Action != "write" {
+			t.Fatalf("provenance-only receipt/counter: %+v", env)
+		}
+		raw, err := os.ReadFile(filepath.Join(root, ".tplaiter/project.yaml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var marker stateledger.ProjectV2
+		if err := yaml.Unmarshal(raw, &marker); err != nil {
+			t.Fatal(err)
+		}
+		if marker.Answers["label"].Source != "user" || marker.Answers["label"].Value != "alpha" || marker.Answers["database"].Source != "default" || marker.Answers["tls"].Source != "default" {
+			t.Fatalf("explicit/untouched origins: %+v", marker.Answers)
+		}
+		in := invocation{Selection: f.selection, ProjectKey: key, Clock: f.clock}
+		r, err := composeRuntimeForProject(withInvocation(ctx, in), key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Close()
+		receipt, err := projecttransaction.OpenUpdate(ctx, r, filepath.Join(h, "tplaiter"), *env.TransactionID, "v-settings")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer receipt.Release()
+		if receipt.ID() != *env.TransactionID {
+			t.Fatal("cold recovery changed transaction ID")
+		}
+		if err := receipt.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		after, err := os.ReadFile(filepath.Join(root, ".tplaiter/project.yaml"))
+		if err != nil || !bytes.Equal(raw, after) {
+			t.Fatalf("cold same-value afterimage changed: %v", err)
+		}
+		sum := sha256.Sum256(after)
+		t.Logf("installed same-value provenance receipt: txn=%s plan=%s markerSHA256=%x result=%+v", receipt.ID(), env.PlanSHA256, sum, env)
+	}
+	preview := checkNoEffects("settings", "edit", "label", "--value=alpha", "--dry-run", "--json")
+	if preview.Summary.FilesChanged != 1 || len(preview.Changes) != 1 || preview.Changes[0].Path != ".tplaiter/project.yaml" {
+		t.Fatalf("provenance-only preview hidden: %+v", preview)
+	}
+	intentOut, intentErr := run("settings", "edit", "label", "--value=alpha", "--yes", "--json")
+	if intentErr != nil {
+		t.Fatalf("same-value edit: %v %s", intentErr, intentOut)
+	}
+	assertAnswerReceipt(f.projectRoot, "project", home, decodeOne(t, string(intentOut)))
+	repeated, repeatedErr := run("settings", "set", "label=alpha", "--yes", "--json")
+	if repeatedErr != nil {
+		t.Fatalf("repeat explicit answer: %v %s", repeatedErr, repeated)
+	}
+	if got := decodeOne(t, string(repeated)); got.Summary.FilesChanged != 0 || len(got.Changes) != 0 {
+		t.Fatalf("same user origin was not a no-op: %+v", got)
+	}
 	env := checkNoEffects("settings", "set", "database=none", "--dry-run", "--json")
 	if env.Status != resultdto.StatusChanges {
 		t.Fatalf("database preview: %+v", env)
@@ -354,6 +414,7 @@ func TestNativeSettingsCorrectiveInstalledCLIAndMCP(t *testing.T) {
 		return env
 	}
 
+	assertAnswerReceipt(second, "second", secondHome, call(20, "settings_edit", map[string]any{"dir": second, "projectContext": "second", "group": "label", "value": "alpha"}))
 	before := observed(second)
 	env = call(2, "settings_set", map[string]any{"dir": second, "projectContext": "second", "values": map[string]string{"database": "none"}, "dryRun": true})
 	if !warning(env) || !reflect.DeepEqual(before, observed(second)) || env.TransactionID != nil {

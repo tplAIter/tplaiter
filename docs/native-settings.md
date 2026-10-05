@@ -59,6 +59,35 @@ cannot substitute a different source or target selection. Invalid group/value
 pairs, a mismatched directory or context, and unauthenticated or changed
 project state are rejected before publication.
 
+## Recorded answers and ancestry
+
+An explicit `settings set` pair or `settings edit --value` records a `user`
+answer even when its value equals the signed default or its previous value.
+Untouched answers retain their recorded source (`user`, `legacy`, `migration`,
+or `default`). Default-origin answers are resolved from the current signed
+manifest defaults and requirements; a previously implied default-origin value
+can return to its default when the requiring selection is removed. User,
+legacy, and migration origins remain explicit, including default-equal values.
+
+Inactive nested answers remain in the recorded snapshot and are excluded from
+the rendering view. Editing an inactive descendant directly is rejected using
+its full manifest ancestry. Reanswer the parent first, or submit a parent choice
+that activates the descendant in the same settings request. Parent reanswering
+prompts only the descendants active under the new parent choices.
+
+A provenance-only change is a real marker write. The settings result reports
+`.tplaiter/project.yaml` in `changes` and in the existing `filesChanged` count,
+which already includes changed metadata files. Repeating an unchanged answer
+that is already recorded as `user` does not create another marker change.
+
+Settings transactions retain the original answer beforeimages and explicit
+pairs. The existing native Update cold carrier authenticates and reconstructs
+those inputs, the exact answer afterimages, and the plan fingerprint while
+preserving the transaction ID. Changed preimages and caller-rehashed answer
+origins are rejected; a decoded receipt is not publication authority. This
+bounded recovery path does not add a dedicated settings recovery or MCP
+continuation tool.
+
 ## Conditional files and conflicts
 
 Conditional file changes preserve local edits according to the native settings
@@ -104,5 +133,7 @@ when committed, and conflict status.
 This page documents the bounded native settings sidecar. It does not claim full
 U07 acceptance, workspace settings operations, executable actions, hooks,
 environment setup, or general lifecycle recovery. The native settings path
-also does not provide a settings recovery or continuation command; unresolved
-transaction or trust failures must remain under maintainer investigation.
+also does not provide a dedicated settings recovery or continuation command.
+General crash recovery, deprecated or secret question attributes, template
+answer migrations, and an operator keep/drop/rename codec remain outside this
+bounded path.

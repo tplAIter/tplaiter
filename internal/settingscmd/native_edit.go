@@ -9,6 +9,9 @@ import (
 )
 
 func surveyReanswer(view *NativeView, group string, d Deps) ([]string, error) {
+	if !updateplan.SettingsGroupActive(view.Template, view.Values, group) {
+		return nil, fmt.Errorf("%w: inactive group %q", updateplan.ErrSettingsInput, group)
+	}
 	var selected []manifest.SettingGroup
 	var find func([]manifest.SettingGroup)
 	find = func(groups []manifest.SettingGroup) {
@@ -30,14 +33,18 @@ func surveyReanswer(view *NativeView, group string, d Deps) ([]string, error) {
 			return nil, err
 		}
 		var pairs []string
-		walkGroups(selected, asked, true, 0, func(g *manifest.SettingGroup, active bool, _ int) {
+		activeValues := current.Clone()
+		for key, value := range asked {
+			activeValues[key] = value
+		}
+		walkGroups(selected, activeValues, true, 0, func(g *manifest.SettingGroup, active bool, _ int) {
 			if active {
 				if value, ok := asked[g.Group]; ok {
 					pairs = append(pairs, g.Group+"="+settingTransport(value))
 				}
 			}
 		})
-		resolved, err := updateplan.ResolveSettingsPairs(view.Template, view.Values, pairs)
+		resolved, err := updateplan.ResolveSettingsAnswers(view.Template, view.Answers, pairs)
 		if err != nil {
 			return nil, err
 		}
