@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplaiter.dev/schema/context-source-bindings.v2.schema.json",
+  "description": "Closed v2 data contract. The compiled parser also enforces byte limits, lexical safe-integer parameters, sorted unique aliases and parameters, exact manifest bytes, requestedRef equality, portable paths and source identity uniqueness. Runtime admission authenticates source relationships; schema validity grants no authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "source",
+    "dependencies"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/context-source-bindings/v2"
+    },
+    "kind": {
+      "const": "ContextSourceBindings"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alias",
+        "providerID",
+        "parameters",
+        "entriesPath",
+        "payloadDirectory",
+        "toolPath"
+      ],
+      "properties": {
+        "alias": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+        },
+        "providerID": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+        },
+        "parameters": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "value"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "entriesPath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[^\\\\\u0000\\r\\n]+$",
+          "description": "The compiled parser additionally enforces fs.ValidPath and the existing portable path contract."
+        },
+        "payloadDirectory": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[^\\\\\u0000\\r\\n]+$",
+          "description": "The compiled parser additionally enforces fs.ValidPath and the existing portable path contract."
+        },
+        "toolPath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[^\\\\\u0000\\r\\n]+$",
+          "description": "The compiled parser additionally enforces fs.ValidPath and the existing portable path contract."
+        }
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "maxItems": 31,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "alias",
+          "providerID",
+          "parameters"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+          },
+          "providerID": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+          },
+          "parameters": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "value"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

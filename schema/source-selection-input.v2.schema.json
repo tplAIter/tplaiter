@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplaiter.dev/schema/source-selection-input.v2.schema.json",
+  "description": "Closed v2 data contract. The compiled parser also enforces byte limits, lexical safe-integer parameters, sorted unique aliases and parameters, exact manifest bytes, requestedRef equality, portable paths and source identity uniqueness. Runtime admission authenticates source relationships; schema validity grants no authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "root",
+    "sources"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/source-selection-input/v2"
+    },
+    "root": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "evidence"
+      ],
+      "properties": {
+        "subject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "origin",
+            "templatePath",
+            "requestedRef",
+            "commit",
+            "treeSHA256",
+            "contractSHA256"
+          ],
+          "properties": {
+            "origin": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "pattern": "^[^\u0000\\r\\n]+$"
+            },
+            "templatePath": {
+              "anyOf": [
+                {
+                  "const": "."
+                },
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[^\\\\\u0000\\r\\n]+$",
+                  "description": "The compiled parser additionally enforces fs.ValidPath and the existing portable path contract."
+                }
+              ]
+            },
+            "requestedRef": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+            },
+            "commit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+            },
+            "treeSHA256": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "contractSHA256": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "format",
+            "statementCAS",
+            "signatureCAS",
+            "keyFingerprint",
+            "checkpointCAS",
+            "inclusionProofCAS"
+          ],
+          "properties": {
+            "format": {
+              "const": "tplaiter.dev/publisher-statement/v1"
+            },
+            "statementCAS": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "signatureCAS": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "keyFingerprint": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "checkpointCAS": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "inclusionProofCAS": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "maxItems": 31,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "subject",
+          "evidence"
+        ],
+        "properties": {
+          "subject": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "origin",
+              "templatePath",
+              "requestedRef",
+              "commit",
+              "treeSHA256",
+              "contractSHA256"
+            ],
+            "properties": {
+              "origin": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "pattern": "^[^\u0000\\r\\n]+$"
+              },
+              "templatePath": {
+                "anyOf": [
+                  {
+                    "const": "."
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[^\\\\\u0000\\r\\n]+$",
+                    "description": "The compiled parser additionally enforces fs.ValidPath and the existing portable path contract."
+                  }
+                ]
+              },
+              "requestedRef": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+              },
+              "commit": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+              },
+              "treeSHA256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "contractSHA256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "format",
+              "statementCAS",
+              "signatureCAS",
+              "keyFingerprint",
+              "checkpointCAS",
+              "inclusionProofCAS"
+            ],
+            "properties": {
+              "format": {
+                "const": "tplaiter.dev/publisher-statement/v1"
+              },
+              "statementCAS": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "signatureCAS": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "keyFingerprint": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "checkpointCAS": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "inclusionProofCAS": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
