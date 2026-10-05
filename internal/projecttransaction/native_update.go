@@ -10,9 +10,9 @@ import (
 	"github.com/tplAIter/tplaiter/internal/updateplan"
 )
 
-// ErrUpdatePreparingContinue identifies an authenticated preparing receipt whose
-// staging cannot be continued. OpenUpdate still admits it for safe Abort. Other
-// authentication, ownership and receipt errors must not be mapped to this error.
+// ErrUpdatePreparingContinue is retained for compatibility with callers of the
+// former preparing refusal. Authenticated prefixes now resume; ambiguous staging
+// and receipt/ownership failures remain transaction errors, not this sentinel.
 var ErrUpdatePreparingContinue = engine.ErrPreparingContinue
 
 // UpdateTransaction cannot be constructed with arbitrary material, callbacks or

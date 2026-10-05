@@ -383,7 +383,7 @@ func TestSignedUpdatePreparingColdAbort(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := cold.Commit(context.Background()); !errors.Is(err, ErrPreparingContinue) {
+			if err := cold.Commit(context.Background()); !errors.Is(err, ErrPreparingAmbiguous) {
 				t.Fatalf("authenticated preparing Continue refusal: %v", err)
 			}
 			after, err := os.ReadFile(filepath.Join(cold.dir, "state.json"))

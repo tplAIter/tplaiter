@@ -93,7 +93,8 @@ func TestNativeUpdateInstalledColdContinueAndSharedHome(t *testing.T) {
 	}
 	digest := sha256.Sum256(raw)
 	bin := filepath.Join(base, "tplaiter")
-	build := exec.Command(testfixture.GoBinary(t), "build", "-ldflags", "-X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationPath="+registrationPath+" -X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationSHA256=sha256:"+hex.EncodeToString(digest[:]), "-o", bin, ".")
+	// The installed child and in-process planner must use the same actual renderer version.
+	build := exec.Command(testfixture.GoBinary(t), "build", "-ldflags", "-X github.com/tplAIter/tplaiter/internal/cmd.version="+resolveVersion()+" -X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationPath="+registrationPath+" -X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationSHA256=sha256:"+hex.EncodeToString(digest[:]), "-o", bin, ".")
 	build.Dir, build.Env = filepath.Join("..", ".."), testBuildEnv(home)
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
@@ -137,6 +138,7 @@ func TestNativeUpdateInstalledColdContinueAndSharedHome(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	preparingReports := map[string]updateplan.Report{}
 	begin := func(t *testing.T, key string, stageCtx context.Context) (string, error) {
 		t.Helper()
 		in := invocation{Selection: f.selection, ProjectKey: key, Clock: f.clock}
@@ -152,6 +154,17 @@ func TestNativeUpdateInstalledColdContinueAndSharedHome(t *testing.T) {
 		p, err := b.Prepare(context.WithoutCancel(stageCtx), updateplan.Input{SourceInput: t5FSelection(f.source, f.sourceRefs), TargetInput: t5FSelection(f.target, f.targetRefs)})
 		if err != nil {
 			t.Fatal(err)
+		}
+		if strings.HasPrefix(key, "preparing-") {
+			raw, err := p.Marshal()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var report updateplan.Report
+			if err := json.Unmarshal(raw, &report); err != nil {
+				t.Fatal(err)
+			}
+			preparingReports[key] = report
 		}
 		tx, err := projecttransaction.BeginUpdate(stageCtx, p, p.Fingerprint())
 		if tx == nil {
@@ -323,6 +336,17 @@ func TestNativeUpdateInstalledColdContinueAndSharedHome(t *testing.T) {
 			}
 		})
 	}
+	// Targeted preparing subtests may omit the project subtest above. Complete
+	// its real setup transaction so it cannot retain the shared registry lease.
+	if out, err := run("update", "continue", firstID, "--project-context", "project", "--dir", roots["project"], "--json"); err != nil {
+		t.Fatalf("setup cold Continue: %v %s", err, out)
+	} else {
+		env := decodeOne(t, string(out))
+		if env.Operation != resultdto.OperationUpdateContinue || env.Status != resultdto.StatusOK || env.Project == nil || env.Project.ID != "project-t5f" || env.Project.Root != roots["project"] || env.TransactionID == nil || *env.TransactionID != firstID {
+			t.Fatalf("setup cold Continue envelope: %s", out)
+		}
+		assertPublished(t, "project")
+	}
 	publication := func(root string) map[string]string {
 		m := nativeUpdateObservedTree(t, root)
 		for path := range m {
@@ -335,36 +359,118 @@ func TestNativeUpdateInstalledColdContinueAndSharedHome(t *testing.T) {
 	for _, tc := range []struct {
 		key            string
 		minimum, steps int
-	}{{"preparing-first", 0, 7}, {"preparing-second", 8, 10}} {
+	}{{"preparing-first", 7, 7}, {"preparing-second", 10, 10}} {
 		t.Run(tc.key, func(t *testing.T) {
+			stagePrefix := func(t *testing.T) string {
+				t.Helper()
+				boundary := &nativeUpdateBoundaryCancel{Context: context.Background(), home: ledgerHome, phase: "preparing", minimum: tc.minimum}
+				id, err := begin(t, tc.key, boundary)
+				if !errors.Is(err, context.Canceled) || !boundary.fired || id == "" {
+					t.Fatalf("genuine staging prefix: %s %v fired=%v", id, err, boundary.fired)
+				}
+				receiptRaw, err := os.ReadFile(filepath.Join(ledgerHome, "transactions", "project", "tx-"+id, "state.json"))
+				var record struct {
+					Payload struct {
+						Phase string            `json:"phase"`
+						Steps []json.RawMessage `json:"steps"`
+					} `json:"payload"`
+				}
+				if err != nil || json.Unmarshal(receiptRaw, &record) != nil || record.Payload.Phase != "preparing" || len(record.Payload.Steps) != tc.steps {
+					t.Fatalf("genuine preparing counter: %v %s", err, receiptRaw)
+				}
+				t.Logf("genuine signed preparing prefix: steps=%d", len(record.Payload.Steps))
+				return id
+			}
 			originalProject := publication(roots[tc.key])
 			originalRegistry, err := os.ReadFile(filepath.Join(ledgerHome, "projects.yaml"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			boundary := &nativeUpdateBoundaryCancel{Context: context.Background(), home: ledgerHome, phase: "preparing", minimum: tc.minimum}
-			id, err := begin(t, tc.key, boundary)
-			if !errors.Is(err, context.Canceled) || !boundary.fired || id == "" {
-				t.Fatalf("genuine staging prefix: %s %v fired=%v", id, err, boundary.fired)
-			}
-			receiptRaw, err := os.ReadFile(filepath.Join(ledgerHome, "transactions", "project", "tx-"+id, "state.json"))
-			var record struct {
-				Payload struct {
-					Phase string            `json:"phase"`
-					Steps []json.RawMessage `json:"steps"`
-				} `json:"payload"`
-			}
-			if err != nil || json.Unmarshal(receiptRaw, &record) != nil || record.Payload.Phase != "preparing" || len(record.Payload.Steps) != tc.steps {
-				t.Fatalf("genuine preparing counter: %v %s", err, receiptRaw)
-			}
-			t.Logf("genuine signed preparing prefix: steps=%d", len(record.Payload.Steps))
-			requireFailure(t, tc.key, id, resultdto.ExitUnavailable, "TRUST_NATIVE_UPDATE_CONTINUE_UNSUPPORTED", "--project-context", tc.key, "--dir", roots[tc.key])
-			registry, err := os.ReadFile(filepath.Join(ledgerHome, "projects.yaml"))
-			if err != nil || !bytes.Equal(originalRegistry, registry) || !reflect.DeepEqual(originalProject, publication(roots[tc.key])) {
-				t.Fatal("preparing prefix published project or registry")
-			}
-			if out, err := run("update", "abort", id, "--project-context", tc.key, "--dir", roots[tc.key], "--json"); err != nil {
-				t.Fatalf("preparing Abort: %v %s", err, out)
+			t.Run("PreparingAbort", func(t *testing.T) {
+				id := stagePrefix(t)
+				if !reflect.DeepEqual(originalProject, publication(roots[tc.key])) {
+					t.Fatal("preparing prefix published project")
+				}
+				if out, err := run("update", "abort", id, "--project-context", tc.key, "--dir", roots[tc.key], "--json"); err != nil {
+					t.Fatalf("preparing Abort: %v %s", err, out)
+				}
+				registry, err := os.ReadFile(filepath.Join(ledgerHome, "projects.yaml"))
+				if err != nil || !bytes.Equal(originalRegistry, registry) || !reflect.DeepEqual(originalProject, publication(roots[tc.key])) {
+					t.Fatal("preparing Abort changed project or registry")
+				}
+			})
+			id := stagePrefix(t)
+			report := preparingReports[tc.key]
+			for retry := 0; retry < 2; retry++ {
+				before := observed()
+				out, err := run("update", "continue", id, "--project-context", tc.key, "--dir", roots[tc.key], "--json")
+				if err != nil {
+					t.Fatalf("preparing Continue: %v %s", err, out)
+				}
+				env := decodeOne(t, string(out))
+				if env.Operation != resultdto.OperationUpdateContinue || env.Status != resultdto.StatusOK || env.Project == nil || env.Project.ID != "project-"+tc.key || env.Project.Root != roots[tc.key] || env.TransactionID == nil || *env.TransactionID != id {
+					t.Fatalf("preparing Continue envelope: %s", out)
+				}
+				assertPublished(t, tc.key)
+				expectedPaths := map[string]bool{}
+				changedPaths := map[string]bool{}
+				for name := range originalProject {
+					expectedPaths[name] = true
+				}
+				for _, change := range report.Changes {
+					name := filepath.Join(roots[tc.key], change.Path)
+					if change.Operation != "keep" {
+						changedPaths[change.Path] = true
+					}
+					switch change.Operation {
+					case "keep":
+						continue
+					case "delete":
+						delete(expectedPaths, change.Path)
+						if _, err := os.Lstat(name); !os.IsNotExist(err) {
+							t.Fatalf("planned deletion %s: %v", change.Path, err)
+						}
+					default:
+						expectedPaths[change.Path] = true
+						for parent := filepath.Dir(change.Path); parent != "."; parent = filepath.Dir(parent) {
+							expectedPaths[parent] = true
+							if _, exists := originalProject[parent]; !exists {
+								changedPaths[parent] = true
+								info, err := os.Lstat(filepath.Join(roots[tc.key], parent))
+								if err != nil || !info.IsDir() || info.Mode().Perm() != 0o755 {
+									t.Fatalf("planned parent %s: %v", parent, err)
+								}
+							}
+						}
+						info, err := os.Lstat(name)
+						if err != nil || change.After == nil || uint32(info.Mode().Perm()) != change.After.Mode || info.IsDir() != (change.After.Kind == "directory") {
+							t.Fatalf("planned afterimage %s: %v", change.Path, err)
+						}
+						if !info.IsDir() {
+							actual, err := os.ReadFile(name)
+							if err != nil || !bytes.Equal(actual, change.Content) {
+								t.Fatalf("planned content %s: %v", change.Path, err)
+							}
+						}
+					}
+				}
+				published := publication(roots[tc.key])
+				if len(published) != len(expectedPaths) {
+					t.Fatal("preparing Continue published missing or unexpected paths")
+				}
+				for name, observation := range published {
+					if !expectedPaths[name] || !changedPaths[name] && observation != originalProject[name] {
+						t.Fatalf("unplanned preparing Continue effect: %s", name)
+					}
+				}
+				registry, err := os.ReadFile(filepath.Join(ledgerHome, "projects.yaml"))
+				if err != nil || !bytes.Equal(registry, report.Registry.AfterContent) {
+					t.Fatal("preparing Continue registry differs from signed plan")
+				}
+				if retry != 0 && !reflect.DeepEqual(before, observed()) {
+					t.Fatal("preparing cold terminal confirmation changed inventory")
+				}
+				t.Logf("prefix%d cold Continue retry%d exact project+registry: %s", tc.steps, retry, out)
 			}
 		})
 	}

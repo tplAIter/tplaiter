@@ -222,16 +222,18 @@ func (t *Transaction) prepare(ctx context.Context, m Material) error {
 	if err != nil {
 		return fail(err)
 	}
-	t.state = progress{ImageIdentity: fileID(imageInfo), APIVersion: APIVersion, Kind: kind, ID: t.plan.ID, Fingerprint: m.Fingerprint, Phase: "preparing", Steps: []step{}}
-	if err := t.save(); err != nil {
-		return fail(err)
-	}
-	t.durable = true
 	receiptInfo, err := confinedLstat(t.dir)
 	if err != nil {
 		return err
 	}
-	t.state.ReceiptIdentity = fileID(receiptInfo)
+	t.state = progress{ReceiptIdentity: fileID(receiptInfo), ImageIdentity: fileID(imageInfo), APIVersion: APIVersion, Kind: kind, ID: t.plan.ID, Fingerprint: m.Fingerprint, Phase: "preparing", Steps: []step{}}
+	if err := t.save(); err != nil {
+		return fail(err)
+	}
+	t.durable = true
+	if kind == NativeUpdateKind {
+		return t.continuePreparing(ctx)
+	}
 	steps := t.expectedSteps()
 	for i, s := range steps {
 		s.Slot = fmt.Sprintf("%06d", i)
@@ -358,7 +360,7 @@ func (t *Transaction) authenticate(ctx context.Context) error {
 func (t *Transaction) validateSteps() error {
 	expected := t.expectedSteps()
 	partial := t.state.Phase == "preparing" || t.state.Phase == "rolling-back" || t.state.Phase == "rollback-conflicts" || t.state.Phase == "rolled-back"
-	if t.state.ImageIdentity.Inode == 0 || len(t.state.Steps) > len(expected) || (!partial && len(expected) != len(t.state.Steps)) {
+	if t.state.Steps == nil || t.state.ImageIdentity.Inode == 0 || len(t.state.Steps) > len(expected) || (!partial && len(expected) != len(t.state.Steps)) {
 		return ErrAuthentication
 	}
 	for i, s := range t.state.Steps {
@@ -386,10 +388,9 @@ func (t *Transaction) Apply(ctx context.Context) error {
 		return nil
 	}
 	if t.plan.Kind == NativeUpdateKind && t.state.Phase == "preparing" {
-		if err := t.authenticate(ctx); err != nil {
+		if err := t.continuePreparing(ctx); err != nil {
 			return err
 		}
-		return ErrPreparingContinue
 	}
 	if t.state.Phase != "prepared" && t.state.Phase != "applying" {
 		return ErrAuthentication

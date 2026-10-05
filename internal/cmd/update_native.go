@@ -293,7 +293,8 @@ func newNativeUpdateAbortCmd() *cobra.Command {
 }
 
 // Cold Continue authenticates the native kind-bound receipt and commits under
-// retained leases. Only the typed preparing refusal means staging is unavailable.
+// retained leases. Preparing prefixes resume only with authenticated staging
+// ownership; ambiguous or malformed receipts remain transaction failures.
 func newNativeUpdateContinueCmd() *cobra.Command {
 	var key, dir string
 	c := &cobra.Command{
@@ -316,9 +317,6 @@ func newNativeUpdateContinueCmd() *cobra.Command {
 			}
 			defer tx.Release()
 			if err := tx.Commit(cmd.Context()); err != nil {
-				if errors.Is(err, projecttransaction.ErrUpdatePreparingContinue) {
-					return resultdto.NewError("TRUST_NATIVE_UPDATE_CONTINUE_UNSUPPORTED", resultdto.ExitUnavailable, err)
-				}
 				// Commit owns conditional restoration and publication uncertainty.
 				// A continuation failure does not authorize a separate Abort.
 				return nativeUpdateTransactionError(err)
