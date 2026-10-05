@@ -153,6 +153,9 @@ func (p Plan) Verify() error {
 		if e := validateEntries(r.Entries); e != nil {
 			return e
 		}
+		if err := refuseNativeEntries(r); err != nil {
+			return err
+		}
 		d, e := digestBytes("tplaiter.dev/naming-source/v1", r.Entries)
 		if e != nil || d != r.SourceDigest {
 			return fmt.Errorf("naming: source digest mismatch for %s", r.Kind)
@@ -663,6 +666,9 @@ func capture(source string) ([]Entry, error) {
 // classification (internal/stateledger/ledgerpath), so migrate-state and the
 // ledger inventory agree on what counts as transaction evidence.
 func activeTransaction(root string) error {
+	if err := refuseNativeRelocation(root); err != nil {
+		return err
+	}
 	rel, err := ledgerpath.TransactionEvidence(root)
 	if err != nil {
 		return fmt.Errorf("naming: %w", err)
@@ -750,6 +756,9 @@ func Apply(p Plan) (Receipt, error) {
 		}
 	}
 	for _, r := range roots {
+		if e := activeTransaction(r.SourceRoot); e != nil {
+			return Receipt{}, e
+		}
 		if e := GuardLegacyWrite(r.SourceRoot); e != nil {
 			return Receipt{}, e
 		}
@@ -1142,6 +1151,9 @@ func Recover(journalPath string) (Receipt, error) {
 		}
 		if err := sourceOrArchiveMatches(root, j.Plan.Digest); err != nil {
 			return Receipt{}, fmt.Errorf("naming: stale recovery source for %s: %w", root.Kind, err)
+		}
+		if err := refuseNativeRecoveryRelocation(root); err != nil {
+			return Receipt{}, err
 		}
 		pending[i] = true
 	}

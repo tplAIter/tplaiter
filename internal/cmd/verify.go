@@ -76,7 +76,7 @@ func runVerify(cmd *cobra.Command, runtime *trustload.Runtime, root string) erro
 	if err != nil {
 		return err
 	}
-	report, err := projectverify.Verify(cmd.Context(), root, runtime.TrustRuntime(), projectverify.Options{HomeRoot: home, CAS: runtime, SecretProvider: readonlyHomeClassifier{}})
+	report, err := projectverify.Verify(cmd.Context(), root, runtime.TrustRuntime(), projectverify.Options{Runtime: runtime, HomeRoot: home, CAS: runtime, SecretProvider: readonlyHomeClassifier{}})
 	if err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func readonlyHome() (string, error) {
 			return "", resultdto.NewError("TPL-E-SECRET-PROVIDER-001", resultdto.ExitUnavailable, nil)
 		}
 	}
-	return home, nil
+	return resolved, nil
 }
 
 // No secret digest provider is installed by the OSS launcher. Permit only
@@ -153,7 +153,13 @@ func (readonlyHomeClassifier) DigestSecret(ctx context.Context, loc stateledger.
 		return stateledger.SecretDigestResult{}, err
 	}
 	class := ledgerpath.Home(loc.RelativePath)
-	if loc.RootID != "home" || class.Classification == "opaque" || class.Classification == "new-transaction-opaque" {
+	if native, found := ledgerpath.HomeProjectTransaction(loc.RelativePath); found {
+		class = native
+	}
+	if native, found := ledgerpath.HomeProjectTransactionSlot(loc.RelativePath); found {
+		class = native
+	}
+	if loc.RootID != "home" || class.Classification == "opaque" || class.Classification == "new-transaction-opaque" || class.Classification == "project-transaction-opaque" {
 		return stateledger.SecretDigestResult{}, resultdto.NewError("TPL-E-SECRET-PROVIDER-001", resultdto.ExitUnavailable, nil)
 	}
 	return stateledger.SecretDigestResult{}, nil

@@ -646,12 +646,30 @@ type Mutation struct {
 
 // Plan builds the migration plan to the current marker version.
 func Plan(projectRoot string, opts Options) (*MigrationPlan, error) {
-	return PlanTarget(projectRoot, opts, ProjectV2APIVersion)
+	return PlanContext(context.Background(), projectRoot, opts)
+}
+
+// PlanContext builds a migration plan with cancellation propagated through
+// inventory and concrete evidence verification.
+func PlanContext(ctx context.Context, projectRoot string, opts Options) (*MigrationPlan, error) {
+	return PlanTargetContext(ctx, projectRoot, opts, ProjectV2APIVersion)
 }
 
 // PlanTarget builds a migration plan to target. Only the current marker
 // version is a valid target: downgrades are refused.
 func PlanTarget(projectRoot string, opts Options, target string) (*MigrationPlan, error) {
+	return PlanTargetContext(context.Background(), projectRoot, opts, target)
+}
+
+// PlanTargetContext is the cancellable form of PlanTarget.
+func PlanTargetContext(ctx context.Context, projectRoot string, opts Options, target string) (*MigrationPlan, error) {
+	if ctx == nil {
+		return nil, ErrUnsafe
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if target != ProjectV2APIVersion {
 		return nil, ErrDowngrade
 	}
@@ -667,7 +685,7 @@ func PlanTarget(projectRoot string, opts Options, target string) (*MigrationPlan
 	if e != nil {
 		return nil, e
 	}
-	inv, e := Inventory(projectRoot, opts)
+	inv, e := InventoryContext(ctx, projectRoot, opts)
 	if e != nil {
 		return nil, e
 	}
@@ -700,7 +718,7 @@ func PlanTarget(projectRoot string, opts Options, target string) (*MigrationPlan
 	if opts.RootVerifier == nil {
 		return nil, fmt.Errorf("%w: root verifier required", ErrUnsafe)
 	}
-	evidence, e := opts.RootVerifier.VerifyRoot(context.Background(), projectRoot)
+	evidence, e := opts.RootVerifier.VerifyRoot(ctx, projectRoot)
 	if e != nil {
 		return nil, fmt.Errorf("%w: root verification: %w", ErrUnsafe, e)
 	}
@@ -725,7 +743,7 @@ func PlanTarget(projectRoot string, opts Options, target string) (*MigrationPlan
 		if opts.ManifestVerifier == nil {
 			return nil, fmt.Errorf("%w: manifest verifier required", ErrUnsafe)
 		}
-		proof, e := opts.ManifestVerifier.VerifyDependencyFree(context.Background(), projectRoot, evidence)
+		proof, e := opts.ManifestVerifier.VerifyDependencyFree(ctx, projectRoot, evidence)
 		if e != nil {
 			return nil, fmt.Errorf("%w: manifest verification: %w", ErrUnsafe, e)
 		}

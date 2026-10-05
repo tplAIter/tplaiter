@@ -27,10 +27,14 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/inventory"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/readonlysnapshot"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
+	"github.com/tplAIter/tplaiter/internal/stateledger/runtimeassembly"
+	"github.com/tplAIter/tplaiter/internal/trustload"
+	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
 const (
@@ -47,6 +51,9 @@ const (
 
 // Options contains only read-only evidence providers.
 type Options struct {
+	// Runtime selects concrete native readiness. Its authority and held CAS must
+	// match the other dependencies exactly; a closed/mismatched handle never falls back.
+	Runtime        *trustload.Runtime
 	HomeRoot       string
 	CAS            evidencecas.Reader
 	SecretProvider stateledger.SecretDigestProvider
@@ -88,9 +95,31 @@ func VerifyObserved(ctx context.Context, projectRoot string, authority stateledg
 		return Report{}, nil, classify(err)
 	}
 	defer func() { _ = observation.Close() }()
-	snapshot, err := stateledger.VerifyStable(ctx, projectRoot, authority, stateledger.StableVerifyOptions{
-		HomeRoot: opts.HomeRoot, CAS: opts.CAS, SecretProvider: opts.SecretProvider,
-	})
+	var snapshot *stateledger.Snapshot
+	var session *runtimeassembly.ReadSession
+	runtime := opts.Runtime
+	concreteCAS, hasConcreteCAS := opts.CAS.(*trustload.Runtime)
+	if runtime == nil && hasConcreteCAS {
+		runtime = concreteCAS
+	}
+	if runtime != nil || hasConcreteCAS {
+		stable, ok := authority.(*trustverify.Runtime)
+		if runtime == nil || !hasConcreteCAS || concreteCAS != runtime || !ok || runtime.TrustRuntime() == nil || stable != runtime.TrustRuntime() || projectRoot != runtime.ProjectContext().RootPath {
+			return Report{}, nil, classify(stateledger.ErrProjectIdentity)
+		}
+		session, err = runtimeassembly.OpenReadOnly(ctx, runtime, runtimeassembly.Options{Home: opts.HomeRoot, SecretProvider: opts.SecretProvider})
+		if err == nil {
+			defer session.Close()
+			snapshot = session.Observation().Snapshot
+		}
+	} else {
+		snapshot, err = stateledger.VerifyStable(ctx, projectRoot, authority, stateledger.StableVerifyOptions{HomeRoot: opts.HomeRoot, CAS: opts.CAS, SecretProvider: opts.SecretProvider})
+		// An interface-only verifier cannot authenticate discovered native history.
+		// Do not infer terminal admission from namespace names or a caller label.
+		if err == nil && len(snapshot.ProjectTransactionCandidates) > 0 {
+			err = &runtimeassembly.JournalError{Status: inventory.StatusUnresolved}
+		}
+	}
 	if err != nil {
 		return Report{}, nil, classify(err)
 	}
@@ -100,6 +129,11 @@ func VerifyObserved(ctx context.Context, projectRoot string, authority stateledg
 	}
 	if err := contextError(ctx); err != nil {
 		return Report{}, nil, classify(err)
+	}
+	if session != nil {
+		if err := session.Recheck(ctx); err != nil {
+			return Report{}, nil, classify(err)
+		}
 	}
 	ledgerCount := 0
 	for _, entry := range snapshot.Entries {
@@ -215,6 +249,17 @@ func classify(err error) error {
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return diagnostic(CancelledCode, ExitCancelled, "project verification cancelled", contextCause(err))
+	}
+	var journal *runtimeassembly.JournalError
+	if errors.As(err, &journal) {
+		switch journal.Status {
+		case inventory.StatusMissingCAS:
+			return diagnostic(OfflineMissCode, resultdto.ExitUnavailable, "required offline evidence is unavailable", err)
+		case inventory.StatusUnsafe:
+			return diagnostic(StateCode, resultdto.ExitOperational, "project state is unsafe", err)
+		default:
+			return diagnostic(TransactionCode, resultdto.ExitTransaction, "active, unsupported or unresolved transaction state", err)
+		}
 	}
 	var miss *readonlysnapshot.OfflineMissError
 	if errors.As(err, &miss) {

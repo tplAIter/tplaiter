@@ -2,6 +2,7 @@ package stateledger
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -91,12 +92,29 @@ func WriteLockPair(projectRoot string, root provenance.RootTemplateLock, depende
 // marker switch to project/v2 is the commit point. A plan without mutations
 // is a no-op. It returns the plan it applied.
 func ApplyPlan(projectRoot string, opts Options, expectedPlanSHA256 string) (*MigrationPlan, error) {
-	plan, err := Plan(projectRoot, opts)
+	return ApplyPlanContext(context.Background(), projectRoot, opts, expectedPlanSHA256)
+}
+
+// ApplyPlanContext propagates cancellation to planning and checks it immediately
+// before the marker commit point. Writer coordination belongs to the concrete
+// runtime assembly; this compatibility writer does not grant native admission.
+func ApplyPlanContext(ctx context.Context, projectRoot string, opts Options, expectedPlanSHA256 string, retained ...*BoundMigrationWriter) (*MigrationPlan, error) {
+	if len(retained) > 1 || len(retained) == 1 && (retained[0] == nil || retained[0].rootPath != projectRoot) {
+		return nil, ErrUnsafe
+	}
+	plan, err := PlanContext(ctx, projectRoot, opts)
 	if err != nil {
 		return nil, err
 	}
 	if plan.PlanSHA256 != expectedPlanSHA256 {
 		return nil, fmt.Errorf("%w: plan changed since review (have %s, want %s)", ErrDigest, plan.PlanSHA256, expectedPlanSHA256)
+	}
+	// The final internal planner may invoke readers/context callbacks. Recheck
+	// retained root/state/home/lock bindings AFTER it, before any mutation.
+	if len(retained) == 1 {
+		if err := retained[0].Check(ctx); err != nil {
+			return nil, err
+		}
 	}
 	if len(plan.Mutations) == 0 {
 		return plan, nil
@@ -105,12 +123,21 @@ func ApplyPlan(projectRoot string, opts Options, expectedPlanSHA256 string) (*Mi
 	if err != nil {
 		return nil, err
 	}
+	write := func(name string, data []byte) error {
+		if len(retained) == 1 {
+			return retained[0].write(ctx, name, data)
+		}
+		return writeLedger(root, name, data)
+	}
 	if len(plan.DependencyLockJSON) > 0 {
-		if err := writeLedger(root, DependencyLockFile, plan.DependencyLockJSON); err != nil {
+		if err := write(DependencyLockFile, plan.DependencyLockJSON); err != nil {
 			return nil, err
 		}
 	}
-	if err := writeLedger(root, "project.yaml", plan.ProjectYAML); err != nil {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := write("project.yaml", plan.ProjectYAML); err != nil {
 		return nil, err
 	}
 	return plan, nil
