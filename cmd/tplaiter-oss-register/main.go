@@ -74,6 +74,7 @@ func runWithContext(ctx context.Context, args []string, stdout io.Writer) error 
 	publishers := flags.String("publishers", "", "optional JSON file with a list of trusted template publishers")
 	sources := flags.String("source-packages", "", "public initial signed-source package JSON (fresh source-built installation only)")
 	local := flags.String("local-sources", "", "explicit public local source JSON; one offline operator-attested source, fresh absent root only")
+	bundle := flags.String("local-source-bundle", "", "closed operator source bundle: one native and 1..15 inert content sources, fresh absent root only")
 	projects := flags.String("project-contexts", "", "finite operator-approved project context JSON")
 	approvers := flags.String("approvers", "", "public explicit approver JSON, fresh signed-source registration only")
 	executionEvidence := flags.String("execution-evidence", "", "public digest/base64 chunk JSON, fresh registration only")
@@ -110,13 +111,26 @@ func runWithContext(ctx context.Context, args []string, stdout io.Writer) error 
 	if explicitPins && (*registrationPath == "" || *registrationSHA256 == "") {
 		return errors.New("set both --registration-path and --registration-sha256, or neither")
 	}
-	if *transaction && explicitPins && (*local != "" || *publishers != "" || *sources != "" || *projects != "" || *localProviders != "" || *approvers != "" || *executionEvidence != "" || *rotate) {
+	if *transaction && explicitPins && (*local != "" || *bundle != "" || *publishers != "" || *sources != "" || *projects != "" || *localProviders != "" || *approvers != "" || *executionEvidence != "" || *rotate) {
 		return errors.New("explicit transaction pins conflict with trust enrollment inputs or rotation")
 	}
 	if *local != "" && (*sources != "" || *publishers != "" || *rotate || *projects == "") {
 		return errors.New("--local-sources requires --project-contexts and forbids --publishers, --source-packages and --rotate")
 	}
+	if *bundle != "" && (*local != "" || *sources != "" || *publishers != "" || *rotate || *projects == "") {
+		return errors.New("--local-source-bundle requires --project-contexts and forbids --local-sources, --publishers, --source-packages and --rotate")
+	}
 	options := ossinstall.Options{Root: absRoot, Rotate: *rotate}
+	if *bundle != "" {
+		raw, err := readPublicInput(*bundle, ossinstall.MaxLocalSourceInputBytes)
+		if err != nil {
+			return err
+		}
+		options.LocalSourceBundle, err = ossinstall.DecodeLocalSourceBundle(raw)
+		if err != nil {
+			return err
+		}
+	}
 	if *local != "" {
 		raw, err := readPublicInput(*local, ossinstall.MaxLocalSourceInputBytes)
 		if err != nil {

@@ -539,3 +539,19 @@ func TestContextSourceEnrollmentDefensiveCycle(t *testing.T) {
 		t.Fatal("cycle accepted")
 	}
 }
+
+func TestInertContentExcludedFromNativeAssociations(t *testing.T) {
+	o := contentExternalOptions(t, nil)
+	records, err := contextEnrollmentSources(context.Background(), o.SourcePackages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 || records[0].inert || !records[1].inert || records[1].v2 || records[1].pin.Alias != "" || records[1].contract.APIVersion != "" {
+		t.Fatal("inert content gained native association")
+	}
+	// No classification flag is accepted: a signed invalid index still refuses.
+	bad := contentExternalOptions(t, func(p *exports.ExportPayload, _ map[string][]byte) { p.Files = p.Files[1:] })
+	if _, err := contextEnrollmentSources(context.Background(), bad.SourcePackages); err == nil {
+		t.Fatal("native association path skipped invalid content")
+	}
+}

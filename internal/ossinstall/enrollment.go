@@ -146,6 +146,8 @@ func validatePackagesWithContext(ctx context.Context, packages []SourcePackage, 
 	}
 	total := 0
 	seen := map[string]bool{}
+	sourceIDs := map[string]bool{}
+	nativeCount, contentCount := 0, 0
 	for _, p := range packages {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -193,8 +195,24 @@ func validatePackagesWithContext(ctx context.Context, packages []SourcePackage, 
 		if len(reader.used) != len(p.Objects) {
 			return errors.New("ossinstall: package contains objects outside the selected closure")
 		}
-		if err := validateNativeSnapshot(snapshot); err != nil {
+		kind, err := validateSourceSnapshot(snapshot)
+		if err != nil {
 			return err
+		}
+		if kind == sourceInertContent {
+			contentCount++
+		} else {
+			nativeCount++
+		}
+		id := statement.Subject.Origin + "\x00" + statement.Subject.TemplatePath
+		if sourceIDs[id] && contentCount > 0 {
+			return errors.New("ossinstall: duplicate bundle source identity")
+		}
+		sourceIDs[id] = true
+	}
+	if contentCount > 0 {
+		if nativeCount != 1 || contentCount > 15 || len(sourceIDs) != len(packages) {
+			return errors.New("ossinstall: content enrollment requires one native and 1..15 disjoint content sources")
 		}
 	}
 	return nil
@@ -389,7 +407,7 @@ func generateEnrollment(ctx context.Context, o Options) (Result, error) {
 		return Result{}, err
 	}
 	if _, err := os.Stat(o.Root); err == nil {
-		if o.LocalSources != nil {
+		if o.LocalSources != nil || o.LocalSourceBundle != nil {
 			return Result{}, ErrInstallRootForeign
 		}
 		empty, err := checkOwnership(o.Root)

@@ -66,7 +66,7 @@ func localRecordDigest(raw []byte) string {
 }
 
 func generateLocal(ctx context.Context, o Options) (Result, error) {
-	if len(o.LocalSources) != 1 || o.SourcePackages != nil || o.Publishers != nil || o.Rotate || len(o.ProjectContexts) == 0 {
+	if o.LocalSourceBundle != nil || len(o.LocalSources) != 1 || o.SourcePackages != nil || o.Publishers != nil || o.Rotate || len(o.ProjectContexts) == 0 {
 		return Result{}, errors.New("ossinstall: local sources require one source, explicit contexts, no external publishers/packages and no rotation")
 	}
 	if !filepath.IsAbs(o.Root) || filepath.Clean(o.Root) != o.Root {
@@ -167,4 +167,47 @@ func generateLocal(ctx context.Context, o Options) (Result, error) {
 		return Result{}, err
 	}
 	return generateEnrollment(ctx, o)
+}
+
+// signLocalCapture is only reached after the complete bundle was captured,
+// verified and typed. It creates a separate erased ephemeral source key per
+// subject; no caller record or captured report digest serves as evidence.
+func signLocalCapture(ctx context.Context, o Options, capture sourcepackage.CapturedSource) (Publisher, SourcePackage, LocalPublication, error) {
+	if err := ctx.Err(); err != nil {
+		return Publisher{}, SourcePackage{}, LocalPublication{}, err
+	}
+	entropy := o.Rand
+	if entropy == nil {
+		entropy = defaultEntropy()
+	}
+	g := &generator{ctx: ctx, rand: entropy}
+	key, err := g.key()
+	if err != nil {
+		return Publisher{}, SourcePackage{}, LocalPublication{}, err
+	}
+	defer eraseKey(key)
+	public := key.Public().(ed25519.PublicKey)
+	fingerprint := bootstrap.Fingerprint(public)
+	issuer := "local-operator-" + strings.TrimPrefix(fingerprint, "sha256:")
+	s := capture.Subject
+	subject := bootstrap.SubjectIdentity{Origin: s.Origin, TemplatePath: s.TemplatePath, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256}
+	statement := bootstrap.PublisherStatement{APIVersion: bootstrap.PublisherStatementAPIVersion, PolicyOrigin: localPolicyOrigin, Issuer: issuer, Predicate: localPredicate, Usage: "template-source", Subject: subject}
+	raw, err := marshal(statement)
+	if err != nil {
+		return Publisher{}, SourcePackage{}, LocalPublication{}, err
+	}
+	digest, err := bootstrap.DomainDigest(bootstrap.PublisherStatementAPIVersion, statement)
+	if err != nil {
+		return Publisher{}, SourcePackage{}, LocalPublication{}, err
+	}
+	message, err := hex.DecodeString(strings.TrimPrefix(digest, "sha256:"))
+	if err != nil || len(message) != 32 {
+		return Publisher{}, SourcePackage{}, LocalPublication{}, errors.New("ossinstall: invalid statement digest")
+	}
+	if err := ctx.Err(); err != nil {
+		return Publisher{}, SourcePackage{}, LocalPublication{}, err
+	}
+	signature := bootstrap.EncodeSignature(ed25519.Sign(key, message))
+	eraseKey(key)
+	return Publisher{Issuer: issuer, PublicKeyBase64: base64.StdEncoding.EncodeToString(public), SourceOrigin: s.Origin, TemplatePath: s.TemplatePath}, SourcePackage{APIVersion: SourcePackageAPIVersion, Statement: raw, Signature: signature, KeyFingerprint: fingerprint, Objects: capture.Objects}, LocalPublication{APIVersion: LocalPublicationAPIVersion, Mode: "local-operator", Issuer: issuer, KeyFingerprint: fingerprint, Subject: subject, PolicyOrigin: localPolicyOrigin, Predicate: localPredicate, Usage: "template-source"}, nil
 }

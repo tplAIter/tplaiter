@@ -7,6 +7,7 @@ import (
 	"compress/zlib"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -374,4 +375,37 @@ func TestLocalEntropyCancellationAndFailure(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLocalSingleSourceStillRejectsInertContentBeforeEntropy(t *testing.T) {
+	o := localBundleOptions(t, nil)
+	o.LocalSources = o.LocalSourceBundle[1:]
+	o.LocalSourceBundle = nil
+	entropy := &recordingRand{}
+	o.Rand = entropy
+	if _, err := Generate(o); err == nil || entropy.next != 0 {
+		t.Fatal("one-source native mode widened to inert content")
+	}
+}
+
+func TestSingleSourceRawByteCompatibility(t *testing.T) {
+	o := localOptions(t)
+	if selected := os.Getenv("TPLAITER_TEST_ZERO_PARITY_ROOT"); selected != "" {
+		if !strings.HasPrefix(selected, "/private/tmp/") || filepath.Clean(selected) != selected {
+			t.Fatal("invalid exclusive test root")
+		}
+		o.Root = selected + "-single"
+		o.ProjectContexts[0].RootPath = selected + "-project"
+	}
+	if _, err := os.Lstat(o.Root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("test root already exists")
+	}
+	defer os.RemoveAll(o.Root)
+	o.Rand = &recordingRand{}
+	o.Now = time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
+	result, err := Generate(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("SINGLE_SOURCE_RAW_SHA256=%x", sha256.Sum256(snapshotInstall(t, result.Root)))
 }

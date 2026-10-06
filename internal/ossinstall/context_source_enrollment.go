@@ -30,6 +30,7 @@ type contextEnrollmentSource struct {
 	binding  contextsource.ContextSourceBindings
 	pin      deps.PinnedSource
 	v2       bool
+	inert    bool
 }
 
 // These records are derived from the package's immutable Git bytes. They are
@@ -64,6 +65,16 @@ func contextEnrollmentSources(ctx context.Context, packages []SourcePackage) ([]
 		if len(reader.used) != len(p.Objects) {
 			return nil, errContextEnrollment
 		}
+		kind, err := validateSourceSnapshot(snapshot)
+		if err != nil {
+			return nil, err
+		}
+		if kind == sourceInertContent {
+			// Keep generic authenticated selection/evidence, with no native binding.
+			records[i] = contextEnrollmentSource{subject: operationtrust.SelectionSubject{Origin: statement.Subject.Origin, TemplatePath: statement.Subject.TemplatePath, RequestedRef: statement.Subject.Commit, Commit: statement.Subject.Commit, TreeSHA256: statement.Subject.TreeSHA256, ContractSHA256: statement.Subject.ContractSHA256}, inert: true}
+			snapshots[i] = snapshot
+			continue
+		}
 		manifest, ok := snapshot.Blob("template.manifest.yaml")
 		if !ok {
 			return nil, errContextEnrollment
@@ -89,6 +100,9 @@ func contextEnrollmentSources(ctx context.Context, packages []SourcePackage) ([]
 	}
 	for i, snapshot := range snapshots {
 		r := records[i]
+		if r.inert {
+			continue
+		}
 		c, subject, v2, p := r.contract, r.subject, r.v2, packages[i]
 		raw, present := snapshot.Blob(contextsource.ContextSourceBindingsPath)
 		if !present {

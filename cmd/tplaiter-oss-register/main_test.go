@@ -142,3 +142,23 @@ func TestLocalProviderInputRequiresExplicitContext(t *testing.T) {
 		t.Fatal("invalid operator input mutated root")
 	}
 }
+
+func TestLocalBundleFlagClosedConflicts(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(dir, "bundle.json")
+	if err := os.WriteFile(bundle, []byte(`[]`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, extra := range [][]string{{}, {"--local-sources", bundle}, {"--rotate"}, {"--publishers", bundle}, {"--source-packages", bundle}, {"--transaction", "--destination", filepath.Join(dir, "binary"), "--registration-path", "/explicit", "--registration-sha256", "sha256:" + strings.Repeat("0", 64)}} {
+		args := append([]string{"--root", filepath.Join(dir, "install"), "--local-source-bundle", bundle}, extra...)
+		if err := run(args, &bytes.Buffer{}); err == nil {
+			t.Fatal("invalid bundle accepted")
+		}
+		if _, err := os.Lstat(filepath.Join(dir, "install")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("invalid flag created root")
+		}
+	}
+}

@@ -117,6 +117,8 @@ type Options struct {
 	Approvers         []trustverify.Approver
 	ExecutionEvidence []ExecutionEvidence
 	LocalSources      []sourcepackage.CaptureInput
+	// LocalSourceBundle is build-time operator selection, never installed request authority.
+	LocalSourceBundle []sourcepackage.CaptureInput
 	localRecord       []byte
 	// SourcePackages are untrusted public signatures and raw immutable objects.
 	// They are accepted only against Publishers, during a fresh installation.
@@ -207,6 +209,9 @@ func GenerateWithContext(ctx context.Context, options Options) (Result, error) {
 	ctx, executionErr = executionContext(ctx, options)
 	if executionErr != nil {
 		return Result{}, executionErr
+	}
+	if options.LocalSourceBundle != nil {
+		return generateLocalBundle(ctx, options)
 	}
 	if options.LocalSources != nil {
 		return generateLocal(ctx, options)

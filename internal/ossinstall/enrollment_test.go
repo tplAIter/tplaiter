@@ -21,6 +21,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/exports"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
@@ -700,5 +701,31 @@ func TestLocalProviderZeroInputKeepsEnrollmentDigest(t *testing.T) {
 	}
 	if _, err := DecodeLocalProviders([]byte(`[{"registrationID":"synthetic","installationID":"caller"}]`)); err == nil {
 		t.Fatal("caller installation authority")
+	}
+}
+
+func TestAuthenticatedContentImporterUsesCompleteIndex(t *testing.T) {
+	for _, bad := range []bool{false, true} {
+		o := contentExternalOptions(t, func(p *exports.ExportPayload, _ map[string][]byte) {
+			if bad {
+				p.Files = p.Files[1:]
+			}
+		})
+		entropy := &recordingRand{}
+		o.Rand = entropy
+		result, err := Generate(o)
+		if bad {
+			if err == nil || entropy.next != 0 {
+				t.Fatal("authenticated signature bypassed incomplete index")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, selections := enrollGenerated(t, result)
+		if len(selections) != 2 {
+			t.Fatal("content source omitted")
+		}
 	}
 }

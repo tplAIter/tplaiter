@@ -148,3 +148,63 @@ the test captures a disposable copy and leaves the supplied tree untouched.
 creation evidence for review. This smoke accepts only default stdlib Go creation
 and inert resource retention; it does not establish beta completion or live
 generator/action support.
+
+## Generic inert content bundles
+
+The build-time registrar additionally accepts `--local-source-bundle` with a
+closed JSON array of 2–16 existing capture inputs, bounded to 64 KiB. Exactly one
+captured source must be an existing native template and the other 1–15 must be
+inert content indexes. Source identity is the canonical `origin`/`templatePath`
+pair; duplicate identities refuse even for different commits. Repository paths
+and commits are operator selections, never installed request fields. There is
+no caller-supplied kind, capability, signing key, reader or launch command.
+
+An inert contract uses existing `tplaiter.dev/export-payload/v1` and its existing
+valid export-ID syntax. It has empty `slots` and `blocks`, and an explicitly
+ordered complete regular-file index. Each `sourcePath` equals `targetPath` and
+matches the captured file's exact mode and body SHA-256. Only the contract's own
+leaf is excluded from that index; LICENSE, README and every other selected file
+must be covered. Extra, missing, reordered or mismatched records refuse. This
+contract describes source repository geometry, not generated application layout.
+It does not declare a root, native context dependency, tool or executable action.
+
+Capture, full immutable verification, type derivation, index validation and
+canonical statement/scope validation finish for **all** subjects before any
+signing-key entropy. The fixed aggregate selected-object limit remains 64 MiB.
+The installation root must be absent; explicit operator project contexts are
+required, and other source modes, external publisher/package inputs and rotation
+are forbidden. Cancellation, confinement and publication rules are unchanged.
+
+```sh
+go run ./cmd/tplaiter-oss-register \
+  --root /absolute/existing-parent/absent-install \
+  --local-source-bundle /absolute/source-bundle.json \
+  --project-contexts /absolute/project-contexts.json
+```
+
+The ordinary `--transaction --destination /absolute/bin/tplaiter` route can build
+and publish an executable with the resulting immutable registration linker pins.
+There is no new Makefile variable or installed CLI input for this bundle.
+The array contains existing capture records, including actual immutable committed
+source pins; do not substitute report hashes or invent unpublished commits.
+
+A distinct ephemeral key signs each source; a separate anchor signs the normal
+installation. `config/local-publisher.json` is an array of existing public
+local-publication records for bundle mode, digest-bound to enrollment. The old
+one-source record remains an object. Its `local-operator` provenance makes no
+upstream authorship or organization claim. Both signatures and full object
+closures pass the normal importer and transparency binding. Generic source
+selections retain actual statement CAS/signature/checkpoint/inclusion evidence;
+capture or content digests are not substitutes for statement CAS.
+
+Inert sources are explicitly excluded from native context bindings, dependency
+associations and root/generator preparation. They remain readable through the
+existing authenticated runtime and `deps.SourceReader`; native preparation must
+still refuse them. No modifier conversion/reversal or Bun action is granted by
+this route. Published React plus independently committed modifier content is the
+first intended real two-source acceptance, pending its actual content publication
+and normal registration receipts. Synthetic producer tests alone do not prove
+that installation or complete P12/P13 delivery.
+
+The existing `--local-sources` mode remains native-only and exactly one source.
+Zero-input installation semantics and formats remain unchanged.
