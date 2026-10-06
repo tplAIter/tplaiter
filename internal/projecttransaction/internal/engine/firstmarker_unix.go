@@ -3,6 +3,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -41,11 +42,11 @@ func (f *FirstMarker) acquireLocks() error {
 	}
 	return nil
 }
-func (f *FirstMarker) publishState(reverse bool) error {
-	if err := f.checkSealedPlan(); err != nil {
+func (f *FirstMarker) publishState(ctx context.Context, reverse bool) error {
+	if err := f.checkSealedPlan(ctx); err != nil {
 		return err
 	}
-	if err := f.checkSealedState(); err != nil {
+	if err := f.checkSealedState(ctx); err != nil {
 		return err
 	}
 	if err := f.checkUsers(); err != nil {
@@ -80,11 +81,11 @@ func (f *FirstMarker) publishState(reverse bool) error {
 	}
 	return errors.Join(unix.Fsync(root), unix.Fsync(parent))
 }
-func (f *FirstMarker) publishRegistry(reverse bool) error {
-	if err := f.checkSealedPlan(); err != nil {
+func (f *FirstMarker) publishRegistry(ctx context.Context, reverse bool) error {
+	if err := f.checkSealedPlan(ctx); err != nil {
 		return err
 	}
-	if err := f.checkSealedState(); err != nil {
+	if err := f.checkSealedState(ctx); err != nil {
 		return err
 	}
 	if err := f.checkUsers(); err != nil {

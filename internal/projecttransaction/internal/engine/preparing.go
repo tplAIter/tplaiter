@@ -72,7 +72,7 @@ func (t *Transaction) checkPreparing(ctx context.Context) error {
 		return err
 	}
 	var actual progress
-	if err := t.readSigned("state.json", &actual); err != nil {
+	if err := t.readProjectSigned(ctx, "state.json", &actual); err != nil {
 		return err
 	}
 	want, err := canonicaljson.Canonical(t.state)

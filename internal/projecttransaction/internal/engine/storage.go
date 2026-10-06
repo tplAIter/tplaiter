@@ -408,7 +408,13 @@ var errReceiptSyncFault = errors.New("project transaction: injected receipt dire
 
 // Confirm the exact authenticated bytes through the descriptor being synced.
 // No write, chmod or replacement is performed on an unexpected receipt.
-func syncReceiptExact(name string, expected []byte, fault receiptSyncFault) error {
+func syncReceiptExact(ctx context.Context, name string, expected []byte, fault receiptSyncFault) error {
+	if ctx == nil || len(expected) > 128<<20 {
+		return ErrAuthentication
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	root, base, err := confinedParent(name)
 	if err != nil {
 		return err
@@ -418,7 +424,7 @@ func syncReceiptExact(name string, expected []byte, fault receiptSyncFault) erro
 	if err != nil {
 		return err
 	}
-	f, err := root.OpenFile(base, readNoFollow(), 0)
+	f, err := root.OpenFile(base, receiptReadFlags(), 0)
 	if err != nil {
 		return err
 	}
@@ -427,27 +433,28 @@ func syncReceiptExact(name string, expected []byte, fault receiptSyncFault) erro
 	if err != nil || !os.SameFile(info, opened) || !opened.Mode().IsRegular() || !singleLink(opened) || opened.Mode().Perm() != 0o600 {
 		return ErrAuthentication
 	}
-	data, err := io.ReadAll(io.LimitReader(f, 128<<20+1))
-	if err != nil {
+	if err := matchReceiptContext(ctx, f, expected); err != nil {
 		return err
 	}
-	if !bytes.Equal(data, expected) {
-		return ErrAuthentication
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	data, err = io.ReadAll(io.LimitReader(f, 128<<20+1))
-	if err != nil {
+	if err := matchReceiptContext(ctx, f, expected); err != nil {
 		return err
 	}
-	if !bytes.Equal(data, expected) {
-		return ErrAuthentication
-	}
 	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	current, err := root.Lstat(base)
@@ -482,4 +489,32 @@ func syncStorageRoot(root *os.Root) error {
 		return err
 	}
 	return errors.Join(f.Sync(), f.Close())
+}
+
+// Compare a receipt through the already confined descriptor with bounded
+// caller cancellation checks, preserving the exact before/after fsync bytes.
+func matchReceiptContext(ctx context.Context, file *os.File, expected []byte) error {
+	var buffer [64 << 10]byte
+	for offset := 0; offset < len(expected); {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		size := min(len(buffer), len(expected)-offset)
+		if _, err := io.ReadFull(file, buffer[:size]); err != nil {
+			return err
+		}
+		if !bytes.Equal(buffer[:size], expected[offset:offset+size]) {
+			return ErrAuthentication
+		}
+		offset += size
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	var sentinel [1]byte
+	n, err := file.Read(sentinel[:])
+	if n != 0 || !errors.Is(err, io.EOF) {
+		return ErrAuthentication
+	}
+	return ctx.Err()
 }

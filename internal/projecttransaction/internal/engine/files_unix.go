@@ -208,3 +208,6 @@ func directoryDescriptor(name string, want Identity) (int, error) {
 	}
 	return unix.Dup(int(f.Fd()))
 }
+
+// Only the exact receipt durability reader uses this nonblocking open.
+func receiptReadFlags() int { return readNoFollow() | syscall.O_NONBLOCK }

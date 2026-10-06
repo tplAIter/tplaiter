@@ -19,10 +19,17 @@ import (
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/gen"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/receiptevidence"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 )
+
+func TestReceiptTransportRejectsForeignInput(t *testing.T) {
+	if _, err := receiptevidence.Read(context.Background(), nil, "/tmp", "00000000000000000000000000000000"); err == nil {
+		t.Fatal("receipt transport accepted a missing runtime")
+	}
+}
 
 type inspectMetadata struct{ info os.FileInfo }
 

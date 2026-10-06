@@ -20,6 +20,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/receiptevidence"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 )
@@ -107,7 +108,7 @@ func InspectJournal(ctx context.Context, runtime *trustload.Runtime, home, id st
 		return out, err
 	}
 	// An untrusted kind selects only a verifier; it never supplies admission.
-	if raw, err := privateRead(filepath.Join(journalDir(home, id), "plan.json"), 128<<20); err == nil {
+	if raw, err := receiptevidence.ObserveProjectReceipt(ctx, runtime, home, id, "plan.json"); err == nil {
 		var outer envelope
 		var header struct {
 			Kind string `json:"kind"`
@@ -129,7 +130,7 @@ func InspectJournal(ctx context.Context, runtime *trustload.Runtime, home, id st
 		return out, err
 	}
 	dir := journalDir(home, id)
-	planRaw, err := privateRead(filepath.Join(dir, "plan.json"), 128<<20)
+	planRaw, err := receiptevidence.ObserveProjectReceipt(ctx, runtime, home, id, "plan.json")
 	if err != nil {
 		out.status = InspectionUnresolved
 		return out, err
@@ -170,12 +171,12 @@ func InspectJournal(ctx context.Context, runtime *trustload.Runtime, home, id st
 	}
 	defer func() { clear(key) }()
 	tx := &Transaction{runtime: runtime, key: key, dir: dir, plan: immutable{Kind: header.Kind}}
-	if err := tx.readSigned("plan.json", &tx.plan); err != nil {
+	if err := tx.readProjectSigned(ctx, "plan.json", &tx.plan); err != nil {
 		// A failed MAC against ONE selected runtime does not prove corruption of
 		// another project's journal. An independently authenticated current-layout
 		// state receipt can still establish this authority's conflicting plan.
 		var state progress
-		if stateErr := tx.readSigned("state.json", &state); stateErr != nil || state.APIVersion != APIVersion || state.Kind != header.Kind || state.ID != id {
+		if stateErr := tx.readProjectSigned(ctx, "state.json", &state); stateErr != nil || state.APIVersion != APIVersion || state.Kind != header.Kind || state.ID != id {
 			out.status = InspectionUnresolved
 			return out, errors.Join(ErrInspectionUncovered, err)
 		}
@@ -199,7 +200,7 @@ func InspectJournal(ctx context.Context, runtime *trustload.Runtime, home, id st
 		}
 	}
 
-	stateRaw, err := privateRead(filepath.Join(dir, "state.json"), 128<<20)
+	stateRaw, err := receiptevidence.ObserveProjectReceipt(ctx, runtime, home, id, "state.json")
 	if err != nil {
 		out.status = InspectionUnresolved
 		return out, err
@@ -226,7 +227,7 @@ func InspectJournal(ctx context.Context, runtime *trustload.Runtime, home, id st
 		out.status = InspectionUnsupportedKind
 		return out, nil
 	}
-	if err := tx.readSigned("state.json", &tx.state); err != nil {
+	if err := tx.readProjectSigned(ctx, "state.json", &tx.state); err != nil {
 		return out, err
 	}
 	s := tx.state
@@ -283,7 +284,14 @@ func InspectJournal(ctx context.Context, runtime *trustload.Runtime, home, id st
 		name string
 		raw  []byte
 	}{{"plan.json", planRaw}, {"state.json", stateRaw}} {
-		actual, err := privateRead(filepath.Join(dir, record.name), 128<<20)
+		actualRecord, err := receiptevidence.ReadProjectRecord(ctx, runtime, home, id, record.name)
+		actual := []byte(nil)
+		if actualRecord != nil {
+			actual = actualRecord.Raw()
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return out, err
+		}
 		if err != nil || !bytes.Equal(actual, record.raw) {
 			out.status = InspectionActive
 			return out, ErrInspectionChanged

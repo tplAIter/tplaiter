@@ -82,7 +82,7 @@ func Open(ctx context.Context, r *trustload.Runtime, home, id, renderer string) 
 	if err != nil {
 		return nil, err
 	}
-	m, err := f.Material()
+	m, err := f.Material(ctx)
 	if err != nil {
 		f.Release()
 		return nil, err
@@ -100,7 +100,7 @@ func Open(ctx context.Context, r *trustload.Runtime, home, id, renderer string) 
 	return t, nil
 }
 func (t *Transaction) authenticate(ctx context.Context) error {
-	m, err := t.physical.Material()
+	m, err := t.physical.Material(ctx)
 	if err != nil {
 		return err
 	}

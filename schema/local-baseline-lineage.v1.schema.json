@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplaiter.dev/schema/local-baseline-lineage.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "domain",
+    "operation",
+    "sequence",
+    "originalOriginState",
+    "predecessorState",
+    "selected",
+    "protection"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/local-baseline-lineage/v1"
+    },
+    "domain": {
+      "const": "tplaiter.dev/local-baseline-lineage/v1"
+    },
+    "operation": {
+      "enum": [
+        "recopy",
+        "rebaseline",
+        "update"
+      ]
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 32
+    },
+    "originalOriginState": {
+      "enum": [
+        "present",
+        "absent"
+      ]
+    },
+    "originalOrigin": {
+      "$ref": "#/$defs/origin"
+    },
+    "predecessorState": {
+      "enum": [
+        "present",
+        "absent"
+      ]
+    },
+    "predecessor": {
+      "$ref": "#/$defs/receipt"
+    },
+    "selected": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/selected"
+      }
+    },
+    "protection": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/protection"
+      }
+    }
+  },
+  "$defs": {
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectID",
+        "decisionSHA256"
+      ],
+      "properties": {
+        "projectID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionSHA256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "planDigest",
+        "receiptDigest"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "planDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "receiptDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "selected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "device",
+        "inode",
+        "digest",
+        "mode"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "device": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inode": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "mode": {
+          "type": "integer",
+          "maximum": 511,
+          "minimum": 0
+        }
+      }
+    },
+    "protection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "reason"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "enum": [
+            "user-owned",
+            "tombstone",
+            "skipIfExists"
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "originalOriginState": {
+            "const": "present"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "originalOrigin"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "originalOrigin"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "predecessorState": {
+            "const": "present"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "predecessor"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "predecessor"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "sequence": {
+            "const": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "predecessorState": {
+            "const": "absent"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "predecessorState": {
+            "const": "present"
+          }
+        }
+      }
+    }
+  ]
+}

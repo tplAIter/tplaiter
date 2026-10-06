@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/receiptevidence"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 )
 
@@ -166,7 +167,7 @@ func Acquire(ctx context.Context, runtime *trustload.Runtime, kind string, m Mat
 	if err := t.authenticate(ctx); err != nil {
 		return fail(err)
 	}
-	if err := t.rejectActiveJournals(); err != nil {
+	if err := t.rejectActiveJournals(ctx); err != nil {
 		return fail(err)
 	}
 	return t, nil
@@ -179,7 +180,7 @@ func (t *Transaction) Seal(ctx context.Context, m Material) error {
 	if t.lease == nil || t.admitted || m.Root != t.plan.Material.Root || m.Home != t.plan.Material.Home || m.ProjectID != t.plan.Material.ProjectID {
 		return ErrAuthentication
 	}
-	if err := t.rejectActiveJournals(); err != nil {
+	if err := t.rejectActiveJournals(ctx); err != nil {
 		return err
 	}
 	if err := t.recheckLockedMaterial(m); err != nil {
@@ -288,14 +289,14 @@ func Open(ctx context.Context, runtime *trustload.Runtime, kind, home, id string
 	}
 	t := &Transaction{runtime: runtime, key: key, dir: journalDir(home, id), plan: immutable{Kind: kind}}
 	fail := func(err error) (*Transaction, error) { t.Release(); return nil, err }
-	if err := t.readSigned("plan.json", &t.plan); err != nil {
+	if err := t.readProjectSigned(ctx, "plan.json", &t.plan); err != nil {
 		return fail(err)
 	}
 	if t.plan.APIVersion != APIVersion || t.plan.Kind != kind || t.plan.ID != id || t.plan.Material.Home != home || t.plan.Material.Root != pc.RootPath {
 		return fail(ErrAuthentication)
 	}
 	t.images = filepath.Join(pc.RootPath, ".tplaiter", "project-transactions", id)
-	if err := t.readSigned("state.json", &t.state); err != nil {
+	if err := t.readProjectSigned(ctx, "state.json", &t.state); err != nil {
 		return fail(err)
 	}
 	if t.state.APIVersion != APIVersion || t.state.Kind != kind || t.state.ID != id || t.state.Fingerprint != t.plan.Material.Fingerprint {
@@ -397,7 +398,7 @@ func (t *Transaction) Apply(ctx context.Context) error {
 	}
 	if err := t.authenticate(ctx); err != nil {
 		if t.state.Phase == "applying" {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 		return err
 	}
@@ -407,16 +408,16 @@ func (t *Transaction) Apply(ctx context.Context) error {
 	}
 	for i := range t.state.Steps {
 		if err := ctx.Err(); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 		if err := t.authenticate(ctx); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 		if err := t.checkObservations(ctx); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 		if err := t.applyStep(ctx, i); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 	}
 	return nil
@@ -441,19 +442,19 @@ func (t *Transaction) Commit(ctx context.Context) error {
 		return t.confirmCommit(ctx)
 	}
 	if err := t.authenticate(ctx); err != nil {
-		return t.rollbackAfter(err)
+		return t.rollbackAfter(ctx, err)
 	}
 	if pairedKind(t.plan.Kind) {
 		if err := t.checkObservations(ctx); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 	}
 	if err := t.readonlyBindings(); err != nil {
-		return t.rollbackAfter(err)
+		return t.rollbackAfter(ctx, err)
 	}
 	for _, step := range t.state.Steps {
 		if err := t.checkStepFinal(step); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 	}
 	terminal := t.state
@@ -483,7 +484,7 @@ func (t *Transaction) confirmCommit(ctx context.Context) error {
 		expected = *t.pendingCommit
 	}
 	var actual progress
-	if err := t.readSigned("state.json", &actual); err != nil {
+	if err := t.readProjectSigned(ctx, "state.json", &actual); err != nil {
 		return err
 	}
 	want, err := canonicaljson.Canonical(expected)
@@ -516,17 +517,17 @@ func (t *Transaction) Rollback(ctx context.Context) error {
 	if err := t.readonlyBindings(); err != nil {
 		return err
 	}
-	return t.rollback()
+	return t.rollback(ctx)
 }
 
 // Terminal retries authenticate and durably confirm the actual bound receipt,
 // including fresh handles loaded after uncertain terminal publication.
-func (t *Transaction) confirmRollback() error {
+func (t *Transaction) confirmRollback(ctx context.Context) error {
 	if t.lease == nil || !t.admitted {
 		return ErrActive
 	}
 	var actual progress
-	if err := t.readSigned("state.json", &actual); err != nil {
+	if err := t.readProjectSigned(ctx, "state.json", &actual); err != nil {
 		return err
 	}
 	want, err := canonicaljson.Canonical(t.state)
@@ -541,15 +542,17 @@ func (t *Transaction) confirmRollback() error {
 	if err != nil {
 		return err
 	}
-	if err := syncReceiptExact(filepath.Join(t.dir, "state.json"), sealed, t.rollbackSyncFault); err != nil {
+	if err := syncReceiptExact(ctx, filepath.Join(t.dir, "state.json"), sealed, t.rollbackSyncFault); err != nil {
 		return err
 	}
 	t.state = actual
 	return nil
 }
 
-func (t *Transaction) rollbackAfter(cause error) error { return errors.Join(cause, t.rollback()) }
-func (t *Transaction) rollback() error {
+func (t *Transaction) rollbackAfter(ctx context.Context, cause error) error {
+	return errors.Join(cause, t.rollback(context.WithoutCancel(ctx)))
+}
+func (t *Transaction) rollback(ctx context.Context) error {
 	if t.pendingCommit != nil {
 		return ErrCommitUncertain
 	}
@@ -557,7 +560,7 @@ func (t *Transaction) rollback() error {
 		return ErrAuthentication
 	}
 	if t.state.Phase == "rolled-back" {
-		return t.confirmRollback()
+		return t.confirmRollback(ctx)
 	}
 	t.state.Phase = "rolling-back"
 	if err := t.save(); err != nil {
@@ -822,7 +825,17 @@ func (t *Transaction) writeSigned(name string, value any, exclusive bool) error 
 	return durableReplace(filepath.Join(t.dir, name), data, fault)
 }
 
+func projectReceiptPurpose(kind, name string) bool {
+	return (name == "plan.json" || name == "state.json") && (kind == NativeGeneratorKind || kind == NativeUpdateKind || kind == NativeLinkKind || kind == NativeWorkspaceKind)
+}
+
+// readSigned preserves the original scratch-purpose ABI. Project receipt
+// callers must use the context-bearing adapter; no contextless bypass exists.
 func (t *Transaction) readSigned(name string, value any) error {
+	if projectReceiptPurpose(t.plan.Kind, name) {
+		return ErrAuthentication
+	}
+
 	data, err := privateRead(filepath.Join(t.dir, name), 128<<20)
 	if err != nil {
 		return err
@@ -843,6 +856,67 @@ func (t *Transaction) readSigned(name string, value any) error {
 	}
 	return nil
 }
+
+func (t *Transaction) projectRecord(ctx context.Context, name string, historical bool) (*receiptevidence.AuthenticatedRecord, error) {
+	if ctx == nil || !projectReceiptPurpose(t.plan.Kind, name) {
+		return nil, ErrAuthentication
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	home := filepath.Dir(filepath.Dir(filepath.Dir(t.dir)))
+	id := strings.TrimPrefix(filepath.Base(t.dir), "tx-")
+	if t.dir != journalDir(home, id) {
+		return nil, ErrAuthentication
+	}
+	var record *receiptevidence.AuthenticatedRecord
+	var err error
+	if historical {
+		record, err = receiptevidence.ReadProjectFenceRecord(ctx, t.runtime, home, id, name)
+	} else {
+		record, err = receiptevidence.ReadProjectRecord(ctx, t.runtime, home, id, name)
+	}
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, ErrAuthentication
+	}
+	var header struct {
+		Kind string `json:"kind"`
+	}
+	if json.Unmarshal(record.Payload(), &header) != nil || header.Kind != t.plan.Kind || record.AuthorityDigest() != "sha256:"+hex.EncodeToString(sha256Sum(t.key)) {
+		return nil, ErrAuthentication
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
+func (t *Transaction) readProjectSigned(ctx context.Context, name string, value any) error {
+	record, err := t.projectRecord(ctx, name, false)
+	if err != nil {
+		return err
+	}
+	if err := canonicaljson.DecodeStrict(record.Payload(), value); err != nil {
+		return fmt.Errorf("%w: payload: %w", ErrAuthentication, err)
+	}
+	return ctx.Err()
+}
+
+func (t *Transaction) readFenceSigned(ctx context.Context, name string, value any) error {
+	record, err := t.projectRecord(ctx, name, true)
+	if err != nil {
+		return err
+	}
+	if err := canonicaljson.DecodeStrict(record.Payload(), value); err != nil {
+		return fmt.Errorf("%w: payload: %w", ErrAuthentication, err)
+	}
+	return ctx.Err()
+}
+
+func sha256Sum(raw []byte) []byte { sum := sha256.Sum256(raw); return sum[:] }
 
 // Fixed project/source bindings are read-only throughout application. Their
 // bytes/modes/inodes must still match the authenticated original observation.

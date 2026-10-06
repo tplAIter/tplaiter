@@ -13,6 +13,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/receiptevidence"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 )
 
@@ -268,11 +269,11 @@ func (c *CommittedUpdate) MaterialFor(ctx context.Context, r *trustload.Runtime)
 		return Material{}, ErrInspectionChanged
 	}
 	dir := journalDir(c.home, c.id)
-	planRaw, err := privateRead(filepath.Join(dir, "plan.json"), 128<<20)
+	planRaw, err := receiptevidence.ObserveProjectReceipt(ctx, r, c.home, c.id, "plan.json")
 	if err != nil {
 		return Material{}, err
 	}
-	stateRaw, err := privateRead(filepath.Join(dir, "state.json"), 128<<20)
+	stateRaw, err := receiptevidence.ObserveProjectReceipt(ctx, r, c.home, c.id, "state.json")
 	if err != nil {
 		return Material{}, err
 	}
@@ -286,10 +287,10 @@ func (c *CommittedUpdate) MaterialFor(ctx context.Context, r *trustload.Runtime)
 	}
 	defer clear(key)
 	tx := &Transaction{runtime: r, key: key, dir: dir, plan: immutable{Kind: NativeUpdateKind}}
-	if err := tx.readSigned("plan.json", &tx.plan); err != nil {
+	if err := tx.readProjectSigned(ctx, "plan.json", &tx.plan); err != nil {
 		return Material{}, err
 	}
-	if err := tx.readSigned("state.json", &tx.state); err != nil {
+	if err := tx.readProjectSigned(ctx, "state.json", &tx.state); err != nil {
 		return Material{}, err
 	}
 	if tx.plan.Kind != NativeUpdateKind || tx.plan.ID != c.id || tx.plan.Material.Home != c.home || tx.plan.Material.Root != r.ProjectContext().RootPath || tx.plan.Material.ProjectID != r.ProjectContext().ProjectID || !tx.plan.Material.Binding.Equal(r.TrustRuntime().Binding()) || tx.state.Kind != NativeUpdateKind || tx.state.ID != c.id || tx.state.Phase != "committed" || tx.state.Fingerprint != tx.plan.Material.Fingerprint {
@@ -317,7 +318,10 @@ func (c *CommittedUpdate) MaterialFor(ctx context.Context, r *trustload.Runtime)
 		name string
 		raw  []byte
 	}{{"plan.json", planRaw}, {"state.json", stateRaw}} {
-		actual, err := privateRead(filepath.Join(dir, record.name), 128<<20)
+		actual, err := receiptevidence.ObserveProjectReceipt(ctx, r, c.home, c.id, record.name)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return Material{}, err
+		}
 		if err != nil || !bytes.Equal(actual, record.raw) {
 			return Material{}, ErrInspectionChanged
 		}

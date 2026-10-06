@@ -52,7 +52,7 @@ func ReadAdoptionOrigin(ctx context.Context, r *trustload.Runtime, home string, 
 		if e != nil {
 			continue
 		}
-		m, e := f.Material()
+		m, e := f.Material(ctx)
 		phase := f.state.Phase
 		f.Release()
 		if e != nil || phase != "committed" {
@@ -70,7 +70,7 @@ func ReadAdoptionOrigin(ctx context.Context, r *trustload.Runtime, home string, 
 			return nil, ErrAuthentication
 		}
 		inspected, e := inspectFirstMarker(ctx, r, home, id)
-		if e != nil || inspected.Status() != InspectionCommitted {
+		if e != nil || inspected.Kind() != NativeLinkKind || inspected.Status() != InspectionCommitted {
 			return nil, ErrAuthentication
 		}
 		found = &AdoptionOrigin{material: m, inspection: inspected, receipt: id, runtime: r}

@@ -2,7 +2,7 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/receiptevidence"
 )
 
 func (t *Transaction) expectedSteps() []step {
@@ -223,7 +224,15 @@ func (t *Transaction) checkNamespace(s step) error {
 	return nil
 }
 
-func (t *Transaction) rejectActiveJournals() error {
+// Historical receipts fence the held installation's fixed journal namespace.
+// They never admit the old project root as present ownership.
+func (t *Transaction) rejectActiveJournals(ctx context.Context) error {
+	if ctx == nil {
+		return ErrAuthentication
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	parent := filepath.Dir(t.dir)
 	if _, err := confinedLstat(parent); os.IsNotExist(err) {
 		return nil
@@ -235,53 +244,49 @@ func (t *Transaction) rejectActiveJournals() error {
 	if err != nil || len(entries) > 4096 {
 		return ErrAuthentication
 	}
-	for _, e := range entries {
-		if !e.IsDir() || !strings.HasPrefix(e.Name(), "tx-") {
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "tx-") {
 			return ErrAuthentication
 		}
-		id := strings.TrimPrefix(e.Name(), "tx-")
-		if len(id) != 32 {
+		id := strings.TrimPrefix(entry.Name(), "tx-")
+		record, err := receiptevidence.ReadProjectFenceRecord(ctx, t.runtime, t.plan.Material.Home, id, "plan.json")
+		if err != nil {
+			return err
+		}
+		if record.AuthorityDigest() != "sha256:"+hex.EncodeToString(sha256Sum(t.key)) {
 			return ErrAuthentication
 		}
-		if raw, err := privateRead(filepath.Join(parent, e.Name(), "plan.json"), 128<<20); err == nil {
-			var outer envelope
-			var header struct {
-				Kind string `json:"kind"`
-			}
-			if canonicaljson.DecodeStrict(raw, &outer) == nil && json.Unmarshal(outer.Payload, &header) == nil && header.Kind == NativeLinkKind {
-				// Shared installation sealing proves a historical terminal
-				// fence even for another named context; it grants no root authority.
-				prior := &Transaction{key: t.key, dir: filepath.Join(parent, e.Name()), plan: immutable{Kind: NativeLinkKind}}
-				var plan immutable
-				var state firstMarkerState
-				if prior.readSigned("plan.json", &plan) != nil || prior.readSigned("state.json", &state) != nil || plan.APIVersion != APIVersion || plan.Kind != NativeLinkKind || plan.ID != id || state.APIVersion != APIVersion || state.Kind != NativeLinkKind || state.ID != id || state.Fingerprint != plan.Material.Fingerprint || plan.Material.Home != t.plan.Material.Home {
-					return ErrAuthentication
-				}
-				if state.Phase != "committed" && state.Phase != "rolled-back" {
-					return ErrActive
-				}
-				continue
-			}
-		}
-		var p immutable
-		var state progress
-		found := false
-		for _, kind := range []string{NativeGeneratorKind, NativeUpdateKind, NativeWorkspaceKind} {
-			prior := &Transaction{key: t.key, dir: filepath.Join(parent, e.Name()), plan: immutable{Kind: kind}}
-			if prior.readSigned("plan.json", &p) == nil && prior.readSigned("state.json", &state) == nil {
-				if p.APIVersion != APIVersion || state.APIVersion != APIVersion || p.ID != id || p.Kind != kind || state.ID != id || state.Kind != kind || state.Fingerprint != p.Material.Fingerprint || p.Material.Home != t.plan.Material.Home {
-					return ErrAuthentication
-				}
-				found = true
-				break
-			}
-		}
-		if !found {
+		var plan immutable
+		if canonicaljson.DecodeStrict(record.Payload(), &plan) != nil || plan.APIVersion != APIVersion || plan.ID != id || plan.Material.Home != t.plan.Material.Home {
 			return ErrAuthentication
 		}
-		if state.Phase != "committed" && state.Phase != "rolled-back" {
-			return ErrActive
+		prior := &Transaction{runtime: t.runtime, key: t.key, dir: filepath.Join(parent, entry.Name()), plan: immutable{Kind: plan.Kind}}
+		if plan.Kind == NativeLinkKind {
+			var state firstMarkerState
+			if err := prior.readFenceSigned(ctx, "state.json", &state); err != nil {
+				return err
+			}
+			if state.APIVersion != APIVersion || state.Kind != plan.Kind || state.ID != id || state.Fingerprint != plan.Material.Fingerprint {
+				return ErrAuthentication
+			}
+			if state.Phase != "committed" && state.Phase != "rolled-back" {
+				return ErrActive
+			}
+		} else {
+			var state progress
+			if err := prior.readFenceSigned(ctx, "state.json", &state); err != nil {
+				return err
+			}
+			if state.APIVersion != APIVersion || state.Kind != plan.Kind || state.ID != id || state.Fingerprint != plan.Material.Fingerprint {
+				return ErrAuthentication
+			}
+			if state.Phase != "committed" && state.Phase != "rolled-back" {
+				return ErrActive
+			}
 		}
 	}
-	return nil
+	return ctx.Err()
 }

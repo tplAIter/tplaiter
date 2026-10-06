@@ -4,14 +4,9 @@ package adoption
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
@@ -20,6 +15,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/linkcmd"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/receiptevidence"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"gopkg.in/yaml.v3"
@@ -175,37 +171,16 @@ func receiptDirectory(name string, id receiptID) error {
 	}
 	return nil
 }
-func receiptSigned(key []byte, dir, name string, out any) ([]byte, linkcmd.File, error) {
-	file, e := receiptObserveFile(dir, name)
-	if e != nil || file.Directory || file.Mode != 0o600 || len(file.Data) > 128<<20 {
-		return nil, file, adoptionpolicy.ErrPolicy
-	}
-	var envelope struct {
-		Payload json.RawMessage `json:"payload"`
-		MAC     string          `json:"mac"`
-	}
-	if canonicaljson.DecodeStrict(file.Data, &envelope) != nil {
-		return nil, file, adoptionpolicy.ErrPolicy
-	}
-	canonical, e := canonicaljson.Canonicalize(file.Data)
-	if e != nil || !bytes.Equal(canonical, file.Data) {
-		return nil, file, adoptionpolicy.ErrPolicy
-	}
-	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte(receiptVersion + "\x00" + receiptKind + "\x00" + dir + "\x00" + name + "\x00"))
-	mac.Write(envelope.Payload)
-	actual, e := hex.DecodeString(envelope.MAC)
-	if e != nil || !hmac.Equal(actual, mac.Sum(nil)) || canonicaljson.DecodeStrict(envelope.Payload, out) != nil {
-		return nil, file, adoptionpolicy.ErrPolicy
-	}
-	return bytes.Clone(file.Data), file, nil
-}
 func receiptName(id string) bool {
 	if len(id) != 32 || strings.ToLower(id) != id {
 		return false
 	}
-	_, e := hex.DecodeString(id)
-	return e == nil
+	for _, c := range id {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 func readOrigin(ctx context.Context, r *trustload.Runtime, home string, want *adoptionpolicy.Policy) (*originReceipt, error) {
 	if ctx == nil || r == nil || r.TrustRuntime() == nil || want == nil || want.Validate() != nil || want.Origin.ProjectID != r.ProjectContext().ProjectID || !want.Origin.Binding.Equal(r.TrustRuntime().Binding()) || !filepath.IsAbs(home) || filepath.Clean(home) != home {
@@ -214,15 +189,8 @@ func readOrigin(ctx context.Context, r *trustload.Runtime, home string, want *ad
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
-	// Consume the existing runtime-owned seal read-only. Never create, replace,
-	// export or return it; it is not a profile credential or caller-provided key.
-	key, e := linkcmd.ObservePath(r.ScratchRoot(), "project-transaction-authority/seal.key")
-	if e != nil || key.Directory || key.Mode != 0o600 || len(key.Data) != 32 {
-		return nil, adoptionpolicy.ErrPolicy
-	}
-	defer clear(key.Data)
 	directory := filepath.Join(home, "transactions", "project")
-	if _, e = linkcmd.ObservePath(directory, "."); e != nil {
+	if _, e := linkcmd.ObservePath(directory, "."); e != nil {
 		return nil, e
 	}
 	parent, e := os.OpenRoot(directory)
@@ -248,66 +216,16 @@ func readOrigin(ctx context.Context, r *trustload.Runtime, home string, want *ad
 		if !strings.HasPrefix(entry.Name(), "tx-") || !receiptName(id) {
 			continue
 		}
-		dir := filepath.Join(directory, entry.Name())
-		var plan receiptPlan
-		planRaw, planFile, e := receiptSigned(key.Data, dir, "plan.json", &plan)
-		if e != nil {
-			continue
+		candidate, err := readOriginCandidate(ctx, r, home, id, want)
+		if err != nil {
+			return nil, err
 		}
-		var state receiptState
-		stateRaw, stateFile, e := receiptSigned(key.Data, dir, "state.json", &state)
-		if e != nil {
-			continue
-		}
-		m := plan.Material
-		if plan.APIVersion != receiptVersion || plan.Kind != receiptKind || plan.ID != id || state.APIVersion != receiptVersion || state.Kind != receiptKind || state.ID != id || state.Phase != "committed" || state.Fingerprint != m.Fingerprint || m.Home != home || m.Root != r.ProjectContext().RootPath || m.ProjectID != r.ProjectContext().ProjectID || m.Registry == nil || !m.Binding.Equal(r.TrustRuntime().Binding()) || state.Plan.Inode == 0 || receiptIdentity(planFile) != state.Plan {
-			continue
-		}
-		var marker stateledger.ProjectV2
-		if yaml.Unmarshal(m.After[".tplaiter/project.yaml"].Data, &marker) != nil {
-			continue
-		}
-		p, e := adoptionpolicy.Parse(marker.Ownership)
-		if e != nil || p == nil || p.DecisionSHA256 != want.DecisionSHA256 {
-			continue
-		}
-		if found != nil {
-			return nil, adoptionpolicy.ErrPolicy
-		}
-		for _, binding := range []struct {
-			name string
-			id   receiptID
-		}{{home, plan.HomeIdentity}, {m.Root, plan.RootIdentity}, {filepath.Dir(m.Root), state.Parent}, {dir, state.Receipt}} {
-			if e = receiptDirectory(binding.name, binding.id); e != nil {
-				return nil, e
-			}
-		}
-		if e = r.TrustRuntime().CheckProjectIdentity(ctx, m.Root, m.ProjectID); e != nil {
-			return nil, e
-		}
-		registry := m.Registry.Before
-		slot, e := linkcmd.ObservePath(dir, "000000")
-		if registry.Inode == 0 {
-			if !os.IsNotExist(e) {
+		if candidate != nil {
+			if found != nil {
 				return nil, adoptionpolicy.ErrPolicy
 			}
-		} else if e != nil || slot.Directory || slot.Mode != registry.Mode || slot.Device != registry.Device || slot.Inode != registry.Inode || !bytes.Equal(slot.Data, registry.Data) {
-			return nil, adoptionpolicy.ErrPolicy
+			found = candidate
 		}
-		// Reobserve exact bytes, full mode and inode. A MAC-valid or equal-byte
-		// replacement cannot erase the original persisted plan identity.
-		finalPlan, e := receiptObserveFile(dir, "plan.json")
-		if e != nil || !reflect.DeepEqual(finalPlan, planFile) {
-			return nil, adoptionpolicy.ErrPolicy
-		}
-		finalState, e := receiptObserveFile(dir, "state.json")
-		if e != nil || !reflect.DeepEqual(finalState, stateFile) {
-			return nil, adoptionpolicy.ErrPolicy
-		}
-		if e = receiptDirectory(dir, state.Receipt); e != nil {
-			return nil, e
-		}
-		found = &originReceipt{material: m, id: id, planDigest: evidencecas.Digest(planRaw), stateDigest: evidencecas.Digest(stateRaw)}
 	}
 	if found == nil {
 		return nil, adoptionpolicy.ErrPolicy
@@ -315,68 +233,81 @@ func readOrigin(ctx context.Context, r *trustload.Runtime, home string, want *ad
 	return found, nil
 }
 
-// Receipt files use the existing engine's 128 MiB bound, not user-file limits.
-func receiptObserveFile(dir, name string) (linkcmd.File, error) {
-	initial, e := linkcmd.ObservePath(dir, ".")
+func readOriginCandidate(ctx context.Context, r *trustload.Runtime, home, id string, want *adoptionpolicy.Policy) (*originReceipt, error) {
+	trusted := r.TrustRuntime()
+	if trusted == nil {
+		return nil, adoptionpolicy.ErrPolicy
+	}
+	dir := filepath.Join(home, "transactions", "project", "tx-"+id)
+	journal, e := receiptevidence.Read(ctx, r, home, id)
 	if e != nil {
-		return linkcmd.File{}, e
+		return nil, nil
 	}
-	root, e := os.OpenRoot(dir)
+	defer journal.Close()
+	var plan receiptPlan
+	planRecord, e := journal.Record(ctx, r, "plan.json")
 	if e != nil {
-		return linkcmd.File{}, e
+		journal.Close()
+		return nil, nil
 	}
-	defer root.Close()
-	info, e := root.Lstat(name)
-	if e != nil || !info.Mode().IsRegular() || info.Mode() != 0o600 || info.Size() < 0 || info.Size() > 128<<20 {
-		return linkcmd.File{}, adoptionpolicy.ErrPolicy
+	if canonicaljson.DecodeStrict(planRecord.Payload(), &plan) != nil {
+		journal.Close()
+		return nil, nil
 	}
-	sys := reflect.ValueOf(info.Sys())
-	if sys.Kind() == reflect.Pointer {
-		sys = sys.Elem()
+	var state receiptState
+	stateRecord, e := journal.Record(ctx, r, "state.json")
+	if e != nil || canonicaljson.DecodeStrict(stateRecord.Payload(), &state) != nil {
+		journal.Close()
+		return nil, nil
 	}
-	if sys.Kind() != reflect.Struct {
-		return linkcmd.File{}, adoptionpolicy.ErrPolicy
+	m := plan.Material
+	if plan.APIVersion != receiptVersion || plan.Kind != receiptKind || plan.ID != id || state.APIVersion != receiptVersion || state.Kind != receiptKind || state.ID != id || state.Phase != "committed" || state.Fingerprint != m.Fingerprint || m.Home != home || m.Root != r.ProjectContext().RootPath || m.ProjectID != r.ProjectContext().ProjectID || m.Registry == nil || !m.Binding.Equal(trusted.Binding()) || state.Plan.Inode == 0 || (receiptID{planRecord.Device(), planRecord.Inode()} != state.Plan) {
+		journal.Close()
+		return nil, nil
 	}
-	numberOf := func(sys reflect.Value, name string) uint64 {
-		if sys.Kind() == reflect.Pointer {
-			sys = sys.Elem()
+	var marker stateledger.ProjectV2
+	if yaml.Unmarshal(m.After[".tplaiter/project.yaml"].Data, &marker) != nil {
+		return nil, nil
+	}
+	p, e := adoptionpolicy.Parse(marker.Ownership)
+	if e != nil || p == nil || p.DecisionSHA256 != want.DecisionSHA256 {
+		return nil, nil
+	}
+	for _, binding := range []struct {
+		name string
+		id   receiptID
+	}{{home, plan.HomeIdentity}, {m.Root, plan.RootIdentity}, {filepath.Dir(m.Root), state.Parent}, {dir, state.Receipt}} {
+		if e = receiptDirectory(binding.name, binding.id); e != nil {
+			return nil, e
 		}
-		if sys.Kind() != reflect.Struct {
-			return 0
+	}
+	if e = trusted.CheckProjectIdentity(ctx, m.Root, m.ProjectID); e != nil {
+		journal.Close()
+		return nil, e
+	}
+	registry := m.Registry.Before
+	slot, e := linkcmd.ObservePath(dir, "000000")
+	if registry.Inode == 0 {
+		if !os.IsNotExist(e) {
+			return nil, adoptionpolicy.ErrPolicy
 		}
-		f := sys.FieldByName(name)
-		if f.IsValid() && f.CanUint() {
-			return f.Uint()
-		}
-		if f.IsValid() && f.CanInt() {
-			return uint64(f.Int())
-		}
-		return 0
+	} else if e != nil || slot.Directory || slot.Mode != registry.Mode || slot.Device != registry.Device || slot.Inode != registry.Inode || !bytes.Equal(slot.Data, registry.Data) {
+		return nil, adoptionpolicy.ErrPolicy
 	}
-	number := func(name string) uint64 { return numberOf(sys, name) }
-	if number("Nlink") != 1 || number("Ino") == 0 {
-		return linkcmd.File{}, adoptionpolicy.ErrPolicy
+	// Reobserve exact bytes, full mode and inode. A MAC-valid or equal-byte
+	// replacement cannot erase the original persisted plan identity.
+	finalPlan, e := journal.Record(ctx, r, "plan.json")
+	finalState, stateErr := journal.Record(ctx, r, "state.json")
+	if e != nil || stateErr != nil || !bytes.Equal(finalPlan.Raw(), planRecord.Raw()) || !bytes.Equal(finalState.Raw(), stateRecord.Raw()) || finalPlan.Device() != planRecord.Device() || finalPlan.Inode() != planRecord.Inode() || finalState.Device() != stateRecord.Device() || finalState.Inode() != stateRecord.Inode() {
+		journal.Close()
+		return nil, adoptionpolicy.ErrPolicy
 	}
-	file, e := root.Open(name)
-	if e != nil {
-		return linkcmd.File{}, e
+	if e = receiptDirectory(dir, state.Receipt); e != nil {
+		journal.Close()
+		return nil, e
 	}
-	defer file.Close()
-	held, e := file.Stat()
-	if e != nil || !os.SameFile(info, held) || info.Mode() != held.Mode() {
-		return linkcmd.File{}, adoptionpolicy.ErrPolicy
+	if e = journal.RecheckFor(ctx, r); e != nil {
+		return nil, e
 	}
-	raw, e := io.ReadAll(io.LimitReader(file, (128<<20)+1))
-	if e != nil || len(raw) > 128<<20 {
-		return linkcmd.File{}, adoptionpolicy.ErrPolicy
-	}
-	final, e := root.Lstat(name)
-	if e != nil || !os.SameFile(info, final) || info.Mode() != final.Mode() || info.Size() != final.Size() || !info.ModTime().Equal(final.ModTime()) || numberOf(reflect.ValueOf(final.Sys()), "Nlink") != 1 {
-		return linkcmd.File{}, adoptionpolicy.ErrPolicy
-	}
-	after, e := linkcmd.ObservePath(dir, ".")
-	if e != nil || !reflect.DeepEqual(initial, after) {
-		return linkcmd.File{}, adoptionpolicy.ErrPolicy
-	}
-	return linkcmd.File{Data: raw, Mode: 0o600, Device: number("Dev"), Inode: number("Ino")}, nil
+	return &originReceipt{material: m, id: id, planDigest: evidencecas.Digest(planRecord.Raw()), stateDigest: evidencecas.Digest(stateRecord.Raw())}, nil
 }

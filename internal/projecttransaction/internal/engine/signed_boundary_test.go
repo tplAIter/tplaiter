@@ -641,7 +641,7 @@ func TestSignedFinalCommitRollback(t *testing.T) {
 				}
 			}
 			var disk progress
-			if err := tx.readSigned("state.json", &disk); err != nil || disk.Phase == "committed" {
+			if err := tx.readProjectSigned(context.Background(), "state.json", &disk); err != nil || disk.Phase == "committed" {
 				t.Fatalf("failed final check committed: %v %s", err, disk.Phase)
 			}
 		})
@@ -684,7 +684,7 @@ func TestSignedTerminalReceiptFailure(t *testing.T) {
 					}
 				}
 				var disk progress
-				if err := tx.readSigned("state.json", &disk); err != nil {
+				if err := tx.readProjectSigned(context.Background(), "state.json", &disk); err != nil {
 					t.Fatal(err)
 				}
 				expected := "applying"
@@ -744,7 +744,7 @@ func TestSignedTerminalReceiptFailure(t *testing.T) {
 				if err := tx.Commit(context.Background()); err != nil {
 					t.Fatal(err)
 				}
-				if err := tx.readSigned("state.json", &disk); err != nil || disk.Phase != "committed" {
+				if err := tx.readProjectSigned(context.Background(), "state.json", &disk); err != nil || disk.Phase != "committed" {
 					t.Fatalf("success without terminal receipt: %v %s", err, disk.Phase)
 				}
 				if err := tx.Commit(context.Background()); err != nil {
@@ -785,7 +785,7 @@ func TestSignedCommitRecoveryChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	var receipt progress
-	if err := tx.readSigned("state.json", &receipt); err != nil || receipt.Phase != "committed" {
+	if err := tx.readProjectSigned(context.Background(), "state.json", &receipt); err != nil || receipt.Phase != "committed" {
 		t.Fatalf("child terminal receipt: %v %s", err, receipt.Phase)
 	}
 	root, err := os.Stat(tx.plan.Material.Root)

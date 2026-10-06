@@ -16,6 +16,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/receiptevidence"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 )
 
@@ -57,11 +58,11 @@ func (f *FirstMarker) ID() string {
 	return f.tx.plan.ID
 }
 func (f *FirstMarker) Release() { f.tx.Release() }
-func (f *FirstMarker) Material() (Material, error) {
-	if err := f.checkSealedPlan(); err != nil {
+func (f *FirstMarker) Material(ctx context.Context) (Material, error) {
+	if err := f.checkSealedPlan(ctx); err != nil {
 		return Material{}, err
 	}
-	if err := f.checkSealedState(); err != nil {
+	if err := f.checkSealedState(ctx); err != nil {
 		return Material{}, err
 	}
 	return f.tx.CheckedMaterial()
@@ -74,8 +75,8 @@ func (f *FirstMarker) target() string { return filepath.Join(f.tx.plan.Material.
 // A live handle may advance only the exact receipt it last authenticated.
 // Initial state creation is exclusive; later writes retain the existing engine's
 // durable replacement semantics and recheck the sealed receipt directory.
-func (f *FirstMarker) save() error {
-	if err := f.checkSealedPlan(); err != nil {
+func (f *FirstMarker) save(ctx context.Context) error {
+	if err := f.checkSealedPlan(ctx); err != nil {
 		return err
 	}
 	if err := f.checkUsers(); err != nil {
@@ -86,7 +87,7 @@ func (f *FirstMarker) save() error {
 	}
 	name := filepath.Join(f.tx.dir, "state.json")
 	if f.sealedState != nil {
-		if err := f.checkSealedState(); err != nil {
+		if err := f.checkSealedState(ctx); err != nil {
 			return err
 		}
 	}
@@ -101,7 +102,7 @@ func (f *FirstMarker) save() error {
 		return err
 	}
 	var actual firstMarkerState
-	if err = f.tx.readSigned("state.json", &actual); err != nil {
+	if err = f.tx.readProjectSigned(ctx, "state.json", &actual); err != nil {
 		return err
 	}
 	raw, err := canonicaljson.Canonical(actual)
@@ -115,7 +116,7 @@ func (f *FirstMarker) save() error {
 	f.sealedState, f.sealedStateID = want, fileID(i)
 	return nil
 }
-func (f *FirstMarker) checkSealedState() error {
+func (f *FirstMarker) checkSealedState(ctx context.Context) error {
 	if err := f.checkReceipt(); err != nil {
 		return err
 	}
@@ -124,7 +125,7 @@ func (f *FirstMarker) checkSealedState() error {
 		return ErrConflict
 	}
 	var actual firstMarkerState
-	if err := f.tx.readSigned("state.json", &actual); err != nil {
+	if err := f.tx.readProjectSigned(ctx, "state.json", &actual); err != nil {
 		return err
 	}
 	raw, err := canonicaljson.Canonical(actual)
@@ -138,12 +139,12 @@ func (f *FirstMarker) checkSealedState() error {
 // Its owned inode is sealed into state.json so a cold opener also rejects an
 // equal-byte replacement. Retention reads the freshly persisted record, never
 // infers persistence from the in-memory material.
-func (f *FirstMarker) retainPlan() error {
+func (f *FirstMarker) retainPlan(ctx context.Context) error {
 	want, err := f.tx.signedBytes("plan.json", f.tx.plan)
 	if err != nil {
 		return err
 	}
-	raw, err := f.planBytes(f.state.Plan)
+	raw, err := f.planBytes(ctx, f.state.Plan)
 	if err != nil {
 		return err
 	}
@@ -151,13 +152,13 @@ func (f *FirstMarker) retainPlan() error {
 		return ErrAuthentication
 	}
 	f.sealedPlan, f.sealedPlanID = raw, f.state.Plan
-	return f.checkSealedPlan()
+	return f.checkSealedPlan(ctx)
 }
-func (f *FirstMarker) checkSealedPlan() error {
+func (f *FirstMarker) checkSealedPlan(ctx context.Context) error {
 	if len(f.sealedPlan) == 0 || f.sealedPlanID.Inode == 0 {
 		return ErrAuthentication
 	}
-	raw, err := f.planBytes(f.sealedPlanID)
+	raw, err := f.planBytes(ctx, f.sealedPlanID)
 	if err != nil {
 		return err
 	}
@@ -166,47 +167,21 @@ func (f *FirstMarker) checkSealedPlan() error {
 	}
 	return nil
 }
-func (f *FirstMarker) planBytes(id Identity) ([]byte, error) {
+func (f *FirstMarker) planBytes(ctx context.Context, id Identity) ([]byte, error) {
 	if err := f.checkReceipt(); err != nil {
 		return nil, err
 	}
-	name := filepath.Join(f.tx.dir, "plan.json")
-	root, base, err := confinedParent(name)
+	record, err := f.tx.projectRecord(ctx, "plan.json", false)
 	if err != nil {
-		return nil, ErrConflict
-	}
-	defer root.Close()
-	valid := func(info os.FileInfo) bool {
-		return info != nil && id.Inode != 0 && fileID(info) == id && info.Mode() == 0o600 && singleLink(info) && info.Size() <= 128<<20
-	}
-	info, err := root.Lstat(base)
-	if err != nil || !valid(info) {
-		return nil, ErrConflict
-	}
-	fd, err := root.OpenFile(base, readNoFollow(), 0)
-	if err != nil {
-		return nil, ErrConflict
-	}
-	defer fd.Close()
-	opened, err := fd.Stat()
-	if err != nil || !valid(opened) {
-		return nil, ErrConflict
-	}
-	raw, err := io.ReadAll(io.LimitReader(fd, (128<<20)+1))
-	if err != nil || len(raw) > 128<<20 {
-		return nil, ErrAuthentication
-	}
-	after, err := root.Lstat(base)
-	if err != nil || !valid(after) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
-		return nil, ErrConflict
-	}
-	if err = checkStorageParent(root, name); err != nil {
 		return nil, err
 	}
-	if err = f.checkReceipt(); err != nil {
+	if id.Inode == 0 || (Identity{record.Device(), record.Inode()}) != id {
+		return nil, ErrConflict
+	}
+	if err := f.checkReceipt(); err != nil {
 		return nil, err
 	}
-	return raw, nil
+	return record.Raw(), ctx.Err()
 }
 
 // Observe full permission/special bits at every user guard. Directory special
@@ -306,7 +281,7 @@ func AcquireFirstMarker(ctx context.Context, r *trustload.Runtime, m Material, m
 	if err = f.auth(ctx); err != nil {
 		return fail(err)
 	}
-	if err = tx.rejectActiveJournals(); err != nil {
+	if err = tx.rejectActiveJournals(ctx); err != nil {
 		return fail(err)
 	}
 	if err = f.checkBefore(); err != nil {
@@ -349,10 +324,10 @@ func (f *FirstMarker) Seal(ctx context.Context, m Material, missing []string) er
 		return err
 	}
 	f.state.Plan = fileID(planInfo)
-	if err = f.retainPlan(); err != nil {
+	if err = f.retainPlan(ctx); err != nil {
 		return err
 	}
-	if err = f.save(); err != nil {
+	if err = f.save(ctx); err != nil {
 		return err
 	}
 	if err = f.hit(ctx, "journal"); err != nil {
@@ -386,7 +361,7 @@ func (f *FirstMarker) prepare(ctx context.Context) error {
 		f.state.Stage = fileID(info)
 		f.state.Inventory = map[string]File{".": {Data: Bytes{}, Mode: 0o700, Directory: true, Device: f.state.Stage.Device, Inode: f.state.Stage.Inode}}
 		f.state.Phase = "preparing"
-		if err = f.save(); err != nil {
+		if err = f.save(ctx); err != nil {
 			return err
 		}
 		if err = f.hit(ctx, "stage-created"); err != nil {
@@ -440,7 +415,7 @@ func (f *FirstMarker) prepare(ctx context.Context) error {
 			}
 			id := fileID(info)
 			f.state.Inventory[prefix] = File{Data: Bytes{}, Mode: 0o700, Directory: true, Device: id.Device, Inode: id.Inode}
-			if err = f.save(); err != nil {
+			if err = f.save(ctx); err != nil {
 				return err
 			}
 		}
@@ -464,7 +439,7 @@ func (f *FirstMarker) prepare(ctx context.Context) error {
 			return e
 		}
 		f.state.Inventory[rel] = image
-		if err = f.save(); err != nil {
+		if err = f.save(ctx); err != nil {
 			return err
 		}
 	}
@@ -483,14 +458,14 @@ func (f *FirstMarker) prepare(ctx context.Context) error {
 			return e
 		}
 		f.state.RegistryAfter = Identity{image.Device, image.Inode}
-		if err = f.save(); err != nil {
+		if err = f.save(ctx); err != nil {
 			return err
 		}
 	} else if err = firstRegistryCheck(filepath.Join(f.tx.dir, firstMarkerRegistrySlot), m.Registry.After, f.state.RegistryAfter); err != nil {
 		return err
 	}
 	f.state.Phase = "prepared"
-	if err = f.save(); err != nil {
+	if err = f.save(ctx); err != nil {
 		return err
 	}
 	return f.hit(ctx, "prepared")
@@ -576,17 +551,17 @@ func loadFirstMarker(ctx context.Context, r *trustload.Runtime, home, id string,
 	tx := &Transaction{runtime: r, key: key, dir: journalDir(home, id), plan: immutable{Kind: NativeLinkKind}}
 	f := &FirstMarker{tx: tx}
 	fail := func(e error) (*FirstMarker, error) { f.Release(); return nil, e }
-	if err = tx.readSigned("plan.json", &tx.plan); err != nil {
+	if err = tx.readProjectSigned(ctx, "plan.json", &tx.plan); err != nil {
 		return fail(err)
 	}
-	if err = tx.readSigned("state.json", &f.state); err != nil {
+	if err = tx.readProjectSigned(ctx, "state.json", &f.state); err != nil {
 		return fail(err)
 	}
 	p, s := tx.plan, f.state
 	if p.APIVersion != APIVersion || p.Kind != NativeLinkKind || p.ID != id || s.APIVersion != APIVersion || s.Kind != NativeLinkKind || s.ID != id || s.Fingerprint != p.Material.Fingerprint || p.Material.Home != home || p.Material.Registry == nil {
 		return fail(ErrAuthentication)
 	}
-	if err = f.retainPlan(); err != nil {
+	if err = f.retainPlan(ctx); err != nil {
 		return fail(err)
 	}
 	if err = f.auth(ctx); err != nil {
@@ -604,7 +579,7 @@ func loadFirstMarker(ctx context.Context, r *trustload.Runtime, home, id string,
 		return fail(err)
 	}
 	f.sealedStateID = fileID(i)
-	if err = f.checkSealedState(); err != nil {
+	if err = f.checkSealedState(ctx); err != nil {
 		return fail(err)
 	}
 	tx.durable = true
@@ -620,12 +595,12 @@ func (f *FirstMarker) auth(ctx context.Context) error {
 		return ErrConflict
 	}
 	if f.sealedPlan != nil {
-		if err = f.checkSealedPlan(); err != nil {
+		if err = f.checkSealedPlan(ctx); err != nil {
 			return err
 		}
 	}
 	if f.sealedState != nil {
-		return f.checkSealedState()
+		return f.checkSealedState(ctx)
 	}
 	return nil
 }
@@ -774,11 +749,11 @@ func (f *FirstMarker) Commit(ctx context.Context) error {
 		}
 	}
 	f.state.Phase = "publishing"
-	if err = f.save(); err != nil {
+	if err = f.save(ctx); err != nil {
 		return err
 	}
 	if where == f.stage() {
-		if err = f.publishState(false); err != nil {
+		if err = f.publishState(ctx, false); err != nil {
 			return err
 		}
 		if err = f.hit(ctx, "state-renamed"); err != nil {
@@ -786,7 +761,7 @@ func (f *FirstMarker) Commit(ctx context.Context) error {
 		}
 	}
 	f.state.Phase = "state-published"
-	if err = f.save(); err != nil {
+	if err = f.save(ctx); err != nil {
 		return err
 	}
 	if err = f.checkManaged(ctx, f.target()); err != nil {
@@ -799,7 +774,7 @@ func (f *FirstMarker) Commit(ctx context.Context) error {
 		return err
 	}
 	if !registryPublished {
-		if err = f.publishRegistry(false); err != nil {
+		if err = f.publishRegistry(ctx, false); err != nil {
 			return err
 		}
 		if err = f.hit(ctx, "registry-renamed"); err != nil {
@@ -807,7 +782,7 @@ func (f *FirstMarker) Commit(ctx context.Context) error {
 		}
 	}
 	f.state.Phase = "registry-published"
-	if err = f.save(); err != nil {
+	if err = f.save(ctx); err != nil {
 		return err
 	}
 	if err = f.checkManaged(ctx, f.target()); err != nil {
@@ -817,7 +792,7 @@ func (f *FirstMarker) Commit(ctx context.Context) error {
 		return err
 	}
 	f.state.Phase = "committed"
-	if err = f.save(); err != nil {
+	if err = f.save(ctx); err != nil {
 		return err
 	}
 	return f.hit(ctx, "committed")
@@ -856,7 +831,7 @@ func (f *FirstMarker) Abort(ctx context.Context) error {
 			return e
 		}
 		f.state.Phase = "rolled-back"
-		return f.save()
+		return f.save(ctx)
 	}
 	if err = f.checkUsers(); err != nil {
 		return err
@@ -888,22 +863,22 @@ func (f *FirstMarker) Abort(ctx context.Context) error {
 		}
 	}
 	f.state.Phase = "rolling-back"
-	if err = f.save(); err != nil {
+	if err = f.save(ctx); err != nil {
 		return err
 	}
 	if after {
-		if err = f.publishRegistry(true); err != nil {
+		if err = f.publishRegistry(ctx, true); err != nil {
 			return err
 		}
 	}
 	if where == f.target() {
-		if err = f.publishState(true); err != nil {
+		if err = f.publishState(ctx, true); err != nil {
 			return err
 		}
 	}
 	// Retain the authenticated managed sibling as rollback evidence; never recursive-delete.
 	f.state.Phase = "rolled-back"
-	return f.save()
+	return f.save(ctx)
 }
 func firstMarkerSnapshot(ctx context.Context, name string) (map[string]File, error) {
 	return WorkspaceSnapshot(ctx, name)
@@ -916,7 +891,16 @@ func inspectFirstMarker(ctx context.Context, r *trustload.Runtime, home, id stri
 		return out, err
 	}
 	defer f.Release()
-	before, e := privateRead(filepath.Join(f.tx.dir, "state.json"), 128<<20)
+	journal, e := receiptevidence.Read(ctx, r, home, id)
+	if e != nil {
+		return out, e
+	}
+	defer journal.Close()
+	beforeRecord, e := journal.Record(ctx, r, "state.json")
+	if e != nil {
+		return out, e
+	}
+	before := beforeRecord.Raw()
 	if e != nil {
 		return out, e
 	}
@@ -963,7 +947,11 @@ func inspectFirstMarker(ctx context.Context, r *trustload.Runtime, home, id stri
 			return out, e
 		}
 	}
-	plan, e := privateRead(filepath.Join(f.tx.dir, "plan.json"), 128<<20)
+	planRecord, e := journal.Record(ctx, r, "plan.json")
+	plan := []byte(nil)
+	if planRecord != nil {
+		plan = planRecord.Raw()
+	}
 	if e != nil {
 		return out, e
 	}
@@ -971,7 +959,11 @@ func inspectFirstMarker(ctx context.Context, r *trustload.Runtime, home, id stri
 	if e != nil || !bytes.Equal(plan, expectedPlan) {
 		return out, ErrInspectionChanged
 	}
-	after, e := privateRead(filepath.Join(f.tx.dir, "state.json"), 128<<20)
+	afterRecord, e := journal.Record(ctx, r, "state.json")
+	after := []byte(nil)
+	if afterRecord != nil {
+		after = afterRecord.Raw()
+	}
 	if e != nil || !bytes.Equal(before, after) {
 		return out, ErrInspectionChanged
 	}

@@ -32,12 +32,12 @@ func ScopeAdoption(ctx context.Context, t *Transaction) (*AdoptionTransaction, e
 		return nil, ErrAuthentication
 	}
 	a := &AdoptionTransaction{Transaction: t, ctx: ctx}
-	if err := a.guard(); err != nil {
+	if err := a.guard(ctx); err != nil {
 		return nil, err
 	}
 	return a, nil
 }
-func (t *AdoptionTransaction) guard() error {
+func (t *AdoptionTransaction) guard(ctx context.Context) error {
 	m := t.plan.Material
 	var in struct {
 		Version    int                        `json:"version"`
@@ -54,7 +54,6 @@ func (t *AdoptionTransaction) guard() error {
 	if err != nil || p == nil {
 		return ErrAuthentication
 	}
-	ctx := context.WithoutCancel(t.ctx)
 	if err = t.authenticate(ctx); err != nil {
 		return err
 	}
@@ -124,7 +123,7 @@ func (t *AdoptionTransaction) guard() error {
 	}
 	if t.durable {
 		var actual immutable
-		if err = t.readSigned("plan.json", &actual); err != nil {
+		if err = t.readProjectSigned(ctx, "plan.json", &actual); err != nil {
 			return err
 		}
 		want, e := canonicaljson.Canonical(t.plan)
@@ -138,33 +137,35 @@ func (t *AdoptionTransaction) guard() error {
 	}
 	return nil
 }
-func (t *AdoptionTransaction) writeSigned(name string, v any, exclusive bool) error {
-	if err := t.guard(); err != nil {
+func (t *AdoptionTransaction) writeSigned(ctx context.Context, name string, v any, exclusive bool) error {
+	if err := t.guard(ctx); err != nil {
 		return err
 	}
 	return t.Transaction.writeSigned(name, v, exclusive)
 }
-func (t *AdoptionTransaction) save() error { return t.writeSigned("state.json", t.state, false) }
-func (t *AdoptionTransaction) publish(s step, exchange bool) error {
-	if err := t.guard(); err != nil {
+func (t *AdoptionTransaction) save(ctx context.Context) error {
+	return t.writeSigned(ctx, "state.json", t.state, false)
+}
+func (t *AdoptionTransaction) publish(ctx context.Context, s step, exchange bool) error {
+	if err := t.guard(ctx); err != nil {
 		return err
 	}
 	return t.Transaction.publish(s, exchange)
 }
-func (t *AdoptionTransaction) quarantine(s step) error {
-	if err := t.guard(); err != nil {
+func (t *AdoptionTransaction) quarantine(ctx context.Context, s step) error {
+	if err := t.guard(ctx); err != nil {
 		return err
 	}
 	return t.Transaction.quarantine(s)
 }
 func (t *AdoptionTransaction) stagePreparing(ctx context.Context, s step, after File) (Identity, error) {
-	if err := t.guard(); err != nil {
+	if err := t.guard(ctx); err != nil {
 		return Identity{}, err
 	}
 	return t.Transaction.stagePreparing(ctx, s, after)
 }
 func (t *AdoptionTransaction) Admit(ctx context.Context) error {
-	if err := t.guard(); err != nil {
+	if err := t.guard(ctx); err != nil {
 		return err
 	}
 	return t.Transaction.Admit(ctx)
@@ -174,7 +175,7 @@ func (t *AdoptionTransaction) Seal(ctx context.Context, m Material) error {
 	if t.lease == nil || t.admitted || m.Root != t.plan.Material.Root || m.Home != t.plan.Material.Home || m.ProjectID != t.plan.Material.ProjectID {
 		return ErrAuthentication
 	}
-	if err := t.rejectActiveJournals(); err != nil {
+	if err := t.rejectActiveJournals(ctx); err != nil {
 		return err
 	}
 	if err := t.recheckLockedMaterial(m); err != nil {
@@ -207,16 +208,16 @@ func (t *AdoptionTransaction) prepare(ctx context.Context, m Material) error {
 	if kind != NativeUpdateKind {
 		return ErrAuthentication
 	}
-	if err := t.guard(); err != nil {
+	if err := t.guard(ctx); err != nil {
 		return err
 	}
 	if err := privateDirectory(t.dir); err != nil {
 		return fail(err)
 	}
-	if err := t.writeSigned("plan.json", t.plan, true); err != nil {
+	if err := t.writeSigned(ctx, "plan.json", t.plan, true); err != nil {
 		return fail(err)
 	}
-	if err := t.guard(); err != nil {
+	if err := t.guard(ctx); err != nil {
 		return err
 	}
 	if err := privateDirectory(t.images); err != nil {
@@ -231,7 +232,7 @@ func (t *AdoptionTransaction) prepare(ctx context.Context, m Material) error {
 		return err
 	}
 	t.state = progress{ReceiptIdentity: fileID(receiptInfo), ImageIdentity: fileID(imageInfo), APIVersion: APIVersion, Kind: kind, ID: t.plan.ID, Fingerprint: m.Fingerprint, Phase: "preparing", Steps: []step{}}
-	if err := t.save(); err != nil {
+	if err := t.save(ctx); err != nil {
 		return fail(err)
 	}
 	t.durable = true
@@ -260,26 +261,26 @@ func (t *AdoptionTransaction) Apply(ctx context.Context) error {
 	}
 	if err := t.authenticate(ctx); err != nil {
 		if t.state.Phase == "applying" {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 		return err
 	}
 	t.state.Phase = "applying"
-	if err := t.save(); err != nil {
+	if err := t.save(ctx); err != nil {
 		return err
 	}
 	for i := range t.state.Steps {
 		if err := ctx.Err(); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 		if err := t.authenticate(ctx); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 		if err := t.checkObservations(ctx); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 		if err := t.applyStep(ctx, i); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 	}
 	return nil
@@ -304,26 +305,26 @@ func (t *AdoptionTransaction) Commit(ctx context.Context) error {
 		return t.confirmCommit(ctx)
 	}
 	if err := t.authenticate(ctx); err != nil {
-		return t.rollbackAfter(err)
+		return t.rollbackAfter(ctx, err)
 	}
 	if pairedKind(t.plan.Kind) {
 		if err := t.checkObservations(ctx); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 	}
 	if err := t.readonlyBindings(); err != nil {
-		return t.rollbackAfter(err)
+		return t.rollbackAfter(ctx, err)
 	}
 	for _, step := range t.state.Steps {
 		if err := t.checkStepFinal(step); err != nil {
-			return t.rollbackAfter(err)
+			return t.rollbackAfter(ctx, err)
 		}
 	}
 	terminal := t.state
 	terminal.Steps = append([]step{}, t.state.Steps...)
 	terminal.Phase = "committed"
 	// The live phase changes only after a successful durable publication.
-	if err := t.writeSigned("state.json", terminal, false); err != nil {
+	if err := t.writeSigned(ctx, "state.json", terminal, false); err != nil {
 		var published *publishedWriteError
 		if errors.As(err, &published) {
 			t.pendingCommit = &terminal
@@ -346,14 +347,14 @@ func (t *AdoptionTransaction) Rollback(ctx context.Context) error {
 	if err := t.readonlyBindings(); err != nil {
 		return err
 	}
-	return t.rollback()
+	return t.rollback(ctx)
 }
 
-func (t *AdoptionTransaction) rollbackAfter(cause error) error {
-	return errors.Join(cause, t.rollback())
+func (t *AdoptionTransaction) rollbackAfter(ctx context.Context, cause error) error {
+	return errors.Join(cause, t.rollback(context.WithoutCancel(ctx)))
 }
 
-func (t *AdoptionTransaction) rollback() error {
+func (t *AdoptionTransaction) rollback(ctx context.Context) error {
 	if t.pendingCommit != nil {
 		return ErrCommitUncertain
 	}
@@ -361,15 +362,15 @@ func (t *AdoptionTransaction) rollback() error {
 		return ErrAuthentication
 	}
 	if t.state.Phase == "rolled-back" {
-		return t.confirmRollback()
+		return t.confirmRollback(ctx)
 	}
 	t.state.Phase = "rolling-back"
-	if err := t.save(); err != nil {
+	if err := t.save(ctx); err != nil {
 		return err
 	}
 	var failures []error
 	for i := len(t.state.Steps) - 1; i >= 0; i-- {
-		if err := t.undoStep(i); err != nil {
+		if err := t.undoStep(ctx, i); err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", t.state.Steps[i].Path, err))
 		}
 	}
@@ -382,7 +383,7 @@ func (t *AdoptionTransaction) rollback() error {
 	}
 	// A terminal rollback becomes live only after its durable receipt succeeds.
 	// On failure retry repeats owned-state checks and persists the receipt again.
-	persistErr := t.writeSigned("state.json", terminal, false)
+	persistErr := t.writeSigned(ctx, "state.json", terminal, false)
 	if persistErr == nil {
 		t.state = terminal
 	}
@@ -404,7 +405,7 @@ func (t *AdoptionTransaction) applyStep(ctx context.Context, i int) error {
 			return ErrConflict
 		}
 		s.Done = true
-		return t.save()
+		return t.save(ctx)
 	}
 	if exists {
 		if err := t.checkTarget(*s, before, Identity{before.Device, before.Inode}); err != nil {
@@ -419,20 +420,20 @@ func (t *AdoptionTransaction) applyStep(ctx context.Context, i int) error {
 		return err
 	}
 	s.Intent = true
-	if err := t.save(); err != nil {
+	if err := t.save(ctx); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := t.publish(*s, exists); err != nil {
+	if err := t.publish(ctx, *s, exists); err != nil {
 		return err
 	}
 	if exists && checkPath(t.slotPath(*s), before, Identity{before.Device, before.Inode}) != nil {
 		// A foreign replacement raced the exchange. Put that exact inode back only
 		// while the destination still contains our prepared inode.
 		if t.checkTarget(*s, after, s.AfterIdentity) == nil {
-			_ = t.publish(*s, true)
+			_ = t.publish(ctx, *s, true)
 		}
 		return ErrConflict
 	}
@@ -440,16 +441,16 @@ func (t *AdoptionTransaction) applyStep(ctx context.Context, i int) error {
 		return err
 	}
 	s.Done = true
-	return t.save()
+	return t.save(ctx)
 }
 
-func (t *AdoptionTransaction) undoStep(i int) error {
+func (t *AdoptionTransaction) undoStep(ctx context.Context, i int) error {
 	s := &t.state.Steps[i]
 	if s.Undone {
 		return nil
 	}
 	if s.Delete {
-		return t.undoDelete(i)
+		return t.undoDelete(ctx, i)
 	}
 	before, after, existed := t.stepFiles(*s)
 	target := t.targetPath(*s)
@@ -457,12 +458,12 @@ func (t *AdoptionTransaction) undoStep(i int) error {
 	// A step not published (or already reverted before a crash) needs no write.
 	if existed && t.checkTarget(*s, before, Identity{before.Device, before.Inode}) == nil && checkPath(slot, after, s.AfterIdentity) == nil {
 		s.Undone = true
-		return t.save()
+		return t.save(ctx)
 	}
 	if !existed {
 		if _, err := confinedLstat(target); os.IsNotExist(err) && checkPath(slot, after, s.AfterIdentity) == nil {
 			s.Undone = true
-			return t.save()
+			return t.save(ctx)
 		}
 	}
 	if err := t.checkTarget(*s, after, s.AfterIdentity); err != nil {
@@ -478,26 +479,26 @@ func (t *AdoptionTransaction) undoStep(i int) error {
 		if err := checkPath(slot, before, Identity{before.Device, before.Inode}); err != nil {
 			return err
 		}
-		if err := t.publish(*s, true); err != nil {
+		if err := t.publish(ctx, *s, true); err != nil {
 			return err
 		}
 		if checkPath(slot, after, s.AfterIdentity) != nil { // Undo encountered a raced foreign inode; restore it.
 			if t.checkTarget(*s, before, Identity{before.Device, before.Inode}) == nil {
-				_ = t.publish(*s, true)
+				_ = t.publish(ctx, *s, true)
 			}
 			return ErrConflict
 		}
 	} else {
-		if err := t.quarantine(*s); err != nil {
+		if err := t.quarantine(ctx, *s); err != nil {
 			return err
 		}
 		if checkPath(slot, after, s.AfterIdentity) != nil {
-			_ = t.publish(*s, false)
+			_ = t.publish(ctx, *s, false)
 			return ErrConflict
 		}
 	}
 	s.Undone = true
-	return t.save()
+	return t.save(ctx)
 }
 
 func (t *AdoptionTransaction) continuePreparing(ctx context.Context) error {
@@ -526,7 +527,7 @@ func (t *AdoptionTransaction) continuePreparing(ctx context.Context) error {
 		}
 		next := t.state
 		next.Steps = append(append([]step{}, t.state.Steps...), s)
-		if err := t.writeSigned("state.json", next, false); err != nil {
+		if err := t.writeSigned(ctx, "state.json", next, false); err != nil {
 			return err
 		}
 		t.state = next
@@ -536,7 +537,7 @@ func (t *AdoptionTransaction) continuePreparing(ctx context.Context) error {
 	}
 	next := t.state
 	next.Phase = "prepared"
-	if err := t.writeSigned("state.json", next, false); err != nil {
+	if err := t.writeSigned(ctx, "state.json", next, false); err != nil {
 		return err
 	}
 	t.state = next
@@ -551,7 +552,7 @@ func (t *AdoptionTransaction) applyDelete(ctx context.Context, i int) error {
 	}
 	if s.Intent && t.checkDeleted(*s) == nil {
 		s.Done = true
-		return t.save()
+		return t.save(ctx)
 	}
 	if err := t.checkTarget(*s, before, Identity{before.Device, before.Inode}); err != nil {
 		return err
@@ -560,29 +561,29 @@ func (t *AdoptionTransaction) applyDelete(ctx context.Context, i int) error {
 		return ErrConflict
 	}
 	s.Intent = true
-	if err := t.save(); err != nil {
+	if err := t.save(ctx); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := t.quarantine(*s); err != nil {
+	if err := t.quarantine(ctx, *s); err != nil {
 		return err
 	}
 	if err := checkPath(t.slotPath(*s), before, Identity{before.Device, before.Inode}); err != nil {
 		// A raced foreign inode was moved, not deleted. Restore it exclusively if
 		// the destination is still absent; otherwise retain it and report ambiguity.
-		restore := t.publish(*s, false)
+		restore := t.publish(ctx, *s, false)
 		return errors.Join(ErrConflict, restore)
 	}
 	if err := t.checkDeleted(*s); err != nil {
 		return err
 	}
 	s.Done = true
-	return t.save()
+	return t.save(ctx)
 }
 
-func (t *AdoptionTransaction) undoDelete(i int) error {
+func (t *AdoptionTransaction) undoDelete(ctx context.Context, i int) error {
 	s := &t.state.Steps[i]
 	before, _, _ := t.stepFiles(*s)
 	if t.checkTarget(*s, before, Identity{before.Device, before.Inode}) == nil {
@@ -590,17 +591,17 @@ func (t *AdoptionTransaction) undoDelete(i int) error {
 			return ErrConflict
 		}
 		s.Undone = true
-		return t.save()
+		return t.save(ctx)
 	}
 	if err := t.checkDeleted(*s); err != nil {
 		return err
 	}
-	if err := t.publish(*s, false); err != nil {
+	if err := t.publish(ctx, *s, false); err != nil {
 		return err
 	}
 	if err := t.checkTarget(*s, before, Identity{before.Device, before.Inode}); err != nil {
 		return fmt.Errorf("%w: restored deletion: %w", ErrConflict, err)
 	}
 	s.Undone = true
-	return t.save()
+	return t.save(ctx)
 }

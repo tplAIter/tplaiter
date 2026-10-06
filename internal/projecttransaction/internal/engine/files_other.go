@@ -19,3 +19,5 @@ func (t *Transaction) quarantine(step) error    { return ErrAuthentication }
 func (t *Transaction) acquireWriterLocks() error { return ErrAuthentication }
 
 func stageDirectory(context.Context, string, os.FileMode) error { return ErrAuthentication }
+
+func receiptReadFlags() int { return readNoFollow() }
