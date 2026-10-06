@@ -549,6 +549,16 @@ func TestMCPStdioContract(t *testing.T) {
 			}
 		})
 	}
+	// Cold recovery is a CLI-only surface. Actually call the registered tool
+	// and require its closed argument refusal; never mark an uncalled tool.
+	t.Run("project_link cold recovery refusal", func(t *testing.T) {
+		res := c.callTool("project_link", map[string]any{"action": "continue", "dir": workdir, "execute": true})
+		op, status, codes := requireEnvelope(t, "project_link", res)
+		if !res.IsError || op != "project.link" || status != "failed" || len(codes) != 1 || codes[0] != "MCP_INVALID_ARGUMENT" {
+			t.Fatalf("closed cold recovery refusal: isError=%v op=%s status=%s codes=%v", res.IsError, op, status, codes)
+		}
+		called["project_link"] = true
+	})
 	// The graph domain has its own real installed fixture: successful calls
 	// use normal enrollment/New instead of fabricating the old fixture's locks.
 	t.Run("graph installed configured operator", func(t *testing.T) {

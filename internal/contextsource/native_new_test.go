@@ -593,7 +593,7 @@ func TestSourceClosureDirectSignedParityAndDAG(t *testing.T) {
 		t.Fatal("foreign consumption accepted")
 	}
 	// A copied opaque value cannot establish a fresh lifetime or become an owner.
-	copied := reflect.New(reflect.TypeOf(*direct))
+	copied := reflect.New(reflect.TypeOf(direct).Elem())
 	copied.Elem().Set(reflect.ValueOf(direct).Elem())
 	if copied.Interface().(*contextauth.VerifiedSourceClosure).Recheck(ctx) == nil {
 		t.Fatal("copied carrier accepted")
@@ -657,7 +657,7 @@ func TestManagedFormatterSourceBorrowLifetime(t *testing.T) {
 	if _, e := carrier.OperationSubjects(cancelled, f.runtime); e == nil {
 		t.Fatal("cancelled subject projection")
 	}
-	copied := reflect.New(reflect.TypeOf(*intent))
+	copied := reflect.New(reflect.TypeOf(intent).Elem())
 	copied.Elem().Set(reflect.ValueOf(intent).Elem())
 	if _, e := copied.Interface().(*PreparedNativeNew).FormatterSources(ctx, f.runtime); e == nil {
 		t.Fatal("copied intent obtained carrier")

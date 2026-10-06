@@ -274,10 +274,10 @@
   },
   {
     "annotations": {
-      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true
+      "openWorldHint": true,
+      "readOnlyHint": true
     },
     "description": "Read installed signed context with bounded local byte plans. Model window stays unknown. Local preview-catalog/preview-resource return explicitly untrusted observed data; authenticated ROOT select returns complete task context; signed actions discover/search/get/continue/plan; pull schema on demand.",
     "inputSchema": {
@@ -524,10 +524,10 @@
   },
   {
     "annotations": {
-      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true
+      "openWorldHint": true,
+      "readOnlyHint": true
     },
     "description": "Captured source graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
     "inputSchema": {
@@ -3590,10 +3590,10 @@
   },
   {
     "annotations": {
-      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true
+      "openWorldHint": true,
+      "readOnlyHint": false
     },
     "description": "Captured ast graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
     "inputSchema": {
@@ -4459,10 +4459,10 @@
   },
   {
     "annotations": {
-      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true
+      "openWorldHint": true,
+      "readOnlyHint": true
     },
     "description": "Captured exports graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
     "inputSchema": {
@@ -5328,10 +5328,10 @@
   },
   {
     "annotations": {
-      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true
+      "openWorldHint": true,
+      "readOnlyHint": true
     },
     "description": "Captured source graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
     "inputSchema": {
@@ -6197,10 +6197,10 @@
   },
   {
     "annotations": {
-      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true
+      "openWorldHint": true,
+      "readOnlyHint": true
     },
     "description": "Captured stats graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
     "inputSchema": {
@@ -8233,10 +8233,10 @@
   },
   {
     "annotations": {
-      "readOnlyHint": false,
       "destructiveHint": false,
       "idempotentHint": false,
-      "openWorldHint": false
+      "openWorldHint": false,
+      "readOnlyHint": false
     },
     "description": "Link/adopt signed state only; preserves user files. Conflicts require explicit ownership path=track or path=user-owned. User-owned adoption preserves full signed baseline lineage and excludes those paths from Update writes. Cold recovery uses qualified CLI commands.",
     "inputSchema": {
@@ -8649,10 +8649,10 @@
   },
   {
     "annotations": {
-      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true
+      "openWorldHint": true,
+      "readOnlyHint": false
     },
     "description": "Create a project from a template (always non-interactive). Select an authenticated installed projectContext; targetDir must match its root. Omitted targetDir uses <dir>/<slug>. If set is incomplete, the tool will return an error about required groups — or set defaults=true.",
     "inputSchema": {

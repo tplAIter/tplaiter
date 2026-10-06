@@ -16,6 +16,12 @@ import (
 // A tool added without an entry fails TestEveryToolHasOutputSchema.
 var toolOperations = map[string][]resultdto.Operation{
 	"context":               {resultdto.OperationContextQuery},
+	"project_link":          {resultdto.OperationProjectLink, resultdto.OperationProjectAdopt},
+	"graph_source":          {resultdto.OperationGraphSource},
+	"dependency_graph":      {resultdto.OperationGraphSource},
+	"graph_exports":         {resultdto.OperationGraphExports},
+	"graph_ast":             {resultdto.OperationGraphAST},
+	"graph_stats":           {resultdto.OperationGraphStats},
 	"project_diff":          {resultdto.OperationProjectDiff},
 	"project_verify":        {resultdto.OperationProjectVerify},
 	"project_check":         {resultdto.OperationProjectCheck},

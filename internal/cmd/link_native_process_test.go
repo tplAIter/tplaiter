@@ -472,7 +472,7 @@ func testNativeLinkInstalledProcess(t *testing.T, boundaries []string) {
 			inherited++
 		}
 	}
-	if len(actual) != 30 || actual["project_link"] == nil || inherited != 29 {
+	if len(actual) != 35 || actual["project_link"] == nil || inherited != 34 {
 		t.Fatalf("tool names %d canonical inherited %d", len(actual), inherited)
 	}
 	for _, v := range old {
