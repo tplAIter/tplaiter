@@ -13,7 +13,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 
-	"github.com/tplAIter/tplaiter/internal/execx"
+	execx "github.com/tplAIter/tplaiter/internal/execcontract"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 

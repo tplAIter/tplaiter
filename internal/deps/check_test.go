@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/tplAIter/tplaiter/internal/execx"
+	execx "github.com/tplAIter/tplaiter/internal/execcontract"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 )
 

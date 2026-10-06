@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextwire"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
@@ -23,17 +24,11 @@ const (
 	SourceSelectionAPIVersion = "tplaiter.dev/source-selection-input/v1"
 )
 
-var ErrSourceAdapterUnsupported = errors.New("TRUST_SOURCE_ADAPTER_UNSUPPORTED")
+var ErrSourceAdapterUnsupported = contextwire.ErrNativeUnsupported
 
 // NativeContract is the complete T5 compatibility closure. It intentionally
 // cannot describe portable dependencies or modifiers.
-type NativeContract struct {
-	APIVersion     string   `json:"apiVersion"`
-	Kind           string   `json:"kind"`
-	ManifestPath   string   `json:"manifestPath"`
-	ManifestSHA256 string   `json:"manifestSHA256"`
-	Dependencies   []string `json:"dependencies"`
-}
+type NativeContract = contextwire.NativeContract
 
 // SourceSelection is untrusted transport data. Verification happens only when
 // its conversion is passed to Runtime.VerifySubject.
@@ -64,19 +59,7 @@ type SelectionEvidence struct {
 // DecodeNativeContract rejects every field outside the fixed, native-only
 // wire. manifestRaw must be the bytes read from a verified snapshot.
 func DecodeNativeContract(raw, manifestRaw []byte) (*NativeContract, error) {
-	if len(raw) == 0 || len(raw) > 1<<20 {
-		return nil, ErrSourceAdapterUnsupported
-	}
-	var v NativeContract
-	if err := canonicaljson.DecodeStrict(raw, &v); err != nil {
-		return nil, ErrSourceAdapterUnsupported
-	}
-	if v.APIVersion != NativeContractAPIVersion || v.Kind != NativeContractKind ||
-		v.ManifestPath != "template.manifest.yaml" || v.Dependencies == nil || len(v.Dependencies) != 0 ||
-		v.ManifestSHA256 != rawDigest(manifestRaw) {
-		return nil, ErrSourceAdapterUnsupported
-	}
-	return &v, nil
+	return contextwire.DecodeNativeContract(raw, manifestRaw)
 }
 
 // DecodeSourceSelection accepts only the bounded, closed native T5 input.

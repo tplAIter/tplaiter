@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tplAIter/tplaiter/internal/contextauth"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/exports"
 	"github.com/tplAIter/tplaiter/internal/manifest"
@@ -449,5 +450,295 @@ func TestManagedNativeNewTopologyAndGrammarCounters(t *testing.T) {
 	stored, err := ordinary.OperationInputsSHA256(context.Background(), f.runtime)
 	if err != nil || !reflect.DeepEqual(digest, stored) {
 		t.Fatal("ordinary operation changed")
+	}
+}
+
+// The direct compiled consumer receives original runtime admissions, not a
+// transport capsule or caller-created snapshot. Both routes use one kernel.
+func TestSourceClosureDirectSignedParityAndDAG(t *testing.T) {
+	f := newContextFixture(t, nil)
+	ctx := context.Background()
+	source, e := PrepareContextSources(ctx, f.runtime, contextJSON(t, f.input))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer source.Close()
+	pins, e := source.Pins(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	originals := map[string]*trustverify.VerifiedResolution{}
+	for _, pin := range pins {
+		v, e := source.Resolution(ctx, pin.Alias)
+		if e != nil {
+			t.Fatal(e)
+		}
+		originals[pin.Alias] = v
+	}
+	direct, e := contextauth.AdmitSourceClosure(ctx, f.runtime, originals["root"], []*trustverify.VerifiedResolution{originals["b"], originals["leaf"], originals["a"]})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer direct.Close()
+	actual, e := direct.Pins(ctx)
+	if e != nil || !reflect.DeepEqual(actual, pins) {
+		t.Fatal("direct pins diverged", e)
+	}
+	graph, e := direct.SourceGraph(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	expected, e := source.SourceGraph(ctx)
+	if e != nil || !reflect.DeepEqual(graph, expected) {
+		t.Fatal("direct graph diverged", e)
+	}
+	if len(graph.Nodes) != 4 || len(graph.Edges) != 4 {
+		t.Fatal("incomplete authenticated DAG")
+	}
+	catalogs, e := direct.Catalogs(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	want, e := source.Catalogs(ctx)
+	if e != nil || !reflect.DeepEqual(catalogs, want) {
+		t.Fatal("direct catalog diverged", e)
+	}
+	if len(catalogs) != 4 {
+		t.Fatal("incomplete catalog")
+	}
+	subjects, e := direct.OperationSubjects(ctx, f.runtime)
+	if e != nil || len(subjects) != 4 {
+		t.Fatal("root-only subject projection", e)
+	}
+	for _, pin := range pins {
+		v, e := direct.Resolution(ctx, pin.Alias)
+		if e != nil || v != originals[pin.Alias] || v.Subject() != contextSubject(f.proofs[pin.Alias]) || v.Evidence() != contextEvidence(f.proofs[pin.Alias]) {
+			t.Fatal("original carrier replaced", e)
+		}
+		s := v.Subject()
+		provider := trustverify.Provider{Origin: s.Origin, TemplatePath: s.TemplatePath, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256}
+		if !slices.Contains(subjects, provider) {
+			t.Fatal("dependency subject dropped")
+		}
+		data, e := direct.CatalogData(ctx, pin.Alias)
+		if e != nil {
+			t.Fatal(e)
+		}
+		saved, e := source.CatalogData(ctx, pin.Alias)
+		if e != nil || !reflect.DeepEqual(data, saved) {
+			t.Fatal("direct data diverged", e)
+		}
+		if string(data.Entries) != string(f.files[pin.Alias]["catalog/entries.json"]) || string(data.Tool) != string(f.files[pin.Alias]["catalog/tool.md"]) || len(data.Payloads) != 1 || len(data.Blobs) != 1 || string(data.Payloads[0].Raw) != string(f.files[pin.Alias]["catalog/payloads/notes.json"]) || string(data.Blobs[0].Content) != string(f.files[pin.Alias]["docs/notes.md"]) {
+			t.Fatal("exact authenticated catalog images missing")
+		}
+		data.Blobs[0].Content[0] = 'X'
+		data.Payloads[0].Raw[0] = 'X'
+		again, e := direct.CatalogData(ctx, pin.Alias)
+		if e != nil || !reflect.DeepEqual(again, saved) {
+			t.Fatal("mutable source data", e)
+		}
+	}
+	root, e := direct.RootResolution(ctx, f.runtime)
+	if e != nil || root != originals["root"] {
+		t.Fatal("root original changed", e)
+	}
+	subjects[0].Commit = "changed"
+	again, e := direct.OperationSubjects(ctx, f.runtime)
+	if e != nil || again[0].Commit == "changed" {
+		t.Fatal("mutable subjects", e)
+	}
+	plain := []exports.Catalog{}
+	for _, c := range catalogs {
+		plain = append(plain, c.Catalog)
+	}
+	selection, e := exports.ResolveSelections([]exports.Selection{{APIVersion: exports.SelectionAPIVersion, Selector: "root.skill.notes", Bindings: []exports.ScalarParameter{}}}, &graph, plain)
+	if e != nil || len(selection.Selected) != 4 || len(selection.Edges) != 4 {
+		t.Fatal("required closure lost", e)
+	}
+	for _, s := range selection.Selected {
+		if s.Provider == "provider.leaf" && len(s.Chains) != 2 {
+			t.Fatal("shared transitive chains lost")
+		}
+	}
+	t.Logf("actual direct kernel: sources=%d edges=%d catalogs=%d originalSubjects=%d requiredExports=%d requiredEdges=%d digest=%s", len(pins), len(graph.Edges), len(catalogs), len(again), len(selection.Selected), len(selection.Edges), selection.Digest)
+	foreign, e := trustload.OpenRuntime(ctx, trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: contextFixtureClock{}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer foreign.Close()
+	foreignDep, e := foreign.TrustRuntime().VerifySubject(ctx, contextSubject(f.proofs["a"]), contextEvidence(f.proofs["a"]))
+	if e != nil {
+		t.Fatal(e)
+	}
+	for name, deps := range map[string][]*trustverify.VerifiedResolution{
+		"missing": {originals["a"], originals["b"]}, "duplicate": {originals["a"], originals["b"], originals["leaf"], originals["a"]}, "nil": {originals["a"], nil, originals["leaf"]}, "foreign-dependency": {foreignDep, originals["b"], originals["leaf"]}, "fabricated": {&trustverify.VerifiedResolution{}, originals["b"], originals["leaf"]},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if c, e := contextauth.AdmitSourceClosure(ctx, f.runtime, root, deps); e == nil {
+				c.Close()
+				t.Fatal("invalid original closure accepted")
+			}
+		})
+	}
+	if c, e := contextauth.AdmitSourceClosure(ctx, f.runtime, originals["a"], []*trustverify.VerifiedResolution{root, originals["b"], originals["leaf"]}); e == nil {
+		c.Close()
+		t.Fatal("unreachable originals accepted")
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, e := contextauth.AdmitSourceClosure(cancelled, f.runtime, root, []*trustverify.VerifiedResolution{originals["a"], originals["b"], originals["leaf"]}); e == nil {
+		t.Fatal("cancelled admission")
+	}
+	if direct.RecheckFor(ctx, foreign) == nil {
+		t.Fatal("foreign consumption accepted")
+	}
+	// A copied opaque value cannot establish a fresh lifetime or become an owner.
+	copied := reflect.New(reflect.TypeOf(*direct))
+	copied.Elem().Set(reflect.ValueOf(direct).Elem())
+	if copied.Interface().(*contextauth.VerifiedSourceClosure).Recheck(ctx) == nil {
+		t.Fatal("copied carrier accepted")
+	}
+	source.Close()
+	if direct.Recheck(ctx) != nil {
+		t.Fatal("independently admitted owner incorrectly closed with transport wrapper")
+	}
+}
+
+func TestManagedFormatterSourceBorrowLifetime(t *testing.T) {
+	f := managedNativeFixture(t)
+	ctx := context.Background()
+	source, e := PrepareContextSources(ctx, f.runtime, contextJSON(t, f.input))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer source.Close()
+	intent, e := PrepareManagedNativeNew(ctx, f.runtime, source, managedNativeInput())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer intent.Close()
+	carrier, e := intent.FormatterSources(ctx, f.runtime)
+	if e != nil {
+		t.Fatal(e)
+	}
+	subjects, e := carrier.OperationSubjects(ctx, f.runtime)
+	if e != nil {
+		t.Fatal(e)
+	}
+	op, e := intent.OperationBase(ctx, f.runtime)
+	if e != nil || !reflect.DeepEqual(subjects, op.Subjects) || len(op.Actions) != 0 || len(subjects) != 4 {
+		t.Fatal("formatter projection changed complete actions-empty calculation", e)
+	}
+	if again, e := intent.FormatterSources(ctx, f.runtime); e != nil || again != carrier {
+		t.Fatal("borrow was replaced", e)
+	}
+	child, e := carrier.Borrow(ctx, f.runtime)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer child.Close()
+	sibling, e := PrepareManagedNativeNew(ctx, f.runtime, source, managedNativeInput())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer sibling.Close()
+	siblingCarrier, e := sibling.FormatterSources(ctx, f.runtime)
+	if e != nil {
+		t.Fatal(e)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, e := intent.FormatterSources(cancelled, f.runtime); e == nil {
+		t.Fatal("cancelled borrow")
+	}
+	if _, e := intent.FormatterSources(ctx, &trustload.Runtime{}); e == nil {
+		t.Fatal("foreign borrow")
+	}
+	if _, e := carrier.OperationSubjects(cancelled, f.runtime); e == nil {
+		t.Fatal("cancelled subject projection")
+	}
+	copied := reflect.New(reflect.TypeOf(*intent))
+	copied.Elem().Set(reflect.ValueOf(intent).Elem())
+	if _, e := copied.Interface().(*PreparedNativeNew).FormatterSources(ctx, f.runtime); e == nil {
+		t.Fatal("copied intent obtained carrier")
+	}
+	intent.Close()
+	if carrier.Recheck(ctx) == nil || child.Recheck(ctx) == nil {
+		t.Fatal("intent close failed to invalidate descendants")
+	}
+	if source.Recheck(ctx) != nil || siblingCarrier.Recheck(ctx) != nil {
+		t.Fatal("intent close invalidated independent source/intent")
+	}
+	source.Close()
+	if siblingCarrier.Recheck(ctx) == nil {
+		t.Fatal("source close failed to invalidate formatter borrow")
+	}
+	if _, e := sibling.FormatterSources(ctx, f.runtime); e == nil {
+		t.Fatal("closed source recreated carrier")
+	}
+
+	ordinaryFixture := newContextFixture(t, nil)
+	ordinarySource, e := PrepareContextSources(ctx, ordinaryFixture.runtime, contextJSON(t, ordinaryFixture.input))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer ordinarySource.Close()
+	ordinary, e := PrepareNativeNew(ctx, ordinaryFixture.runtime, ordinarySource, managedNativeInput())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer ordinary.Close()
+	if _, e := ordinary.FormatterSources(ctx, ordinaryFixture.runtime); e == nil {
+		t.Fatal("ordinary action-free calculation became formatter authority")
+	}
+}
+
+func TestManagedFormatterSourceFreshnessAndClosedBorrow(t *testing.T) {
+	f := managedNativeFixture(t)
+	ctx := context.Background()
+	source, e := PrepareContextSources(ctx, f.runtime, contextJSON(t, f.input))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer source.Close()
+	intent, e := PrepareManagedNativeNew(ctx, f.runtime, source, managedNativeInput())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer intent.Close()
+	carrier, e := intent.FormatterSources(ctx, f.runtime)
+	if e != nil {
+		t.Fatal(e)
+	}
+	assertRefuses := func() {
+		t.Helper()
+		if carrier.RecheckFor(ctx, f.runtime) == nil {
+			t.Fatal("stale carrier accepted")
+		}
+		if _, e := intent.FormatterSources(ctx, f.runtime); e == nil {
+			t.Fatal("stale intent supplied carrier")
+		}
+		if _, e := carrier.Catalogs(ctx); e == nil {
+			t.Fatal("stale catalog projection")
+		}
+	}
+	for _, file := range []string{f.policyPath, filepath.Join(f.objectRoot, f.proofs["leaf"].Subject.Commit)} {
+		raw, e := os.ReadFile(file)
+		if e != nil {
+			t.Fatal(e)
+		}
+		contextWrite(t, file, append(raw, 'x'))
+		assertRefuses()
+		contextWrite(t, file, raw)
+		if e := carrier.Recheck(ctx); e != nil {
+			t.Fatal("restored original rejected", e)
+		}
+	}
+	carrier.Close()
+	if source.Recheck(ctx) != nil {
+		t.Fatal("borrow close closed original owner")
+	}
+	if _, e := intent.FormatterSources(ctx, f.runtime); e == nil {
+		t.Fatal("closed borrow resurrected")
 	}
 }

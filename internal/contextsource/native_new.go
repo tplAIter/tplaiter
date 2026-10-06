@@ -16,6 +16,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/blockmarkers"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+
+	"github.com/tplAIter/tplaiter/internal/contextauth"
 	"github.com/tplAIter/tplaiter/internal/deps"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/exports"
@@ -41,6 +43,8 @@ type PreparedNativeNew struct {
 	mu                       sync.Mutex
 	owner                    *trustload.Runtime
 	sources                  *PreparedContextSources
+	formatterSources         *contextauth.VerifiedSourceClosure
+	formatterOwner           *PreparedNativeNew
 	root                     provenance.RootTemplateLock
 	dependencies             provenance.TemplateLock
 	rendered                 *renderref.Result
@@ -245,7 +249,11 @@ func prepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *Prepar
 	if err = sources.RecheckFor(ctx, r); err != nil {
 		return nil, err
 	}
-	return &PreparedNativeNew{owner: r, sources: sources, root: root, dependencies: dependencies, rendered: result, manifest: append([]byte(nil), raw...), rootAlias: pin.Alias, operation: operation, contextDigest: contextDigest, operationBase: operationBase, managedFiles: managedFiles}, nil
+	prepared := &PreparedNativeNew{owner: r, sources: sources, root: root, dependencies: dependencies, rendered: result, manifest: append([]byte(nil), raw...), rootAlias: pin.Alias, operation: operation, contextDigest: contextDigest, operationBase: operationBase, managedFiles: managedFiles}
+	if mode == nativeManaged {
+		prepared.formatterOwner = prepared
+	}
+	return prepared, nil
 }
 
 type nativeNewImage struct {
@@ -346,7 +354,7 @@ func (p *PreparedNativeNew) ManagedFiles(ctx context.Context, r *trustload.Runti
 	if err := p.check(ctx, r); err != nil {
 		return nil, err
 	}
-	if len(p.managedFiles) == 0 {
+	if len(p.managedFiles) == 0 || p.formatterOwner != p {
 		return nil, errContextSources
 	}
 	out := append([]NativeManagedFile{}, p.managedFiles...)
@@ -523,6 +531,11 @@ func (p *PreparedNativeNew) Close() {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.formatterSources != nil {
+		p.formatterSources.Close()
+	}
+	p.formatterSources = nil
+	p.formatterOwner = nil
 	p.owner = nil
 	p.sources = nil
 	p.rendered = nil
@@ -603,4 +616,31 @@ func validateNativeNewValues(tpl *manifest.Template, values settings.Values) err
 		}
 	}
 	return nil
+}
+
+// FormatterSources borrows the actual admitted source closure for a managed
+// calculation. This is neither an execution permit nor publication authority.
+func (p *PreparedNativeNew) FormatterSources(ctx context.Context, r *trustload.Runtime) (*contextauth.VerifiedSourceClosure, error) {
+	if p == nil {
+		return nil, errContextSources
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.managedFiles) == 0 || p.formatterOwner != p {
+		return nil, errContextSources
+	}
+	if e := p.check(ctx, r); e != nil {
+		return nil, e
+	}
+	if p.formatterSources == nil {
+		c, e := p.sources.borrowClosure(ctx, r)
+		if e != nil {
+			return nil, e
+		}
+		p.formatterSources = c
+	}
+	if e := p.formatterSources.RecheckFor(ctx, r); e != nil {
+		return nil, e
+	}
+	return p.formatterSources, nil
 }
