@@ -41,42 +41,9 @@ func Resolve(ctx context.Context, runtime *trustload.Runtime, home, ref string, 
 	if err != nil {
 		return nil, err
 	}
-	alias, name, version := "pinned", "", selection.Subject.Commit
-	if ref != selection.Subject.Commit {
-		mgr := repo.New(home, nil, nil, repo.UI{})
-		resolved, err := mgr.ResolveRef(ref)
-		if err != nil {
-			return nil, err
-		}
-		if !aliasToken.MatchString(resolved.RepoAlias) {
-			return nil, ErrMismatch
-		}
-		cfg, err := state.LoadConfig(home)
-		if err != nil {
-			return nil, err
-		}
-		origin := ""
-		for _, r := range cfg.Repos {
-			if r.Alias == resolved.RepoAlias {
-				if origin != "" {
-					return nil, ErrMismatch
-				}
-				origin = r.URL
-			}
-		}
-		path := resolved.Entry.Path
-		if path == "" {
-			path = "."
-		}
-		if origin == "" || origin != selection.Subject.Origin || path != selection.Subject.TemplatePath {
-			return nil, ErrMismatch
-		}
-		clone := filepath.Join(home, "repos", resolved.RepoAlias)
-		commit, err := localCommit(ctx, clone, resolved.GitRef)
-		if err != nil || commit != selection.Subject.Commit {
-			return nil, ErrMismatch
-		}
-		alias, name, version = resolved.RepoAlias, resolved.Entry.Name, resolved.Version
+	alias, name, version, err := resolveRootLocator(ctx, home, ref, selection.Subject)
+	if err != nil {
+		return nil, err
 	}
 	stable := runtime.TrustRuntime()
 	resolution, err := stable.VerifySubject(ctx, selection.TrustSubject(), selection.EvidenceRefs())
@@ -106,6 +73,48 @@ func Resolve(ctx context.Context, runtime *trustload.Runtime, home, ref string, 
 		return nil, ErrMismatch
 	}
 	return &Source{Input: append([]byte(nil), raw...), Snapshot: snapshot, Alias: alias, Name: tpl.Metadata.Name, Version: version}, nil
+}
+
+// resolveRootLocator compares only locator data; it never authenticates bytes.
+func resolveRootLocator(ctx context.Context, home, ref string, subject operationtrust.SelectionSubject) (string, string, string, error) {
+	alias, name, version := "pinned", "", subject.Commit
+	if ref != subject.Commit {
+		mgr := repo.New(home, nil, nil, repo.UI{})
+		resolved, err := mgr.ResolveRef(ref)
+		if err != nil {
+			return "", "", "", err
+		}
+		if !aliasToken.MatchString(resolved.RepoAlias) {
+			return "", "", "", ErrMismatch
+		}
+		cfg, err := state.LoadConfig(home)
+		if err != nil {
+			return "", "", "", err
+		}
+		origin := ""
+		for _, r := range cfg.Repos {
+			if r.Alias == resolved.RepoAlias {
+				if origin != "" {
+					return "", "", "", ErrMismatch
+				}
+				origin = r.URL
+			}
+		}
+		path := resolved.Entry.Path
+		if path == "" {
+			path = "."
+		}
+		if origin == "" || origin != subject.Origin || path != subject.TemplatePath {
+			return "", "", "", ErrMismatch
+		}
+		clone := filepath.Join(home, "repos", resolved.RepoAlias)
+		commit, err := localCommit(ctx, clone, resolved.GitRef)
+		if err != nil || commit != subject.Commit {
+			return "", "", "", ErrMismatch
+		}
+		alias, name, version = resolved.RepoAlias, resolved.Entry.Name, resolved.Version
+	}
+	return alias, name, version, nil
 }
 
 func localCommit(ctx context.Context, clone, ref string) (string, error) {
