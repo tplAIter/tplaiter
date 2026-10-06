@@ -1,11 +1,14 @@
 package mcpsrv
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -25,14 +28,28 @@ const maxSummaryLines = 12
 // returns a document that satisfies the tool's outputSchema.
 func (s *Server) callStructured(ctx context.Context, op resultdto.Operation, cwd string, argv []string, class timeoutClass) *mcp.CallToolResult {
 	start := time.Now()
-	res, runErr := s.runCLI(ctx, cwd, withJSONFlag(argv), s.timeout(class))
+	res, capture, runErr := s.runCapturedCLI(ctx, cwd, withJSONFlag(argv), s.timeout(class))
 	duration := time.Since(start)
 	if code := transportCode(res, runErr); code != "" {
+		if env, ok := s.knownActionFrame(capture, op); ok {
+			return retainedActionFailure(env, res, code)
+		}
 		return s.transportFailure(op, code, duration)
 	}
 	env, err := decodeExpectedResult([]byte(res.Stdout), op, res.ExitCode)
 	if err != nil {
+		if retained, ok := s.knownActionFrame(capture, op); ok {
+			return retainedActionFailure(retained, res, "MCP_CONTRACT_INVALID")
+		}
 		return s.contractFailure(op, res, runErr)
+	}
+	var fields map[string]json.RawMessage
+	if op == resultdto.OperationProjectRun && json.Unmarshal(env.Data, &fields) == nil && fields["actionReceipt"] != nil {
+		retained, ok := s.knownActionFrame(capture, op)
+		if !ok {
+			return s.contractFailure(op, res, runErr)
+		}
+		return structuredResult(retained, failed(res, runErr))
 	}
 	return structuredResult(env, failed(res, runErr))
 }
@@ -174,7 +191,7 @@ var dataSchemas = map[resultdto.Operation]func() (json.RawMessage, error){
 	resultdto.OperationTrustInspect:        schemaOf[resultdto.TrustInspectData],
 	resultdto.OperationProjectsList:        schemaOf[resultdto.ProjectsListData],
 	resultdto.OperationProjectStats:        schemaOf[resultdto.ProjectStatsData],
-	resultdto.OperationProjectRun:          schemaOf[resultdto.ProjectRunData],
+	resultdto.OperationProjectRun:          actionRunDataSchema,
 	resultdto.OperationDoctorCheck:         schemaOf[resultdto.DoctorData],
 	resultdto.OperationAIGen:               schemaOf[resultdto.AIGenData],
 	resultdto.OperationGenRun:              schemaOf[resultdto.GenRunData],
@@ -284,4 +301,105 @@ func (s *Server) targetDir(op resultdto.Operation, argument, dir string) (string
 		return "", s.argumentFailure(op, argument)
 	}
 	return abs, nil
+}
+
+// knownActionFrame recognizes only complete canonical factual output of this
+// actual installed held-image capture. It is not authority for another action.
+func (s *Server) knownActionFrame(c *actionCapture, op resultdto.Operation) (resultdto.Result, bool) {
+	fail := func() (resultdto.Result, bool) { return resultdto.Result{}, false }
+	if c == nil || s == nil || c.owner != s || !s.installed || c.stage == nil || c.stage != s.stage || !c.complete || op != resultdto.OperationProjectRun {
+		return fail()
+	}
+	raw := []byte(c.result.Stdout)
+	if len(raw) == 0 || len(raw) > execx.MaxActionFrame || raw[len(raw)-1] != '\n' {
+		return fail()
+	}
+	raw = raw[:len(raw)-1]
+	// Preserve result/v1 canonical struct order; canonicaljson is used here
+	// only for strict syntax/duplicate checks. Exact bytes are checked below
+	// with the real resultdto canonical encoder.
+	_, e := canonicaljson.Canonicalize(raw)
+	if e != nil {
+		return fail()
+	}
+	env, e := resultdto.Decode(raw)
+	if e != nil || env.Operation != op || env.Kind != "ProjectRun" {
+		return fail()
+	}
+	var data resultdto.ProjectRunData
+	if decodeClosedActionData(env.Data, &data) != nil || data.ActionReceipt == nil || data.PreparedRequest != nil || data.ProcessReceipt != nil || data.ActionTransport != nil || data.Command == "" || data.Commands != nil || execx.ValidateActionProcessResult(*data.ActionReceipt) != nil {
+		return fail()
+	}
+	if data.ActionReceipt.ChildExitCode != nil && data.ChildExitCode != *data.ActionReceipt.ChildExitCode || data.ActionReceipt.ChildExitCode == nil && data.ChildExitCode != 0 {
+		return fail()
+	}
+	typed := env
+	if typed.SetData(data) != nil {
+		return fail()
+	}
+	roundtrip, e := resultdto.MarshalCanonical(typed)
+	if e != nil || !bytes.Equal(roundtrip, raw) {
+		return fail()
+	}
+	return env, true
+}
+
+func retainedActionFailure(env resultdto.Result, res execx.Result, code string) *mcp.CallToolResult {
+	var data resultdto.ProjectRunData
+	if decodeClosedActionData(env.Data, &data) != nil {
+		return structuredResult(env, true)
+	}
+	outer := res.ExitCode
+	data.ActionTransport = &resultdto.ActionTransport{StopReason: code, OuterExitCode: &outer, FrameComplete: true}
+	_ = env.SetData(data)
+	env.Status = resultdto.StatusFailed
+	env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: code, Severity: "error", Message: "action facts retained after delivery failure", Details: map[string]any{}})
+	return structuredResult(env, true)
+}
+
+// canonicaljson's generic shape checker treats []byte as arrays, while the
+// existing JSON wire uses base64 strings. Keep strict syntax/null/duplicate
+// parsing and close this local typed body with encoding/json. Exact casing,
+// required presence and base64 spelling are checked by the final v1 re-encode.
+func decodeClosedActionData(raw []byte, data *resultdto.ProjectRunData) error {
+	var parsed map[string]json.RawMessage
+	if len(raw) > execx.MaxActionFrame || canonicaljson.DecodeStrict(raw, &parsed) != nil || parsed == nil {
+		return errors.New("MCP_ACTION_FRAME_INVALID")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(data)
+}
+
+// encoding/json serializes []byte as base64 strings, including the retained
+// action receipt. Correct only those fields; legacy process-receipt fields
+// and every other operation keep the generator's existing wire.
+func actionRunDataSchema() (json.RawMessage, error) {
+	raw, e := schemaOf[resultdto.ProjectRunData]()
+	if e != nil {
+		return nil, e
+	}
+	var schema map[string]any
+	if json.Unmarshal(raw, &schema) != nil {
+		return nil, errors.New("action data schema unavailable")
+	}
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return nil, errors.New("action data properties unavailable")
+	}
+	receipt, ok := properties["actionReceipt"].(map[string]any)
+	if !ok {
+		return nil, errors.New("action receipt schema unavailable")
+	}
+	fields, ok := receipt["properties"].(map[string]any)
+	if !ok {
+		return nil, errors.New("action receipt properties unavailable")
+	}
+	for name, limit := range map[string]int{"stdout": 4 * ((128<<10 + 2) / 3), "stderr": 4 * ((16<<10 + 2) / 3)} {
+		if _, ok := fields[name]; !ok {
+			return nil, errors.New("action output schema unavailable")
+		}
+		fields[name] = map[string]any{"type": []string{"string", "null"}, "contentEncoding": "base64", "maxLength": limit}
+	}
+	return json.Marshal(schema)
 }

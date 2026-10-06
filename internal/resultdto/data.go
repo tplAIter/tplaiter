@@ -182,6 +182,8 @@ type AIGenData struct {
 // child's exit status; without one (`run --json`) it lists the manifest
 // commands instead.
 type ProjectRunData struct {
+	ActionReceipt   *execx.ActionProcessResult    `json:"actionReceipt,omitempty"`
+	ActionTransport *ActionTransport              `json:"actionTransport,omitempty"`
 	PreparedRequest *trustverify.ExecutionRequest `json:"preparedRequest,omitempty"`
 	ProcessReceipt  *execx.ProjectProcessResult   `json:"processReceipt,omitempty"`
 	Command         string                        `json:"command,omitempty"`
@@ -214,4 +216,12 @@ type UpdateData struct {
 	DryRun          bool     `json:"dryRun"`
 	To              string   `json:"to,omitempty"`
 	ConflictMarkers []string `json:"conflictMarkers"`
+}
+
+// ActionTransport records delivery facts only. It is not action authority.
+type ActionTransport struct {
+	StopReason    string `json:"stopReason"`
+	OuterExitCode *int   `json:"outerExitCode,omitempty"`
+	OuterSignal   int    `json:"outerSignal"`
+	FrameComplete bool   `json:"frameComplete"`
 }

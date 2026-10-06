@@ -10471,11 +10471,15 @@
           "type": "array"
         },
         "command": {
-          "description": "Manifest command name",
+          "description": "Authenticated declared native command name",
           "type": "string"
         },
         "dir": {
           "description": "Project directory (working directory)",
+          "type": "string"
+        },
+        "parameters": {
+          "description": "Closed finite typed action parameters as one JSON object",
           "type": "string"
         },
         "prepare": {
@@ -10596,6 +10600,156 @@
         "data": {
           "additionalProperties": false,
           "properties": {
+            "actionReceipt": {
+              "additionalProperties": false,
+              "properties": {
+                "apiVersion": {
+                  "type": "string"
+                },
+                "cancelled": {
+                  "type": "boolean"
+                },
+                "childExitCode": {
+                  "type": [
+                    "null",
+                    "integer"
+                  ]
+                },
+                "cleanup": {
+                  "type": "string"
+                },
+                "disposition": {
+                  "type": "string"
+                },
+                "implementationSHA256": {
+                  "type": "string"
+                },
+                "inputClosureSHA256": {
+                  "type": "string"
+                },
+                "launched": {
+                  "type": "string"
+                },
+                "operationInputsSHA256": {
+                  "type": "string"
+                },
+                "outputComplete": {
+                  "type": "boolean"
+                },
+                "overflow": {
+                  "type": "boolean"
+                },
+                "persistentWrites": {
+                  "type": [
+                    "null",
+                    "integer"
+                  ]
+                },
+                "profile": {
+                  "type": "string"
+                },
+                "profileSHA256": {
+                  "type": "string"
+                },
+                "requestSHA256": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": "integer"
+                },
+                "stderr": {
+                  "contentEncoding": "base64",
+                  "maxLength": 21848,
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "stderrBytes": {
+                  "type": "integer"
+                },
+                "stderrSHA256": {
+                  "type": "string"
+                },
+                "stdout": {
+                  "contentEncoding": "base64",
+                  "maxLength": 174764,
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "stdoutBytes": {
+                  "type": "integer"
+                },
+                "stdoutSHA256": {
+                  "type": "string"
+                },
+                "timedOut": {
+                  "type": "boolean"
+                },
+                "toolSHA256": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "apiVersion",
+                "requestSHA256",
+                "operationInputsSHA256",
+                "inputClosureSHA256",
+                "toolSHA256",
+                "profile",
+                "profileSHA256",
+                "implementationSHA256",
+                "launched",
+                "disposition",
+                "signal",
+                "stdout",
+                "stderr",
+                "stdoutSHA256",
+                "stderrSHA256",
+                "stdoutBytes",
+                "stderrBytes",
+                "outputComplete",
+                "timedOut",
+                "cancelled",
+                "overflow",
+                "cleanup"
+              ],
+              "type": [
+                "null",
+                "object"
+              ]
+            },
+            "actionTransport": {
+              "additionalProperties": false,
+              "properties": {
+                "frameComplete": {
+                  "type": "boolean"
+                },
+                "outerExitCode": {
+                  "type": [
+                    "null",
+                    "integer"
+                  ]
+                },
+                "outerSignal": {
+                  "type": "integer"
+                },
+                "stopReason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "stopReason",
+                "outerSignal",
+                "frameComplete"
+              ],
+              "type": [
+                "null",
+                "object"
+              ]
+            },
             "childExitCode": {
               "type": "integer"
             },

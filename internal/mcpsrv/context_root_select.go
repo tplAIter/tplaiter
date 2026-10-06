@@ -25,7 +25,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const rootDeliveryVersion = "tplaiter.dev/root-delivery/v1"
+const (
+	rootDeliveryVersion   = "tplaiter.dev/root-delivery/v1"
+	actionDeliveryVersion = "tplaiter.dev/action-delivery/v1"
+)
 
 type rootDeliveryMessage struct {
 	APIVersion string `json:"apiVersion"`
@@ -47,13 +50,15 @@ type rootFrames struct {
 	retiredMeta map[*mcp.Meta]*rootFrame
 }
 type rootFrame struct {
-	id       json.RawMessage
-	raw      json.RawMessage
-	ctx      context.Context
-	cancel   context.CancelFunc
-	child    *heldRootChild
-	expected []byte
-	ceiling  int
+	id           json.RawMessage
+	raw          json.RawMessage
+	ctx          context.Context
+	cancel       context.CancelFunc
+	child        *heldRootChild
+	expected     []byte
+	ceiling      int
+	action       bool
+	actionResult *resultdto.Result
 }
 
 func (s *Server) installRootFrames() *rootFrames {
@@ -73,11 +78,12 @@ func (s *Server) installRootFrames() *rootFrames {
 			Params struct {
 				Name      string `json:"name"`
 				Arguments struct {
-					Action string `json:"action"`
+					Action  string `json:"action"`
+					Command string `json:"command"`
 				} `json:"arguments"`
 			} `json:"params"`
 		}
-		if json.Unmarshal(raw, &route) != nil || route.Method != "tools/call" || route.Params.Name != "context" || route.Params.Arguments.Action != "select" {
+		if json.Unmarshal(raw, &route) != nil || route.Method != "tools/call" || !((route.Params.Name == "context" && route.Params.Arguments.Action == "select") || (route.Params.Name == "run" && route.Params.Arguments.Command != "" && route.Params.Arguments.Command != "build")) {
 			return nil
 		}
 		encoded, _ := json.Marshal(id)
@@ -106,12 +112,16 @@ func (s *Server) installRootFrames() *rootFrames {
 		if _, exists := f.requests[string(encoded)]; exists || f.retired[string(encoded)] != nil || len(f.requests)+len(f.retired) >= 64 {
 			return errors.New(contextcmd.Invalid)
 		}
-		owned, cancel := context.WithTimeout(ctx, s.timeout(shortCall))
+		class := shortCall
+		if route.Params.Name == "run" {
+			class = longCall
+		}
+		owned, cancel := context.WithTimeout(ctx, s.timeout(class))
 		if f.queued[string(encoded)] {
 			cancel()
 		}
 		delete(f.queued, string(encoded))
-		record := &rootFrame{id: encoded, raw: raw, ctx: owned, cancel: cancel}
+		record := &rootFrame{id: encoded, raw: raw, ctx: owned, cancel: cancel, action: route.Params.Name == "run"}
 		f.requests[string(encoded)] = record
 		context.AfterFunc(owned, func() { f.retire(record) })
 		admitted = true
@@ -120,7 +130,7 @@ func (s *Server) installRootFrames() *rootFrames {
 	// Installed after the local-preview hooks: this sees their final, server-owned
 	// Meta pointer. Caller _meta values cannot manufacture a lookup key.
 	hooks.AddBeforeCallTool(func(_ context.Context, id any, req *mcp.CallToolRequest) {
-		if req.Params.Name != "context" || req.GetArguments()["action"] != "select" {
+		if !rootOrActionCall(req) {
 			return
 		}
 		encoded, err := json.Marshal(id)
@@ -166,7 +176,7 @@ func (s *Server) installRootFrames() *rootFrames {
 		}
 	})
 	hooks.AddAfterCallTool(func(_ context.Context, _ any, req *mcp.CallToolRequest, result any) {
-		if req.Params.Name != "context" || req.GetArguments()["action"] != "select" {
+		if !rootOrActionCall(req) {
 			return
 		}
 		out, ok := result.(*mcp.CallToolResult)
@@ -177,6 +187,9 @@ func (s *Server) installRootFrames() *rootFrames {
 			return
 		}
 		record := f.lookup(req.Params.Meta)
+		if record != nil && record.action && record.child != nil {
+			return
+		}
 		if out.IsError || (record != nil && record.ctx.Err() != nil) {
 			if record := f.lookup(req.Params.Meta); record != nil {
 				f.remove(record)
@@ -256,6 +269,7 @@ func (f *rootFrames) remove(record *rootFrame) {
 		child.close()
 	}
 }
+
 func (f *rootFrames) close() {
 	f.mu.Lock()
 	clear(f.queued)
@@ -354,6 +368,7 @@ func rootFailure(s *Server, code string) *mcp.CallToolResult {
 	env.Diagnostics = []resultdto.Diagnostic{{Code: code, Severity: "error", Message: "Complete ROOT context delivery was refused", Details: map[string]any{}}}
 	return structuredResult(env, true)
 }
+
 func rootTransportCode(err error) string {
 	if errors.Is(err, context.Canceled) {
 		return "MCP_CANCELLED"
@@ -375,11 +390,16 @@ type heldRootChild struct {
 	output        *io.PipeReader
 	reader        *bufio.Reader
 	token, digest string
+	action        bool
 	done          chan error
 	once          sync.Once
 }
 
 func (s *Server) startRootChild(parent context.Context, cwd string, argv []string) (*heldRootChild, resultdto.Result, error) {
+	return s.startDeliveryChild(parent, cwd, argv, rootDeliveryVersion, resultdto.OperationContextQuery, 32768, "--root-delivery-token=")
+}
+
+func (s *Server) startDeliveryChild(parent context.Context, cwd string, argv []string, version string, op resultdto.Operation, ceiling int, flag string) (*heldRootChild, resultdto.Result, error) {
 	empty := resultdto.Result{}
 	if parent.Err() != nil {
 		return nil, empty, parent.Err()
@@ -425,8 +445,8 @@ func (s *Server) startRootChild(parent context.Context, cwd string, argv []strin
 	}
 	output, writer := io.Pipe()
 	ctx, cancel := context.WithCancel(parent)
-	child := &heldRootChild{ctx: ctx, cancel: cancel, control: control, replies: replies, output: output, reader: bufio.NewReaderSize(replies, 1025), token: token, done: make(chan error, 1)}
-	cmd := exec.Command(path, append(argv, "--root-delivery-token="+token)...) //nolint:noctx,depguard // fixed held-stage path; RunGroup owns lifecycle
+	child := &heldRootChild{ctx: ctx, cancel: cancel, control: control, replies: replies, output: output, reader: bufio.NewReaderSize(replies, 1025), token: token, action: version == actionDeliveryVersion, done: make(chan error, 1)}
+	cmd := exec.Command(path, append(argv, flag+token)...) //nolint:noctx,depguard // fixed held-stage path; RunGroup owns lifecycle
 	cmd.Dir = cwd
 	cmd.Env = s.childEnv
 	cmd.ExtraFiles = []*os.File{input, response}
@@ -447,21 +467,58 @@ func (s *Server) startRootChild(parent context.Context, cwd string, argv []strin
 	// before inherited pipe descriptors could be closed by its parent goroutine.
 	stop := context.AfterFunc(ctx, func() { output.Close(); replies.Close(); control.Close() })
 	_ = stop // The callback belongs to ctx; close always cancels it.
-	stdout := bufio.NewReaderSize(output, 32769)
+	stdout := bufio.NewReaderSize(output, ceiling+1)
 	frame, err := stdout.ReadSlice('\n')
-	if err != nil || len(frame) > 32768 {
+	if err != nil || len(frame) > ceiling {
 		child.close()
 		if parent.Err() != nil {
 			return nil, empty, parent.Err()
 		}
 		return nil, empty, errTransportUnavailable
 	}
-	env, err := resultdto.Decode(frame)
-	if err != nil || env.Operation != resultdto.OperationContextQuery {
+	if _, err := canonicaljson.Canonicalize(frame); err != nil {
 		child.close()
 		return nil, empty, errTransportUnavailable
 	}
-	if env.Status != resultdto.StatusOK {
+	env, err := resultdto.Decode(frame)
+	if err != nil || env.Operation != op {
+		child.close()
+		return nil, empty, errTransportUnavailable
+	}
+	if version == actionDeliveryVersion {
+		canonical, e := resultdto.MarshalCanonical(env)
+		// A pre-admission refusal owns no action delivery lease. Preserve its
+		// complete canonical diagnostic rather than disguising it as transport
+		// unavailability or constructing authority from an empty result body.
+		if e == nil && bytes.Equal(append(canonical, '\n'), frame) && actionEarlyRefusal(env) {
+			if _, tailErr := stdout.ReadByte(); tailErr != io.EOF {
+				child.close()
+				return nil, empty, errTransportUnavailable
+			}
+			terminal := <-child.done
+			var exit *exec.ExitError
+			if parent.Err() != nil || !errors.As(terminal, &exit) || exit.ExitCode() <= 0 || env.ValidateExit(resultdto.ExitCode(exit.ExitCode())) != nil {
+				child.close()
+				return nil, empty, errTransportUnavailable
+			}
+			if !s.installed || s.stage == nil {
+				child.close()
+				return nil, empty, errTransportUnavailable
+			}
+			if _, stageErr := s.stage.launchPath(); stageErr != nil {
+				child.close()
+				return nil, empty, errTransportUnavailable
+			}
+			child.close()
+			return nil, env, nil
+		}
+		var data resultdto.ProjectRunData
+		if e != nil || !bytes.Equal(append(canonical, '\n'), frame) || decodeClosedActionData(env.Data, &data) != nil || data.Command == "" || data.Command == "build" || data.ActionTransport != nil || data.ProcessReceipt != nil || len(data.Commands) != 0 || (data.ActionReceipt == nil) == (data.PreparedRequest == nil) || (data.ActionReceipt != nil && execx.ValidateActionProcessResult(*data.ActionReceipt) != nil) {
+			child.close()
+			return nil, empty, errTransportUnavailable
+		}
+	}
+	if env.Status != resultdto.StatusOK && version == rootDeliveryVersion {
 		child.close()
 		return nil, env, nil
 	}
@@ -476,11 +533,27 @@ func (s *Server) startRootChild(parent context.Context, cwd string, argv []strin
 	return child, env, nil
 }
 
+func actionEarlyRefusal(env resultdto.Result) bool {
+	if env.Operation != resultdto.OperationProjectRun || (env.Status != resultdto.StatusBlocked && env.Status != resultdto.StatusFailed) || len(env.Data) != 0 || len(env.Diagnostics) == 0 {
+		return false
+	}
+	for _, d := range env.Diagnostics {
+		if d.Severity != "error" {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *heldRootChild) exchange(sequence int, action, want string) error {
 	if err := c.ctx.Err(); err != nil {
 		return err
 	}
-	raw, err := json.Marshal(rootDeliveryMessage{rootDeliveryVersion, c.token, sequence, action, c.digest})
+	version := rootDeliveryVersion
+	if c.action {
+		version = actionDeliveryVersion
+	}
+	raw, err := json.Marshal(rootDeliveryMessage{version, c.token, sequence, action, c.digest})
 	if err != nil {
 		return err
 	}
@@ -492,11 +565,12 @@ func (c *heldRootChild) exchange(sequence int, action, want string) error {
 		return errors.New(contextcmd.Stale)
 	}
 	var reply rootDeliveryMessage
-	if canonicaljson.DecodeStrict(line, &reply) != nil || reply != (rootDeliveryMessage{rootDeliveryVersion, c.token, sequence, want, c.digest}) {
+	if canonicaljson.DecodeStrict(line, &reply) != nil || reply != (rootDeliveryMessage{version, c.token, sequence, want, c.digest}) {
 		return errors.New(contextcmd.Stale)
 	}
 	return c.ctx.Err()
 }
+
 func (c *heldRootChild) close() {
 	c.once.Do(func() { c.cancel(); c.control.Close(); c.replies.Close(); c.output.Close(); <-c.done })
 }
@@ -529,6 +603,16 @@ func (w *rootResponseWriter) Write(frame []byte) (int, error) {
 	if record == nil {
 		// Cancellation can retire the owner while the SDK finishes encoding.
 		// An orphaned ROOT payload must never escape as a successful result.
+		if isActionDeliveryResult(envelope.Result) {
+			replacement, err := rootToolFrame(envelope.ID, actionDeliveryFailure(w.server, "MCP_CANCELLED"))
+			if err != nil {
+				return 0, err
+			}
+			if err = writeRootBytes(w.out, replacement); err != nil {
+				return 0, err
+			}
+			return len(frame), nil
+		}
 		if isRootSelectionResult(envelope.Result) {
 			replacement, err := rootToolFrame(envelope.ID, rootFailure(w.server, "MCP_CANCELLED"))
 			if err != nil {
@@ -550,7 +634,7 @@ func (w *rootResponseWriter) Write(frame []byte) (int, error) {
 	// invalid reused ID. Preserve that frame and leave the ROOT request untouched.
 	// This classifies output only; source authority remains exclusively in the
 	// fixed installed child and its real retained RootSelection.
-	if !bytes.Equal(frame, record.expected) && !isRootSelectionResult(envelope.Result) {
+	if !bytes.Equal(frame, record.expected) && (record.action || !isRootSelectionResult(envelope.Result)) {
 		return w.out.Write(frame)
 	}
 	defer w.frames.remove(record)
@@ -569,7 +653,11 @@ func (w *rootResponseWriter) Write(frame []byte) (int, error) {
 		}
 	}
 	if refused != "" {
-		replacement, err := rootToolFrame(record.id, rootFailure(w.server, refused))
+		failure := rootFailure(w.server, refused)
+		if record.action && record.actionResult != nil {
+			failure = retainedActionDeliveryFailure(*record.actionResult, refused)
+		}
+		replacement, err := rootToolFrame(record.id, failure)
 		if err != nil {
 			return 0, err
 		}
@@ -606,6 +694,7 @@ func (w *rootResponseWriter) Write(frame []byte) (int, error) {
 	}
 	return len(frame), nil
 }
+
 func writeRootBytes(w io.Writer, b []byte) error {
 	n, err := w.Write(b)
 	if err == nil && n != len(b) {
@@ -714,4 +803,77 @@ func rootStdioOutput() (*os.File, func(), error) {
 	file := os.NewFile(uintptr(fd), "tplaiter-mcp-output")
 	closeOutput := func() { _ = syscall.SetNonblock(fd, flags&syscall.O_NONBLOCK != 0); _ = file.Close() }
 	return file, closeOutput, nil
+}
+
+func rootOrActionCall(req *mcp.CallToolRequest) bool {
+	if req.Params.Name == "context" {
+		return req.GetArguments()["action"] == "select"
+	}
+	name, ok := req.GetArguments()["command"].(string)
+	return req.Params.Name == "run" && ok && name != "" && name != "build"
+}
+
+func (s *Server) callAction(_ context.Context, cwd string, argv []string, call mcp.CallToolRequest) *mcp.CallToolResult {
+	record := s.rootFrames.lookup(call.Params.Meta)
+	if record == nil || !record.action || !s.installed {
+		return s.argumentFailure(resultdto.OperationProjectRun, "command")
+	}
+	child, env, e := s.startDeliveryChild(record.ctx, cwd, withJSONFlag(argv), actionDeliveryVersion, resultdto.OperationProjectRun, execx.MaxActionFrame, "--action-delivery-token=")
+	if e != nil {
+		return s.transportFailure(resultdto.OperationProjectRun, rootTransportCode(e), 0)
+	}
+	result := structuredResult(env, env.Status != resultdto.StatusOK)
+	if child == nil {
+		return result
+	}
+	frame, e := rootToolFrame(record.id, result)
+	if e != nil || len(frame) > execx.MaxActionFrame {
+		child.close()
+		return s.transportFailure(resultdto.OperationProjectRun, "MCP_OUTPUT_LIMIT", 0)
+	}
+	s.rootFrames.mu.Lock()
+	defer s.rootFrames.mu.Unlock()
+	if record.ctx.Err() != nil || s.rootFrames.requests[string(record.id)] != record {
+		child.close()
+		return s.transportFailure(resultdto.OperationProjectRun, "MCP_CANCELLED", 0)
+	}
+	record.child, record.expected, record.ceiling = child, frame, execx.MaxActionFrame
+	record.actionResult = &env
+	return result
+}
+
+func retainedActionDeliveryFailure(env resultdto.Result, code string) *mcp.CallToolResult {
+	var data resultdto.ProjectRunData
+	if decodeClosedActionData(env.Data, &data) != nil {
+		return structuredResult(env, true)
+	}
+	// The installed child is still alive: there is no observed terminal outer code.
+	data.ActionTransport = &resultdto.ActionTransport{StopReason: code, FrameComplete: true}
+	_ = env.SetData(data)
+	env.Status = resultdto.StatusFailed
+	env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: code, Severity: "error", Message: "action facts retained after final delivery refusal", Details: map[string]any{}})
+	return structuredResult(env, true)
+}
+
+// Output classification only. Orphaned JSON never recreates source authority.
+func isActionDeliveryResult(raw json.RawMessage) bool {
+	var result struct {
+		Structured json.RawMessage `json:"structuredContent"`
+	}
+	if json.Unmarshal(raw, &result) != nil {
+		return false
+	}
+	env, e := resultdto.Decode(result.Structured)
+	if e != nil || env.Operation != resultdto.OperationProjectRun {
+		return false
+	}
+	var data resultdto.ProjectRunData
+	return decodeClosedActionData(env.Data, &data) == nil && data.Command != "" && data.Command != "build" && (data.ActionReceipt != nil || data.PreparedRequest != nil)
+}
+
+func actionDeliveryFailure(s *Server, code string) *mcp.CallToolResult {
+	env := resultdto.New(resultdto.OperationProjectRun, s.version)
+	env.Status = resultdto.StatusBlocked
+	env.Diagnostics = []resultdto.Diagnostic{{Code: code, Severity: "error", Message: "native action delivery has no retained source owner", Details: map[string]any{}}}
+	return structuredResult(env, true)
 }

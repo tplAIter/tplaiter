@@ -35,14 +35,17 @@ func newRunCmd() *cobra.Command {
 
 		Use:   "run [name] [-- args...]",
 		Short: "Show project commands or execute one",
-		Long:  "List commands, prepare a signed pure-Go build request, or compile the authenticated project with a persistent operator approval. No shell command execution.",
+		Long:  "List commands, prepare an authenticated native action or pure-Go build request, or execute with a persistent operator approval and supported OS guard. No shell command execution.",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// The composed root rejects this before its hooks.  Keep the same
 			// ordering when callers construct newRunCmd directly: a named action
 			// must not discover cwd, HOME, or a manifest before fixed material.
 			if len(args) != 0 {
-				return runNativeBuild(cmd, args, native)
+				if len(args) == 1 && args[0] == "build" {
+					return runNativeBuild(cmd, args, native)
+				}
+				return runNativeAction(cmd, args, native)
 			}
 			tpl, proj, _, err := loadRunContext()
 			if err != nil {

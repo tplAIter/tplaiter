@@ -1,0 +1,19 @@
+{
+  "status": "NEUTRAL_BASELINE_CAP_REFUSAL_NOT_INSTALLABLE",
+  "profile_proposal": "fixed-baseline-plus2GiB-AS/v1",
+  "baseline_bytes": 445746249728,
+  "maximum_baseline_bytes": 34359738368,
+  "maximum_total_bytes": 36507222016,
+  "exit": 21,
+  "limit_setter_executed": false,
+  "allocation_refusal_proved": false,
+  "target_loaded": false,
+  "productive": false,
+  "source_sha256": "5be35c326bb7d56c2de852004b63c6ffb07c7c7903e2677739b1e229db48c9dc",
+  "recipe_sha256": "d31ac9ac5052e4c688c0d73f6942e10ee743f42f06eeb99d2da17e6fa810483a",
+  "helper_sha256": "429976292a272a0d1cdb3143cd6b309822528273b7f95e1a2716e0b9c4c87112",
+  "build_log": "darwin-baseline-build.log",
+  "actual_counter": "darwin-baseline-execution.log",
+  "parent_preexec_pins_sha256": "39e6085640b83f50dafb9b71eb0561f1c2fc934683556acaab247211cc112198",
+  "qualification": "original parent FD/path identity held through compile and neutral execution; cache/compiler/source selected pins hashed. Full compiler SDK header closure and behavior-authenticated loader closure NOT certified. No embed, installation or runtime grant."
+}

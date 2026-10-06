@@ -10,6 +10,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
@@ -30,6 +31,7 @@ type FixedCompositionSelection struct {
 }
 
 type ExecutionMaterial struct {
+	action       *ActionSelection
 	selection    *FixedCompositionSelection
 	formatter    *FormatterSelection
 	projectBuild *ProjectBuildSelection
@@ -123,6 +125,13 @@ func BindExecutionMaterial(ctx context.Context, runtime *trustverify.Runtime, re
 }
 
 func (m *ExecutionMaterial) StagedFor(ctx context.Context, runtime *trustverify.Runtime, request trustverify.ExecutionRequest) (trustverify.StagedMaterial, error) {
+	if m != nil && m.action != nil {
+		if m.action.stable != runtime {
+			return trustverify.StagedMaterial{}, ErrActionSelection
+		}
+		staged, _, err := m.ActionFor(ctx, m.action.owner, request)
+		return staged, err
+	}
 	if m != nil && m.projectBuild != nil {
 		if ctx == nil || m.projectBuild.owner == nil || m.projectBuild.owner.TrustRuntime() != runtime {
 			return trustverify.StagedMaterial{}, ErrExecutionMaterialUnavailable
@@ -138,6 +147,52 @@ func (m *ExecutionMaterial) StagedFor(ctx context.Context, runtime *trustverify.
 	}
 	s := m.selection
 	return trustverify.StagedMaterial{Operation: cloneOperation(s.operation), Request: cloneRequest(s.request), Content: []trustverify.ContentEntry{{Root: "provider", Path: stdinPath, Mode: "100644", ContentSHA256: evidencecas.Digest(s.stdin)}}, ContentBytes: [][]byte{append([]byte(nil), s.stdin...)}, ToolBytes: append([]byte(nil), s.tool...), ToolOptions: []string{}, Environment: fixedEnvironment()}, nil
+}
+
+func BindActionMaterial(ctx context.Context, owner *trustload.Runtime, s *ActionSelection) (*ExecutionMaterial, error) {
+	if s == nil || s.closed || s.owner != owner {
+		return nil, ErrActionSelection
+	}
+	if err := s.Recheck(ctx, owner); err != nil {
+		return nil, err
+	}
+	return &ExecutionMaterial{action: s}, nil
+}
+
+func (m *ExecutionMaterial) ActionFor(ctx context.Context, owner *trustload.Runtime, request trustverify.ExecutionRequest) (trustverify.StagedMaterial, ActionProjection, error) {
+	if m == nil || m.action == nil || m.action.closed || m.action.owner != owner || request.VerifyRequestSHA256() != nil || !reflect.DeepEqual(request, m.action.request) {
+		return trustverify.StagedMaterial{}, ActionProjection{}, ErrActionSelection
+	}
+	s := m.action
+	if err := s.Recheck(ctx, owner); err != nil {
+		return trustverify.StagedMaterial{}, ActionProjection{}, err
+	}
+	data := make([][]byte, len(s.contentBytes))
+	for i, b := range s.contentBytes {
+		data[i] = append([]byte(nil), b...)
+	}
+	p := s.projection
+	p.Stdin = append([]byte(nil), p.Stdin...)
+	p.Files = append([]ActionInputFile(nil), p.Files...)
+	for i := range p.Files {
+		p.Files[i].Bytes = append([]byte(nil), p.Files[i].Bytes...)
+	}
+	return trustverify.StagedMaterial{Operation: s.Operation(), Request: s.Request(), Content: append([]trustverify.ContentEntry(nil), s.content...), ContentBytes: data, ToolBytes: append([]byte(nil), s.tool...), ToolOptions: nativeActionToolOptions(request.Action.Argv), Environment: fixedEnvironment()}, p, nil
+}
+
+func (m *ExecutionMaterial) ActionInputFor(owner *trustload.Runtime, request trustverify.ExecutionRequest) (ActionInput, error) {
+	if m == nil || m.action == nil || m.action.closed || m.action.owner != owner || !reflect.DeepEqual(m.action.request, request) {
+		return ActionInput{}, ErrActionSelection
+	}
+	x := m.action.input
+	x.ParametersJSON = append([]byte(nil), x.ParametersJSON...)
+	return x, nil
+}
+
+func (m *ExecutionMaterial) CloseAction(owner *trustload.Runtime) {
+	if m != nil && m.action != nil && m.action.owner == owner {
+		m.action.Close()
+	}
 }
 
 func fixedEnvironment() trustverify.EnvironmentPolicy {
@@ -165,3 +220,5 @@ func cloneOperation(o trustverify.OperationInputs) trustverify.OperationInputs {
 	}
 	return o
 }
+
+func nativeActionToolOptions(argv []string) []string { return append([]string{}, argv[1:]...) }

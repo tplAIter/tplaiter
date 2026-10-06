@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
@@ -436,4 +437,66 @@ func modesForCounter(mode string) []string {
 		return nil
 	}
 	return []string{mode}
+}
+
+func nativeActionGateDocument(t *testing.T) map[string]any {
+	t.Helper()
+	d := evidencecas.Digest([]byte("neutral declaration data"))
+	return map[string]any{"apiVersion": "tplaiter.dev/template-actions/v1", "actions": []any{map[string]any{"id": "check", "purpose": "run", "class": "staged-native-readonly/v1", "profile": "linux-static-fd-go127-poll/v1", "version": 1, "kind": "command", "phase": "standalone", "shell": false, "parameters": []any{}, "argv": []any{map[string]any{"kind": "literal", "value": "checker"}}, "inputs": []any{}, "stdin": map[string]any{"root": "provider", "path": "stdin.txt", "mode": "100644", "sha256": d}, "tool": map[string]any{"provider": map[string]any{"origin": "https://example.test/neutral-tool", "templatePath": ".", "commit": strings.Repeat("a", 40), "treeSHA256": d, "contractSHA256": d}, "evidence": map[string]any{"format": "tplaiter.dev/publisher-statement/v1", "statementCAS": d, "signatureCAS": d, "keyFingerprint": d, "checkpointCAS": d, "inclusionProofCAS": d}, "id": "checker", "version": "1.0.0", "recordSHA256": d}, "environment": map[string]any{"apiVersion": "tplaiter.dev/execution-environment/v1", "inherit": false, "variables": []any{map[string]any{"name": "LANG", "value": "C"}}, "capabilities": []any{}}, "workingDirectory": map[string]any{"root": "provider", "path": ".tplaiter-execution"}, "timeoutMillis": 5000, "stdoutLimit": 128 << 10, "stderrLimit": 16 << 10}}}
+}
+
+func TestNativeDeclaredActionGate(t *testing.T) {
+	for _, name := range []string{"good", "shell", "missing", "duplicate", "extra", "drop", "wrong-body", "conditional", "legacy-mixture", "foreign-manifest"} {
+		t.Run(name, func(t *testing.T) {
+			doc := nativeActionGateDocument(t)
+			actions := doc["actions"].([]any)
+			a := actions[0].(map[string]any)
+			extra := "commands:\n  check:\n    run: tplaiter-action:check\n"
+			switch name {
+			case "shell":
+				a["shell"] = true
+			case "duplicate":
+				doc["actions"] = append(actions, actions[0])
+			case "extra":
+				extra += "  other:\n    run: tplaiter-action:other\n"
+			case "drop":
+				extra = ""
+			case "conditional":
+				extra += "    when: workflow\n"
+			case "legacy-mixture":
+				extra += "  build:\n    run: go build -mod=readonly -buildvcs=false ./...\n"
+			}
+			raw, e := canonicaljson.Canonical(doc)
+			if e != nil {
+				t.Fatal(e)
+			}
+			files := map[string][]byte{operationtrust.TemplateActionsPath: raw, "stdin.txt": []byte("neutral declaration data")}
+			if name == "missing" {
+				delete(files, operationtrust.TemplateActionsPath)
+			}
+			if name == "wrong-body" {
+				files["stdin.txt"] = []byte("changed")
+			}
+			snapshot, e := nativeSnapshotFixture(t, extra, files, false)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if name == "foreign-manifest" {
+				m, _ := snapshot.Blob("template.manifest.yaml")
+				tpl, e := manifest.ParseTemplate(m)
+				if e != nil {
+					t.Fatal(e)
+				}
+				tpl.Metadata.Name = "foreign"
+				if operationtrust.ValidateBoundNativeCommands(snapshot, tpl) == nil {
+					t.Fatal("foreign manifest accepted")
+				}
+				return
+			}
+			e = ValidateNativeGenerators(snapshot)
+			if (e == nil) != (name == "good") {
+				t.Fatalf("accept=%t error=%v", e == nil, e)
+			}
+		})
+	}
 }

@@ -124,7 +124,7 @@ func prepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *Prepar
 	if err != nil {
 		return nil, err
 	}
-	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || tpl.AIConfig.Path != "" || operationtrust.ValidateBoundProjectBuildContent(verifiedSnapshot, tpl) != nil {
+	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || tpl.AIConfig.Path != "" || operationtrust.ValidateBoundNativeCommands(verifiedSnapshot, tpl) != nil {
 		return nil, errContextSources
 	}
 	if err := validateNativeNewValues(tpl, in.Render.Values); err != nil {

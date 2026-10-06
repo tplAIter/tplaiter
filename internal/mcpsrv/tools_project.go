@@ -33,6 +33,7 @@ type projectNewArgs struct {
 }
 
 type runArgs struct {
+	Parameters     string   `json:"parameters"`
 	ProjectContext string   `json:"projectContext"`
 	Prepare        bool     `json:"prepare"`
 	ApprovalCAS    string   `json:"approvalCAS"`
@@ -109,7 +110,8 @@ func (s *Server) addProjectTools() {
 		"run",
 		mcp.WithDescription("Prepare or execute an authenticated signed pure-Go project build with a persistent operator approval; no shell fallback."),
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory (working directory)")),
-		mcp.WithString("command", mcp.Required(), mcp.Description("Manifest command name")),
+		mcp.WithString("command", mcp.Required(), mcp.Description("Authenticated declared native command name")),
+		mcp.WithString("parameters", mcp.Description("Closed finite typed action parameters as one JSON object")),
 		mcp.WithString("projectContext", mcp.Description("authenticated installed project key")),
 		mcp.WithBoolean("prepare", mcp.Description("prepare request without executing")),
 		mcp.WithString("approvalCAS", mcp.Description("persistent signed approval digest")),
@@ -117,7 +119,7 @@ func (s *Server) addProjectTools() {
 		mcp.WithArray("args", mcp.Description("Additional arguments passed to the command after --"),
 			mcp.Items(map[string]any{"type": "string"})),
 		outputSchema(resultdto.OperationProjectRun),
-	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a runArgs) (*mcp.CallToolResult, error) {
+	), mcp.NewTypedToolHandler(func(ctx context.Context, call mcp.CallToolRequest, a runArgs) (*mcp.CallToolResult, error) {
 		cwd, failure := s.workDir(resultdto.OperationProjectRun, "dir", a.Dir)
 		if failure != nil {
 			return failure, nil
@@ -140,6 +142,15 @@ func (s *Server) addProjectTools() {
 		}
 		if a.ApprovalInput != "" {
 			argv = append(argv, "--approval-input", a.ApprovalInput)
+		}
+		if a.Parameters != "" {
+			if a.Command == "build" {
+				return s.argumentFailure(resultdto.OperationProjectRun, "parameters"), nil
+			}
+			argv = append(argv, "--parameters="+a.Parameters)
+		}
+		if a.Command != "build" {
+			return s.callAction(ctx, cwd, argv, call), nil
 		}
 		return s.callStructured(ctx, resultdto.OperationProjectRun, cwd, argv, longCall), nil
 	}))

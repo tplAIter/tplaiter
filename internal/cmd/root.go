@@ -4,6 +4,13 @@ package cmd
 import (
 	"context"
 	"errors"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/tplAIter/tplaiter/internal/actioncmd"
+	"github.com/tplAIter/tplaiter/internal/execx"
+	"github.com/tplAIter/tplaiter/internal/operationtrust"
 
 	"github.com/spf13/cobra"
 
@@ -192,9 +199,8 @@ func init() {
 // --upgrade); `tplaiter --upgrade` (also a bare root invocation, but with the
 // flag) runs first-run/suggest like a normal command.
 func rootPreRun(cmd *cobra.Command, args []string) error {
-	// The single restored native command owns its fixed trust composition.
-	// All other named run commands retain the legacy no-effects denial.
-	if cmd.Name() == "run" && len(args) > 0 && args[0] == "build" {
+	// Named runs own fixed installed composition before any legacy hooks.
+	if cmd.Name() == "run" && len(args) > 0 {
 		return nil
 	}
 	// This classification precedes every legacy root hook.  A command that
@@ -231,4 +237,44 @@ func rootPreRun(cmd *cobra.Command, args []string) error {
 // Execute runs the root command.
 func Execute() error {
 	return rootCmd.Execute()
+}
+
+// TryActionBootstrap runs before Cobra and accepts only the exact hidden
+// same-image protocol. It reconstructs installed authority and the approval.
+// No caller environment, path, JSON permit or prepared receipt is a grant.
+func TryActionBootstrap(args []string) (bool, int) {
+	if !execx.ActionBootstrapHandled(args) {
+		return false, 0
+	}
+	if len(args) != 1 || args[0] != execx.ActionBootstrapToken {
+		return true, 126
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	control, e := execx.ReadActionBootstrapControl()
+	if e != nil {
+		return true, 126
+	}
+	in, e := installedInvocation(ctx)
+	if e != nil {
+		return true, 126
+	}
+	r, e := trustload.OpenRuntime(ctx, trustload.RuntimeOptions{Selection: in.Selection, ProjectKey: control.ProjectContext, Clock: in.Clock})
+	if e != nil {
+		return true, 126
+	}
+	defer r.Close()
+	source, e := projectBuildSource(ctx, r)
+	if e != nil {
+		return true, 126
+	}
+	s, e := actioncmd.Prepare(ctx, r, source, operationtrust.ActionInput{Name: control.ActionID, ParametersJSON: control.Parameters})
+	if e != nil {
+		return true, 126
+	}
+	defer s.Close()
+	if e = s.EnterBootstrap(ctx, control); e != nil {
+		return true, 126
+	}
+	return true, 126 // A successful kernel exec never returns here.
 }

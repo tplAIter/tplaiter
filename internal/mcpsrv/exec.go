@@ -109,26 +109,46 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 // failures are reported as errTransportTimeout, errTransportCancelled,
 // errOutputLimit or errTransportUnavailable; a completed child with a
 // non-zero status is reported as *execx.ExitError.
+// actionCapture retains factual process bytes only. It has no decoder,
+// exported constructor, permit or mutation method.
+type actionCapture struct {
+	owner    *Server
+	stage    *heldStage
+	result   execx.Result
+	complete bool
+	stop     execx.StopReason
+}
+
 func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout time.Duration) (execx.Result, error) {
+	result, _, e := s.runCapturedCLI(ctx, cwd, argv, timeout)
+	// Preserve ordinary transport refusal behavior. Action callers explicitly
+	// use the separate capture; there is still only one actual child launch.
+	if transportCode(result, e) != "" {
+		return execx.Result{ExitCode: -1}, e
+	}
+	return result, e
+}
+
+func (s *Server) runCapturedCLI(ctx context.Context, cwd string, argv []string, timeout time.Duration) (execx.Result, *actionCapture, error) {
 	if s == nil || s.exe == "" {
-		return execx.Result{ExitCode: -1}, errTransportUnavailable
+		return execx.Result{ExitCode: -1}, nil, errTransportUnavailable
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if !s.installed && !s.direct {
 		if s.runner == nil {
-			return execx.Result{ExitCode: -1}, errTransportUnavailable
+			return execx.Result{ExitCode: -1}, nil, errTransportUnavailable
 		}
 		res, err := s.runner.Run(callCtx, s.exe, argv, execx.Options{Dir: cwd, Env: childEnvironment(), ProcessGroup: true, KillGrace: s.limits.KillGrace})
 		if stopErr := stopCause(ctx, callCtx); stopErr != nil {
-			return execx.Result{ExitCode: -1}, stopErr
+			return execx.Result{ExitCode: -1}, nil, stopErr
 		}
-		return res, err
+		return res, nil, err
 	}
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		return execx.Result{ExitCode: -1}, errTransportUnavailable
+		return execx.Result{ExitCode: -1}, nil, errTransportUnavailable
 	}
 	s.children.Add(1)
 	s.mu.Unlock()
@@ -137,7 +157,7 @@ func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout 
 	if s.installed {
 		path, err := s.stage.launchPath()
 		if err != nil {
-			return execx.Result{ExitCode: -1}, errTransportUnavailable
+			return execx.Result{ExitCode: -1}, nil, errTransportUnavailable
 		}
 		child = path
 	}
@@ -153,28 +173,38 @@ func (s *Server) runCLI(ctx context.Context, cwd string, argv []string, timeout 
 	cmd.Stderr = stderr
 	group, waitErr := execx.RunGroup(callCtx, cmd, execx.GroupOptions{Grace: s.limits.KillGrace, Abort: overflow})
 	if cmd.Process == nil {
-		return execx.Result{ExitCode: -1}, errTransportUnavailable
+		return execx.Result{ExitCode: -1}, nil, errTransportUnavailable
 	}
-	switch group.Stopped {
-	case execx.StopContext:
-		return execx.Result{ExitCode: -1}, stopCause(ctx, callCtx)
-	case execx.StopAbort:
-		return execx.Result{ExitCode: -1}, errOutputLimit
-	case execx.StopNone:
-	}
-	if stdout.overflow || stderr.overflow {
-		return execx.Result{ExitCode: -1}, errOutputLimit
-	}
+
 	result := execx.Result{Stdout: string(stdout.b), Stderr: string(stderr.b), ExitCode: 0}
 	if waitErr != nil {
 		result.ExitCode = -1
-		x := &exec.ExitError{}
-		if errors.As(waitErr, &x) {
-			result.ExitCode = x.ExitCode()
+		var exit *exec.ExitError
+		if errors.As(waitErr, &exit) {
+			result.ExitCode = exit.ExitCode()
 		}
-		return result, &execx.ExitError{ExitCode: result.ExitCode}
 	}
-	return result, nil
+	var capture *actionCapture
+	// Direct/injected paths do not own an authenticated held staged image.
+	// JSON from them is never upgraded into sealed retained action facts.
+	if s.installed && s.stage != nil {
+		if _, e := s.stage.launchPath(); e == nil {
+			capture = &actionCapture{owner: s, stage: s.stage, result: result, complete: !stdout.overflow && !stderr.overflow, stop: group.Stopped}
+		}
+	}
+	switch group.Stopped {
+	case execx.StopContext:
+		return result, capture, stopCause(ctx, callCtx)
+	case execx.StopAbort:
+		return result, capture, errOutputLimit
+	}
+	if stdout.overflow || stderr.overflow {
+		return result, capture, errOutputLimit
+	}
+	if waitErr != nil {
+		return result, capture, &execx.ExitError{ExitCode: result.ExitCode}
+	}
+	return result, capture, nil
 }
 
 // stopCause classifies why a call context ended: the client (or server

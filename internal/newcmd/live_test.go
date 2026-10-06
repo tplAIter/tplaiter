@@ -48,6 +48,20 @@ func liveFixture(t *testing.T, extra ...string) (*t5DIntegrationFixture, Options
 	return f, Options{Ref: f.source.Commit, ProjectName: "Demo Service", Dir: f.project, Defaults: true, NoHooks: true, CLIVersion: "v1.0.0"}, Deps{Runtime: runtime, Home: home, SourceInput: t5DSelection(f.source, f.sourceRefs), Out: &bytes.Buffer{}, Now: func() time.Time { return time.Unix(1700000000, 0).UTC() }}
 }
 
+func TestLiveNativeCommandRequiresBoundMetadata(t *testing.T) {
+	f, opts, deps := liveFixture(t, "commands:\n  check:\n    run: tplaiter-action:check\n")
+	before, err := os.ReadDir(f.project)
+	if err != nil || len(before) != 0 {
+		t.Fatalf("fixture target is not empty: %v", err)
+	}
+	if err := runLive(context.Background(), opts, deps, nil); !errors.Is(err, operationtrust.ErrSourceAdapterUnsupported) {
+		t.Fatalf("unbound command accepted: %v", err)
+	}
+	if after, err := os.ReadDir(f.project); err != nil || len(after) != 0 {
+		t.Fatalf("refusal changed the empty target: %v", err)
+	}
+}
+
 func assertLiveProject(t *testing.T, f *t5DIntegrationFixture, d Deps) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(f.project, "hello.txt"))

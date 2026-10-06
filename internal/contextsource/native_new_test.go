@@ -2,6 +2,7 @@ package contextsource
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/contextauth"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/exports"
@@ -126,6 +128,7 @@ func managedNativeFixture(t *testing.T) *contextFixture {
 		}
 	})
 }
+
 func managedNativeInput() NativeNewInput {
 	return NativeNewInput{Render: renderref.Input{Values: settings.Values{}, Project: manifest.ProjectInfo{Name: "Example", Slug: "example", Module: "example.invalid/project"}}, RendererVersion: "1.0.0"}
 }
@@ -740,5 +743,60 @@ func TestManagedFormatterSourceFreshnessAndClosedBorrow(t *testing.T) {
 	}
 	if _, e := intent.FormatterSources(ctx, f.runtime); e == nil {
 		t.Fatal("closed borrow resurrected")
+	}
+}
+
+func contextActionGateDocument(t *testing.T) map[string]any {
+	t.Helper()
+	d := evidencecas.Digest([]byte("neutral declaration data"))
+	return map[string]any{"apiVersion": "tplaiter.dev/template-actions/v1", "actions": []any{map[string]any{"id": "check", "purpose": "run", "class": "staged-native-readonly/v1", "profile": "linux-static-fd-go127-poll/v1", "version": 1, "kind": "command", "phase": "standalone", "shell": false, "parameters": []any{}, "argv": []any{map[string]any{"kind": "literal", "value": "checker"}}, "inputs": []any{}, "stdin": map[string]any{"root": "provider", "path": "stdin.txt", "mode": "100644", "sha256": d}, "tool": map[string]any{"provider": map[string]any{"origin": "https://example.test/neutral-tool", "templatePath": ".", "commit": strings.Repeat("a", 40), "treeSHA256": d, "contractSHA256": d}, "evidence": map[string]any{"format": "tplaiter.dev/publisher-statement/v1", "statementCAS": d, "signatureCAS": d, "keyFingerprint": d, "checkpointCAS": d, "inclusionProofCAS": d}, "id": "checker", "version": "1.0.0", "recordSHA256": d}, "environment": map[string]any{"apiVersion": "tplaiter.dev/execution-environment/v1", "inherit": false, "variables": []any{map[string]any{"name": "LANG", "value": "C"}}, "capabilities": []any{}}, "workingDirectory": map[string]any{"root": "provider", "path": ".tplaiter-execution"}, "timeoutMillis": 5000, "stdoutLimit": 128 << 10, "stderrLimit": 16 << 10}}}
+}
+
+func TestNativeNewDeclaredActionGate(t *testing.T) {
+	for _, bad := range []bool{false, true} {
+		t.Run(map[bool]string{false: "actual-retained-positive", true: "missing-metadata-refusal"}[bad], func(t *testing.T) {
+			f := newContextFixture(t, func(alias string, files map[string][]byte) {
+				if alias != "root" {
+					return
+				}
+				files["template.manifest.yaml"] = append(files["template.manifest.yaml"], []byte("commands:\n  check:\n    run: tplaiter-action:check\n")...)
+				var c NativeContextContract
+				if e := json.Unmarshal(files["template.contract.json"], &c); e != nil {
+					t.Fatal(e)
+				}
+				c.ManifestSHA256 = evidencecas.Digest(files["template.manifest.yaml"])
+				files["template.contract.json"] = contextJSON(t, c)
+				raw, e := canonicaljson.Canonical(contextActionGateDocument(t))
+				if e != nil {
+					t.Fatal(e)
+				}
+				if !bad {
+					files["actions/run/actions.json"] = raw
+				}
+				files["stdin.txt"] = []byte("neutral declaration data")
+			})
+			ctx := context.Background()
+			sources, e := PrepareContextSources(ctx, f.runtime, contextJSON(t, f.input))
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer sources.Close()
+			result, e := PrepareNativeNew(ctx, f.runtime, sources, NativeNewInput{Render: renderref.Input{Values: settings.Values{}, Project: manifest.ProjectInfo{Name: "Example", Slug: "example", Module: "example.invalid/project"}}, RendererVersion: "1.0.0"})
+			if bad {
+				if e == nil {
+					result.Close()
+					t.Fatal("missing metadata accepted")
+				}
+				return
+			}
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer result.Close()
+			rendered, e := result.Rendered(ctx, f.runtime)
+			if e != nil || string(rendered.Files["hello.txt"]) != "Hello public project.\n" {
+				t.Fatal("inert rendering changed", e)
+			}
+		})
 	}
 }

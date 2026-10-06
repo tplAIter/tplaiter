@@ -82,7 +82,7 @@ func runLive(ctx context.Context, opts Options, d Deps, fault newtransaction.Fau
 	}
 	// Resource and execution consumers are separate slices. Refuse rather than
 	// silently omit declared work or hand it to an ambient runner.
-	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || operationtrust.ValidateProjectBuildSource(ctx, d.Runtime.TrustRuntime(), src.Input, tpl) != nil || tpl.AIConfig.Path != "" || (opts.EnvSetup != nil && *opts.EnvSetup) {
+	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || operationtrust.ValidateNativeCommandSource(ctx, d.Runtime.TrustRuntime(), src.Input, tpl) != nil || tpl.AIConfig.Path != "" || (opts.EnvSetup != nil && *opts.EnvSetup) {
 		return fmt.Errorf("%w: live new supports native action-free templates only", operationtrust.ErrSourceAdapterUnsupported)
 	}
 	constraint := tpl.Requires.Tplaiter

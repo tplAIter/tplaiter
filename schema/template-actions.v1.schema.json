@@ -1,0 +1,653 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplaiter.dev/schema/template-actions.v1.schema.json",
+  "title": "Closed standalone staged native read-only action declarations",
+  "description": "Source selection contract only; declarations do not authorize or deliver execution. Runtime independently authenticates tool source and interprets sorted IDs, typed finite parameters, input closure, capsule and current project context. No shell, env installation, hooks or future purpose is described.",
+  "$defs": {
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root",
+        "path",
+        "mode",
+        "sha256"
+      ],
+      "properties": {
+        "root": {
+          "enum": [
+            "provider",
+            "tool",
+            "project"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^[^/\\\\\\x00]+(/[^/\\\\\\x00]+){0,31}$",
+          "not": {
+            "pattern": "(^|/)\\.\\.?(/|$)|^actions(/|$)|^\\.tplaiter(/|$)"
+          }
+        },
+        "mode": {
+          "const": "100644"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "values"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "boolean",
+            "integer"
+          ]
+        },
+        "values": {
+          "type": "array",
+          "items": {},
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "string"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "not": {
+                    "pattern": "\\x00"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "boolean"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "items": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integer"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "items": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "purpose",
+        "class",
+        "profile",
+        "version",
+        "kind",
+        "phase",
+        "shell",
+        "parameters",
+        "argv",
+        "inputs",
+        "stdin",
+        "tool",
+        "environment",
+        "workingDirectory",
+        "timeoutMillis",
+        "stdoutLimit",
+        "stderrLimit"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+        },
+        "purpose": {
+          "const": "run"
+        },
+        "class": {
+          "const": "staged-native-readonly/v1"
+        },
+        "profile": {
+          "enum": [
+            "darwin25G83-native-fd/v1",
+            "linux-static-fd-go127/v1",
+            "linux-static-fd-go127-poll/v1"
+          ]
+        },
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "command"
+        },
+        "phase": {
+          "const": "standalone"
+        },
+        "shell": {
+          "const": false
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/parameter"
+          },
+          "minItems": 0,
+          "maxItems": 16
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "value"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "literal",
+                  "parameter"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "not": {
+                  "pattern": "\\x00"
+                }
+              }
+            }
+          },
+          "minItems": 1,
+          "maxItems": 64
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/input"
+          },
+          "minItems": 0,
+          "maxItems": 127
+        },
+        "stdin": {
+          "$ref": "#/$defs/input"
+        },
+        "tool": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider",
+            "evidence",
+            "id",
+            "version",
+            "recordSHA256"
+          ],
+          "properties": {
+            "provider": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "origin",
+                "templatePath",
+                "commit",
+                "treeSHA256",
+                "contractSHA256"
+              ],
+              "properties": {
+                "origin": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "not": {
+                    "pattern": "\\x00"
+                  }
+                },
+                "templatePath": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "not": {
+                    "pattern": "\\x00"
+                  }
+                },
+                "commit": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+                },
+                "treeSHA256": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "contractSHA256": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            },
+            "evidence": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "format",
+                "statementCAS",
+                "signatureCAS",
+                "keyFingerprint",
+                "checkpointCAS",
+                "inclusionProofCAS"
+              ],
+              "properties": {
+                "format": {
+                  "const": "tplaiter.dev/publisher-statement/v1"
+                },
+                "statementCAS": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "signatureCAS": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "keyFingerprint": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "checkpointCAS": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "inclusionProofCAS": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "not": {
+                "pattern": "\\x00"
+              }
+            },
+            "recordSHA256": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        "environment": {
+          "const": {
+            "apiVersion": "tplaiter.dev/execution-environment/v1",
+            "inherit": false,
+            "variables": [
+              {
+                "name": "LANG",
+                "value": "C"
+              }
+            ],
+            "capabilities": []
+          }
+        },
+        "workingDirectory": {
+          "const": {
+            "root": "provider",
+            "path": ".tplaiter-execution"
+          }
+        },
+        "timeoutMillis": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000
+        },
+        "stdoutLimit": {
+          "const": 131072
+        },
+        "stderrLimit": {
+          "const": 16384
+        }
+      }
+    },
+    "actionCurrent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "purpose",
+        "class",
+        "profile",
+        "version",
+        "kind",
+        "phase",
+        "shell",
+        "parameters",
+        "argv",
+        "inputs",
+        "stdin",
+        "tool",
+        "environment",
+        "workingDirectory",
+        "timeoutMillis",
+        "stdoutLimit",
+        "stderrLimit"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+        },
+        "purpose": {
+          "const": "run"
+        },
+        "class": {
+          "const": "staged-native-readonly/v1"
+        },
+        "profile": {
+          "enum": [
+            "darwin25G83-native-fd/v1",
+            "linux-static-fd-go127/v1",
+            "linux-static-fd-go127-poll/v1"
+          ]
+        },
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "command"
+        },
+        "phase": {
+          "const": "standalone"
+        },
+        "shell": {
+          "const": false
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/parameter"
+          },
+          "minItems": 0,
+          "maxItems": 16
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "value"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "literal",
+                  "parameter"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "not": {
+                  "pattern": "\\x00"
+                }
+              }
+            }
+          },
+          "minItems": 1,
+          "maxItems": 64
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/input"
+          },
+          "minItems": 0,
+          "maxItems": 127
+        },
+        "stdin": {
+          "$ref": "#/$defs/input"
+        },
+        "tool": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider",
+            "evidence",
+            "id",
+            "version",
+            "recordSHA256",
+            "selection"
+          ],
+          "properties": {
+            "provider": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "origin",
+                "templatePath",
+                "commit",
+                "treeSHA256",
+                "contractSHA256"
+              ],
+              "properties": {
+                "origin": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "not": {
+                    "pattern": "\\x00"
+                  }
+                },
+                "templatePath": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "not": {
+                    "pattern": "\\x00"
+                  }
+                },
+                "commit": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+                },
+                "treeSHA256": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "contractSHA256": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            },
+            "evidence": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "format",
+                "statementCAS",
+                "signatureCAS",
+                "keyFingerprint"
+              ],
+              "properties": {
+                "format": {
+                  "const": "tplaiter.dev/publisher-statement/v1"
+                },
+                "statementCAS": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "signatureCAS": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "keyFingerprint": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "not": {
+                "pattern": "\\x00"
+              }
+            },
+            "recordSHA256": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "selection": {
+              "const": "installed-current/v1"
+            }
+          }
+        },
+        "environment": {
+          "const": {
+            "apiVersion": "tplaiter.dev/execution-environment/v1",
+            "inherit": false,
+            "variables": [
+              {
+                "name": "LANG",
+                "value": "C"
+              }
+            ],
+            "capabilities": []
+          }
+        },
+        "workingDirectory": {
+          "const": {
+            "root": "provider",
+            "path": ".tplaiter-execution"
+          }
+        },
+        "timeoutMillis": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000
+        },
+        "stdoutLimit": {
+          "const": 131072
+        },
+        "stderrLimit": {
+          "const": 16384
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiVersion",
+        "actions"
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/template-actions/v1"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          },
+          "minItems": 1,
+          "maxItems": 64
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiVersion",
+        "actions"
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/template-actions/v2"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/actionCurrent"
+          },
+          "minItems": 1,
+          "maxItems": 64
+        }
+      }
+    }
+  ]
+}

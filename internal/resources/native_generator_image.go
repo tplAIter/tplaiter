@@ -146,7 +146,7 @@ func nativeGeneratorContent(snapshot *trustverify.SourceSnapshot, src retainedSn
 	if err != nil || tpl.Validate() != nil {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
-	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || operationtrust.ValidateBoundProjectBuildContent(snapshot, tpl) != nil || tpl.AIConfig.Path != "" {
+	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || operationtrust.ValidateBoundNativeCommands(snapshot, tpl) != nil || tpl.AIConfig.Path != "" {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
 	refs := make(map[string]string)

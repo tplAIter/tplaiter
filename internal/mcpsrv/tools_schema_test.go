@@ -3,6 +3,8 @@ package mcpsrv
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -173,5 +175,69 @@ func TestLocalPreviewKeepsAllNativeOutputSchemas(t *testing.T) {
 			t.Fatal("output contract removed", name)
 		}
 		_ = compileToolSchema(t, tool.Tool.RawOutputSchema)
+	}
+}
+
+// TestRunActionCompiledMetadataGolden checks the actual registered metadata,
+// without invoking any tool, source acquisition, installation or process.
+func TestRunActionCompiledMetadataGolden(t *testing.T) {
+	srv := New("/nonexistent/tplaiter", "test", nil)
+	tools := srv.MCP().ListTools()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "tests", "testdata", "mcp", "tools.schema.golden.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var golden []map[string]any
+	if err := json.Unmarshal(raw, &golden); err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 35 || len(golden) != 35 {
+		t.Fatalf("expected exact35 descriptors, got %d/%d", len(tools), len(golden))
+	}
+	seen := make(map[string]bool)
+	for _, want := range golden {
+		name, ok := want["name"].(string)
+		if !ok || seen[name] {
+			t.Fatal("invalid/duplicate golden name")
+		}
+		seen[name] = true
+		tool, ok := tools[name]
+		if !ok {
+			t.Fatalf("missing compiled tool %s", name)
+		}
+		body, err := json.Marshal(tool.Tool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatal(err)
+		}
+		if name == "run" {
+			// Optional test-only capture is an observation of real compiled metadata.
+			// It cannot update the oracle or confer source/execution authority.
+			if dest := os.Getenv("TPLAITER_RUN_METADATA_CAPTURE"); dest != "" {
+				var buf bytes.Buffer
+				enc := json.NewEncoder(&buf)
+				enc.SetEscapeHTML(false)
+				enc.SetIndent("", "  ")
+				if err := enc.Encode(got); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(dest, buf.Bytes(), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			compileToolSchema(t, tool.Tool.RawOutputSchema)
+			props := got["inputSchema"].(map[string]any)["properties"].(map[string]any)
+			if props["parameters"] == nil || props["command"].(map[string]any)["description"] != "Authenticated declared native command name" {
+				t.Fatal("missing named action metadata")
+			}
+		}
+		actual, _ := json.Marshal(got)
+		expected, _ := json.Marshal(want)
+		if !bytes.Equal(actual, expected) {
+			t.Errorf("compiled metadata differs from exact golden: %s", name)
+		}
 	}
 }
