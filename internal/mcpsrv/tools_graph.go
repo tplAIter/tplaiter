@@ -263,7 +263,19 @@ func (g *graphTransport) writeRefusal() error {
 
 func (g *graphTransport) Read(p []byte) (int, error) {
 	for len(g.pending) == 0 {
-		line, err := g.input.ReadBytes('\n')
+		frame, err := readTransportFrame(g.ctx, g.input)
+		if err == errTransportFrameLimit {
+			refusalError := g.writeRefusal()
+			g.cancel()
+			if g.stopStdio != nil {
+				g.stopStdio()
+			}
+			if refusalError != nil {
+				return 0, refusalError
+			}
+			return 0, errTransportFrameHandled
+		}
+		line := frame.raw
 		if len(line) == 0 {
 			return 0, err
 		}

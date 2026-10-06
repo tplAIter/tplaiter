@@ -110,7 +110,7 @@ func executeReadonlyAction(ctx context.Context, scratch string, l actionLaunch) 
 	// Linux ETXTBSY protects the currently mapped executable's body. Its FD is
 	// retained in the parent and closes at the final confined tool exec.
 	bootstrapFD := 7 + len(l.projection.Files)
-	c := exec.Command("/proc/self/fd/"+strconv.Itoa(bootstrapFD), ActionBootstrapToken)
+	c := exec.Command("/proc/self/fd/"+strconv.Itoa(bootstrapFD), l.bootstrapToken)
 	c.Dir = s.path
 	c.Env = []string{"LANG=C"}
 	c.Stdin = s.files[len(s.files)-1]

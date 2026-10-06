@@ -1,0 +1,11 @@
+# MCP input limits
+
+The bounded stdio transport limits each raw newline-delimited MCP input frame to **2 MiB (2,097,152 bytes), including the newline**. This is a global input policy: it applies to ordinary requests, malformed input, graph requests and batch requests before the method, tool name or request ID is decoded. Both input layers check remaining capacity before growing or appending the frame; an oversized prefix never reaches JSON decoding or a handler.
+
+Oversized input terminates the stream. The detecting layer makes one refusal attempt through the existing **250 ms** bounded output gate, then cancels the transport and closes owned stdio. Blocked or failed output may prevent delivery of the refusal; the guarantee is one bounded attempt, not a delivered response. An already handled overflow does not produce a second refusal in the outer layer. The reader consumes at most one bounded fragment beyond the ceiling, discards the refused frame and does not drain an unbounded remainder or recover subsequent frames on that stream.
+
+Under the ceiling, ordinary input bytes and cancellation notifications retain their existing forwarding behavior, including final bytes returned at EOF without a newline. This policy introduces no new timeout for ordinary input or output and does not change ordinary output ownership. Cancellation is checked before reads and after completed fragments. A context cancellation alone cannot interrupt an already blocked underlying idle read; that still requires the existing stream-close mechanism.
+
+Input and output limits are separate. ROOT context delivery retains its **32 KiB** contract. Batch delivery has a separate **1 MiB** ceiling for the complete CLI result plus newline and the complete MCP response, including normalized escaped request ID, text summary and structured content. A request that fits the input ceiling can still fail its operation-specific schema or output budget. Neither limit authorizes truncating mandatory output or treating a partial frame as complete.
+
+These byte limits are not total process memory or RSS limits, model token budgets, source admission, organization authentication or execution grants. Meeting a transport limit supplies no approval or authority. This policy description does not establish installed batch runtime acceptance.

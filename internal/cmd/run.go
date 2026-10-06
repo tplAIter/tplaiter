@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -38,6 +39,13 @@ func newRunCmd() *cobra.Command {
 		Long:  "List commands, prepare an authenticated native action or pure-Go build request, or execute with a persistent operator approval and supported OS guard. No shell command execution.",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("batch-input") {
+				return runNativeBatch(cmd, args, native)
+			}
+			if native.batchApprovals != "" || native.batchApprovalInput != "" || native.batchDeliveryToken != "" || native.batchFrameLayout != "" {
+				return errors.New("TRUST_REQUEST_INVALID")
+			}
+
 			// The composed root rejects this before its hooks.  Keep the same
 			// ordering when callers construct newRunCmd directly: a named action
 			// must not discover cwd, HOME, or a manifest before fixed material.

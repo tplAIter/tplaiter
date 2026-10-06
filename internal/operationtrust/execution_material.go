@@ -31,10 +31,12 @@ type FixedCompositionSelection struct {
 }
 
 type ExecutionMaterial struct {
-	action       *ActionSelection
-	selection    *FixedCompositionSelection
-	formatter    *FormatterSelection
-	projectBuild *ProjectBuildSelection
+	batchAction    *batchActionSelection
+	batchApprovals []string
+	action         *ActionSelection
+	selection      *FixedCompositionSelection
+	formatter      *FormatterSelection
+	projectBuild   *ProjectBuildSelection
 }
 
 func ResolveFixedComposition(ctx context.Context, runtime *trustverify.Runtime, resolution *trustverify.VerifiedResolution, operation trustverify.OperationInputs, request trustverify.ExecutionRequest) (*FixedCompositionSelection, error) {
@@ -160,6 +162,9 @@ func BindActionMaterial(ctx context.Context, owner *trustload.Runtime, s *Action
 }
 
 func (m *ExecutionMaterial) ActionFor(ctx context.Context, owner *trustload.Runtime, request trustverify.ExecutionRequest) (trustverify.StagedMaterial, ActionProjection, error) {
+	if m != nil && m.batchAction != nil {
+		return m.batchAction.staged(ctx, owner, request)
+	}
 	if m == nil || m.action == nil || m.action.closed || m.action.owner != owner || request.VerifyRequestSHA256() != nil || !reflect.DeepEqual(request, m.action.request) {
 		return trustverify.StagedMaterial{}, ActionProjection{}, ErrActionSelection
 	}
@@ -181,6 +186,15 @@ func (m *ExecutionMaterial) ActionFor(ctx context.Context, owner *trustload.Runt
 }
 
 func (m *ExecutionMaterial) ActionInputFor(owner *trustload.Runtime, request trustverify.ExecutionRequest) (ActionInput, error) {
+	if m != nil && m.batchAction != nil {
+		s := m.batchAction
+		if s.batch.closed || s.batch.owner != owner || !reflect.DeepEqual(s.request, request) {
+			return ActionInput{}, ErrRunBatch
+		}
+		x := s.original.input
+		x.ParametersJSON = append([]byte(nil), x.ParametersJSON...)
+		return x, nil
+	}
 	if m == nil || m.action == nil || m.action.closed || m.action.owner != owner || !reflect.DeepEqual(m.action.request, request) {
 		return ActionInput{}, ErrActionSelection
 	}
@@ -190,6 +204,10 @@ func (m *ExecutionMaterial) ActionInputFor(owner *trustload.Runtime, request tru
 }
 
 func (m *ExecutionMaterial) CloseAction(owner *trustload.Runtime) {
+	if m != nil && m.batchAction != nil && m.batchAction.batch.owner == owner {
+		m.batchAction.batch.Close()
+		return
+	}
 	if m != nil && m.action != nil && m.action.owner == owner {
 		m.action.Close()
 	}
@@ -222,3 +240,17 @@ func cloneOperation(o trustverify.OperationInputs) trustverify.OperationInputs {
 }
 
 func nativeActionToolOptions(argv []string) []string { return append([]string{}, argv[1:]...) }
+
+func (m *ExecutionMaterial) ActionBatchFor(owner *trustload.Runtime, request trustverify.ExecutionRequest) (RunBatchInput, int, []string, bool, error) {
+	if m == nil {
+		return RunBatchInput{}, 0, nil, false, ErrRunBatch
+	}
+	if m.batchAction == nil {
+		return RunBatchInput{}, 0, nil, false, nil
+	}
+	s := m.batchAction
+	if s.batch.closed || s.batch.owner != owner || !reflect.DeepEqual(s.request, request) || len(m.batchApprovals) != len(s.batch.selections) {
+		return RunBatchInput{}, 0, nil, false, ErrRunBatch
+	}
+	return s.batch.Input(), s.ordinal, append([]string(nil), m.batchApprovals...), true, nil
+}

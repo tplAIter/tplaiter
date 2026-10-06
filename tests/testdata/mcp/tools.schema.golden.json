@@ -11150,6 +11150,726 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
+    "description": "Prepare or execute a finite ordered authenticated readonly native command batch; ONE operation, complete signed approval vector, no shell or child-process widening.",
+    "inputSchema": {
+      "properties": {
+        "approvalInput": {
+          "description": "Public signed approval document array path",
+          "type": "string"
+        },
+        "approvals": {
+          "description": "Complete ordered persistent signed approval digest vector",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dir": {
+          "description": "Authenticated installed project root",
+          "type": "string"
+        },
+        "input": {
+          "description": "Closed run-batch-input/v1 JSON, 1..16 ordered typed steps",
+          "type": "string"
+        },
+        "prepare": {
+          "description": "Report finalized requests without import or execution",
+          "type": "boolean"
+        },
+        "projectContext": {
+          "description": "Exact authenticated installed context key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir",
+        "input"
+      ],
+      "type": "object"
+    },
+    "name": "run_batch",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "project.run_batch"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "not": {
+                "required": [
+                  "batchReceipt"
+                ]
+              },
+              "properties": {
+                "phase": {
+                  "const": "prepared"
+                }
+              },
+              "required": [
+                "preparedRequests"
+              ]
+            },
+            {
+              "not": {
+                "required": [
+                  "preparedRequests"
+                ]
+              },
+              "properties": {
+                "phase": {
+                  "const": "executed"
+                }
+              },
+              "required": [
+                "batchReceipt"
+              ]
+            }
+          ],
+          "properties": {
+            "batchReceipt": {
+              "additionalProperties": false,
+              "properties": {
+                "apiVersion": {
+                  "const": "tplaiter.dev/action-batch-receipt/v1"
+                },
+                "disposition": {
+                  "enum": [
+                    "completed",
+                    "stopped",
+                    "recovery-required"
+                  ]
+                },
+                "operationInputsSHA256": {
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                "steps": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "ordinal": {
+                        "maximum": 15,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "receipt": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "apiVersion": {
+                            "const": "tplaiter.dev/action-receipt/v1"
+                          },
+                          "cancelled": {
+                            "type": "boolean"
+                          },
+                          "childExitCode": {
+                            "maximum": 255,
+                            "minimum": 0,
+                            "type": [
+                              "null",
+                              "integer"
+                            ]
+                          },
+                          "cleanup": {
+                            "enum": [
+                              "reaped",
+                              "pending",
+                              "failed"
+                            ],
+                            "type": "string"
+                          },
+                          "disposition": {
+                            "enum": [
+                              "completed",
+                              "refused",
+                              "indeterminate",
+                              "recovery-required"
+                            ]
+                          },
+                          "implementationSHA256": {
+                            "pattern": "^sha256:[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "inputClosureSHA256": {
+                            "pattern": "^sha256:[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "launched": {
+                            "enum": [
+                              "yes",
+                              "no",
+                              "unknown"
+                            ],
+                            "type": "string"
+                          },
+                          "operationInputsSHA256": {
+                            "pattern": "^sha256:[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "outputComplete": {
+                            "type": "boolean"
+                          },
+                          "overflow": {
+                            "type": "boolean"
+                          },
+                          "persistentWrites": {
+                            "const": 0,
+                            "type": [
+                              "null",
+                              "integer"
+                            ]
+                          },
+                          "profile": {
+                            "enum": [
+                              "darwin25G83-native-fd/v1",
+                              "linux-static-fd-go127/v1",
+                              "linux-static-fd-go127-poll/v1"
+                            ],
+                            "type": "string"
+                          },
+                          "profileSHA256": {
+                            "pattern": "^sha256:[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "requestSHA256": {
+                            "pattern": "^sha256:[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "signal": {
+                            "maximum": 64,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "stderr": {
+                            "contentEncoding": "base64",
+                            "maxLength": 21848,
+                            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+                            "type": "string"
+                          },
+                          "stderrBytes": {
+                            "maximum": 16384,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "stderrSHA256": {
+                            "pattern": "^sha256:[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "stdout": {
+                            "contentEncoding": "base64",
+                            "maxLength": 174764,
+                            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+                            "type": "string"
+                          },
+                          "stdoutBytes": {
+                            "maximum": 131072,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "stdoutSHA256": {
+                            "pattern": "^sha256:[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "timedOut": {
+                            "type": "boolean"
+                          },
+                          "toolSHA256": {
+                            "pattern": "^sha256:[a-f0-9]{64}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "apiVersion",
+                          "requestSHA256",
+                          "operationInputsSHA256",
+                          "inputClosureSHA256",
+                          "toolSHA256",
+                          "profile",
+                          "profileSHA256",
+                          "implementationSHA256",
+                          "launched",
+                          "disposition",
+                          "signal",
+                          "stdout",
+                          "stderr",
+                          "stdoutSHA256",
+                          "stderrSHA256",
+                          "stdoutBytes",
+                          "stderrBytes",
+                          "outputComplete",
+                          "timedOut",
+                          "cancelled",
+                          "overflow",
+                          "cleanup"
+                        ],
+                        "type": [
+                          "null",
+                          "object"
+                        ]
+                      },
+                      "requestSHA256": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "state": {
+                        "enum": [
+                          "unstarted",
+                          "attempted-unknown",
+                          "observed"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "ordinal",
+                      "name",
+                      "requestSHA256",
+                      "state",
+                      "receipt"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 16,
+                  "minItems": 1,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "apiVersion",
+                "operationInputsSHA256",
+                "disposition",
+                "steps"
+              ],
+              "type": "object"
+            },
+            "phase": {
+              "enum": [
+                "prepared",
+                "executed"
+              ],
+              "type": "string"
+            },
+            "preparedRequests": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "action": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "argv": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "contentClosureSHA256": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "phase": {
+                        "type": "string"
+                      },
+                      "shell": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "phase",
+                      "shell",
+                      "argv",
+                      "contentClosureSHA256"
+                    ],
+                    "type": "object"
+                  },
+                  "apiVersion": {
+                    "type": "string"
+                  },
+                  "environmentPolicySHA256": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "migration": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "from": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "operationInputsSHA256": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "profileBindingSHA256": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "projectID": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "commit": {
+                        "type": "string"
+                      },
+                      "contractSHA256": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "templatePath": {
+                        "type": "string"
+                      },
+                      "treeSHA256": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "origin",
+                      "templatePath",
+                      "commit",
+                      "treeSHA256",
+                      "contractSHA256"
+                    ],
+                    "type": "object"
+                  },
+                  "requestSHA256": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "timeoutMillis": {
+                    "maximum": 5000,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "tool": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "binarySHA256": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "optionsSHA256": {
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "version",
+                      "binarySHA256",
+                      "optionsSHA256"
+                    ],
+                    "type": "object"
+                  },
+                  "workingDirectoryScope": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "root": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "root",
+                      "path"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "apiVersion",
+                  "profileBindingSHA256",
+                  "operationInputsSHA256",
+                  "projectID",
+                  "scope",
+                  "provider",
+                  "action",
+                  "tool",
+                  "workingDirectoryScope",
+                  "environmentPolicySHA256",
+                  "timeoutMillis",
+                  "migration",
+                  "requestSHA256"
+                ],
+                "type": "object"
+              },
+              "maxItems": 16,
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "phase"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "RunBatch"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "project.run_batch"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
     "description": "Reanswer one authenticated native settings group on the pinned version using an explicit value; operation is settings.reanswer.",
     "inputSchema": {
       "properties": {

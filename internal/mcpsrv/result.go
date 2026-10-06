@@ -37,6 +37,9 @@ func (s *Server) callStructured(ctx context.Context, op resultdto.Operation, cwd
 		return s.transportFailure(op, code, duration)
 	}
 	env, err := decodeExpectedResult([]byte(res.Stdout), op, res.ExitCode)
+	if err == nil && op == resultdto.OperationProjectRunBatch && len(env.Data) > 0 {
+		_, err = decodeClosedBatchData(env.Data)
+	}
 	if err != nil {
 		if retained, ok := s.knownActionFrame(capture, op); ok {
 			return retainedActionFailure(retained, res, "MCP_CONTRACT_INVALID")

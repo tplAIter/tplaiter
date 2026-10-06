@@ -2,6 +2,7 @@ package mcpsrv
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -43,6 +44,15 @@ type runArgs struct {
 	Args           []string `json:"args"`
 }
 
+type runBatchArgs struct {
+	Dir            string   `json:"dir"`
+	ProjectContext string   `json:"projectContext"`
+	Input          string   `json:"input"`
+	Prepare        bool     `json:"prepare"`
+	Approvals      []string `json:"approvals"`
+	ApprovalInput  string   `json:"approvalInput"`
+}
+
 type dirArgs struct {
 	Dir string `json:"dir"`
 }
@@ -65,6 +75,44 @@ type doctorArgs struct {
 }
 
 func (s *Server) addProjectTools() {
+	s.mcp.AddTool(mcp.NewTool(
+		"run_batch",
+		mcp.WithDescription("Prepare or execute a finite ordered authenticated readonly native command batch; ONE operation, complete signed approval vector, no shell or child-process widening."),
+		mcp.WithString("dir", mcp.Required(), mcp.Description("Authenticated installed project root")),
+		mcp.WithString("projectContext", mcp.Description("Exact authenticated installed context key")),
+		mcp.WithString("input", mcp.Required(), mcp.Description("Closed run-batch-input/v1 JSON, 1..16 ordered typed steps")),
+		mcp.WithBoolean("prepare", mcp.Description("Report finalized requests without import or execution")),
+		mcp.WithArray("approvals", mcp.Description("Complete ordered persistent signed approval digest vector"), mcp.Items(map[string]any{"type": "string"})),
+		mcp.WithString("approvalInput", mcp.Description("Public signed approval document array path")),
+		outputSchema(resultdto.OperationProjectRunBatch),
+	), mcp.NewTypedToolHandler(func(ctx context.Context, call mcp.CallToolRequest, a runBatchArgs) (*mcp.CallToolResult, error) {
+		if a.Prepare && (len(a.Approvals) != 0 || a.ApprovalInput != "") || len(a.Approvals) != 0 && a.ApprovalInput != "" {
+			return s.argumentFailure(resultdto.OperationProjectRunBatch, "approvals"), nil
+		}
+		cwd, failure := s.workDir(resultdto.OperationProjectRunBatch, "dir", a.Dir)
+		if failure != nil {
+			return failure, nil
+		}
+		argv := []string{"run", "--batch-input=" + a.Input, "--dir", cwd}
+		if a.ProjectContext != "" {
+			argv = append(argv, "--project-context", a.ProjectContext)
+		}
+		if a.Prepare {
+			argv = append(argv, "--prepare")
+		}
+		if len(a.Approvals) != 0 {
+			raw, e := json.Marshal(a.Approvals)
+			if e != nil {
+				return s.argumentFailure(resultdto.OperationProjectRunBatch, "approvals"), nil
+			}
+			argv = append(argv, "--batch-approvals="+string(raw))
+		}
+		if a.ApprovalInput != "" {
+			argv = append(argv, "--batch-approval-input", a.ApprovalInput)
+		}
+		return s.callRunBatchDelivery(ctx, call, argv)
+	}))
+
 	s.mcp.AddTool(mcp.NewTool(
 		"project_new",
 		mcp.WithDescription("Create a project from a template (always non-interactive). Select an authenticated installed projectContext; targetDir must match its root. Omitted targetDir uses <dir>/<slug>. If set is incomplete, the tool will return an error about required groups — or set defaults=true."),

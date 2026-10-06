@@ -22,6 +22,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
+	"github.com/tplAIter/tplaiter/internal/resultwire"
 	"golang.org/x/sys/unix"
 )
 
@@ -876,4 +877,164 @@ func actionDeliveryFailure(s *Server, code string) *mcp.CallToolResult {
 	env.Status = resultdto.StatusBlocked
 	env.Diagnostics = []resultdto.Diagnostic{{Code: code, Severity: "error", Message: "native action delivery has no retained source owner", Details: map[string]any{}}}
 	return structuredResult(env, true)
+}
+
+// Batch delivery uses a separate closed protocol. ROOT message versions,
+// constructors, reader limits and final writer behavior remain unchanged.
+const batchDeliveryVersion = "tplaiter.dev/run-batch-delivery/v1"
+
+type batchDeliveryMessage struct {
+	APIVersion string `json:"apiVersion"`
+	Token      string `json:"token"`
+	Sequence   int    `json:"sequence"`
+	Action     string `json:"action"`
+	Digest     string `json:"digest"`
+}
+type heldBatchChild struct {
+	*heldRootChild
+	operation string
+}
+
+func (c *heldBatchChild) exchangeBatch(sequence int, action, want string) error {
+	if c == nil || c.ctx.Err() != nil {
+		return errTransportUnavailable
+	}
+	message := batchDeliveryMessage{batchDeliveryVersion, c.token, sequence, action, c.digest}
+	raw, e := json.Marshal(message)
+	if e != nil {
+		return e
+	}
+	if e = writeRootBytes(c.control, append(raw, '\n')); e != nil {
+		return e
+	}
+	line, e := c.reader.ReadSlice('\n')
+	if e != nil || len(line) > 1024 {
+		return errTransportUnavailable
+	}
+	var reply batchDeliveryMessage
+	message.Action = want
+	if canonicaljson.DecodeStrict(line, &reply) != nil || reply != message {
+		return errTransportUnavailable
+	}
+	return c.ctx.Err()
+}
+
+func (s *Server) startBatchDeliveryChild(call *batchCall, cwd string, argv []string) (*heldBatchChild, resultdto.Result, error) {
+	var empty resultdto.Result
+	if call == nil || call.ctx.Err() != nil {
+		return nil, empty, errTransportUnavailable
+	}
+	s.mu.Lock()
+	if s.closed || (!s.installed && !s.direct) {
+		s.mu.Unlock()
+		return nil, empty, errTransportUnavailable
+	}
+	s.children.Add(1)
+	s.mu.Unlock()
+	owned := false
+	defer func() {
+		if !owned {
+			s.children.Done()
+		}
+	}()
+	path := s.exe
+	if s.installed {
+		var e error
+		path, e = s.stage.launchPath()
+		if e != nil {
+			return nil, empty, e
+		}
+	}
+	tokenRaw := make([]byte, 32)
+	if _, e := rand.Read(tokenRaw); e != nil {
+		return nil, empty, e
+	}
+	token := hex.EncodeToString(tokenRaw)
+	layout, e := resultwire.EncodeBatchLayout(call.layout)
+	if e != nil {
+		return nil, empty, e
+	}
+	input, control, e := os.Pipe()
+	if e != nil {
+		return nil, empty, e
+	}
+	replies, response, e := os.Pipe()
+	if e != nil {
+		input.Close()
+		control.Close()
+		return nil, empty, e
+	}
+	output, writer := io.Pipe()
+	ctx, cancel := context.WithCancel(call.ctx)
+	child := &heldBatchChild{heldRootChild: &heldRootChild{ctx: ctx, cancel: cancel, control: control, replies: replies, output: output, reader: bufio.NewReaderSize(replies, 1025), token: token, done: make(chan error, 1)}}
+	args := append(append([]string{}, argv...), "--batch-delivery-token="+token, "--batch-frame-layout="+string(layout))
+	cmd := exec.Command(path, args...) //nolint:noctx,depguard // fixed staged executable; RunGroup owns lifecycle
+	cmd.Dir = cwd
+	cmd.Env = s.childEnv
+	cmd.ExtraFiles = []*os.File{input, response}
+	cmd.Stdout = writer
+	overflow := make(chan struct{}, 1)
+	cmd.Stderr = newBoundedBuffer(maxToolStderr, overflow)
+	owned = true
+	go func() {
+		_, e := execx.RunGroup(ctx, cmd, execx.GroupOptions{Grace: s.limits.KillGrace, Abort: overflow})
+		input.Close()
+		response.Close()
+		writer.Close()
+		child.done <- e
+		close(child.done)
+		s.children.Done()
+	}()
+	context.AfterFunc(ctx, func() { output.Close(); replies.Close(); control.Close() })
+	stdout := bufio.NewReaderSize(output, resultdto.MaxBatchFrame+1)
+	frame, e := stdout.ReadSlice('\n')
+	if e != nil || len(frame) > resultdto.MaxBatchFrame {
+		child.close()
+		return nil, empty, errTransportUnavailable
+	}
+	env, e := resultdto.Decode(frame)
+	if e != nil || env.Operation != resultdto.OperationProjectRunBatch {
+		child.close()
+		return nil, empty, errTransportUnavailable
+	}
+	canonical, e := resultdto.MarshalCanonical(env)
+	if e != nil || !bytes.Equal(append(canonical, '\n'), frame) {
+		child.close()
+		return nil, empty, errTransportUnavailable
+	}
+	if len(env.Data) == 0 {
+		// A pre-admission whole refusal cannot be mistaken for a leased success.
+		if env.Status != resultdto.StatusBlocked && env.Status != resultdto.StatusFailed {
+			child.close()
+			return nil, empty, errTransportUnavailable
+		}
+		if _, e = stdout.ReadByte(); e != io.EOF {
+			child.close()
+			return nil, empty, errTransportUnavailable
+		}
+		<-child.done
+		if cmd.ProcessState == nil || env.ValidateExit(resultdto.ExitCode(cmd.ProcessState.ExitCode())) != nil {
+			child.close()
+			return nil, empty, errTransportUnavailable
+		}
+		child.close()
+		return nil, env, nil
+	}
+	data, e := decodeClosedBatchData(env.Data)
+	if e != nil {
+		child.close()
+		return nil, empty, e
+	}
+	if data.Phase == "prepared" {
+		child.operation = data.PreparedRequests[0].OperationInputsSHA256
+	} else {
+		child.operation = data.BatchReceipt.OperationInputsSHA256
+	}
+	child.digest = evidencecas.Digest(frame)
+	go func() {
+		if _, e := stdout.ReadByte(); e == nil {
+			child.cancel()
+		}
+	}()
+	return child, env, nil
 }

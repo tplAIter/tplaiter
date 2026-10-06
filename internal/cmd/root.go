@@ -200,7 +200,7 @@ func init() {
 // flag) runs first-run/suggest like a normal command.
 func rootPreRun(cmd *cobra.Command, args []string) error {
 	// Named runs own fixed installed composition before any legacy hooks.
-	if cmd.Name() == "run" && len(args) > 0 {
+	if cmd.Name() == "run" && (len(args) > 0 || cmd.Flags().Changed("batch-input")) {
 		return nil
 	}
 	// This classification precedes every legacy root hook.  A command that
@@ -246,13 +246,16 @@ func TryActionBootstrap(args []string) (bool, int) {
 	if !execx.ActionBootstrapHandled(args) {
 		return false, 0
 	}
-	if len(args) != 1 || args[0] != execx.ActionBootstrapToken {
+	if len(args) != 1 || (args[0] != execx.ActionBootstrapToken && args[0] != execx.ActionBatchBootstrapToken) {
 		return true, 126
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	control, e := execx.ReadActionBootstrapControl()
 	if e != nil {
+		return true, 126
+	}
+	if (args[0] == execx.ActionBootstrapToken) != (control.APIVersion == "tplaiter.dev/action-bootstrap/v1") || (args[0] == execx.ActionBatchBootstrapToken) != (control.APIVersion == "tplaiter.dev/action-bootstrap/v2") {
 		return true, 126
 	}
 	in, e := installedInvocation(ctx)
@@ -266,6 +269,20 @@ func TryActionBootstrap(args []string) (bool, int) {
 	defer r.Close()
 	source, e := projectBuildSource(ctx, r)
 	if e != nil {
+		return true, 126
+	}
+	if control.APIVersion == "tplaiter.dev/action-bootstrap/v2" {
+		if control.Batch == nil {
+			return true, 126
+		}
+		batch, e := actioncmd.PrepareRunBatch(ctx, r, source, *control.Batch)
+		if e != nil {
+			return true, 126
+		}
+		defer batch.Close()
+		if e = batch.EnterBootstrap(ctx, control); e != nil {
+			return true, 126
+		}
 		return true, 126
 	}
 	s, e := actioncmd.Prepare(ctx, r, source, operationtrust.ActionInput{Name: control.ActionID, ParametersJSON: control.Parameters})

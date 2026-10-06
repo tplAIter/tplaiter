@@ -486,6 +486,25 @@
       "if": {
         "properties": {
           "operation": {
+            "const": "project.run_batch"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "RunBatch"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
             "const": "project.stats"
           }
         },
@@ -949,6 +968,7 @@
               "project.rebaseline",
               "project.recopy",
               "project.run",
+              "project.run_batch",
               "project.stats",
               "project.verify",
               "settings.reanswer",
@@ -1121,6 +1141,7 @@
         "RepoList",
         "RepoRemove",
         "RepoUpdate",
+        "RunBatch",
         "SettingsReanswer",
         "SettingsSet",
         "SettingsShow",
@@ -1181,6 +1202,7 @@
         "project.rebaseline",
         "project.recopy",
         "project.run",
+        "project.run_batch",
         "project.stats",
         "project.verify",
         "projects.list",

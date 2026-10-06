@@ -37,6 +37,7 @@ var toolOperations = map[string][]resultdto.Operation{
 	"template_show":         {resultdto.OperationTemplateShow},
 	"project_new":           {resultdto.OperationProjectNew},
 	"run":                   {resultdto.OperationProjectRun},
+	"run_batch":             {resultdto.OperationProjectRunBatch},
 	"update":                updateOperations,
 	"stats":                 {resultdto.OperationProjectStats},
 	"doctor":                {resultdto.OperationDoctorCheck},
@@ -191,8 +192,8 @@ func TestRunActionCompiledMetadataGolden(t *testing.T) {
 	if err := json.Unmarshal(raw, &golden); err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 35 || len(golden) != 35 {
-		t.Fatalf("expected exact35 descriptors, got %d/%d", len(tools), len(golden))
+	if len(tools) != 36 || len(golden) != 36 {
+		t.Fatalf("expected original35 + batch descriptors, got %d/%d", len(tools), len(golden))
 	}
 	seen := make(map[string]bool)
 	for _, want := range golden {

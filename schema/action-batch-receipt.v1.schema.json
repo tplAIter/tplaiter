@@ -1,0 +1,220 @@
+{
+  "$id": "https://tplaiter.dev/schema/action-batch-receipt.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/action-batch-receipt/v1"
+    },
+    "disposition": {
+      "enum": [
+        "completed",
+        "stopped",
+        "recovery-required"
+      ]
+    },
+    "operationInputsSHA256": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "ordinal": {
+            "maximum": 15,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "receipt": {
+            "additionalProperties": false,
+            "properties": {
+              "apiVersion": {
+                "const": "tplaiter.dev/action-receipt/v1"
+              },
+              "cancelled": {
+                "type": "boolean"
+              },
+              "childExitCode": {
+                "maximum": 255,
+                "minimum": 0,
+                "type": [
+                  "null",
+                  "integer"
+                ]
+              },
+              "cleanup": {
+                "enum": [
+                  "reaped",
+                  "pending",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              "disposition": {
+                "enum": [
+                  "completed",
+                  "refused",
+                  "indeterminate",
+                  "recovery-required"
+                ]
+              },
+              "implementationSHA256": {
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "inputClosureSHA256": {
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "launched": {
+                "enum": [
+                  "yes",
+                  "no",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              "operationInputsSHA256": {
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "outputComplete": {
+                "type": "boolean"
+              },
+              "overflow": {
+                "type": "boolean"
+              },
+              "persistentWrites": {
+                "const": 0,
+                "type": [
+                  "null",
+                  "integer"
+                ]
+              },
+              "profile": {
+                "enum": [
+                  "darwin25G83-native-fd/v1",
+                  "linux-static-fd-go127/v1",
+                  "linux-static-fd-go127-poll/v1"
+                ],
+                "type": "string"
+              },
+              "profileSHA256": {
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "requestSHA256": {
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "signal": {
+                "maximum": 64,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "stderr": {
+                "contentEncoding": "base64",
+                "maxLength": 21848,
+                "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+                "type": "string"
+              },
+              "stderrBytes": {
+                "maximum": 16384,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "stderrSHA256": {
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "stdout": {
+                "contentEncoding": "base64",
+                "maxLength": 174764,
+                "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+                "type": "string"
+              },
+              "stdoutBytes": {
+                "maximum": 131072,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "stdoutSHA256": {
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "timedOut": {
+                "type": "boolean"
+              },
+              "toolSHA256": {
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "apiVersion",
+              "requestSHA256",
+              "operationInputsSHA256",
+              "inputClosureSHA256",
+              "toolSHA256",
+              "profile",
+              "profileSHA256",
+              "implementationSHA256",
+              "launched",
+              "disposition",
+              "signal",
+              "stdout",
+              "stderr",
+              "stdoutSHA256",
+              "stderrSHA256",
+              "stdoutBytes",
+              "stderrBytes",
+              "outputComplete",
+              "timedOut",
+              "cancelled",
+              "overflow",
+              "cleanup"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
+          },
+          "requestSHA256": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "unstarted",
+              "attempted-unknown",
+              "observed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "ordinal",
+          "name",
+          "requestSHA256",
+          "state",
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "operationInputsSHA256",
+    "disposition",
+    "steps"
+  ],
+  "type": "object"
+}

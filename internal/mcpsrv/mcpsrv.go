@@ -44,6 +44,7 @@ type Server struct {
 	children   sync.WaitGroup
 	rootFrames *rootFrames
 	graph      *graphTransport
+	batch      *batchTransport
 }
 
 // New constructs the tplaiter MCP server and registers all tools and resources.
@@ -72,6 +73,7 @@ func New(exe, version string, runner execx.Runner) *Server {
 	s.registerResources()
 	s.rootFrames = s.installRootFrames()
 	s.installGraphHooks()
+	s.installBatchHooks()
 	return s
 }
 
@@ -116,10 +118,15 @@ func (s *Server) ServeStdio() error {
 	s.graph = graph
 	s.mu.Unlock()
 	defer graph.close()
+	batch := newBatchTransport(ctx, s, graph)
+	s.mu.Lock()
+	s.batch = batch
+	s.mu.Unlock()
+	defer batch.close()
 	stdio := server.NewStdioServer(s.mcp)
-	stdio.SetContextFunc(graph.bindSession)
+	stdio.SetContextFunc(batch.bindSession)
 	stdio.SetErrorLogger(errLog)
-	serveErr := stdio.Listen(ctx, graph, graph)
+	serveErr := stdio.Listen(ctx, batch, batch)
 	s.rootFrames.close()
 	closeErr := s.Close()
 	if serveErr != nil || closeErr != nil {
@@ -143,7 +150,11 @@ func (s *Server) Close() error {
 	}
 	s.closed = true
 	graph := s.graph
+	batch := s.batch
 	s.mu.Unlock()
+	if batch != nil {
+		batch.close()
+	}
 	if graph != nil {
 		graph.close()
 	}

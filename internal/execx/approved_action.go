@@ -22,10 +22,11 @@ import (
 )
 
 const (
-	ActionBootstrapToken = "--tplaiter-action-bootstrap=v1"
-	MaxActionFrame       = 320 << 10
-	actionStdoutLimit    = 128 << 10
-	actionStderrLimit    = 16 << 10
+	ActionBootstrapToken      = "--tplaiter-action-bootstrap=v1"
+	ActionBatchBootstrapToken = "--tplaiter-action-bootstrap=v2"
+	MaxActionFrame            = 320 << 10
+	actionStdoutLimit         = 128 << 10
+	actionStderrLimit         = 16 << 10
 )
 
 // All fields are factual projection. Only ExecuteAction can create its opaque
@@ -63,13 +64,16 @@ type (
 		result  ActionProcessResult
 	}
 	ActionBootstrapControl struct {
-		APIVersion     string          `json:"apiVersion"`
-		ProjectContext string          `json:"projectContext"`
-		ActionID       string          `json:"actionID"`
-		Parameters     json.RawMessage `json:"parameters"`
-		ApprovalCAS    string          `json:"approvalCAS"`
-		RequestSHA256  string          `json:"requestSHA256"`
-		SessionSHA256  string          `json:"sessionSHA256"`
+		Batch          *operationtrust.RunBatchInput `json:"batch,omitempty"`
+		Approvals      []string                      `json:"approvals,omitempty"`
+		Ordinal        *int                          `json:"ordinal,omitempty"`
+		APIVersion     string                        `json:"apiVersion"`
+		ProjectContext string                        `json:"projectContext"`
+		ActionID       string                        `json:"actionID"`
+		Parameters     json.RawMessage               `json:"parameters"`
+		ApprovalCAS    string                        `json:"approvalCAS"`
+		RequestSHA256  string                        `json:"requestSHA256"`
+		SessionSHA256  string                        `json:"sessionSHA256"`
 	}
 )
 
@@ -87,11 +91,12 @@ type (
 		SHA256 string `json:"sha256"`
 	}
 	actionLaunch struct {
-		staged        trustverify.StagedMaterial
-		projection    operationtrust.ActionProjection
-		control       ActionBootstrapControl
-		descriptor    []byte
-		profileDigest string
+		staged         trustverify.StagedMaterial
+		projection     operationtrust.ActionProjection
+		bootstrapToken string
+		control        ActionBootstrapControl
+		descriptor     []byte
+		profileDigest  string
 	}
 	actionFDTable struct {
 		last    int
@@ -129,14 +134,84 @@ func ReadActionBootstrapControl() (ActionBootstrapControl, error) {
 		return c, &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
 	}
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(b, &fields) != nil || len(fields) != 7 {
+	if json.Unmarshal(b, &fields) != nil {
 		return c, &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
 	}
 	var parameters map[string]json.RawMessage
-	if canonicaljson.DecodeStrict(c.Parameters, &parameters) != nil || parameters == nil || len(parameters) > 16 || c.APIVersion != "tplaiter.dev/action-bootstrap/v1" || c.ProjectContext == "" || c.ActionID == "" || !actionDigest(c.ApprovalCAS) || !actionDigest(c.RequestSHA256) || !actionDigest(c.SessionSHA256) {
+	if canonicaljson.DecodeStrict(c.Parameters, &parameters) != nil || parameters == nil || len(parameters) > 16 || c.ProjectContext == "" || c.ActionID == "" || !actionDigest(c.ApprovalCAS) || !actionDigest(c.RequestSHA256) || !actionDigest(c.SessionSHA256) {
+		return c, &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+	}
+	if validateActionControl(c) != nil {
+		return c, &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+	}
+	expected := 7
+	if c.APIVersion == "tplaiter.dev/action-bootstrap/v2" {
+		expected = 10
+	}
+	if len(fields) != expected {
 		return c, &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
 	}
 	return c, nil
+}
+
+func validateActionControl(c ActionBootstrapControl) error {
+	if c.APIVersion == "tplaiter.dev/action-bootstrap/v1" {
+		if c.Batch != nil || c.Approvals != nil || c.Ordinal != nil {
+			return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+		}
+		return nil
+	}
+	if c.APIVersion != "tplaiter.dev/action-bootstrap/v2" || c.Batch == nil || c.Ordinal == nil {
+		return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+	}
+	raw, e := canonicaljson.Canonical(c.Batch)
+	if e != nil {
+		return e
+	}
+	in, e := operationtrust.DecodeRunBatchInput(raw)
+	if e != nil || *c.Ordinal < 0 || *c.Ordinal >= len(in.Steps) || len(c.Approvals) != len(in.Steps) {
+		return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+	}
+	for _, digest := range c.Approvals {
+		if !actionDigest(digest) {
+			return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+		}
+	}
+	step := in.Steps[*c.Ordinal]
+	params, e := canonicaljson.Canonicalize(step.Parameters)
+	selected, e2 := canonicaljson.Canonicalize(c.Parameters)
+	if e != nil || e2 != nil || step.Name != c.ActionID || c.ApprovalCAS != c.Approvals[*c.Ordinal] || !bytes.Equal(params, selected) {
+		return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+	}
+	return nil
+}
+
+// PreflightActionBatchControls serializes the complete actual per-child
+// reconstruction set before approval/spawn. Nonce is fixed-length digest data.
+func PreflightActionBatchControls(projectContext string, in operationtrust.RunBatchInput, requests []trustverify.ExecutionRequest, refs []trustverify.ApprovalRefs) error {
+	if len(requests) != len(in.Steps) || len(refs) != len(in.Steps) {
+		return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+	}
+	approvals := make([]string, len(refs))
+	for i, r := range refs {
+		if r.Kind != "persistent-signed" || !actionDigest(r.ApprovalCAS) {
+			return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+		}
+		approvals[i] = r.ApprovalCAS
+	}
+	for i, step := range in.Steps {
+		params, e := canonicaljson.Canonicalize(step.Parameters)
+		if e != nil {
+			return e
+		}
+		ordinal := i
+		c := ActionBootstrapControl{APIVersion: "tplaiter.dev/action-bootstrap/v2", ProjectContext: projectContext, ActionID: step.Name, Parameters: params, ApprovalCAS: approvals[i], RequestSHA256: requests[i].RequestSHA256, SessionSHA256: evidencecas.Digest(make([]byte, 32)), Batch: &in, Approvals: approvals, Ordinal: &ordinal}
+		raw, e := canonicaljson.Canonical(c)
+		if e != nil || len(raw) > 64<<10 || validateActionControl(c) != nil {
+			return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+		}
+	}
+	return nil
 }
 
 func actionDigest(s string) bool {
@@ -179,6 +254,19 @@ func (r *ApprovedRunner) ExecuteAction(ctx context.Context, permit *trustverify.
 		return nil, e
 	}
 	control := ActionBootstrapControl{APIVersion: "tplaiter.dev/action-bootstrap/v1", ProjectContext: r.runtime.ProjectContext().Key, ActionID: input.Name, Parameters: params, ApprovalCAS: ref.ApprovalCAS, RequestSHA256: request.RequestSHA256, SessionSHA256: evidencecas.Digest(nonce[:])}
+	batch, ordinal, approvals, isBatch, e := material.ActionBatchFor(r.runtime, request)
+	if e != nil {
+		return nil, e
+	}
+	if isBatch {
+		control.APIVersion = "tplaiter.dev/action-bootstrap/v2"
+		control.Batch = &batch
+		control.Ordinal = &ordinal
+		control.Approvals = approvals
+		if validateActionControl(control) != nil {
+			return nil, &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+		}
+	}
 	l, e := makeActionLaunch(m, p, control)
 	if e != nil {
 		return nil, e
@@ -219,6 +307,34 @@ func (p *ActionProcessReceipt) ResultFor(r *ApprovedRunner, request trustverify.
 func (r *ApprovedRunner) EnterActionBootstrap(ctx context.Context, permit *trustverify.ExecutionPermit, request trustverify.ExecutionRequest, material *operationtrust.ExecutionMaterial, control ActionBootstrapControl) error {
 	if ctx == nil || r == nil || r.runtime == nil || permit == nil || material == nil || control.RequestSHA256 != request.RequestSHA256 {
 		return &ExecutionError{"TRUST_APPROVAL_MISMATCH"}
+	}
+	input, e := material.ActionInputFor(r.runtime, request)
+	if e != nil {
+		return e
+	}
+	parameters, e := canonicaljson.Canonicalize(input.ParametersJSON)
+	if e != nil {
+		return e
+	}
+	selected, e := canonicaljson.Canonicalize(control.Parameters)
+	if e != nil || input.Name != control.ActionID || !bytes.Equal(parameters, selected) {
+		return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+	}
+	batch, ordinal, approvals, isBatch, e := material.ActionBatchFor(r.runtime, request)
+	if e != nil {
+		return e
+	}
+	if isBatch {
+		if control.APIVersion != "tplaiter.dev/action-bootstrap/v2" || control.Batch == nil || control.Ordinal == nil || ordinal != *control.Ordinal || !reflect.DeepEqual(approvals, control.Approvals) {
+			return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+		}
+		actual, e := canonicaljson.Canonical(batch)
+		transport, e2 := canonicaljson.Canonical(control.Batch)
+		if e != nil || e2 != nil || !bytes.Equal(actual, transport) {
+			return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+		}
+	} else if control.APIVersion != "tplaiter.dev/action-bootstrap/v1" {
+		return &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
 	}
 	m, p, e := material.ActionFor(ctx, r.runtime, request)
 	if e != nil {
@@ -264,7 +380,14 @@ func makeActionLaunch(m trustverify.StagedMaterial, p operationtrust.ActionProje
 	if e != nil {
 		return actionLaunch{}, e
 	}
-	return actionLaunch{staged: m, projection: p, control: c, descriptor: descriptor, profileDigest: profile}, nil
+	token := ActionBootstrapToken
+	if validateActionControl(c) != nil {
+		return actionLaunch{}, &ExecutionError{"TRUST_ACTION_BOOTSTRAP_INVALID"}
+	}
+	if c.APIVersion == "tplaiter.dev/action-bootstrap/v2" {
+		token = ActionBatchBootstrapToken
+	}
+	return actionLaunch{bootstrapToken: token, staged: m, projection: p, control: c, descriptor: descriptor, profileDigest: profile}, nil
 }
 
 func ActionProfileDigest(profile string) (string, error) {
