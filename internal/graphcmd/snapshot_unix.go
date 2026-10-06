@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"github.com/tplAIter/tplaiter/internal/semanticgraph"
 	"golang.org/x/sys/unix"
 	"io"
@@ -73,7 +74,7 @@ func captureFiles(ctx context.Context, root string) (*fileSnapshot, error) {
 		return nil, e
 	}
 	s.dev = uint64(st.Dev)
-	s.ino = uint64(st.Ino)
+	s.ino = st.Ino
 	entries, total := 0, 0
 	seen := map[string]bool{}
 	var walk func(int, string, int) error
@@ -240,6 +241,19 @@ func cacheRead(root, name string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, maxCacheBytes+1))
 }
 func cachePublish(root, name string, raw []byte) error {
+	return cachePublishWithUnlink(root, name, raw, unix.Unlinkat)
+}
+
+// cacheCleanup retains the primary error and confines cleanup to the held FD's leaf.
+func cacheCleanup(primary error, dir int, leaf string, unlink func(int, string, int) error) error {
+	cleanup := unlink(dir, leaf, 0)
+	if cleanup == nil || errors.Is(cleanup, unix.ENOENT) {
+		return primary
+	}
+	return errors.Join(primary, cleanup)
+}
+
+func cachePublishWithUnlink(root, name string, raw []byte, unlink func(int, string, int) error) (result error) {
 	if len(raw) > maxCacheBytes {
 		return fail("GRAPH_INPUT_LIMIT")
 	}
@@ -265,7 +279,7 @@ func cachePublish(root, name string, raw []byte) error {
 	if e != nil {
 		return e
 	}
-	defer unix.Unlinkat(dir, tmp, 0)
+	defer func() { result = cacheCleanup(result, dir, tmp, unlink) }()
 	f := os.NewFile(uintptr(leaf), "graph-cache-temp")
 	_, e = f.Write(raw)
 	if e == nil {
