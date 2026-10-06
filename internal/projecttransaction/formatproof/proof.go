@@ -348,14 +348,15 @@ func PrepareContextNativeNewFile(ctx context.Context, r *trustload.Runtime, inte
 	if err := intent.RecheckFor(ctx, r); err != nil {
 		return nil, err
 	}
+	projection, err := intent.Projection(ctx, r)
+	if err != nil {
+		return nil, err
+	}
 	sources, err := intent.FormatterSources(ctx, r)
 	if err != nil {
 		return nil, err
 	}
-	inventory, err := intent.ManagedFiles(ctx, r)
-	if err != nil {
-		return nil, err
-	}
+	inventory := projection.ManagedFiles
 	found := false
 	for _, file := range inventory {
 		if file.Path == path && file.Mode == "100644" {
@@ -365,9 +366,9 @@ func PrepareContextNativeNewFile(ctx context.Context, r *trustload.Runtime, inte
 	if !found {
 		return nil, ErrUnavailable
 	}
-	rendered, err := intent.Rendered(ctx, r)
-	if err != nil {
-		return nil, err
+	rendered := projection.Rendered
+	if rendered == nil {
+		return nil, ErrUnavailable
 	}
 	if rendered.Template.ManagedBlocks != nil && len(rendered.Template.ManagedBlocks.Replacements) != 0 {
 		return nil, ErrUnavailable
@@ -381,18 +382,9 @@ func PrepareContextNativeNewFile(ctx context.Context, r *trustload.Runtime, inte
 			return nil, ErrUnavailable
 		}
 	}
-	root, err := intent.RootLock(ctx, r)
-	if err != nil {
-		return nil, err
-	}
-	dependencies, err := intent.DependencyLock(ctx, r)
-	if err != nil {
-		return nil, err
-	}
-	contextDigest, err := intent.ContextDigest(ctx, r)
-	if err != nil {
-		return nil, err
-	}
+	root := projection.RootLock
+	dependencies := projection.DependencyLock
+	contextDigest := projection.NativeContextDigest
 	graph, err := sources.SourceGraph(ctx)
 	if err != nil {
 		return nil, err
@@ -461,9 +453,12 @@ func PrepareContextNativeNewFile(ctx context.Context, r *trustload.Runtime, inte
 	if err != nil {
 		return nil, err
 	}
-	provider, err := sources.RootResolution(ctx, r)
-	if err != nil {
+	if err := intent.RecheckFor(ctx, r); err != nil {
 		return nil, err
+	}
+	provider := projection.RootResolution
+	if provider == nil || !provider.ValidFor(r.TrustRuntime(), r.TrustRuntime().Binding()) {
+		return nil, ErrUnavailable
 	}
 	return &Prepared{runtime: r, adapter: adapter, provider: provider, toolProvider: toolProvider, bound: bound, frame: frame, digest: digest, nativeIntent: intent, sources: sources}, nil
 }

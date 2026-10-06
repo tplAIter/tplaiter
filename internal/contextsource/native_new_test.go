@@ -74,6 +74,138 @@ func TestNativeNewOpaqueClosureAndCopies(t *testing.T) {
 	}
 }
 
+func TestNativeNewProjectionEquivalentDetachedAndFresh(t *testing.T) {
+	f := managedNativeFixture(t)
+	ctx := context.Background()
+	sources, err := PrepareContextSources(ctx, f.runtime, contextJSON(t, f.input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sources.Close()
+	p, err := PrepareManagedNativeNew(ctx, f.runtime, sources, managedNativeInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	p.rendered.Resolved.Values["nested"] = map[string]any{"items": []any{map[string]any{"value": "original"}}}
+	p.rendered.Resolved.Values["empty"] = []string{}
+	p.rendered.Resolved.ActiveValues["empty"] = []string{}
+	originalValues := p.rendered.Resolved.Values.Clone()
+	originalActiveValues := p.rendered.Resolved.ActiveValues.Clone()
+
+	projection, err := p.Projection(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := p.RootLock(ctx, f.runtime)
+	if err != nil || !reflect.DeepEqual(projection.RootLock, root) {
+		t.Fatal("projection root lock differs", err)
+	}
+	dependencies, err := p.DependencyLock(ctx, f.runtime)
+	if err != nil || !reflect.DeepEqual(projection.DependencyLock, dependencies) || len(projection.DependencyLock.Dependencies) != len(dependencies.Dependencies) {
+		t.Fatalf("projection dependency lock differs: projection=%+v getter=%+v err=%v", projection.DependencyLock, dependencies, err)
+	}
+	for i := range dependencies.Dependencies {
+		if projection.DependencyLock.Dependencies[i] != dependencies.Dependencies[i] {
+			t.Fatalf("projection dependency %d differs", i)
+		}
+	}
+	resolution, err := p.RootResolution(ctx, f.runtime)
+	if err != nil || projection.RootResolution != resolution {
+		t.Fatal("projection did not retain actual opaque resolution", err)
+	}
+	rendered, err := p.Rendered(ctx, f.runtime)
+	if err != nil || !reflect.DeepEqual(projection.Rendered, rendered) {
+		t.Fatal("projection render differs", err)
+	}
+	if len(projection.ManagedFiles) != 1 || len(projection.ManagedFiles[0].Markers) == 0 || len(projection.OperationBase.Actions) != 0 {
+		t.Fatal("projection omitted managed calculation data")
+	}
+	if !reflect.DeepEqual(projection.Rendered.Resolved.Values["empty"], originalValues["empty"]) || !reflect.DeepEqual(projection.Rendered.Resolved.ActiveValues["empty"], originalActiveValues["empty"]) || projection.Rendered.Resolved.Values["empty"] == nil || projection.Rendered.Resolved.ActiveValues["empty"] == nil {
+		t.Fatal("projection changed original empty typed values")
+	}
+	valuesJSON, err := json.Marshal(projection.Rendered.Resolved.Values)
+	if err != nil || !strings.Contains(string(valuesJSON), `"empty":[]`) {
+		t.Fatalf("projection changed Values empty typed value JSON shape: %s", valuesJSON)
+	}
+	activeValuesJSON, err := json.Marshal(projection.Rendered.Resolved.ActiveValues)
+	if err != nil || !strings.Contains(string(activeValuesJSON), `"empty":[]`) {
+		t.Fatalf("projection changed ActiveValues empty typed value JSON shape: %s", activeValuesJSON)
+	}
+
+	projection.Manifest[0] = 'x'
+	projection.DependencyLock.Dependencies[0].Commit = "tampered"
+	projection.Rendered.Files["example.go"][0] = 'x'
+	projection.Rendered.Template.Metadata.Name = "tampered"
+	projection.Rendered.Baseline.Files["example.go"] = "tampered"
+	projection.Rendered.Resolved.Values["nested"].(map[string]any)["items"].([]any)[0].(map[string]any)["value"] = "tampered"
+	projection.ManagedFiles[0].Markers[0].ID = "tampered"
+	projection.OperationBase.Subjects[0].Commit = "tampered"
+	again, err := p.Projection(ctx, f.runtime)
+	nested := again.Rendered.Resolved.Values["nested"].(map[string]any)["items"].([]any)[0].(map[string]any)["value"]
+	if err != nil || string(again.Rendered.Files["example.go"]) != nativeManagedExample || again.Rendered.Template.Metadata.Name == "tampered" || nested == "tampered" || again.ManagedFiles[0].Markers[0].ID == "tampered" || again.OperationBase.Subjects[0].Commit == "tampered" {
+		t.Fatal("projection leaked mutable nested data", err)
+	}
+
+	if _, err = p.Projection(ctx, &trustload.Runtime{}); err == nil {
+		t.Fatal("foreign runtime accepted")
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err = p.Projection(cancelled, f.runtime); err == nil {
+		t.Fatal("cancelled projection accepted")
+	}
+	p.owner = nil
+	if _, err = p.Projection(ctx, f.runtime); err == nil {
+		t.Fatal("tampered owner accepted")
+	}
+	p.owner = f.runtime
+	sources.Close()
+	if _, err = p.Projection(ctx, f.runtime); err == nil {
+		t.Fatal("closed source carrier accepted")
+	}
+}
+
+func TestNativeNewProjectionClonesNonEmptyCollections(t *testing.T) {
+	lock := provenance.TemplateLock{Dependencies: []provenance.DependencySubject{{Origin: "https://example.test/dep", TemplatePath: ".", Commit: strings.Repeat("a", 40)}}}
+	clonedLock := cloneTemplateLock(lock)
+	if !reflect.DeepEqual(clonedLock, lock) || len(clonedLock.Dependencies) != 1 {
+		t.Fatalf("dependency records were not retained: %+v", clonedLock)
+	}
+	clonedLock.Dependencies[0].Origin = "tampered"
+	if lock.Dependencies[0].Origin == "tampered" {
+		t.Fatal("dependency records share mutable backing storage")
+	}
+
+	operation := trustverify.OperationInputs{Subjects: []trustverify.Provider{{Origin: "https://example.test/provider", TemplatePath: ".", Commit: strings.Repeat("b", 40)}}, Actions: []trustverify.ActionMaterial{}}
+	clonedOperation := cloneOperationInputs(operation)
+	if !reflect.DeepEqual(clonedOperation, operation) || len(clonedOperation.Subjects) != 1 || clonedOperation.Actions == nil {
+		t.Fatalf("operation records were not retained: %+v", clonedOperation)
+	}
+	clonedOperation.Subjects[0].Origin = "tampered"
+	if operation.Subjects[0].Origin == "tampered" {
+		t.Fatal("provider records share mutable backing storage")
+	}
+}
+
+func TestNativeNewProjectionPreservesEmptyJSONCollections(t *testing.T) {
+	projection := NativeNewProjection{
+		DependencyLock: cloneTemplateLock(provenance.TemplateLock{Dependencies: []provenance.DependencySubject{}}),
+		OperationBase:  cloneOperationInputs(trustverify.OperationInputs{Subjects: []trustverify.Provider{}, Actions: []trustverify.ActionMaterial{}}),
+	}
+	if projection.DependencyLock.Dependencies == nil || projection.OperationBase.Subjects == nil || projection.OperationBase.Actions == nil {
+		t.Fatal("projection changed present empty collections to nil")
+	}
+	raw, err := json.Marshal(projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	if !strings.Contains(text, `"dependencies":[]`) || !strings.Contains(text, `"subjects":[]`) || !strings.Contains(text, `"actions":[]`) {
+		t.Fatalf("projection lost canonical empty arrays: %s", text)
+	}
+}
+
 func TestNativeNewRefusesFabricatedIntent(t *testing.T) {
 	p := &PreparedNativeNew{}
 	if _, err := p.RootLock(context.Background(), &trustload.Runtime{}); err == nil {

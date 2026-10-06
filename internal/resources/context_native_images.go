@@ -18,17 +18,12 @@ func PlanContextNativeGeneratorImages(ctx context.Context, r *trustload.Runtime,
 	if ctx == nil || r == nil || prepared == nil {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
-	if err := prepared.RecheckFor(ctx, r); err != nil {
-		return nil, err
-	}
-	root, err := prepared.RootLock(ctx, r)
+	projection, err := prepared.Projection(ctx, r)
 	if err != nil {
 		return nil, err
 	}
-	resolution, err := prepared.RootResolution(ctx, r)
-	if err != nil {
-		return nil, err
-	}
+	root := projection.RootLock
+	resolution := projection.RootResolution
 	stable := r.TrustRuntime()
 	if stable == nil || !resolution.ValidFor(stable, stable.Binding()) {
 		return nil, operationtrust.ErrSourceAdapterUnsupported

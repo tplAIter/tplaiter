@@ -64,6 +64,19 @@ type NativeManagedFile struct {
 	Markers     []blockmarkers.Marker
 }
 
+// NativeNewProjection is detached calculation data. It contains no runtime,
+// source closure, formatter, permit, writer, or authority method.
+type NativeNewProjection struct {
+	RootLock            provenance.RootTemplateLock
+	DependencyLock      provenance.TemplateLock
+	RootResolution      *trustverify.VerifiedResolution
+	Rendered            *renderref.Result
+	Manifest            []byte
+	NativeContextDigest string
+	ManagedFiles        []NativeManagedFile
+	OperationBase       trustverify.OperationInputs
+}
+
 type nativeNewMode uint8
 
 const (
@@ -337,13 +350,50 @@ func (p *PreparedNativeNew) OperationBase(ctx context.Context, r *trustload.Runt
 	if err := p.check(ctx, r); err != nil {
 		return trustverify.OperationInputs{}, err
 	}
-	out := p.operationBase
-	out.Subjects = append([]trustverify.Provider{}, out.Subjects...)
+	out := cloneOperationInputs(p.operationBase)
 	out.Actions = []trustverify.ActionMaterial{}
 	if err := p.check(ctx, r); err != nil {
 		return trustverify.OperationInputs{}, err
 	}
 	return out, nil
+}
+
+// Projection performs one complete same-runtime source/DAG recheck before and
+// after copying all calculation data. The returned values are inspection data
+// only; publication and execution continue to require their owning carriers.
+func (p *PreparedNativeNew) Projection(ctx context.Context, r *trustload.Runtime) (NativeNewProjection, error) {
+	if p == nil {
+		return NativeNewProjection{}, errContextSources
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.check(ctx, r); err != nil {
+		return NativeNewProjection{}, err
+	}
+	resolution, err := p.sources.Resolution(ctx, p.rootAlias)
+	if err != nil {
+		return NativeNewProjection{}, err
+	}
+	rendered, err := cloneNativeRendered(p.rendered, p.manifest)
+	if err != nil {
+		return NativeNewProjection{}, err
+	}
+	managed := cloneManagedFiles(p.managedFiles)
+	projection := NativeNewProjection{
+		RootLock:            p.root,
+		DependencyLock:      cloneTemplateLock(p.dependencies),
+		RootResolution:      resolution,
+		Rendered:            rendered,
+		Manifest:            append([]byte(nil), p.manifest...),
+		NativeContextDigest: p.contextDigest,
+		ManagedFiles:        managed,
+		OperationBase:       cloneOperationInputs(p.operationBase),
+	}
+	projection.OperationBase.Actions = []trustverify.ActionMaterial{}
+	if err := p.check(ctx, r); err != nil {
+		return NativeNewProjection{}, err
+	}
+	return projection, nil
 }
 func (p *PreparedNativeNew) ManagedFiles(ctx context.Context, r *trustload.Runtime) ([]NativeManagedFile, error) {
 	if p == nil {
@@ -504,26 +554,94 @@ func (p *PreparedNativeNew) Rendered(ctx context.Context, r *trustload.Runtime) 
 	if err := p.check(ctx, r); err != nil {
 		return nil, err
 	}
-	out := *p.rendered
-	out.Files = map[string][]byte{}
-	for name, data := range p.rendered.Files {
+	return cloneNativeRendered(p.rendered, p.manifest)
+}
+
+func cloneNativeRendered(in *renderref.Result, manifestRaw []byte) (*renderref.Result, error) {
+	if in == nil {
+		return nil, errContextSources
+	}
+	out := *in
+	out.Files = make(map[string][]byte, len(in.Files))
+	for name, data := range in.Files {
 		out.Files[name] = append([]byte(nil), data...)
 	}
-	tpl, err := manifest.ParseTemplate(p.manifest)
+	tpl, err := manifest.ParseTemplate(manifestRaw)
 	if err != nil {
 		return nil, err
 	}
 	out.Template = tpl
-	if out.Baseline != nil {
-		baseline := *out.Baseline
-		baseline.Files = maps.Clone(out.Baseline.Files)
+	if in.Baseline != nil {
+		baseline := *in.Baseline
+		baseline.Files = maps.Clone(in.Baseline.Files)
 		out.Baseline = &baseline
 	}
-	out.Resolved.Values = out.Resolved.Values.Clone()
-	out.Resolved.ActiveValues = out.Resolved.ActiveValues.Clone()
-	out.Resolved.Report.Implied = append([]settings.ImpliedValue(nil), out.Resolved.Report.Implied...)
-	out.Resolved.Report.Warnings = append([]string(nil), out.Resolved.Report.Warnings...)
+	out.Resolved.Values = cloneNativeValues(in.Resolved.Values)
+	out.Resolved.ActiveValues = cloneNativeValues(in.Resolved.ActiveValues)
+	out.Resolved.Report.Implied = append([]settings.ImpliedValue(nil), in.Resolved.Report.Implied...)
+	out.Resolved.Report.Warnings = append([]string(nil), in.Resolved.Report.Warnings...)
 	return &out, nil
+}
+
+func cloneNativeValues(in settings.Values) settings.Values {
+	out := make(settings.Values, len(in))
+	for key, value := range in {
+		out[key] = cloneNativeValue(value)
+	}
+	return out
+}
+
+func cloneNativeValue(value any) any {
+	switch value := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(value))
+		for key, nested := range value {
+			out[key] = cloneNativeValue(nested)
+		}
+		return out
+	case map[string]string:
+		return maps.Clone(value)
+	case []any:
+		out := make([]any, len(value))
+		for i, nested := range value {
+			out[i] = cloneNativeValue(nested)
+		}
+		return out
+	case []string:
+		out := make([]string, len(value))
+		copy(out, value)
+		return out
+	default:
+		return value
+	}
+}
+
+func cloneTemplateLock(in provenance.TemplateLock) provenance.TemplateLock {
+	out := in
+	out.Dependencies = make([]provenance.DependencySubject, len(in.Dependencies))
+	copy(out.Dependencies, in.Dependencies)
+	return out
+}
+
+func cloneManagedFiles(in []NativeManagedFile) []NativeManagedFile {
+	out := make([]NativeManagedFile, len(in))
+	for i, file := range in {
+		out[i] = file
+		out[i].Markers = append([]blockmarkers.Marker(nil), file.Markers...)
+	}
+	return out
+}
+
+func cloneOperationInputs(in trustverify.OperationInputs) trustverify.OperationInputs {
+	out := in
+	out.Subjects = make([]trustverify.Provider, len(in.Subjects))
+	copy(out.Subjects, in.Subjects)
+	out.Actions = make([]trustverify.ActionMaterial, len(in.Actions))
+	for i, action := range in.Actions {
+		out.Actions[i] = action
+		out.Actions[i].Action.Argv = append([]string(nil), action.Action.Argv...)
+	}
+	return out
 }
 func (p *PreparedNativeNew) Close() {
 	if p == nil {

@@ -1385,9 +1385,13 @@ func prepareContextNewClean(ctx context.Context, r *trustload.Runtime, in NewCle
 			intent.Close()
 		}
 	}()
-	result, err := intent.Rendered(ctx, r)
+	projection, err := intent.Projection(ctx, r)
 	if err != nil {
 		return nil, err
+	}
+	result := projection.Rendered
+	if result == nil {
+		return nil, ErrUnavailable
 	}
 	for name, origin := range in.Origins {
 		if _, exists := in.Render.Values[name]; !exists || (origin != survey.SourceDefault && origin != survey.SourceSet && origin != survey.SourceAnswer && origin != survey.SourcePrompt && origin != survey.SourceImplied) {
@@ -1421,13 +1425,10 @@ func prepareContextNewClean(ctx context.Context, r *trustload.Runtime, in NewCle
 		}
 		registry = append([]byte(nil), data.RegistryBefore...)
 	}
-	root, err := intent.RootLock(ctx, r)
-	if err != nil {
-		return nil, err
-	}
+	root := projection.RootLock
 	p := &NewCleanPreparation{runtime: r, input: in, nativeSources: src, nativeIntent: intent, root: root, purpose: "new", registrySHA256: evidencecas.Digest(registry), formats: map[string]*Prepared{}, context: newimages.Context{ID: r.ProjectContext().ProjectID, Source: rootSource, Info: in.Render.Project, Port: in.Render.Runtime.Port, Result: result, Resources: resourceImages, Sources: in.Origins, Interactive: in.Interactive}}
-	inventory, err := intent.ManagedFiles(ctx, r)
-	if err != nil || len(inventory) == 0 || len(inventory) > 4096 {
+	inventory := projection.ManagedFiles
+	if len(inventory) == 0 || len(inventory) > 4096 {
 		return nil, ErrUnavailable
 	}
 	for _, file := range inventory {
