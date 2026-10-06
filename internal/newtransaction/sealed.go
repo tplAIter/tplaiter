@@ -135,35 +135,38 @@ func managedImages(files map[string][]byte) bool {
 // BeginManagedSealed accepts only the opaque source-owner publication. It never
 // takes caller afterimages, reported receipts, or a supplied sealing key.
 func BeginManagedSealed(ctx context.Context, r *trustload.Runtime, publication *formatproof.NewPublication) (*Transaction, error) {
+	tx, _, err := BeginManagedPublication(ctx, r, publication)
+	return tx, err
+}
+
+// BeginManagedPublication borrows the exact source-owned image and registry
+// projection already checked for the new transaction's sealed digest. Returned
+// bytes remain proposals: PrepareRegistry and Commit independently reconstruct
+// the publication and compare them under the transaction's existing gates.
+func BeginManagedPublication(ctx context.Context, r *trustload.Runtime, publication *formatproof.NewPublication) (*Transaction, formatproof.NewPublicationProjection, error) {
 	if ctx == nil || r == nil || publication == nil {
-		return nil, ErrManagedAdmission
+		return nil, formatproof.NewPublicationProjection{}, ErrManagedAdmission
 	}
-	if err := publication.RevalidatePublication(ctx, r); err != nil {
-		return nil, err
-	}
-	files, err := publication.ImagesFor(ctx, r)
+	projection, err := publication.PublicationProjectionFor(ctx, r)
 	if err != nil {
-		return nil, err
+		return nil, formatproof.NewPublicationProjection{}, err
 	}
-	home, _, _, err := publication.RegistryFor(r)
-	if err != nil {
-		return nil, err
-	}
+	files, home := projection.Images, projection.Home
 	tree, err := outputTree(files)
 	if err != nil {
-		return nil, err
+		return nil, formatproof.NewPublicationProjection{}, err
 	}
 	tx, err := begin(home, r.ProjectContext().RootPath, nil, digest(tree))
 	if err != nil {
-		return nil, err
+		return nil, formatproof.NewPublicationProjection{}, err
 	}
 	reference := publication.Reference()
 	tx.managedReference, tx.managedRuntime = &reference, r
 	if err := tx.save(); err != nil {
 		tx.Release()
-		return nil, err
+		return nil, formatproof.NewPublicationProjection{}, err
 	}
-	return tx, nil
+	return tx, projection, nil
 }
 
 // checkManaged is also used by generic entrypoints. A stripped recovery branch
@@ -183,20 +186,23 @@ func (t *Transaction) checkManaged(ctx context.Context, fresh bool, plan *Regist
 	if t.managedRuntime == nil || t.managedRuntime.ProjectContext().RootPath != t.j.Target {
 		return ErrManagedAdmission
 	}
-	publication, err := formatproof.OpenNewPublication(ctx, t.managedRuntime, *t.managedReference)
+	var projection formatproof.NewPublicationProjection
+	var err error
+	if fresh {
+		projection, err = formatproof.CurrentNewPublicationProjection(ctx, t.managedRuntime, *t.managedReference)
+	} else {
+		projection, err = formatproof.ReadNewPublicationProjection(ctx, t.managedRuntime, *t.managedReference)
+	}
 	if err != nil {
 		return err
 	}
-	images, err := publication.ImagesFor(ctx, t.managedRuntime)
-	if err != nil {
-		return err
-	}
+	images := projection.Images
 	tree, err := outputTree(images)
 	if err != nil || t.sealedTree != digest(tree) {
 		return ErrManagedAdmission
 	}
-	home, before, after, err := publication.RegistryFor(t.managedRuntime)
-	if err != nil || home != t.home {
+	home, before, after := projection.Home, projection.RegistryBefore, projection.RegistryAfter
+	if home != t.home {
 		return ErrManagedAdmission
 	}
 	if plan != nil && (plan.Home != home || !bytes.Equal(plan.Before, before) || !bytes.Equal(plan.After, after)) {
@@ -204,9 +210,6 @@ func (t *Transaction) checkManaged(ctx context.Context, fresh bool, plan *Regist
 	}
 	if t.j.RegistryBeforeSHA != "" && (t.j.RegistryBeforeSHA != digest(before) || t.j.RegistryAfterSHA != digest(after)) {
 		return ErrManagedAdmission
-	}
-	if fresh {
-		return publication.RevalidatePublication(ctx, t.managedRuntime)
 	}
 	return nil
 }

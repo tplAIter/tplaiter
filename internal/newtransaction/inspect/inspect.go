@@ -322,13 +322,13 @@ func loadRecoveryManifest(dir, ref string) (Manifest, error) {
 	var manifest Manifest
 	dec := json.NewDecoder(strings.NewReader(string(data)))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&manifest); err != nil || dec.Decode(&struct{}{}) != io.EOF || (manifest.Schema != Schema && manifest.Schema != 2) || !validDigest(manifest.PathDigest) || manifest.Target == "" || manifest.Staging == "" || manifest.PendingMarker != pendingMarkerRel || manifest.CreatedAt.IsZero() {
+	if err := dec.Decode(&manifest); err != nil || dec.Decode(&struct{}{}) != io.EOF || (manifest.Schema != Schema && manifest.Schema != 2 && manifest.Schema != 3) || !validDigest(manifest.PathDigest) || manifest.Target == "" || manifest.Staging == "" || manifest.PendingMarker != pendingMarkerRel || manifest.CreatedAt.IsZero() {
 		return Manifest{}, ErrUnsafe
 	}
-	if (manifest.Schema == 2) != (manifest.ManagedPublication != nil) {
+	if (manifest.Schema == 2 || manifest.Schema == 3) != (manifest.ManagedPublication != nil) {
 		return Manifest{}, ErrUnsafe
 	}
-	if manifest.ManagedPublication != nil && (manifest.ManagedPublication.APIVersion != "tplaiter.dev/managed-publication-reference/v1" || !validDigest(manifest.ManagedPublication.FrameSHA256) || manifest.SealedTree == "" || len(manifest.HookPlan) != 0) {
+	if manifest.ManagedPublication != nil && (manifest.ManagedPublication.APIVersion != map[int]string{2: "tplaiter.dev/managed-publication-reference/v1", 3: "tplaiter.dev/managed-publication-reference/v2"}[manifest.Schema] || !validDigest(manifest.ManagedPublication.FrameSHA256) || manifest.SealedTree == "" || len(manifest.HookPlan) != 0) {
 		return Manifest{}, ErrUnsafe
 	}
 	for _, hook := range manifest.HookPlan {

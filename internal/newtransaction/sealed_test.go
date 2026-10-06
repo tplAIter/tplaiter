@@ -23,11 +23,13 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
+	"github.com/tplAIter/tplaiter/internal/deps"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/exports"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction/formatproof"
-	"github.com/tplAIter/tplaiter/internal/projecttransaction/managed"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/state"
@@ -592,14 +594,14 @@ func TestManagedNewPublicationColdSameID(t *testing.T) {
 			t.Fatalf("cold afterimage %s: %v", name, err)
 		}
 	}
-	projection, err := managed.ReadNew(ctx, cold, home, input.RendererVersion)
+	projection, err := formatproof.ReadRootNew(ctx, cold, home, input.RendererVersion)
 	if err != nil {
 		t.Fatalf("fresh managed clean reader: %v", err)
 	}
 	if len(projection.Blocks().Files) == 0 {
 		t.Fatal("missing authenticated clean blocks")
 	}
-	reconstructed, err := managed.ReconstructNew(ctx, cold, home, input.RendererVersion, images)
+	reconstructed, err := formatproof.ReconstructRootNew(ctx, cold, home, input.RendererVersion, images)
 	if err != nil || len(reconstructed.Blocks().Files) == 0 {
 		t.Fatalf("immutable beforeimage projection: %v", err)
 	}
@@ -608,19 +610,19 @@ func TestManagedNewPublicationColdSameID(t *testing.T) {
 		controls[name] = append([]byte(nil), raw...)
 	}
 	controls[".tplaiter/managed-blocks.json"] = []byte(`{"schema":1,"files":{}}`)
-	if _, err := managed.ReconstructNew(ctx, cold, home, input.RendererVersion, controls); err == nil {
+	if _, err := formatproof.ReconstructRootNew(ctx, cold, home, input.RendererVersion, controls); err == nil {
 		t.Fatal("mismatched managed beforeimage accepted")
 	}
 	controls[".tplaiter/managed-blocks.json"] = images[".tplaiter/managed-blocks.json"]
 	delete(controls, ".tplaiter/manifest.snapshot.yaml")
-	if _, err := managed.ReconstructNew(ctx, cold, home, input.RendererVersion, controls); err == nil {
+	if _, err := formatproof.ReconstructRootNew(ctx, cold, home, input.RendererVersion, controls); err == nil {
 		t.Fatal("missing signed snapshot beforeimage accepted")
 	}
 
-	if _, err := managed.ReadNew(ctx, cold, home, "wrong-renderer"); err == nil {
+	if _, err := formatproof.ReadRootNew(ctx, cold, home, "wrong-renderer"); err == nil {
 		t.Fatal("wrong renderer accepted")
 	}
-	if _, err := managed.ReadNew(ctx, cold, filepath.Join(f.dir, "other-home"), input.RendererVersion); err == nil {
+	if _, err := formatproof.ReadRootNew(ctx, cold, filepath.Join(f.dir, "other-home"), input.RendererVersion); err == nil {
 		t.Fatal("wrong home accepted")
 	}
 	lineagePath := filepath.Join(f.project, ".tplaiter", "managed-lineage.json")
@@ -631,7 +633,7 @@ func TestManagedNewPublicationColdSameID(t *testing.T) {
 	if err := os.WriteFile(lineagePath, []byte(`{}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := managed.ReadNew(ctx, cold, home, input.RendererVersion); err == nil {
+	if _, err := formatproof.ReadRootNew(ctx, cold, home, input.RendererVersion); err == nil {
 		t.Fatal("tampered lineage accepted")
 	}
 	if err := os.WriteFile(lineagePath, lineageRaw, 0o644); err != nil {
@@ -640,7 +642,7 @@ func TestManagedNewPublicationColdSameID(t *testing.T) {
 	if err := os.Remove(lineagePath); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := managed.ReadNew(ctx, cold, home, input.RendererVersion); err == nil {
+	if _, err := formatproof.ReadRootNew(ctx, cold, home, input.RendererVersion); err == nil {
 		t.Fatal("stripped lineage accepted")
 	}
 	if err := os.WriteFile(lineagePath, lineageRaw, 0o644); err != nil {
@@ -816,4 +818,460 @@ func TestStateLedgerOwnerFixtureBridge(t *testing.T) {
 	if err := json.NewEncoder(out).Encode(reply); err != nil {
 		t.Fatal(err)
 	}
+}
+
+type contextFixtureClock struct{}
+
+func (contextFixtureClock) Now() time.Time { return time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) }
+
+type contextFixture struct {
+	runtime    *trustload.Runtime
+	selection  trustload.LaunchSelection
+	input      contextsource.ContextSourceSelection
+	objectRoot string
+	policyPath string
+	proofs     map[string]contextsource.ContextSourceProof
+	files      map[string]map[string][]byte
+}
+
+func contextJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, e := json.Marshal(v)
+	if e != nil {
+		t.Fatal(e)
+	}
+	return b
+}
+
+func contextWrite(t *testing.T, p string, b []byte) {
+	t.Helper()
+	if e := os.MkdirAll(filepath.Dir(p), 0o700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(p, b, 0o600); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func contextPin(p string, b []byte) trustload.FilePin {
+	return trustload.FilePin{Path: p, SHA256: evidencecas.Digest(b)}
+}
+
+func contextRawHash(t *testing.T, s string) []byte {
+	t.Helper()
+	b, e := hex.DecodeString(strings.TrimPrefix(s, "sha256:"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	return b
+}
+func contextMerkle(h bootstrap.MerkleHash) string { return "sha256:" + hex.EncodeToString(h[:]) }
+
+// Source objects and real publisher evidence are synthetic public data. The
+// actual installed loader, stable runtime and SourceReader perform admission;
+// no fixture snapshot/resolution/reader is supplied to the carrier.
+func newContextFixture(t *testing.T, alter func(string, map[string][]byte)) *contextFixture {
+	t.Helper()
+	dir, e := filepath.EvalSymlinks(t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	f := &contextFixture{objectRoot: filepath.Join(dir, "objects"), policyPath: filepath.Join(dir, "policy.json"), proofs: map[string]contextsource.ContextSourceProof{}, files: map[string]map[string][]byte{}}
+	for _, p := range []string{f.objectRoot, filepath.Join(dir, "evidence"), filepath.Join(dir, "scratch")} {
+		if e := os.Mkdir(p, 0o700); e != nil {
+			t.Fatal(e)
+		}
+	}
+	origin := "https://example.test/context-sources"
+	subjects := map[string]trustverify.Subject{}
+	add := func(kind string, data []byte) string {
+		raw := append([]byte(fmt.Sprintf("%s %d\x00", kind, len(data))), data...)
+		h := sha1.Sum(raw)
+		id := hex.EncodeToString(h[:])
+		contextWrite(t, filepath.Join(f.objectRoot, id), raw)
+		return id
+	}
+	var tree func(map[string][]byte, string) string
+	tree = func(files map[string][]byte, prefix string) string {
+		entries := map[string]bool{}
+		for p := range files {
+			if strings.HasPrefix(p, prefix) {
+				rest := strings.TrimPrefix(p, prefix)
+				name, _, nested := strings.Cut(rest, "/")
+				entries[name] = entries[name] || nested
+			}
+		}
+		names := []string{}
+		for n := range entries {
+			names = append(names, n)
+		}
+		sort.Slice(names, func(i, j int) bool {
+			a, b := names[i], names[j]
+			if entries[a] {
+				a += "/"
+			}
+			if entries[b] {
+				b += "/"
+			}
+			return a < b
+		})
+		raw := []byte{}
+		for _, name := range names {
+			mode := "100644"
+			id := ""
+			if entries[name] {
+				mode = "40000"
+				id = tree(files, prefix+name+"/")
+			} else {
+				if strings.HasSuffix(prefix+name, "/formatter/native-tool") {
+					mode = "100755"
+				}
+				id = add("blob", files[prefix+name])
+			}
+			oid, _ := hex.DecodeString(id)
+			raw = append(raw, []byte(mode+" "+name+"\x00")...)
+			raw = append(raw, oid...)
+		}
+		return add("tree", raw)
+	}
+	parameters := []deps.Parameter{{Name: "flavor", Value: json.RawMessage(`"plain"`)}}
+	for _, alias := range []string{"leaf", "a", "b", "root"} {
+		refs := []contextsource.ContextDependency{}
+		associations := []contextsource.ContextDependencyBinding{}
+		requirements := []exports.ExportRequirement{}
+		depsAliases := []string{}
+		if alias == "a" || alias == "b" {
+			depsAliases = []string{"leaf"}
+		}
+		if alias == "root" {
+			depsAliases = []string{"a", "b"}
+		}
+		for _, dep := range depsAliases {
+			s := subjects[dep]
+			refs = append(refs, contextsource.ContextDependency{Alias: dep, Origin: s.Origin, TemplatePath: s.TemplatePath, CommitAlgorithm: "sha1", Commit: s.Commit, TreeDigest: s.TreeSHA256, ContractDigest: s.ContractSHA256})
+			associations = append(associations, contextsource.ContextDependencyBinding{Alias: dep, ProviderID: "provider." + dep, Parameters: parameters})
+			requirements = append(requirements, exports.ExportRequirement{Selector: dep + ".block.notes", ContractDigest: s.ContractSHA256, CompatibleRange: ">=1.0.0 <2.0.0"})
+		}
+		manifest := []byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata:\n  name: context-" + alias + "\n  version: 1.0.0\n  description: Public task context\nengine:\n  type: gotemplate\n  root: files\nsettings: []\n")
+		var contract []byte
+		if alias == "leaf" {
+			contract = contextJSON(t, operationtrust.NativeContract{APIVersion: operationtrust.NativeContractAPIVersion, Kind: operationtrust.NativeContractKind, ManifestPath: "template.manifest.yaml", ManifestSHA256: evidencecas.Digest(manifest), Dependencies: []string{}})
+		} else {
+			contract = contextJSON(t, contextsource.NativeContextContract{APIVersion: contextsource.NativeContextContractAPIVersion, Kind: operationtrust.NativeContractKind, ManifestPath: "template.manifest.yaml", ManifestSHA256: evidencecas.Digest(manifest), Dependencies: refs})
+		}
+		binding := contextsource.ContextSourceBindings{APIVersion: contextsource.ContextSourceBindingsAPIVersion, Kind: "ContextSourceBindings", Source: contextsource.ContextCatalogBinding{Alias: alias, ProviderID: "provider." + alias, Parameters: parameters, EntriesPath: "catalog/entries.json", PayloadDirectory: "catalog/payloads", ToolPath: "catalog/tool.md"}, Dependencies: associations}
+		content := []byte("Complete inert procedure for " + alias + ". Read every required prerequisite; no tool execution.\n")
+		payload := contextJSON(t, exports.ExportPayload{APIVersion: exports.ExportPayloadAPIVersion, ExportID: "notes", Files: []exports.PayloadFile{{SourcePath: "docs/notes.md", TargetPath: "context/" + alias + ".md", Mode: "100644", ContentSHA256: evidencecas.Digest(content)}}, Slots: []exports.PayloadSlot{}, Blocks: []exports.PayloadBlock{}})
+		tool := []byte("Inert file context only.\n")
+		domain := "block"
+		if alias == "root" {
+			domain = "skill"
+		}
+		entry := exports.ExportEntry{ID: "notes", Domain: domain, Name: "notes", Version: "1.0.0", ContentDigest: evidencecas.Digest(payload), ToolDigest: evidencecas.Digest(tool), Parameters: []exports.ScalarParameter{}, Requires: requirements}
+		files := map[string][]byte{"template.manifest.yaml": manifest, "template.contract.json": contract, contextsource.ContextSourceBindingsPath: contextJSON(t, binding), "catalog/entries.json": contextJSON(t, []exports.ExportEntry{entry}), "catalog/tool.md": tool, "catalog/payloads/notes.json": payload, "docs/notes.md": content, "files/hello.txt.tmpl": []byte("Hello public project.\n")}
+		if alias == "root" {
+			files["files/main.go.tmpl"] = []byte("package fixture\n// tplater:managed-begin id=body provider=root-content\nfunc F( ) int {return 1}\n// tplater:managed-end id=body\n")
+		}
+		if alias == "leaf" {
+			toolBytes := testfixture.NewGofmtFixture(t).Tool()
+			info, err := buildinfo.Read(bytes.NewReader(toolBytes))
+			if err != nil {
+				t.Fatal(err)
+			}
+			files["formatter/native-tool"] = toolBytes
+			files["formatter/tool.json"], err = canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(toolBytes), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": operationtrust.FormatterNativeEnvelope()})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if alter != nil {
+			alter(alias, files)
+		}
+		f.files[alias] = files
+		prefixed := map[string][]byte{}
+		for name, raw := range files {
+			prefixed[alias+"/"+name] = raw
+		}
+		root := tree(prefixed, "")
+		commit := add("commit", []byte("tree "+root+"\n\nPublic context fixture\n"))
+		reader, e := trustload.NewObjectReader([]trustload.ObjectOrigin{{Origin: origin, RootPath: f.objectRoot}})
+		if e != nil {
+			t.Fatal(e)
+		}
+		captured, e := trustverify.CaptureSource(context.Background(), reader, trustverify.SourceIdentity{Origin: origin, TemplatePath: alias, Commit: commit}, trustverify.DefaultSourceLimits())
+		reader.Close()
+		if e != nil {
+			t.Fatal(e)
+		}
+		subjects[alias] = captured.Subject()
+	}
+
+	anchor := ed25519.NewKeyFromSeed([]byte("01234567890123456789012345678901"))
+	publisher := ed25519.NewKeyFromSeed([]byte("12345678901234567890123456789012"))
+	approver := ed25519.NewKeyFromSeed([]byte("23456789012345678901234567890123"))
+	var err error
+	var policy trustverify.ExecutionPolicy
+	evidence := map[string][]byte{}
+	put := func(b []byte) string { d := evidencecas.Digest(b); evidence[d] = append([]byte(nil), b...); return d }
+	anchorPub, publisherPub := anchor.Public().(ed25519.PublicKey), publisher.Public().(ed25519.PublicKey)
+	rootRef := put([]byte(bootstrap.EncodePublicKey(publisherPub)))
+	env := bootstrap.Envelope{APIVersion: bootstrap.TrustRootsAPIVersion, AuthorityID: "t6b-authority", Sequence: 1, Validity: bootstrap.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, AllowedPolicyOrigins: []string{"https://example.test/policy"}, RootKeys: []bootstrap.RootKey{{Fingerprint: bootstrap.Fingerprint(publisherPub), PublicKeyCAS: rootRef, Issuer: "publisher-1", Status: "active"}}, Threshold: 1, RevocationEpoch: 0, Revocations: []bootstrap.Revocation{}}
+	if env.PayloadSHA256, err = env.ComputePayloadSHA256(); err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := hex.DecodeString(env.PayloadSHA256[7:])
+	env.Signatures = []bootstrap.Signature{{KeyFingerprint: bootstrap.Fingerprint(anchorPub), SignatureCAS: put([]byte(bootstrap.EncodeSignature(ed25519.Sign(anchor, payload))))}}
+	envRef := put(contextJSON(t, env))
+
+	aliases := []string{"a", "b", "leaf", "root"}
+	leaves := []bootstrap.MerkleHash{bootstrap.HashLeaf([]byte(env.PayloadSHA256))}
+	for _, alias := range aliases {
+		subject := subjects[alias]
+		statement := bootstrap.PublisherStatement{APIVersion: bootstrap.PublisherStatementAPIVersion, PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Predicate: "https://example.test/predicate", Usage: "template-source", Subject: bootstrap.SubjectIdentity{Origin: subject.Origin, TemplatePath: subject.TemplatePath, Commit: subject.Commit, TreeSHA256: subject.TreeSHA256, ContractSHA256: subject.ContractSHA256}}
+		digest, e := bootstrap.DomainDigest(bootstrap.PublisherStatementAPIVersion, statement)
+		if e != nil {
+			t.Fatal(e)
+		}
+		refs := operationtrust.SelectionEvidence{Format: bootstrap.PublisherStatementAPIVersion, StatementCAS: put(contextJSON(t, statement)), SignatureCAS: put([]byte(bootstrap.EncodeSignature(ed25519.Sign(publisher, contextRawHash(t, digest))))), KeyFingerprint: bootstrap.Fingerprint(publisherPub)}
+		f.proofs[alias] = contextsource.ContextSourceProof{Subject: operationtrust.SelectionSubject{Origin: subject.Origin, TemplatePath: subject.TemplatePath, RequestedRef: subject.Commit, Commit: subject.Commit, TreeSHA256: subject.TreeSHA256, ContractSHA256: subject.ContractSHA256}, Evidence: refs}
+		leaves = append(leaves, bootstrap.HashLeaf([]byte(refs.StatementCAS)))
+	}
+	var merkle func([]bootstrap.MerkleHash) bootstrap.MerkleHash
+	merkle = func(v []bootstrap.MerkleHash) bootstrap.MerkleHash {
+		if len(v) == 1 {
+			return v[0]
+		}
+		n := 1
+		for n*2 < len(v) {
+			n *= 2
+		}
+		return bootstrap.HashChildren(merkle(v[:n]), merkle(v[n:]))
+	}
+	var inclusion func([]bootstrap.MerkleHash, int) []string
+	inclusion = func(v []bootstrap.MerkleHash, i int) []string {
+		if len(v) == 1 {
+			return []string{}
+		}
+		n := 1
+		for n*2 < len(v) {
+			n *= 2
+		}
+		if i < n {
+			return append(inclusion(v[:n], i), contextMerkle(merkle(v[n:])))
+		}
+		return append(inclusion(v[n:], i-n), contextMerkle(merkle(v[:n])))
+	}
+	checkpointRef := put(contextJSON(t, bootstrap.Checkpoint{APIVersion: bootstrap.CheckpointAPIVersion, AuthorityID: env.AuthorityID, TreeSize: uint64(len(leaves)), RootHash: contextMerkle(merkle(leaves))}))
+	envProof := put(contextJSON(t, bootstrap.InclusionProof{APIVersion: bootstrap.InclusionAPIVersion, LeafIndex: 0, TreeSize: uint64(len(leaves)), Hashes: inclusion(leaves, 0)}))
+	for i, alias := range aliases {
+		p := f.proofs[alias]
+		p.Evidence.CheckpointCAS = checkpointRef
+		p.Evidence.InclusionProofCAS = put(contextJSON(t, bootstrap.InclusionProof{APIVersion: bootstrap.InclusionAPIVersion, LeafIndex: uint64(i + 1), TreeSize: uint64(len(leaves)), Hashes: inclusion(leaves, i+1)}))
+		f.proofs[alias] = p
+	}
+	f.input = contextsource.ContextSourceSelection{APIVersion: contextsource.ContextSourceSelectionAPIVersion, Root: f.proofs["root"], Sources: []contextsource.ContextSourceProof{f.proofs["a"], f.proofs["b"], f.proofs["leaf"]}}
+	receipt := bootstrap.Receipt{APIVersion: bootstrap.TrustReceiptAPIVersion, AuthorityID: env.AuthorityID, HighestAcceptedSequence: 1, EnvelopePayloadSHA256: env.PayloadSHA256, RevocationEpoch: 0, TreeSize: uint64(len(leaves)), CheckpointDigest: checkpointRef}
+	if receipt.ReceiptDigest, err = receipt.ComputeDigest(); err != nil {
+		t.Fatal(err)
+	}
+	receiptRef := put(contextJSON(t, receipt))
+	scopes := []bootstrap.PublisherScope{}
+	for _, alias := range aliases {
+		scopes = append(scopes, bootstrap.PublisherScope{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", SourceOrigin: origin, TemplatePath: alias, Predicate: "https://example.test/predicate", Usage: "template-source"})
+	}
+	desc := bootstrap.DescriptorDocument{APIVersion: bootstrap.DescriptorAPIVersion, Profile: bootstrap.ProfileOSS, AuthorityID: env.AuthorityID, Anchors: []bootstrap.DescriptorAnchor{{Fingerprint: bootstrap.Fingerprint(anchorPub), PublicKeyBase64: base64.StdEncoding.EncodeToString(anchorPub)}}, Threshold: 1, AllowedPolicyOrigins: []string{"https://example.test/policy"}, PublisherScopes: scopes}
+	desc.DescriptorSHA256 = desc.ComputedSHA256()
+	opRecord := trustload.OperatorPinRecord{APIVersion: trustload.OperatorPinRecordAPIVersion, Method: "operator-pinned", DescriptorSHA256: desc.DescriptorSHA256}
+	opRaw := contextJSON(t, opRecord)
+	prov := bootstrap.ProvisioningRecord{APIVersion: bootstrap.ProvisioningAPIVersion, Mode: "operator-pinned", DescriptorSHA256: desc.DescriptorSHA256, AuthenticationEvidenceSHA256: evidencecas.Digest(opRaw), EvidenceClass: bootstrap.EvidenceSimulated}
+	prov.ProvisioningSHA256 = prov.ComputedSHA256()
+	state := bootstrap.OSSAcceptedState{APIVersion: bootstrap.OSSAcceptedStateAPIVersion, DescriptorSHA256: desc.DescriptorSHA256, ProvisioningSHA256: prov.ProvisioningSHA256, AuthorityID: env.AuthorityID, Sequence: 1, EnvelopePayloadSHA256: env.PayloadSHA256, RevocationEpoch: 0, ReceiptDigest: receipt.ReceiptDigest, TreeSize: uint64(len(leaves)), CheckpointDigest: checkpointRef}
+	state.StateSHA256 = state.ComputedSHA256()
+	approverPub := approver.Public().(ed25519.PublicKey)
+	policy = trustverify.ExecutionPolicy{APIVersion: trustverify.ExecutionPolicyAPIVersion, PolicyID: "t6b-policy", Profile: "oss", MinimumProfile: "oss", Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Principals: []trustverify.Principal{{ID: "principal:approver"}, {ID: "principal:publisher"}, {ID: "principal:submitter"}}, IssuerPrincipals: []trustverify.IssuerPrincipal{{Issuer: "publisher-1", PrincipalID: "principal:publisher"}}, SourceRules: []trustverify.SourceRule{{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: origin, TemplatePath: ".", Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"}}, Approvers: []trustverify.Approver{{ID: "t6b-approver", PrincipalID: "principal:approver", IdentityClass: "operator", KeyFingerprint: bootstrap.Fingerprint(approverPub), PublicKeyBase64: base64.StdEncoding.EncodeToString(approverPub), Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Scopes: []trustverify.ApprovalScope{{ProjectID: "project-t6b", OperationScope: "new", ActionKind: "formatter", Origin: origin, TemplatePath: "root"}}}}, AllowInvocationHuman: false, MaxTimeoutMillis: 5000}
+	if policy.PolicySHA256, err = policy.ComputePolicySHA256(); err != nil {
+		t.Fatal(err)
+	}
+	policy.SourceRules = []trustverify.SourceRule{}
+	for _, alias := range aliases {
+		policy.SourceRules = append(policy.SourceRules, trustverify.SourceRule{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: origin, TemplatePath: alias, Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"})
+	}
+	if policy.PolicySHA256, err = policy.ComputePolicySHA256(); err != nil {
+		t.Fatal(err)
+	}
+	descRaw, provRaw, policyRaw := contextJSON(t, desc), contextJSON(t, prov), contextJSON(t, policy)
+	for p, b := range map[string][]byte{filepath.Join(dir, "descriptor.json"): descRaw, filepath.Join(dir, "provisioning.json"): provRaw, filepath.Join(dir, "operator.json"): opRaw, filepath.Join(dir, "policy.json"): policyRaw, filepath.Join(dir, "state.json"): contextJSON(t, state)} {
+		if err := os.WriteFile(p, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bundle := trustload.StoredBundle{APIVersion: "tplaiter.dev/stored-bootstrap-bundle/v1", EnvelopeCAS: envRef, ReceiptCAS: receiptRef, Transparency: trustload.StoredTransparency{CheckpointCAS: checkpointRef, InclusionProofCAS: envProof}}
+	bundleRaw := contextJSON(t, bundle)
+	bundleDigest, err := bundle.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bundle.json"), bundleRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	install := trustload.RuntimeInstall{APIVersion: trustload.RuntimeInstallAPIVersion, InstallationID: "t6b-install", Profile: bootstrap.ProfileOSS, MinimumProfile: bootstrap.ProfileOSS, Descriptor: contextPin(filepath.Join(dir, "descriptor.json"), descRaw), Provisioning: contextPin(filepath.Join(dir, "provisioning.json"), provRaw), OperatorRecord: contextPin(filepath.Join(dir, "operator.json"), opRaw), ExecutionPolicy: contextPin(filepath.Join(dir, "policy.json"), policyRaw), ProjectContexts: []trustload.ProjectContext{{Key: "project", ProjectID: "project-t6b", SubmitterPrincipalID: "principal:submitter", MinimumProfile: bootstrap.ProfileOSS, RootPath: filepath.Join(dir, "project")}}, ObjectOrigins: []trustload.ObjectOrigin{{Origin: origin, RootPath: filepath.Join(dir, "objects")}}, EvidenceRoot: filepath.Join(dir, "evidence"), ScratchRoot: filepath.Join(dir, "scratch"), OSS: &trustload.OSSInstall{StorePath: filepath.Join(dir, "store"), InitialStatePath: filepath.Join(dir, "state.json"), InitialStateSHA256: state.StateSHA256, InitialBundlePath: filepath.Join(dir, "bundle.json"), InitialBundleSHA256: bundleDigest}}
+	installRaw := contextJSON(t, install)
+	installPath := filepath.Join(dir, "runtime.json")
+	if err := os.WriteFile(installPath, installRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	installDigest, err := install.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.selection = trustload.LaunchSelection{Profile: bootstrap.ProfileOSS, RuntimeConfig: trustload.FilePin{Path: installPath, SHA256: installDigest}, OperatorRecord: install.OperatorRecord, InstallationID: install.InstallationID}
+	factory := func(r evidencecas.Reader) (*bootstrap.Verifier, error) {
+		return bootstrap.NewVerifier(r, contextFixtureClock{}, nil, 0)
+	}
+	if err := trustload.Enroll(context.Background(), f.selection, factory, contextJSON(t, state), bundleRaw, evidence); err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+
+	runtime, e := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: contextFixtureClock{}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	f.input = contextsource.ContextSourceSelection{APIVersion: contextsource.ContextSourceSelectionAPIVersion, Root: f.proofs["root"], Sources: []contextsource.ContextSourceProof{f.proofs["a"], f.proofs["b"], f.proofs["leaf"]}}
+	f.runtime = runtime
+	t.Cleanup(func() { runtime.Close() })
+	return f
+}
+
+func TestContextManagedNewColdSameID(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
+	defer cancel()
+	f := newContextFixture(t, nil)
+	r := f.runtime
+	home := filepath.Join(filepath.Dir(f.policyPath), "home")
+	target := r.ProjectContext().RootPath
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	leaf := f.proofs["leaf"]
+	tool := operationtrust.SourceSelection{APIVersion: operationtrust.SourceSelectionAPIVersion, Subject: leaf.Subject, Evidence: leaf.Evidence, Dependencies: []string{}}
+	input := formatproof.NewCleanInput{APIVersion: "tplaiter.dev/managed-new-clean-input/v2", Home: home, Ref: f.input.Root.Subject.Commit, SourceInput: contextJSON(t, f.input), ToolSource: contextJSON(t, tool), Render: renderref.Input{Repo: "pinned", Values: settings.Values{}, Project: manifest.ProjectInfo{Name: "Example", Slug: "example", Module: "example.invalid/project"}, Runtime: manifest.ProjectRuntime{Port: 8080}}, RendererVersion: "1.0.0", Origins: map[string]survey.Source{}}
+	t.Log("phase prepare")
+	p, err := formatproof.PrepareNewClean(ctx, r, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var policy trustverify.ExecutionPolicy
+	raw, err := os.ReadFile(f.policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(raw, &policy); err != nil {
+		t.Fatal(err)
+	}
+	owner := &managedNewIntegrationFixture{policy: policy, approver: ed25519.NewKeyFromSeed([]byte("23456789012345678901234567890123")), evidence: filepath.Join(filepath.Dir(f.policyPath), "evidence")}
+	approvals := map[string]trustverify.ApprovalRefs{}
+	for _, request := range p.Requests() {
+		approvals[request.RequestSHA256] = managedNewApprove(t, owner, request)
+	}
+	t.Log("phase native-pair")
+	clean, err := formatproof.StageNewClean(ctx, p, approvals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("phase publication-record")
+	pub, err := formatproof.BuildNewPublication(ctx, p, clean)
+	if err != nil {
+		t.Fatal(err)
+	}
+	images, err := pub.ImagesFor(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	effects := map[string][]byte{}
+	for _, ref := range p.References() {
+		for ordinal := 1; ordinal <= 2; ordinal++ {
+			path := filepath.Join(r.ScratchRoot(), "formatter-evidence", strings.TrimPrefix(ref.FrameSHA256, "sha256:"), fmt.Sprintf("pass-%d-completed.json", ordinal))
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			effects[path] = raw
+		}
+	}
+	t.Log("phase begin")
+	tx, err := BeginManagedSealed(ctx, r, pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := tx.ID()
+	for name, raw := range images {
+		path := filepath.Join(tx.Workspace(), filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Log("phase seal")
+	if err := tx.SealOutputs(); err != nil {
+		t.Fatal(err)
+	}
+	registryHome, before, after, err := pub.RegistryFor(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := RegistryPlan{Home: registryHome, Before: before, After: after}
+	if err := tx.PrepareRegistry(registry); err != nil {
+		t.Fatal(err)
+	}
+	tx.fault = func(point string) error {
+		if point == "commit.before_marker_remove" {
+			return ErrInjectedCrash
+		}
+		return nil
+	}
+	t.Log("phase commit-crash")
+	if err := tx.Commit(registry); !errors.Is(err, ErrInjectedCrash) {
+		t.Fatalf("actual commit boundary: %v", err)
+	}
+	tx.Release()
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cold, err := trustload.OpenRuntime(ctx, trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: contextFixtureClock{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cold.Close()
+	loaded, err := Load(home, id)
+	if err != nil || loaded.ID() != id || loaded.managedReference == nil || loaded.managedReference.APIVersion != "tplaiter.dev/managed-publication-reference/v2" {
+		t.Fatalf("schema3 same-ID carrier %v", err)
+	}
+	if err := Continue(home, id, home); !errors.Is(err, ErrManagedAdmission) {
+		t.Fatalf("ordinary recovery bypass %v", err)
+	}
+	t.Log("phase cold-continue")
+	if err := ContinueManaged(ctx, cold, home, id); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range images {
+		got, err := os.ReadFile(filepath.Join(target, filepath.FromSlash(name)))
+		if err != nil || !bytes.Equal(got, want) {
+			t.Fatalf("afterimage %s %v", name, err)
+		}
+	}
+	for path, want := range effects {
+		got, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(got, want) {
+			t.Fatal("completed native effect rerun", err)
+		}
+	}
+	if _, err := Load(home, id); !errors.Is(err, ErrNoActive) {
+		t.Fatalf("terminal cleanup %v", err)
+	}
+	t.Logf("actual v2 schema3 native cold SAME-ID=%s completed pair unchanged; synthetic operator authority", id)
 }

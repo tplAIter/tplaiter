@@ -32,6 +32,7 @@ type UpdateFile struct {
 	Inode     uint64      `json:"inode"`
 }
 type UpdateMaterial struct {
+	Managed             *ManagedInput              `json:"managed,omitempty"`
 	Protection          *adoptionpolicy.Protection `json:"protection,omitempty"`
 	SettingsPairs       []string                   `json:"settingsPairs,omitempty"`
 	RegistryDevice      uint64                     `json:"registryDevice"`
@@ -161,7 +162,7 @@ func materialFromPlan(p *Plan, actual *observation, added bool) (UpdateMaterial,
 	if err != nil {
 		return UpdateMaterial{}, err
 	}
-	m := UpdateMaterial{SettingsPairs: append([]string(nil), p.input.SettingsPairs...), Version: 1, Root: p.report.Root, Home: p.owner.home, ProjectID: p.report.ProjectID, Binding: p.owner.runtime.TrustRuntime().Binding(), RendererVersion: p.owner.rendererVersion, SourceInput: bytes.Clone(p.input.SourceInput), TargetInput: bytes.Clone(p.input.TargetInput), ExpectedFingerprint: p.digest, ControlAdded: added, Before: map[string]UpdateFile{}, After: map[string]UpdateFile{}, Registry: updateRegistry(intent.registry)}
+	m := UpdateMaterial{Managed: p.input.Managed, SettingsPairs: append([]string(nil), p.input.SettingsPairs...), Version: 1, Root: p.report.Root, Home: p.owner.home, ProjectID: p.report.ProjectID, Binding: p.owner.runtime.TrustRuntime().Binding(), RendererVersion: p.owner.rendererVersion, SourceInput: bytes.Clone(p.input.SourceInput), TargetInput: bytes.Clone(p.input.TargetInput), ExpectedFingerprint: p.digest, ControlAdded: added, Before: map[string]UpdateFile{}, After: map[string]UpdateFile{}, Registry: updateRegistry(intent.registry)}
 	if p.policy != nil {
 		m.Version = 2
 		m.Protection = p.protection
@@ -196,6 +197,9 @@ func updateMaterialFingerprint(m UpdateMaterial) (string, error) {
 	domain := updateMaterialDomain
 	if m.Version == 2 {
 		domain = "tplaiter.dev/native-update-material/v2"
+	}
+	if m.Managed != nil {
+		domain += "/managed/v1"
 	}
 	return bootstrap.DomainDigest(domain, m)
 }
@@ -240,7 +244,7 @@ func AuthenticateUpdateMaterial(ctx context.Context, r *trustload.Runtime, actua
 		return err
 	}
 	reg := &registryObservation{raw: bytes.Clone(m.Registry.BeforeContent), mode: m.Registry.Before.Mode}
-	p, err := b.reconstruct(ctx, Input{SourceInput: m.SourceInput, TargetInput: m.TargetInput, SettingsPairs: m.SettingsPairs}, observed, reg, m.Protection)
+	p, err := b.reconstruct(ctx, Input{SourceInput: m.SourceInput, TargetInput: m.TargetInput, SettingsPairs: m.SettingsPairs, Managed: m.Managed}, observed, reg, m.Protection)
 	if err != nil {
 		return err
 	}
@@ -407,4 +411,33 @@ type UpdateRegistry struct {
 
 func updateRegistry(r RegistryImage) UpdateRegistry {
 	return UpdateRegistry{Home: r.Home, Before: r.Before, BeforeContent: bytes.Clone(r.BeforeContent), After: r.After, AfterContent: bytes.Clone(r.AfterContent)}
+}
+
+func RevalidateManagedUpdatePublication(ctx context.Context, r *trustload.Runtime, renderer string, m UpdateMaterial) error {
+	if m.Managed == nil {
+		return nil
+	}
+	if err := AuthenticateUpdateMaterial(ctx, r, renderer, m); err != nil {
+		return err
+	}
+	observed, err := materialObservation(m.Before)
+	if err != nil {
+		return err
+	}
+	if m.ControlAdded {
+		observed = withoutControl(observed)
+	}
+	backend, err := New(r, m.Home, renderer)
+	if err != nil {
+		return err
+	}
+	reg := &registryObservation{raw: bytes.Clone(m.Registry.BeforeContent), mode: m.Registry.Before.Mode}
+	plan, err := backend.reconstruct(ctx, Input{SourceInput: m.SourceInput, TargetInput: m.TargetInput, SettingsPairs: m.SettingsPairs, Managed: m.Managed}, observed, reg, m.Protection)
+	if err != nil {
+		return err
+	}
+	if plan.managed == nil {
+		return ErrInvalid
+	}
+	return plan.managed.mergedProjection.RevalidatePublication(ctx, plan.managed.merged)
 }

@@ -2,6 +2,7 @@ package newcmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/newimages"
@@ -61,6 +63,14 @@ func runLive(ctx context.Context, opts Options, d Deps, fault newtransaction.Fau
 		if err := vacantLive(target); err != nil {
 			return err
 		}
+	}
+	// A version header chooses only the matching closed admission route. A failed
+	// v2 decoder is never retried through the legacy source adapter.
+	var header struct {
+		APIVersion string `json:"apiVersion"`
+	}
+	if len(d.SourceInput) <= 1<<20 && json.Unmarshal(d.SourceInput, &header) == nil && header.APIVersion == contextsource.ContextSourceSelectionAPIVersion {
+		return runContextManagedLive(ctx, opts, d, slug)
 	}
 	src, err := sourceadapter.Resolve(ctx, d.Runtime, d.Home, opts.Ref, d.SourceInput)
 	if err != nil {
@@ -385,6 +395,10 @@ type ManagedPreparation struct {
 }
 
 func runManagedLive(ctx context.Context, opts Options, d Deps, src *sourceadapter.Source, info manifest.ProjectInfo, port int, values settings.Values, origins map[string]survey.Source) (err error) {
+	return runManagedLiveVersion(ctx, opts, d, src, info, port, values, origins, "tplaiter.dev/managed-new-clean-input/v1")
+}
+
+func runManagedLiveVersion(ctx context.Context, opts Options, d Deps, src *sourceadapter.Source, info manifest.ProjectInfo, port int, values settings.Values, origins map[string]survey.Source, version string) (err error) {
 	if len(d.ToolSourceInput) == 0 || d.Home == "" {
 		return ErrManagedControls
 	}
@@ -395,7 +409,7 @@ func runManagedLive(ctx context.Context, opts Options, d Deps, src *sourceadapte
 			canonicalOrigins[key] = origin
 		}
 	}
-	input := formatproof.NewCleanInput{APIVersion: "tplaiter.dev/managed-new-clean-input/v1", Home: d.Home, Ref: opts.Ref, SourceInput: src.Input, ToolSource: d.ToolSourceInput, Render: renderref.Input{Values: values, Project: info, Runtime: manifest.ProjectRuntime{Port: port}, Repo: src.Alias}, RendererVersion: opts.CLIVersion, Origins: canonicalOrigins, Interactive: opts.Interactive && !opts.Defaults}
+	input := formatproof.NewCleanInput{APIVersion: version, Home: d.Home, Ref: opts.Ref, SourceInput: src.Input, ToolSource: d.ToolSourceInput, Render: renderref.Input{Values: values, Project: info, Runtime: manifest.ProjectRuntime{Port: port}, Repo: src.Alias}, RendererVersion: opts.CLIVersion, Origins: canonicalOrigins, Interactive: opts.Interactive && !opts.Defaults}
 	prepared, err := formatproof.PrepareNewClean(ctx, d.Runtime, input)
 	if err != nil {
 		return err
@@ -435,10 +449,6 @@ func runManagedLive(ctx context.Context, opts Options, d Deps, src *sourceadapte
 	if err != nil {
 		return err
 	}
-	images, err := publication.ImagesFor(ctx, d.Runtime)
-	if err != nil {
-		return err
-	}
 	target := d.Runtime.ProjectContext().RootPath
 	if err := vacantLive(target); err != nil {
 		return err
@@ -448,7 +458,7 @@ func runManagedLive(ctx context.Context, opts Options, d Deps, src *sourceadapte
 			return err
 		}
 	}
-	tx, err := newtransaction.BeginManagedSealed(ctx, d.Runtime, publication)
+	tx, projection, err := newtransaction.BeginManagedPublication(ctx, d.Runtime, publication)
 	if err != nil {
 		return err
 	}
@@ -462,7 +472,7 @@ func runManagedLive(ctx context.Context, opts Options, d Deps, src *sourceadapte
 	if tx.Journal().TargetBeforeTreeSHA != evidencecas.Digest(nil) {
 		return newtransaction.ErrUnsafe
 	}
-	if err := writeLiveTree(tx.Workspace(), images); err != nil {
+	if err := writeLiveTree(tx.Workspace(), projection.Images); err != nil {
 		publishing = true
 		return fmt.Errorf("newcmd: transaction %s requires recovery: %w", tx.ID(), errors.Join(err, newtransaction.ErrOwnershipUncertain))
 	}
@@ -470,11 +480,7 @@ func runManagedLive(ctx context.Context, opts Options, d Deps, src *sourceadapte
 		publishing = true
 		return err
 	}
-	home, before, after, err := publication.RegistryFor(d.Runtime)
-	if err != nil {
-		return err
-	}
-	plan := newtransaction.RegistryPlan{Home: home, Before: before, After: after}
+	plan := newtransaction.RegistryPlan{Home: projection.Home, Before: projection.RegistryBefore, After: projection.RegistryAfter}
 	if err := tx.PrepareRegistry(plan); err != nil {
 		return err
 	}
@@ -489,4 +495,60 @@ func runManagedLive(ctx context.Context, opts Options, d Deps, src *sourceadapte
 		_, err = fmt.Fprintf(d.Out, "Project %s created in %s\n", info.Slug, target)
 	}
 	return err
+}
+
+// runContextManagedLive uses the published opaque DAG carrier and the same
+// publication owner. It has no ambient checkout, hook or runner fallback.
+func runContextManagedLive(ctx context.Context, opts Options, d Deps, slug string) error {
+	src, err := sourceadapter.ResolveContextSources(ctx, d.Runtime, d.Home, opts.Ref, d.SourceInput)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	root, err := src.Root(ctx, d.Runtime)
+	if err != nil {
+		return err
+	}
+	tpl, err := loadTemplateFromFS(root.Snapshot)
+	if err != nil {
+		return err
+	}
+	if opts.EnvSetup != nil && *opts.EnvSetup {
+		return operationtrust.ErrSourceAdapterUnsupported
+	}
+	constraint := tpl.Requires.Tplaiter
+	if constraint == "" {
+		constraint = tpl.Requires.Tplater
+	}
+	if tpl.Requires.Tplaiter != "" && tpl.Requires.Tplater != "" && tpl.Requires.Tplaiter != tpl.Requires.Tplater {
+		return operationtrust.ErrSourceAdapterUnsupported
+	}
+	if err := checkTplaterVersion(constraint, opts.CLIVersion); err != nil {
+		return err
+	}
+	owner := &run{opts: opts, d: d}
+	preset, origins, err := owner.buildPreset(tpl)
+	if err != nil {
+		return err
+	}
+	out := d.Out
+	if out == nil {
+		out = io.Discard
+	}
+	if opts.Interactive && !opts.Defaults && d.Prompter == nil {
+		return errors.New("newcmd: interactive prompter is required")
+	}
+	answers, err := survey.AskFlow(tpl, preset, survey.FlowOptions{Defaults: opts.Defaults, Interactive: opts.Interactive, PresetSources: origins}, d.Prompter, out, d.Palette)
+	if err != nil {
+		return err
+	}
+	info := manifest.ProjectInfo{Name: opts.ProjectName, Slug: slug, Module: owner.moduleOrDefault(slug), System: opts.System, Domain: opts.Domain}
+	port := opts.Port
+	if port == 0 {
+		port = defaultPort
+	}
+	if err := src.RecheckFor(ctx, d.Runtime); err != nil {
+		return err
+	}
+	return runManagedLiveVersion(ctx, opts, d, root, info, port, answers.Values, origins, "tplaiter.dev/managed-new-clean-input/v2")
 }

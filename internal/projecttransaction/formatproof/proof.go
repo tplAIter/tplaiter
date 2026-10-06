@@ -6,12 +6,18 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sort"
 
 	"github.com/tplAIter/tplaiter/internal/blockformatter"
 	"github.com/tplAIter/tplaiter/internal/blockmarkers"
+	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextauth"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
+	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction/internal/engine"
+	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
@@ -22,6 +28,8 @@ var (
 )
 
 type Prepared struct {
+	nativeIntent           *contextsource.PreparedNativeNew
+	sources                *contextauth.VerifiedSourceClosure
 	runtime                *trustload.Runtime
 	adapter                *blockformatter.RuntimeAdapter
 	provider, toolProvider *trustverify.VerifiedResolution
@@ -109,6 +117,17 @@ func (p *Prepared) Reference() Reference {
 func (p *Prepared) valid(ctx context.Context) error {
 	if ctx == nil || ctx.Err() != nil || p == nil || p.runtime == nil || p.runtime.TrustRuntime() == nil {
 		return ErrUnavailable
+	}
+	if p.sources != nil {
+		if p.nativeIntent == nil {
+			return ErrUnavailable
+		}
+		if err := p.nativeIntent.RecheckFor(ctx, p.runtime); err != nil {
+			return err
+		}
+		if err := p.sources.RecheckFor(ctx, p.runtime); err != nil {
+			return err
+		}
 	}
 	for _, old := range []*trustverify.VerifiedResolution{p.provider, p.toolProvider} {
 		fresh, err := p.runtime.TrustRuntime().VerifySubject(ctx, old.Subject(), old.Evidence())
@@ -253,16 +272,40 @@ func RevalidatePublication(ctx context.Context, p *Prepared, pair *VerifiedPair)
 // source record. The fixed material binder independently verifies that record,
 // executable bytes, native envelope and the complete four-entry closure.
 func PrepareRootGoFile(ctx context.Context, r *trustload.Runtime, provider, toolProvider *trustverify.VerifiedResolution, path string, input []byte, managed operationtrust.ManagedFormatterContext, operation trustverify.OperationInputs) (*Prepared, error) {
-	if ctx == nil || r == nil || r.TrustRuntime() == nil || toolProvider == nil {
+	markers, err := blockmarkers.Validate(blockmarkers.LanguageGo, path, input)
+	if err != nil || len(markers) == 0 {
 		return nil, ErrUnavailable
 	}
-	snapshot, err := r.TrustRuntime().VerifiedSnapshot(toolProvider)
+	return prepareRootGoFormat(ctx, r, provider, toolProvider, path, input, managed, operation)
+}
+
+// prepareRootGoFormat is also used by the opaque Update preparation for a
+// source-managed file whose target removes its last block. The public New/Link
+// entry retains its nonempty marker requirement.
+func prepareRootGoFormat(ctx context.Context, r *trustload.Runtime, provider, toolProvider *trustverify.VerifiedResolution, path string, input []byte, managed operationtrust.ManagedFormatterContext, operation trustverify.OperationInputs) (*Prepared, error) {
+	plan, err := rootGoFormatterPlan(ctx, r, toolProvider, path, input)
 	if err != nil {
 		return nil, err
 	}
+
+	contextJSON, err := canonicaljson.Canonical(managed)
+	if err != nil {
+		return nil, err
+	}
+	return Prepare(ctx, r, provider, toolProvider, plan, input, contextJSON, operation)
+}
+
+func rootGoFormatterPlan(ctx context.Context, r *trustload.Runtime, toolProvider *trustverify.VerifiedResolution, path string, input []byte) (blockformatter.Plan, error) {
+	if ctx == nil || r == nil || r.TrustRuntime() == nil || toolProvider == nil {
+		return blockformatter.Plan{}, ErrUnavailable
+	}
+	snapshot, err := r.TrustRuntime().VerifiedSnapshot(toolProvider)
+	if err != nil {
+		return blockformatter.Plan{}, err
+	}
 	raw, exists := snapshot.Blob("formatter/tool.json")
 	if !exists || len(raw) > 1<<20 {
-		return nil, ErrUnavailable
+		return blockformatter.Plan{}, ErrUnavailable
 	}
 	var record struct {
 		APIVersion      string `json:"apiVersion"`
@@ -277,24 +320,150 @@ func PrepareRootGoFile(ctx context.Context, r *trustload.Runtime, provider, tool
 		NativeEnvelope string `json:"nativeEnvelope"`
 	}
 	if canonicaljson.DecodeStrict(raw, &record) != nil || record.Adapter != "gofmt-stdin-v1" || record.ToolID != "gofmt" {
-		return nil, ErrUnavailable
+		return blockformatter.Plan{}, ErrUnavailable
 	}
 	options := []string{}
 	optionsDigest, err := trustverify.ComputeToolOptionsSHA256(options)
 	if err != nil {
-		return nil, err
+		return blockformatter.Plan{}, err
 	}
 	markers, err := blockmarkers.Validate(blockmarkers.LanguageGo, path, input)
-	if err != nil || len(markers) == 0 {
-		return nil, ErrUnavailable
+	if err != nil {
+		return blockformatter.Plan{}, ErrUnavailable
 	}
 	plan, err := blockformatter.BuildPlan(blockformatter.PlanInput{Path: path, Language: "go", Adapter: "gofmt-stdin-v1", Tool: trustverify.Tool{ID: record.ToolID, Version: record.ToolVersion, BinarySHA256: record.BinarySHA256, OptionsSHA256: optionsDigest}, Options: options, InputMode: "100644", Markers: markers, TimeoutMillis: 5000, OutputLimitBytes: 16 << 20, Input: input})
 	if err != nil {
+		return blockformatter.Plan{}, err
+	}
+	return plan, nil
+}
+
+// PrepareContextNativeNewFile consumes a genuine managed calculation and its
+// retained closure. Caller paths select only its admitted managed inventory;
+// caller bytes, source labels and actions-empty digests cannot become a frame.
+func PrepareContextNativeNewFile(ctx context.Context, r *trustload.Runtime, intent *contextsource.PreparedNativeNew, toolProvider *trustverify.VerifiedResolution, path string, registryDigest string, render renderref.Input, renderer string) (*Prepared, error) {
+	if ctx == nil || r == nil || intent == nil || !validLinkObservationDigest(registryDigest) {
+		return nil, ErrUnavailable
+	}
+	if err := intent.RecheckFor(ctx, r); err != nil {
 		return nil, err
 	}
-	contextJSON, err := canonicaljson.Canonical(managed)
+	sources, err := intent.FormatterSources(ctx, r)
 	if err != nil {
 		return nil, err
 	}
-	return Prepare(ctx, r, provider, toolProvider, plan, input, contextJSON, operation)
+	inventory, err := intent.ManagedFiles(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	found := false
+	for _, file := range inventory {
+		if file.Path == path && file.Mode == "100644" {
+			found = true
+		}
+	}
+	if !found {
+		return nil, ErrUnavailable
+	}
+	rendered, err := intent.Rendered(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	if rendered.Template.ManagedBlocks != nil && len(rendered.Template.ManagedBlocks.Replacements) != 0 {
+		return nil, ErrUnavailable
+	}
+	input, ok := rendered.Files[path]
+	if !ok {
+		return nil, ErrUnavailable
+	}
+	for _, file := range inventory {
+		if file.Path == path && file.InputSHA256 != evidencecas.Digest(input) {
+			return nil, ErrUnavailable
+		}
+	}
+	root, err := intent.RootLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	dependencies, err := intent.DependencyLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	contextDigest, err := intent.ContextDigest(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	graph, err := sources.SourceGraph(ctx)
+	if err != nil {
+		return nil, err
+	}
+	graphDigest, err := bootstrap.DomainDigest("tplaiter.dev/managed-formatter-source-graph/v2", graph)
+	if err != nil {
+		return nil, err
+	}
+	operation, err := intent.OperationBase(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	if len(operation.Actions) != 0 || operation.Scope != "new" {
+		return nil, ErrUnavailable
+	}
+	if toolProvider == nil || !toolProvider.ValidFor(r.TrustRuntime(), r.TrustRuntime().Binding()) {
+		return nil, ErrUnavailable
+	}
+	tool := toolProvider.Subject()
+	operation.Subjects = append(operation.Subjects, trustverify.Provider{Origin: tool.Origin, TemplatePath: tool.TemplatePath, Commit: tool.Commit, TreeSHA256: tool.TreeSHA256, ContractSHA256: tool.ContractSHA256})
+	key := func(p trustverify.Provider) string { return p.Origin + "\x00" + p.TemplatePath + "\x00" + p.Commit }
+	sort.Slice(operation.Subjects, func(i, j int) bool { return key(operation.Subjects[i]) < key(operation.Subjects[j]) })
+	subjects := []trustverify.Provider{}
+	for _, subject := range operation.Subjects {
+		if len(subjects) > 0 && key(subjects[len(subjects)-1]) == key(subject) {
+			if subjects[len(subjects)-1] != subject {
+				return nil, ErrUnavailable
+			}
+			continue
+		}
+		subjects = append(subjects, subject)
+	}
+	operation.Subjects = subjects
+	contextData := operationtrust.ContextNewFormatterContext{APIVersion: "tplaiter.dev/managed-formatter-context/v2", Role: "clean-target", SourceRootLockSHA256: root.RootLockSHA256, TargetRootLockSHA256: root.RootLockSHA256, ReplacementDeclarationsSHA256: evidencecas.Digest([]byte(`{"replacements":[],"version":1}`)), DecisionsSHA256: evidencecas.Digest([]byte(`{"apiVersion":"tplaiter.dev/managed-decisions/v1","decisions":[]}`)), ObservedProjectSHA256: evidencecas.Digest(nil), ObservedRegistrySHA256: registryDigest, RendererAnswersSHA256: operation.AnswersSHA256, DependencyLockSHA256: dependencies.LockSHA256, SourceGraphSHA256: graphDigest, NativeContextSHA256: contextDigest}
+	raw, err := canonicaljson.Canonical(contextData)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := rootGoFormatterPlan(ctx, r, toolProvider, path, input)
+	if err != nil {
+		return nil, err
+	}
+	adapter, err := blockformatter.NewRuntimeAdapter(r)
+	if err != nil {
+		return nil, err
+	}
+	calculation, err := operationtrust.PrepareContextNewFormatterCalculation(ctx, r, sources, render, renderer)
+	if err != nil {
+		return nil, err
+	}
+	selection, err := adapter.SelectContextNativeNew(ctx, calculation, toolProvider, plan, input, raw)
+	if err != nil {
+		return nil, err
+	}
+	operation.Actions = append(operation.Actions, selection.Actions()...)
+	bound, err := adapter.BindContextNativeNew(ctx, selection, operation)
+	if err != nil {
+		return nil, err
+	}
+	planRaw, err := canonicaljson.Canonical(plan)
+	if err != nil {
+		return nil, err
+	}
+	frame := engine.FormatFrame{APIVersion: "tplaiter.dev/formatter-frame/v2", Operation: operation, Requests: bound.Requests(), Plan: planRaw, Context: append(engine.Bytes{}, raw...), Input: append(engine.Bytes{}, input...)}
+	digest, err := frame.Digest()
+	if err != nil {
+		return nil, err
+	}
+	provider, err := sources.RootResolution(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	return &Prepared{runtime: r, adapter: adapter, provider: provider, toolProvider: toolProvider, bound: bound, frame: frame, digest: digest, nativeIntent: intent, sources: sources}, nil
 }

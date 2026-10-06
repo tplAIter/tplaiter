@@ -1135,6 +1135,9 @@ func (t *Transaction) updateRecoveryManifest() error {
 	}
 	if t.managedReference != nil {
 		manifest.Schema = 2
+		if t.managedReference.APIVersion == "tplaiter.dev/managed-publication-reference/v2" {
+			manifest.Schema = 3
+		}
 	}
 	data, err := json.Marshal(manifest)
 	if err != nil {

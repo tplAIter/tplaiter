@@ -63,7 +63,8 @@ type Input struct {
 	SourceInput, TargetInput []byte
 	// SettingsPairs are bounded operator overrides, freshly resolved against the
 	// signed current manifest. They require exactly the same source and target.
-	SettingsPairs []string `json:"settingsPairs,omitempty"`
+	SettingsPairs []string      `json:"settingsPairs,omitempty"`
+	Managed       *ManagedInput `json:"managed,omitempty"`
 }
 
 type Change struct {
@@ -99,6 +100,7 @@ type Report struct {
 // Plan retains private preparation and root identity. Marshal returns only a
 // detached fingerprinted report; no decoder turns report bytes into a Plan.
 type Plan struct {
+	managed          *ManagedEffects
 	policy           *adoptionpolicy.Policy
 	protection       *adoptionpolicy.Protection
 	homeIdentity     os.FileInfo
@@ -137,7 +139,7 @@ func (b *Backend) Prepare(ctx context.Context, in Input) (*Plan, error) {
 	if len(in.SourceInput) == 0 || len(in.SourceInput) > 1<<20 || len(in.TargetInput) == 0 || len(in.TargetInput) > 1<<20 {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
-	in, err := cloneSettingsInput(in)
+	in, err := clonePlanInput(in)
 	if err != nil {
 		return nil, err
 	}
@@ -272,19 +274,72 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
-	beforeFiles, afterFiles := base.Rendered().Files, prepared.Rendered().Files
-	if err := appendResources(beforeFiles, sourceImages); err != nil {
+	baseResult, targetResult := base.Rendered(), prepared.Rendered()
+	var effects *ManagedEffects
+	if in.Managed != nil {
+		effects, err = b.prepareManagedEffects(ctx, in, *in.Managed, observed, registryObserved)
+		if err != nil {
+			return nil, err
+		}
+		if err = effects.openCompleted(ctx); err != nil {
+			return nil, err
+		}
+		baseResult = effects.base
+		targetResult, err = effects.cleanProjection.RenderedFor(ctx, effects.clean)
+		if err != nil {
+			return nil, err
+		}
+	}
+	beforeFiles, afterFiles := cloneFileMap(baseResult.Files), cloneFileMap(targetResult.Files)
+	appendImages := appendResources
+	if effects != nil {
+		appendImages = appendManagedResources
+	}
+
+	if err := appendImages(beforeFiles, sourceImages); err != nil {
 		return nil, err
 	}
-	if err := appendResources(afterFiles, targetImages); err != nil {
+	if err := appendImages(afterFiles, targetImages); err != nil {
 		return nil, err
 	}
-	if err := validateOwned(observed, beforeFiles, base.Rendered(), sourceImages, policy); err != nil {
+	var ownedErr error
+	if effects == nil {
+		ownedErr = validateOwned(observed, beforeFiles, baseResult, sourceImages, policy)
+	} else {
+		ownedErr = effects.validateOwned(observed, beforeFiles, baseResult, sourceImages, policy)
+	}
+	if ownedErr != nil {
+		err := ownedErr
 		return nil, err
 	}
-	changes, err := computeChanges(observed, beforeFiles, afterFiles, policy)
+	mergeBefore, mergeAfter := cloneFileMap(beforeFiles), cloneFileMap(afterFiles)
+	if effects != nil {
+		for path := range effects.merged.References() {
+			delete(mergeBefore, path)
+			delete(mergeAfter, path)
+		}
+	}
+	changes, err := computeChanges(observed, mergeBefore, mergeAfter, policy)
 	if err != nil {
 		return nil, err
+	}
+	if effects != nil {
+		candidate, err := effects.mergedProjection.FilesFor(ctx, effects.merged)
+		if err != nil {
+			return nil, err
+		}
+		for path, raw := range candidate {
+			if policy.Contains(path) {
+				return nil, ErrUnsafe
+			}
+			current, exists := observed.files[path]
+			if !exists {
+				return nil, ErrUnsafe
+			}
+			_ = current
+			change := decision(observed, path, raw, true, "managed", false)
+			changes = append(changes, change)
+		}
 	}
 	if len(in.SettingsPairs) > 0 {
 		for i := range changes {
@@ -297,11 +352,11 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
-	metadata, err := targetMetadata(marker, prepared, targetImages, answers)
+	metadata, err := targetMetadataResult(marker, prepared, targetImages, answers, targetResult)
 	if err != nil {
 		return nil, err
 	}
-	if current.RootLockSHA256 == prepared.TargetRootLock().RootLockSHA256 && settingsValuesEqual(base.Rendered().Resolved.Values, prepared.Rendered().Resolved.Values) && settingsAnswersEqual(marker.Answers, answers) {
+	if effects == nil && current.RootLockSHA256 == prepared.TargetRootLock().RootLockSHA256 && settingsValuesEqual(base.Rendered().Resolved.Values, prepared.Rendered().Resolved.Values) && settingsAnswersEqual(marker.Answers, answers) {
 		// Preserve exact valid existing metadata encoding for a genuine no-op.
 		for p := range metadata {
 			metadata[p] = observed.files[p]
@@ -315,6 +370,16 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if migrationPlan != nil {
 		metadata[migrations.LedgerRelPath] = migrationPlan.Ledger.After
 	}
+	if effects != nil {
+		metadata[".tplaiter/managed-blocks.json"], err = canonicaljson.Canonical(effects.ledger)
+		if err != nil {
+			return nil, err
+		}
+		metadata[".tplaiter/managed-lineage.json"], err = effects.lineage(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for path, raw := range metadata {
 		changes = append(changes, decision(observed, path, raw, true, "metadata", false))
 	}
@@ -322,6 +387,12 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	registry, registryObserved, err := planRegistryObserved(registryObserved, b.home, marker, prepared, observed.files[engine.BaselineRelPath], root)
 	if err != nil {
 		return nil, err
+	}
+	if effects != nil {
+		registry, err = managedRegistryBaseline(registry, targetResult.Baseline, marker.ID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	publishable := resourceChangesValid(changes, targetImages, prepared.TargetRootLock())
 	for _, change := range changes {
@@ -346,7 +417,7 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
-	return &Plan{policy: policy, protection: protection, homeIdentity: registryObserved.identity, registryIdentity: registryObserved.fileIdentity, owner: b, input: in, report: report, digest: digest, observed: observed, prepared: prepared}, nil
+	return &Plan{managed: effects, policy: policy, protection: protection, homeIdentity: registryObserved.identity, registryIdentity: registryObserved.fileIdentity, owner: b, input: in, report: report, digest: digest, observed: observed, prepared: prepared}, nil
 }
 
 // Recheck rebuilds the plan with fresh authority and actual project bytes.
@@ -458,6 +529,10 @@ func appendResources(files map[string][]byte, images *resources.ResourceImages) 
 }
 
 func validateOwned(observed *observation, base map[string][]byte, result *renderref.Result, images *resources.ResourceImages, policies ...*adoptionpolicy.Policy) error {
+	return validateOwnedCore(observed, base, result, images, nil, policies...)
+}
+
+func validateOwnedCore(observed *observation, base map[string][]byte, result *renderref.Result, images *resources.ResourceImages, managedExpected []byte, policies ...*adoptionpolicy.Policy) error {
 	for _, image := range observed.images {
 		if image.Path == updateControlPath && image.Kind == "file" && image.Mode == 0o600 && len(observed.files[image.Path]) == 0 {
 			info := observed.identities[image.Path]
@@ -527,6 +602,9 @@ func validateOwned(observed *observation, base map[string][]byte, result *render
 		if err != nil {
 			return err
 		}
+		if p == ".tplaiter/managed-blocks.json" && managedExpected != nil {
+			raw = managedExpected
+		}
 		if !bytes.Equal(raw, observed.files[p]) {
 			return operationtrust.ErrSourceAdapterUnsupported
 		}
@@ -535,7 +613,10 @@ func validateOwned(observed *observation, base map[string][]byte, result *render
 }
 
 func targetMetadata(marker stateledger.ProjectV2, p *operationtrust.PreparedUpdate, images *resources.ResourceImages, answers map[string]stateledger.Answer) (map[string][]byte, error) {
-	result := p.Rendered()
+	return targetMetadataResult(marker, p, images, answers, p.Rendered())
+}
+
+func targetMetadataResult(marker stateledger.ProjectV2, p *operationtrust.PreparedUpdate, images *resources.ResourceImages, answers map[string]stateledger.Answer, result *renderref.Result) (map[string][]byte, error) {
 	inv := ownership.Inventory{Version: 1, Artifacts: []ownership.Artifact{}}
 	for path, raw := range result.Files {
 		a, err := ownership.ArtifactFor(path, raw, 0o644, "")

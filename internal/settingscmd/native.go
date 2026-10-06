@@ -11,6 +11,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/managedblocks"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/migrations"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
@@ -173,7 +174,15 @@ func (n *Native) Read(ctx context.Context) (*NativeView, error) {
 	if err != nil {
 		return nil, err
 	}
-	required := false
+	blockRaw, err := read("managed-blocks.json")
+	if err != nil {
+		return nil, err
+	}
+	recordedBlocks, err := managedblocks.ParseBaseline(blockRaw)
+	if err != nil {
+		return nil, err
+	}
+	required := len(recordedBlocks.Files) > 0
 	for _, raw := range prepared.Rendered().Files {
 		if bytes.Contains(raw, []byte("tplater:managed-")) {
 			required = true

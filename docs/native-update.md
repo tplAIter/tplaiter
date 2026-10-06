@@ -115,8 +115,8 @@ existing wire version and omits the optional migration report field.
 Settings Read/reanswer and offline Diff verify retained applied history against
 the current signed manifest. They do not reapply migrations. Ordered migration
 IDs are reported as diagnostics without answer values. This supported slice is
-data-only: secret answers, managed-block keep/drop/rename, and other
-lifecycle views remain separate work.
+data-only: secret answers and other lifecycle views remain separate work.
+The connected root-Go managed decision/effect route is described below.
 
 ## Recorded deprecated answers across Update
 
@@ -143,3 +143,36 @@ bindings are refused. Non-deprecated no-migration materials retain their existin
 shape and behavior. `TPL-W-NATIVE-DEPRECATED-ANSWER` reports declaration references
 without scalar answer values. See [Native Settings](native-settings.md) for
 retained reanswer choices, fresh input refusals and the default-origin exception.
+
+
+## Root-Go managed decisions and formatter phases
+
+See [source-bound managed Go files](native-managed-decisions.md) for the closed
+KEEP/DROP/signed-rename codec and source/target/path/provider/digest binding.
+Choices resolve only the actual same-file conflict. They confer no execution,
+source or writer grant.
+
+Supply both `--format-input` and `--decisions-input` with the ordinary signed
+target selection. `--prepare` reports the next exact requests as
+`TPL-I-MANAGED-UPDATE-PHASE`; it writes neither project nor registry. The first
+phase formats the signed clean target twice. After importing matching signed
+approvals for those requests, `--format-stage` executes only missing ordinals.
+Preparation then reports the merged-candidate phase, with another distinct
+request/approval pair. Both passes in each phase consume the same staged input.
+Missing, mismatched and stale approvals refuse; there is no unformatted apply.
+
+Once both phases are complete, normal Update with the same tool selection and
+choices, and an empty approval list, publishes the candidate and ledger in the
+existing native transaction. The formatted clean target is the upstream
+baseline; retained local content is never substituted for that baseline.
+KEEP retains an authenticated upstream tombstone, DROP removes the block, and
+rename requires an exact signed same-file replacement declaration.
+
+MCP `update` exposes `prepare`, `formatStage`, `formatInput` and `decisionsInput`.
+Its preparation envelope is `update.plan`; stage and apply use `update.apply`.
+Cold `update continue` reconstructs the same fingerprint and transaction ID from
+sealed beforeimages and selected signed sources. Historical completed effects
+are checked without another formatter execution; publication still requires
+fresh authorization. Authenticated Settings/Diff read the committed lineage and
+ledger. The bounded root-Go path does not close other language/provider
+composition, executable migrations, hooks, secrets or the whole Update beta.

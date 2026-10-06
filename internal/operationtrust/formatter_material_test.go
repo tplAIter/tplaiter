@@ -2,11 +2,13 @@ package operationtrust
 
 import (
 	"bytes"
+	"context"
 	"testing"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
 func TestFormatterToolRecordIsClosed(t *testing.T) {
@@ -58,5 +60,55 @@ func TestManagedFormatterContextClosed(t *testing.T) {
 		if _, err := ParseManagedFormatterContext(bad); err == nil {
 			t.Fatal("invalid context accepted")
 		}
+	}
+}
+
+func TestContextNewFormatterDataClosedAndLegacySeparated(t *testing.T) {
+	digest := evidencecas.Digest([]byte("source-owned fixture data"))
+	c := ContextNewFormatterContext{APIVersion: "tplaiter.dev/managed-formatter-context/v2", Role: "clean-target", SourceRootLockSHA256: digest, TargetRootLockSHA256: digest, ReplacementDeclarationsSHA256: evidencecas.Digest([]byte(`{"replacements":[],"version":1}`)), DecisionsSHA256: evidencecas.Digest([]byte(`{"apiVersion":"tplaiter.dev/managed-decisions/v1","decisions":[]}`)), ObservedProjectSHA256: evidencecas.Digest(nil), ObservedRegistrySHA256: digest, RendererAnswersSHA256: digest, DependencyLockSHA256: digest, SourceGraphSHA256: digest, NativeContextSHA256: digest}
+	raw, err := canonicaljson.Canonical(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseContextNewFormatterContext(raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseManagedFormatterContext(raw); err == nil {
+		t.Fatal("v2 data entered legacy v1 parser")
+	}
+	if err := ValidateRetainedFormatterContext(raw, "new"); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"link", "update", "run", ""} {
+		if err := ValidateRetainedFormatterContext(raw, scope); err == nil {
+			t.Fatal("v2 data entered foreign purpose", scope)
+		}
+	}
+	for _, change := range []string{"predecessor", "observation", "role", "graph", "dependency", "native"} {
+		bad := c
+		switch change {
+		case "predecessor":
+			bad.PredecessorCleanProofSHA256 = digest
+		case "observation":
+			bad.ObservedProjectSHA256 = digest
+		case "role":
+			bad.Role = "merged-candidate"
+		case "graph":
+			bad.SourceGraphSHA256 = ""
+		case "dependency":
+			bad.DependencyLockSHA256 = ""
+		case "native":
+			bad.NativeContextSHA256 = ""
+		}
+		data, err := canonicaljson.Canonical(bad)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ParseContextNewFormatterContext(data); err == nil {
+			t.Fatal("invalid v2 context accepted", change)
+		}
+	}
+	if _, err := ResolveContextNewFormatterComposition(context.Background(), nil, nil, nil, trustverify.OperationInputs{}, trustverify.ActionMaterial{}, FormatterInput{ContextJSON: raw}); err == nil {
+		t.Fatal("data constructed missing native source authority")
 	}
 }

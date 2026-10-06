@@ -51,6 +51,10 @@ func newUpdateCmd() *cobra.Command {
 	f.StringVar(&controls.key, "project-context", "", "key of an authenticated installed project context")
 	f.StringVar(&controls.dir, "dir", "", "locator; must match the installed project root")
 	f.StringVar(&controls.sourceInput, "source-input", "", "JSON pinned target source selection and publisher evidence locators")
+	f.BoolVar(&controls.prepare, "prepare", false, "show the next source-owned managed formatter requests without execution or publication")
+	f.BoolVar(&controls.formatStage, "format-stage", false, "stage only the next exact approved managed formatter phase")
+	f.StringVar(&controls.formatInput, "format-input", "", "closed tool selection and exact signed approval transport")
+	f.StringVar(&controls.decisionsInput, "decisions-input", "", "closed source/target-bound KEEP, DROP or signed rename decisions")
 	c.AddCommand(newNativeUpdateAbortCmd(), newNativeUpdateContinueCmd())
 	return withResult(c, resultdto.OperationUpdateApply)
 }

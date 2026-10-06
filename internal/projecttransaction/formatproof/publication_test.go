@@ -10,21 +10,30 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/tplAIter/tplaiter/internal/blockformatter"
+	"github.com/tplAIter/tplaiter/internal/blockmarkers"
+
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
+	"github.com/tplAIter/tplaiter/internal/deps"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/exports"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/settings"
+	"github.com/tplAIter/tplaiter/internal/sourceadapter"
 	"github.com/tplAIter/tplaiter/internal/survey"
 	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
@@ -505,4 +514,794 @@ func TestLinkColdWireBindsObservationWithoutCopyingUserBytes(t *testing.T) {
 	if _, err := ProjectLinkPublication(context.Background(), nil, nil, raw, time.Now()); err == nil {
 		t.Fatal("digest-bearing data became publication authority")
 	}
+}
+
+func TestUpdateCleanBindsActualIntentAndNativeEffects(t *testing.T) {
+	f := managedNativeIntegrationFixtureWithScope(t, "update", managedNewWriteNativeSource)
+	ctx := context.Background()
+	r, err := trustload.OpenRuntime(ctx, trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: managedNewClock{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	source, target := managedNewSelection(f.source, f.sourceRefs), managedNewSelection(f.target, f.targetRefs)
+	render := renderref.Input{Repo: "demo", Values: settings.Values{}, Project: manifest.ProjectInfo{Name: "Managed", Slug: "managed"}}
+	before := evidencecas.Digest([]byte("actual owner observation fixture"))
+	in := operationtrust.PrepareUpdateInput{SourceInput: source, TargetInput: target, Render: render, RendererVersion: "v1", PreimageSHA256: before}
+	intent, err := operationtrust.PrepareUpdate(ctx, r, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decisions := []byte(`{"apiVersion":"tplaiter.dev/managed-decisions/v1","decisions":[]}`)
+	p, err := PrepareUpdateClean(ctx, r, intent, source, target, source, render, render, before, evidencecas.Digest(nil), decisions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PrepareUpdateClean(ctx, r, intent, source, target, source, render, render, evidencecas.Digest([]byte("different before")), evidencecas.Digest(nil), decisions); err == nil {
+		t.Fatal("different observation bypassed opaque Update base digest")
+	}
+	if _, err := PrepareUpdateClean(ctx, r, &operationtrust.PreparedUpdate{}, source, target, source, render, render, before, evidencecas.Digest(nil), decisions); err == nil {
+		t.Fatal("fabricated Update intent accepted")
+	}
+	requests, err := p.RequiredRequests(ctx)
+	if err != nil || len(requests) != 2 {
+		t.Fatal("missing paired Update requests", err)
+	}
+	for _, request := range requests {
+		if request.Scope != "update" || request.Action.Kind != "formatter" || request.OperationInputsSHA256 == intent.OperationInputsSHA256() {
+			t.Fatal("calculation base substituted for actual Update action digest")
+		}
+	}
+	if requests[0].RequestSHA256 == requests[1].RequestSHA256 {
+		t.Fatal("formatter requests are not distinct")
+	}
+	if _, err := StageUpdateClean(ctx, p, nil); err == nil {
+		t.Fatal("missing signed operator approvals accepted")
+	}
+	approvals := map[string]trustverify.ApprovalRefs{}
+	for _, request := range requests {
+		approvals[request.RequestSHA256] = managedNewApprove(t, f, request)
+	}
+	projected, err := StageUpdateClean(ctx, p, approvals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clean, err := projected.RenderedFor(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(clean.Files["main.go"], []byte("func f()")) || clean.Baseline.Files["main.go"] != strings.TrimPrefix(evidencecas.Digest(clean.Files["main.go"]), "sha256:") {
+		t.Fatal("clean target baseline not derived from actual formatter output")
+	}
+	if err := projected.RevalidatePublication(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := p.RequiredRequests(ctx)
+	if err != nil || len(pending) != 0 {
+		t.Fatal("completed Update effects still request approvals", err)
+	}
+	if _, err := StageUpdateClean(ctx, p, approvals); err == nil {
+		t.Fatal("unused completed-effect approvals accepted")
+	}
+	cold, err := PrepareUpdateClean(ctx, r, intent, source, target, source, render, render, before, evidencecas.Digest(nil), decisions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained, err := StageUpdateClean(ctx, cold, map[string]trustverify.ApprovalRefs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := retained.RenderedFor(ctx, cold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(clean.Files["main.go"], again.Files["main.go"]) {
+		t.Fatal("retained clean target changed")
+	}
+	candidate := bytes.ReplaceAll(clean.Files["main.go"], []byte("func f() {}"), []byte("func f() { println(1) }"))
+	merged, err := PrepareUpdateMerged(ctx, cold, retained, map[string][]byte{"main.go": candidate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PrepareUpdateMerged(ctx, cold, &UpdateCleanProjection{}, map[string][]byte{"main.go": candidate}); err == nil {
+		t.Fatal("unverified clean predecessor accepted")
+	}
+	if _, err := PrepareUpdateMerged(ctx, cold, retained, map[string][]byte{"foreign.go": candidate}); err == nil {
+		t.Fatal("foreign candidate path accepted")
+	}
+	mergedRequests, err := merged.RequiredRequests(ctx)
+	if err != nil || len(mergedRequests) != 2 {
+		t.Fatal("missing real candidate pair", err)
+	}
+	mergedApprovals := map[string]trustverify.ApprovalRefs{}
+	for _, request := range mergedRequests {
+		for _, cleanRequest := range requests {
+			if request.RequestSHA256 == cleanRequest.RequestSHA256 {
+				t.Fatal("clean approval reused as candidate approval")
+			}
+		}
+		mergedApprovals[request.RequestSHA256] = managedNewApprove(t, f, request)
+	}
+	if _, err := StageUpdateMerged(ctx, merged, approvals); err == nil {
+		t.Fatal("clean approvals authorized candidate")
+	}
+	mergedProjection, err := StageUpdateMerged(ctx, merged, mergedApprovals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := mergedProjection.FilesFor(ctx, merged)
+	if err != nil || !bytes.Contains(files["main.go"], []byte("println(1)")) {
+		t.Fatal("actual candidate formatter output missing", err)
+	}
+	if bytes.Equal(files["main.go"], clean.Files["main.go"]) {
+		t.Fatal("candidate replaced clean target baseline")
+	}
+	if err := mergedProjection.RevalidatePublication(ctx, merged); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := StageUpdateMerged(ctx, merged, mergedApprovals); err == nil {
+		t.Fatal("surplus completed candidate approvals accepted")
+	}
+	reopenedMerged, err := PrepareUpdateMerged(ctx, cold, retained, map[string][]byte{"main.go": candidate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending, err := reopenedMerged.RequiredRequests(ctx); err != nil || len(pending) != 0 {
+		t.Fatal("completed candidate ordinals requested again", err)
+	}
+	if _, err := StageUpdateMerged(ctx, reopenedMerged, map[string]trustverify.ApprovalRefs{}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(f.project)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("calculation/effects published project state", err)
+	}
+	t.Log("actual signed Update intent -> native clean pair -> distinct predecessor-bound candidate pair -> retained zero-repeat reopening; no Update transaction publication claim")
+}
+
+// This public synthetic four-source fixture uses actual installed admission.
+type contextFixtureClock struct{}
+
+func (contextFixtureClock) Now() time.Time { return time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) }
+
+type contextFixture struct {
+	runtime    *trustload.Runtime
+	selection  trustload.LaunchSelection
+	input      contextsource.ContextSourceSelection
+	objectRoot string
+	policyPath string
+	proofs     map[string]contextsource.ContextSourceProof
+	files      map[string]map[string][]byte
+}
+
+func contextJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, e := json.Marshal(v)
+	if e != nil {
+		t.Fatal(e)
+	}
+	return b
+}
+
+func contextWrite(t *testing.T, p string, b []byte) {
+	t.Helper()
+	if e := os.MkdirAll(filepath.Dir(p), 0o700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(p, b, 0o600); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func contextPin(p string, b []byte) trustload.FilePin {
+	return trustload.FilePin{Path: p, SHA256: evidencecas.Digest(b)}
+}
+
+func contextRawHash(t *testing.T, s string) []byte {
+	t.Helper()
+	b, e := hex.DecodeString(strings.TrimPrefix(s, "sha256:"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	return b
+}
+func contextMerkle(h bootstrap.MerkleHash) string { return "sha256:" + hex.EncodeToString(h[:]) }
+
+// Source objects and real publisher evidence are synthetic public data. The
+// actual installed loader, stable runtime and SourceReader perform admission;
+// no fixture snapshot/resolution/reader is supplied to the carrier.
+func newContextFixture(t *testing.T, alter func(string, map[string][]byte)) *contextFixture {
+	t.Helper()
+	dir, e := filepath.EvalSymlinks(t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	f := &contextFixture{objectRoot: filepath.Join(dir, "objects"), policyPath: filepath.Join(dir, "policy.json"), proofs: map[string]contextsource.ContextSourceProof{}, files: map[string]map[string][]byte{}}
+	for _, p := range []string{f.objectRoot, filepath.Join(dir, "evidence"), filepath.Join(dir, "scratch")} {
+		if e := os.Mkdir(p, 0o700); e != nil {
+			t.Fatal(e)
+		}
+	}
+	origin := "https://example.test/context-sources"
+	subjects := map[string]trustverify.Subject{}
+	add := func(kind string, data []byte) string {
+		raw := append([]byte(fmt.Sprintf("%s %d\x00", kind, len(data))), data...)
+		h := sha1.Sum(raw)
+		id := hex.EncodeToString(h[:])
+		contextWrite(t, filepath.Join(f.objectRoot, id), raw)
+		return id
+	}
+	var tree func(map[string][]byte, string) string
+	tree = func(files map[string][]byte, prefix string) string {
+		entries := map[string]bool{}
+		for p := range files {
+			if strings.HasPrefix(p, prefix) {
+				rest := strings.TrimPrefix(p, prefix)
+				name, _, nested := strings.Cut(rest, "/")
+				entries[name] = entries[name] || nested
+			}
+		}
+		names := []string{}
+		for n := range entries {
+			names = append(names, n)
+		}
+		sort.Slice(names, func(i, j int) bool {
+			a, b := names[i], names[j]
+			if entries[a] {
+				a += "/"
+			}
+			if entries[b] {
+				b += "/"
+			}
+			return a < b
+		})
+		raw := []byte{}
+		for _, name := range names {
+			mode := "100644"
+			id := ""
+			if entries[name] {
+				mode = "40000"
+				id = tree(files, prefix+name+"/")
+			} else {
+				if strings.HasSuffix(prefix+name, "/formatter/native-tool") {
+					mode = "100755"
+				}
+				id = add("blob", files[prefix+name])
+			}
+			oid, _ := hex.DecodeString(id)
+			raw = append(raw, []byte(mode+" "+name+"\x00")...)
+			raw = append(raw, oid...)
+		}
+		return add("tree", raw)
+	}
+	parameters := []deps.Parameter{{Name: "flavor", Value: json.RawMessage(`"plain"`)}}
+	for _, alias := range []string{"leaf", "a", "b", "root"} {
+		refs := []contextsource.ContextDependency{}
+		associations := []contextsource.ContextDependencyBinding{}
+		requirements := []exports.ExportRequirement{}
+		depsAliases := []string{}
+		if alias == "a" || alias == "b" {
+			depsAliases = []string{"leaf"}
+		}
+		if alias == "root" {
+			depsAliases = []string{"a", "b"}
+		}
+		for _, dep := range depsAliases {
+			s := subjects[dep]
+			refs = append(refs, contextsource.ContextDependency{Alias: dep, Origin: s.Origin, TemplatePath: s.TemplatePath, CommitAlgorithm: "sha1", Commit: s.Commit, TreeDigest: s.TreeSHA256, ContractDigest: s.ContractSHA256})
+			associations = append(associations, contextsource.ContextDependencyBinding{Alias: dep, ProviderID: "provider." + dep, Parameters: parameters})
+			requirements = append(requirements, exports.ExportRequirement{Selector: dep + ".block.notes", ContractDigest: s.ContractSHA256, CompatibleRange: ">=1.0.0 <2.0.0"})
+		}
+		manifest := []byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata:\n  name: context-" + alias + "\n  version: 1.0.0\n  description: Public task context\nengine:\n  type: gotemplate\n  root: files\nsettings: []\n")
+		var contract []byte
+		if alias == "leaf" {
+			contract = contextJSON(t, operationtrust.NativeContract{APIVersion: operationtrust.NativeContractAPIVersion, Kind: operationtrust.NativeContractKind, ManifestPath: "template.manifest.yaml", ManifestSHA256: evidencecas.Digest(manifest), Dependencies: []string{}})
+		} else {
+			contract = contextJSON(t, contextsource.NativeContextContract{APIVersion: contextsource.NativeContextContractAPIVersion, Kind: operationtrust.NativeContractKind, ManifestPath: "template.manifest.yaml", ManifestSHA256: evidencecas.Digest(manifest), Dependencies: refs})
+		}
+		binding := contextsource.ContextSourceBindings{APIVersion: contextsource.ContextSourceBindingsAPIVersion, Kind: "ContextSourceBindings", Source: contextsource.ContextCatalogBinding{Alias: alias, ProviderID: "provider." + alias, Parameters: parameters, EntriesPath: "catalog/entries.json", PayloadDirectory: "catalog/payloads", ToolPath: "catalog/tool.md"}, Dependencies: associations}
+		content := []byte("Complete inert procedure for " + alias + ". Read every required prerequisite; no tool execution.\n")
+		payload := contextJSON(t, exports.ExportPayload{APIVersion: exports.ExportPayloadAPIVersion, ExportID: "notes", Files: []exports.PayloadFile{{SourcePath: "docs/notes.md", TargetPath: "context/" + alias + ".md", Mode: "100644", ContentSHA256: evidencecas.Digest(content)}}, Slots: []exports.PayloadSlot{}, Blocks: []exports.PayloadBlock{}})
+		tool := []byte("Inert file context only.\n")
+		domain := "block"
+		if alias == "root" {
+			domain = "skill"
+		}
+		entry := exports.ExportEntry{ID: "notes", Domain: domain, Name: "notes", Version: "1.0.0", ContentDigest: evidencecas.Digest(payload), ToolDigest: evidencecas.Digest(tool), Parameters: []exports.ScalarParameter{}, Requires: requirements}
+		files := map[string][]byte{"template.manifest.yaml": manifest, "template.contract.json": contract, contextsource.ContextSourceBindingsPath: contextJSON(t, binding), "catalog/entries.json": contextJSON(t, []exports.ExportEntry{entry}), "catalog/tool.md": tool, "catalog/payloads/notes.json": payload, "docs/notes.md": content, "files/hello.txt.tmpl": []byte("Hello public project.\n")}
+		if alias == "root" {
+			files["files/main.go.tmpl"] = []byte("package fixture\n// tplater:managed-begin id=body provider=root-content\nfunc F( ) int {return 1}\n// tplater:managed-end id=body\n")
+		}
+		if alias == "leaf" {
+			toolBytes := testfixture.NewGofmtFixture(t).Tool()
+			info, err := buildinfo.Read(bytes.NewReader(toolBytes))
+			if err != nil {
+				t.Fatal(err)
+			}
+			files["formatter/native-tool"] = toolBytes
+			files["formatter/tool.json"], err = canonicaljson.Canonical(map[string]any{"apiVersion": "tplaiter.dev/formatter-tool/v1", "adapter": "gofmt-stdin-v1", "toolID": "gofmt", "toolVersion": strings.TrimPrefix(info.GoVersion, "go"), "binarySHA256": evidencecas.Digest(toolBytes), "versionEvidence": map[string]any{"kind": "go-buildinfo", "identity": info.GoVersion}, "nativeEnvelope": operationtrust.FormatterNativeEnvelope()})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if alter != nil {
+			alter(alias, files)
+		}
+		f.files[alias] = files
+		prefixed := map[string][]byte{}
+		for name, raw := range files {
+			prefixed[alias+"/"+name] = raw
+		}
+		root := tree(prefixed, "")
+		commit := add("commit", []byte("tree "+root+"\n\nPublic context fixture\n"))
+		reader, e := trustload.NewObjectReader([]trustload.ObjectOrigin{{Origin: origin, RootPath: f.objectRoot}})
+		if e != nil {
+			t.Fatal(e)
+		}
+		captured, e := trustverify.CaptureSource(context.Background(), reader, trustverify.SourceIdentity{Origin: origin, TemplatePath: alias, Commit: commit}, trustverify.DefaultSourceLimits())
+		reader.Close()
+		if e != nil {
+			t.Fatal(e)
+		}
+		subjects[alias] = captured.Subject()
+	}
+
+	anchor := ed25519.NewKeyFromSeed([]byte("01234567890123456789012345678901"))
+	publisher := ed25519.NewKeyFromSeed([]byte("12345678901234567890123456789012"))
+	approver := ed25519.NewKeyFromSeed([]byte("23456789012345678901234567890123"))
+	var err error
+	var policy trustverify.ExecutionPolicy
+	evidence := map[string][]byte{}
+	put := func(b []byte) string { d := evidencecas.Digest(b); evidence[d] = append([]byte(nil), b...); return d }
+	anchorPub, publisherPub := anchor.Public().(ed25519.PublicKey), publisher.Public().(ed25519.PublicKey)
+	rootRef := put([]byte(bootstrap.EncodePublicKey(publisherPub)))
+	env := bootstrap.Envelope{APIVersion: bootstrap.TrustRootsAPIVersion, AuthorityID: "t6b-authority", Sequence: 1, Validity: bootstrap.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, AllowedPolicyOrigins: []string{"https://example.test/policy"}, RootKeys: []bootstrap.RootKey{{Fingerprint: bootstrap.Fingerprint(publisherPub), PublicKeyCAS: rootRef, Issuer: "publisher-1", Status: "active"}}, Threshold: 1, RevocationEpoch: 0, Revocations: []bootstrap.Revocation{}}
+	if env.PayloadSHA256, err = env.ComputePayloadSHA256(); err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := hex.DecodeString(env.PayloadSHA256[7:])
+	env.Signatures = []bootstrap.Signature{{KeyFingerprint: bootstrap.Fingerprint(anchorPub), SignatureCAS: put([]byte(bootstrap.EncodeSignature(ed25519.Sign(anchor, payload))))}}
+	envRef := put(contextJSON(t, env))
+
+	aliases := []string{"a", "b", "leaf", "root"}
+	leaves := []bootstrap.MerkleHash{bootstrap.HashLeaf([]byte(env.PayloadSHA256))}
+	for _, alias := range aliases {
+		subject := subjects[alias]
+		statement := bootstrap.PublisherStatement{APIVersion: bootstrap.PublisherStatementAPIVersion, PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Predicate: "https://example.test/predicate", Usage: "template-source", Subject: bootstrap.SubjectIdentity{Origin: subject.Origin, TemplatePath: subject.TemplatePath, Commit: subject.Commit, TreeSHA256: subject.TreeSHA256, ContractSHA256: subject.ContractSHA256}}
+		digest, e := bootstrap.DomainDigest(bootstrap.PublisherStatementAPIVersion, statement)
+		if e != nil {
+			t.Fatal(e)
+		}
+		refs := operationtrust.SelectionEvidence{Format: bootstrap.PublisherStatementAPIVersion, StatementCAS: put(contextJSON(t, statement)), SignatureCAS: put([]byte(bootstrap.EncodeSignature(ed25519.Sign(publisher, contextRawHash(t, digest))))), KeyFingerprint: bootstrap.Fingerprint(publisherPub)}
+		f.proofs[alias] = contextsource.ContextSourceProof{Subject: operationtrust.SelectionSubject{Origin: subject.Origin, TemplatePath: subject.TemplatePath, RequestedRef: subject.Commit, Commit: subject.Commit, TreeSHA256: subject.TreeSHA256, ContractSHA256: subject.ContractSHA256}, Evidence: refs}
+		leaves = append(leaves, bootstrap.HashLeaf([]byte(refs.StatementCAS)))
+	}
+	var merkle func([]bootstrap.MerkleHash) bootstrap.MerkleHash
+	merkle = func(v []bootstrap.MerkleHash) bootstrap.MerkleHash {
+		if len(v) == 1 {
+			return v[0]
+		}
+		n := 1
+		for n*2 < len(v) {
+			n *= 2
+		}
+		return bootstrap.HashChildren(merkle(v[:n]), merkle(v[n:]))
+	}
+	var inclusion func([]bootstrap.MerkleHash, int) []string
+	inclusion = func(v []bootstrap.MerkleHash, i int) []string {
+		if len(v) == 1 {
+			return []string{}
+		}
+		n := 1
+		for n*2 < len(v) {
+			n *= 2
+		}
+		if i < n {
+			return append(inclusion(v[:n], i), contextMerkle(merkle(v[n:])))
+		}
+		return append(inclusion(v[n:], i-n), contextMerkle(merkle(v[:n])))
+	}
+	checkpointRef := put(contextJSON(t, bootstrap.Checkpoint{APIVersion: bootstrap.CheckpointAPIVersion, AuthorityID: env.AuthorityID, TreeSize: uint64(len(leaves)), RootHash: contextMerkle(merkle(leaves))}))
+	envProof := put(contextJSON(t, bootstrap.InclusionProof{APIVersion: bootstrap.InclusionAPIVersion, LeafIndex: 0, TreeSize: uint64(len(leaves)), Hashes: inclusion(leaves, 0)}))
+	for i, alias := range aliases {
+		p := f.proofs[alias]
+		p.Evidence.CheckpointCAS = checkpointRef
+		p.Evidence.InclusionProofCAS = put(contextJSON(t, bootstrap.InclusionProof{APIVersion: bootstrap.InclusionAPIVersion, LeafIndex: uint64(i + 1), TreeSize: uint64(len(leaves)), Hashes: inclusion(leaves, i+1)}))
+		f.proofs[alias] = p
+	}
+	f.input = contextsource.ContextSourceSelection{APIVersion: contextsource.ContextSourceSelectionAPIVersion, Root: f.proofs["root"], Sources: []contextsource.ContextSourceProof{f.proofs["a"], f.proofs["b"], f.proofs["leaf"]}}
+	receipt := bootstrap.Receipt{APIVersion: bootstrap.TrustReceiptAPIVersion, AuthorityID: env.AuthorityID, HighestAcceptedSequence: 1, EnvelopePayloadSHA256: env.PayloadSHA256, RevocationEpoch: 0, TreeSize: uint64(len(leaves)), CheckpointDigest: checkpointRef}
+	if receipt.ReceiptDigest, err = receipt.ComputeDigest(); err != nil {
+		t.Fatal(err)
+	}
+	receiptRef := put(contextJSON(t, receipt))
+	scopes := []bootstrap.PublisherScope{}
+	for _, alias := range aliases {
+		scopes = append(scopes, bootstrap.PublisherScope{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", SourceOrigin: origin, TemplatePath: alias, Predicate: "https://example.test/predicate", Usage: "template-source"})
+	}
+	desc := bootstrap.DescriptorDocument{APIVersion: bootstrap.DescriptorAPIVersion, Profile: bootstrap.ProfileOSS, AuthorityID: env.AuthorityID, Anchors: []bootstrap.DescriptorAnchor{{Fingerprint: bootstrap.Fingerprint(anchorPub), PublicKeyBase64: base64.StdEncoding.EncodeToString(anchorPub)}}, Threshold: 1, AllowedPolicyOrigins: []string{"https://example.test/policy"}, PublisherScopes: scopes}
+	desc.DescriptorSHA256 = desc.ComputedSHA256()
+	opRecord := trustload.OperatorPinRecord{APIVersion: trustload.OperatorPinRecordAPIVersion, Method: "operator-pinned", DescriptorSHA256: desc.DescriptorSHA256}
+	opRaw := contextJSON(t, opRecord)
+	prov := bootstrap.ProvisioningRecord{APIVersion: bootstrap.ProvisioningAPIVersion, Mode: "operator-pinned", DescriptorSHA256: desc.DescriptorSHA256, AuthenticationEvidenceSHA256: evidencecas.Digest(opRaw), EvidenceClass: bootstrap.EvidenceSimulated}
+	prov.ProvisioningSHA256 = prov.ComputedSHA256()
+	state := bootstrap.OSSAcceptedState{APIVersion: bootstrap.OSSAcceptedStateAPIVersion, DescriptorSHA256: desc.DescriptorSHA256, ProvisioningSHA256: prov.ProvisioningSHA256, AuthorityID: env.AuthorityID, Sequence: 1, EnvelopePayloadSHA256: env.PayloadSHA256, RevocationEpoch: 0, ReceiptDigest: receipt.ReceiptDigest, TreeSize: uint64(len(leaves)), CheckpointDigest: checkpointRef}
+	state.StateSHA256 = state.ComputedSHA256()
+	approverPub := approver.Public().(ed25519.PublicKey)
+	policy = trustverify.ExecutionPolicy{APIVersion: trustverify.ExecutionPolicyAPIVersion, PolicyID: "t6b-policy", Profile: "oss", MinimumProfile: "oss", Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Principals: []trustverify.Principal{{ID: "principal:approver"}, {ID: "principal:publisher"}, {ID: "principal:submitter"}}, IssuerPrincipals: []trustverify.IssuerPrincipal{{Issuer: "publisher-1", PrincipalID: "principal:publisher"}}, SourceRules: []trustverify.SourceRule{{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: origin, TemplatePath: ".", Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"}}, Approvers: []trustverify.Approver{{ID: "t6b-approver", PrincipalID: "principal:approver", IdentityClass: "operator", KeyFingerprint: bootstrap.Fingerprint(approverPub), PublicKeyBase64: base64.StdEncoding.EncodeToString(approverPub), Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Scopes: []trustverify.ApprovalScope{{ProjectID: "project-t6b", OperationScope: "new", ActionKind: "formatter", Origin: origin, TemplatePath: "root"}}}}, AllowInvocationHuman: false, MaxTimeoutMillis: 5000}
+	if policy.PolicySHA256, err = policy.ComputePolicySHA256(); err != nil {
+		t.Fatal(err)
+	}
+	policy.SourceRules = []trustverify.SourceRule{}
+	for _, alias := range aliases {
+		policy.SourceRules = append(policy.SourceRules, trustverify.SourceRule{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: origin, TemplatePath: alias, Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"})
+	}
+	if policy.PolicySHA256, err = policy.ComputePolicySHA256(); err != nil {
+		t.Fatal(err)
+	}
+	descRaw, provRaw, policyRaw := contextJSON(t, desc), contextJSON(t, prov), contextJSON(t, policy)
+	for p, b := range map[string][]byte{filepath.Join(dir, "descriptor.json"): descRaw, filepath.Join(dir, "provisioning.json"): provRaw, filepath.Join(dir, "operator.json"): opRaw, filepath.Join(dir, "policy.json"): policyRaw, filepath.Join(dir, "state.json"): contextJSON(t, state)} {
+		if err := os.WriteFile(p, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bundle := trustload.StoredBundle{APIVersion: "tplaiter.dev/stored-bootstrap-bundle/v1", EnvelopeCAS: envRef, ReceiptCAS: receiptRef, Transparency: trustload.StoredTransparency{CheckpointCAS: checkpointRef, InclusionProofCAS: envProof}}
+	bundleRaw := contextJSON(t, bundle)
+	bundleDigest, err := bundle.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bundle.json"), bundleRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	install := trustload.RuntimeInstall{APIVersion: trustload.RuntimeInstallAPIVersion, InstallationID: "t6b-install", Profile: bootstrap.ProfileOSS, MinimumProfile: bootstrap.ProfileOSS, Descriptor: contextPin(filepath.Join(dir, "descriptor.json"), descRaw), Provisioning: contextPin(filepath.Join(dir, "provisioning.json"), provRaw), OperatorRecord: contextPin(filepath.Join(dir, "operator.json"), opRaw), ExecutionPolicy: contextPin(filepath.Join(dir, "policy.json"), policyRaw), ProjectContexts: []trustload.ProjectContext{{Key: "project", ProjectID: "project-t6b", SubmitterPrincipalID: "principal:submitter", MinimumProfile: bootstrap.ProfileOSS, RootPath: filepath.Join(dir, "project")}}, ObjectOrigins: []trustload.ObjectOrigin{{Origin: origin, RootPath: filepath.Join(dir, "objects")}}, EvidenceRoot: filepath.Join(dir, "evidence"), ScratchRoot: filepath.Join(dir, "scratch"), OSS: &trustload.OSSInstall{StorePath: filepath.Join(dir, "store"), InitialStatePath: filepath.Join(dir, "state.json"), InitialStateSHA256: state.StateSHA256, InitialBundlePath: filepath.Join(dir, "bundle.json"), InitialBundleSHA256: bundleDigest}}
+	installRaw := contextJSON(t, install)
+	installPath := filepath.Join(dir, "runtime.json")
+	if err := os.WriteFile(installPath, installRaw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	installDigest, err := install.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.selection = trustload.LaunchSelection{Profile: bootstrap.ProfileOSS, RuntimeConfig: trustload.FilePin{Path: installPath, SHA256: installDigest}, OperatorRecord: install.OperatorRecord, InstallationID: install.InstallationID}
+	factory := func(r evidencecas.Reader) (*bootstrap.Verifier, error) {
+		return bootstrap.NewVerifier(r, contextFixtureClock{}, nil, 0)
+	}
+	if err := trustload.Enroll(context.Background(), f.selection, factory, contextJSON(t, state), bundleRaw, evidence); err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+
+	runtime, e := trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: contextFixtureClock{}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	f.input = contextsource.ContextSourceSelection{APIVersion: contextsource.ContextSourceSelectionAPIVersion, Root: f.proofs["root"], Sources: []contextsource.ContextSourceProof{f.proofs["a"], f.proofs["b"], f.proofs["leaf"]}}
+	f.runtime = runtime
+	t.Cleanup(func() { runtime.Close() })
+	return f
+}
+
+func TestContextNewNativeFormattingAndPublication(t *testing.T) {
+	f := newContextFixture(t, nil)
+	ctx := context.Background()
+	home := filepath.Join(filepath.Dir(f.policyPath), "home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	leaf := f.proofs["leaf"]
+	tool := operationtrust.SourceSelection{APIVersion: operationtrust.SourceSelectionAPIVersion, Subject: leaf.Subject, Evidence: leaf.Evidence, Dependencies: []string{}}
+	input := NewCleanInput{APIVersion: "tplaiter.dev/managed-new-clean-input/v2", Home: home, Ref: f.input.Root.Subject.Commit, SourceInput: contextJSON(t, f.input), ToolSource: contextJSON(t, tool), Render: renderref.Input{Repo: "", Values: settings.Values{}, Project: manifest.ProjectInfo{Name: "Example", Slug: "example", Module: "example.invalid/project"}}, RendererVersion: "1.0.0", Origins: map[string]survey.Source{}}
+	if _, err := contextsource.DecodeSourceSelectionV2(input.SourceInput); err != nil {
+		t.Fatal("selection decoder", err)
+	}
+	for _, proof := range append([]contextsource.ContextSourceProof{f.input.Root}, f.input.Sources...) {
+		sel := operationtrust.SourceSelection{Subject: proof.Subject, Evidence: proof.Evidence}
+		if _, err := f.runtime.TrustRuntime().VerifySubject(ctx, sel.TrustSubject(), sel.EvidenceRefs()); err != nil {
+			t.Fatal("source admission", proof.Subject.TemplatePath, err)
+		}
+	}
+	standalone, err := contextsource.PrepareContextSources(ctx, f.runtime, input.SourceInput)
+	if err != nil {
+		t.Fatal("DAG admission", err)
+	}
+	standalone.Close()
+	// The actual immutable locator defines the display alias.
+	rootSource, err := sourceadapter.ResolveContextSources(ctx, f.runtime, home, input.Ref, input.SourceInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	display, err := rootSource.Root(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.Render.Repo = display.Alias
+	rootSource.Close()
+	p, err := PrepareNewClean(ctx, f.runtime, input)
+	if err != nil {
+		t.Fatal("native v2 prepare", err)
+	}
+	requests, err := p.RequiredRequests(ctx)
+	if err != nil || len(requests) != 2 {
+		t.Fatalf("actual requests %d: %v", len(requests), err)
+	}
+	if requests[0].RequestSHA256 == requests[1].RequestSHA256 {
+		t.Fatal("collapsed action requests")
+	}
+	for _, prepared := range p.formats {
+		if prepared.frame.APIVersion != "tplaiter.dev/formatter-frame/v2" {
+			t.Fatal("legacy frame")
+		}
+	}
+	if _, err := StageNewClean(ctx, p, nil); err == nil {
+		t.Fatal("missing approvals accepted")
+	}
+	var policy trustverify.ExecutionPolicy
+	if err := json.Unmarshal(mustContextRead(t, f.policyPath), &policy); err != nil {
+		t.Fatal(err)
+	}
+	approvalOwner := &managedNewIntegrationFixture{policy: policy, approver: ed25519.NewKeyFromSeed([]byte("23456789012345678901234567890123")), evidence: filepath.Join(filepath.Dir(f.policyPath), "evidence")}
+	approvals := map[string]trustverify.ApprovalRefs{}
+	for _, request := range requests {
+		approvals[request.RequestSHA256] = managedNewApprove(t, approvalOwner, request)
+	}
+	clean, err := StageNewClean(ctx, p, approvals)
+	if err != nil {
+		t.Fatal("native pair", err)
+	}
+	images, err := clean.ImagesFor(ctx, p)
+	if err != nil || !bytes.Contains(images["main.go"], []byte("func F() int { return 1 }")) {
+		t.Fatalf("actual formatted image: %s %v", images["main.go"], err)
+	}
+	pending, err := p.RequiredRequests(ctx)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("completed pair rerun: %d %v", len(pending), err)
+	}
+	pub, err := BuildNewPublication(ctx, p, clean)
+	if err != nil {
+		t.Fatal("publication", err)
+	}
+	if pub.Reference().APIVersion != "tplaiter.dev/managed-publication-reference/v2" {
+		t.Fatal("legacy publication")
+	}
+	fresh, err := OpenNewPublication(ctx, f.runtime, pub.Reference())
+	if err != nil {
+		t.Fatal("retained publication", err)
+	}
+	again, err := fresh.ImagesFor(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, _ := canonicaljson.Canonical(images)
+	// Lineage is added only by the actual publication owner.
+	delete(again, newLineagePath)
+	actual, _ := canonicaljson.Canonical(again)
+	if !bytes.Equal(expected, actual) {
+		t.Fatal("publication changed rendered images")
+	}
+	wrong := pub.Reference()
+	wrong.APIVersion = "tplaiter.dev/managed-publication-reference/v1"
+	if _, err := OpenNewPublication(ctx, f.runtime, wrong); err == nil {
+		t.Fatal("v2 frame entered v1 reference")
+	}
+	p.nativeIntent.Close()
+	if _, err := p.RequiredRequests(ctx); err == nil {
+		t.Fatal("closed intent accepted")
+	}
+	t.Log("actual signed DAG=4, real formatter requests=2, retained pair=complete; no project publication claimed")
+}
+
+func mustContextRead(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func TestContextNativeFormatterMaterialActualSourceAndRefusals(t *testing.T) {
+	f := newContextFixture(t, nil)
+	ctx := context.Background()
+	home := filepath.Join(filepath.Dir(f.policyPath), "material-home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw := contextJSON(t, f.input)
+	source, err := sourceadapter.ResolveContextSources(ctx, f.runtime, home, f.input.Root.Subject.Commit, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	rootSource, err := source.Root(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admitted, err := source.Sources(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent, err := contextsource.PrepareManagedNativeNew(ctx, f.runtime, admitted, contextsource.NativeNewInput{Render: renderref.Input{Repo: rootSource.Alias, Values: settings.Values{}, Project: manifest.ProjectInfo{Name: "Example", Slug: "example", Module: "example.invalid/project"}}, RendererVersion: "1.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer intent.Close()
+	closure, err := intent.FormatterSources(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := intent.Rendered(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := intent.RootLock(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps, err := intent.DependencyLock(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contextDigest, err := intent.ContextDigest(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph, err := closure.SourceGraph(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	graphDigest, err := bootstrap.DomainDigest("tplaiter.dev/managed-formatter-source-graph/v2", graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := intent.OperationBase(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf := f.proofs["leaf"]
+	toolSelection := operationtrust.SourceSelection{Subject: leaf.Subject, Evidence: leaf.Evidence}
+	tool, err := f.runtime.TrustRuntime().VerifySubject(ctx, toolSelection.TrustSubject(), toolSelection.EvidenceRefs())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := f.runtime.TrustRuntime().VerifiedSnapshot(tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recordRaw, ok := snapshot.Blob("formatter/tool.json")
+	if !ok {
+		t.Fatal("actual tool record missing")
+	}
+	var record struct {
+		APIVersion      string `json:"apiVersion"`
+		Adapter         string `json:"adapter"`
+		ToolID          string `json:"toolID"`
+		ToolVersion     string `json:"toolVersion"`
+		BinarySHA256    string `json:"binarySHA256"`
+		VersionEvidence struct {
+			Kind     string `json:"kind"`
+			Identity string `json:"identity"`
+		} `json:"versionEvidence"`
+		NativeEnvelope string `json:"nativeEnvelope"`
+	}
+	if err := canonicaljson.DecodeStrict(recordRaw, &record); err != nil {
+		t.Fatal(err)
+	}
+	input := result.Files["main.go"]
+	markers, err := blockmarkers.Validate(blockmarkers.LanguageGo, "main.go", input)
+	if err != nil || len(markers) == 0 {
+		t.Fatal("actual managed inventory", err)
+	}
+	options := []string{}
+	optionsDigest, err := trustverify.ComputeToolOptionsSHA256(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := blockformatter.BuildPlan(blockformatter.PlanInput{Path: "main.go", Language: "go", Adapter: "gofmt-stdin-v1", Tool: trustverify.Tool{ID: record.ToolID, Version: record.ToolVersion, BinarySHA256: record.BinarySHA256, OptionsSHA256: optionsDigest}, Options: options, InputMode: "100644", Markers: markers, TimeoutMillis: 5000, OutputLimitBytes: 16 << 20, Input: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contextData := operationtrust.ContextNewFormatterContext{APIVersion: "tplaiter.dev/managed-formatter-context/v2", Role: "clean-target", SourceRootLockSHA256: root.RootLockSHA256, TargetRootLockSHA256: root.RootLockSHA256, ReplacementDeclarationsSHA256: evidencecas.Digest([]byte(`{"replacements":[],"version":1}`)), DecisionsSHA256: evidencecas.Digest([]byte(`{"apiVersion":"tplaiter.dev/managed-decisions/v1","decisions":[]}`)), ObservedProjectSHA256: evidencecas.Digest(nil), ObservedRegistrySHA256: evidencecas.Digest(nil), RendererAnswersSHA256: operation.AnswersSHA256, DependencyLockSHA256: deps.LockSHA256, SourceGraphSHA256: graphDigest, NativeContextSHA256: contextDigest}
+	contextRaw, err := canonicaljson.Canonical(contextData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := blockformatter.NewRuntimeAdapter(f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calculation, err := operationtrust.PrepareContextNewFormatterCalculation(ctx, f.runtime, closure, renderref.Input{Repo: rootSource.Alias, Values: settings.Values{}, Project: manifest.ProjectInfo{Name: "Example", Slug: "example", Module: "example.invalid/project"}}, "1.0.0")
+	if err != nil {
+		t.Fatal("owned calculation", err)
+	}
+	selection, err := adapter.SelectContextNativeNew(ctx, calculation, tool, plan, input, contextRaw)
+	if err != nil {
+		t.Fatal("actual native material selection", err)
+	}
+	operation.Actions = selection.Actions()
+	if len(operation.Subjects) != 4 || len(operation.Actions) != 2 {
+		t.Fatal("actual full DAG/actions missing")
+	}
+	bound, err := adapter.BindContextNativeNew(ctx, selection, operation)
+	if err != nil {
+		t.Fatal("actual native material bind", err)
+	}
+	requests := bound.Requests()
+	if len(requests) != 2 || requests[0].RequestSHA256 == requests[1].RequestSHA256 || requests[0].Action.ID == requests[1].Action.ID {
+		t.Fatal("actual distinct requests missing")
+	}
+	for _, request := range requests {
+		if request.Scope != "new" || request.VerifyRequestSHA256() != nil {
+			t.Fatal("actual request scope/digest")
+		}
+	}
+	if _, err := adapter.Bind(ctx, selection, operation); err == nil {
+		t.Fatal("v2 selection entered legacy binding")
+	}
+	for _, mutate := range []func(*trustverify.OperationInputs){func(op *trustverify.OperationInputs) { op.Actions = nil }, func(op *trustverify.OperationInputs) { op.Subjects = op.Subjects[:len(op.Subjects)-1] }, func(op *trustverify.OperationInputs) { op.Scope = "update" }, func(op *trustverify.OperationInputs) {
+		op.AnswersSHA256 = evidencecas.Digest([]byte("foreign answers"))
+	}} {
+		candidate := operation
+		candidate.Subjects = append([]trustverify.Provider(nil), operation.Subjects...)
+		candidate.Actions = append([]trustverify.ActionMaterial(nil), operation.Actions...)
+		mutate(&candidate)
+		if _, err := adapter.BindContextNativeNew(ctx, selection, candidate); err == nil {
+			t.Fatal("mismatched operation material accepted")
+		}
+	}
+	for name, mutate := range map[string]func(*operationtrust.ContextNewFormatterContext){
+		"dependency-lock": func(c *operationtrust.ContextNewFormatterContext) {
+			c.DependencyLockSHA256 = evidencecas.Digest([]byte("foreign lock"))
+		},
+		"root-lock": func(c *operationtrust.ContextNewFormatterContext) {
+			c.SourceRootLockSHA256 = evidencecas.Digest([]byte("foreign root"))
+			c.TargetRootLockSHA256 = c.SourceRootLockSHA256
+		},
+		"native-context": func(c *operationtrust.ContextNewFormatterContext) {
+			c.NativeContextSHA256 = evidencecas.Digest([]byte("foreign native"))
+		},
+		"answers": func(c *operationtrust.ContextNewFormatterContext) {
+			c.RendererAnswersSHA256 = evidencecas.Digest([]byte("foreign answers"))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := contextData
+			mutate(&changed)
+			badRaw := contextJSON(t, changed)
+			// Recompute the actual canonical content closure and both action identities;
+			// refusal cannot be explained by binding stale actions from the positive.
+			planRaw := contextJSON(t, plan)
+			content := []trustverify.ContentEntry{{Root: "project", Path: plan.Path, Mode: plan.InputMode, ContentSHA256: evidencecas.Digest(input)}, {Root: "project", Path: "formatter/plan.json", Mode: "100644", ContentSHA256: evidencecas.Digest(planRaw)}, {Root: "project", Path: "formatter/tool.json", Mode: "100644", ContentSHA256: evidencecas.Digest(recordRaw)}, {Root: "project", Path: "formatter/context.json", Mode: "100644", ContentSHA256: evidencecas.Digest(badRaw)}}
+			sort.Slice(content, func(i, j int) bool {
+				return content[i].Root+"\x00"+content[i].Path < content[j].Root+"\x00"+content[j].Path
+			})
+			closureDigest, err := trustverify.ComputeContentClosureSHA256(content)
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidate := operation
+			candidate.Actions = selection.Actions()
+			candidate.AnswersSHA256 = changed.RendererAnswersSHA256
+			id := strings.TrimPrefix(evidencecas.Digest(append(append([]byte(nil), planRaw...), badRaw...)), "sha256:")
+			for i := range candidate.Actions {
+				candidate.Actions[i].Action.ID = fmt.Sprintf("format-%s-%d", id, i+1)
+				candidate.Actions[i].Action.ContentClosureSHA256 = closureDigest
+			}
+			if _, err := trustverify.ComputeOperationInputsSHA256(candidate); err != nil {
+				t.Fatal("recomputed operation", err)
+			}
+			if reflect.DeepEqual(candidate.Actions, operation.Actions) {
+				t.Fatal("negative retained stale actions")
+			}
+			if _, err := adapter.SelectContextNativeNew(ctx, calculation, tool, plan, input, badRaw); err == nil {
+				t.Fatal("foreign context selected")
+			}
+			rawInput := operationtrust.FormatterInput{Path: plan.Path, Mode: plan.InputMode, Bytes: input, PlanJSON: planRaw, ContextJSON: badRaw}
+			if _, err := operationtrust.ResolveContextNewFormatterComposition(ctx, f.runtime, calculation, tool, candidate, candidate.Actions[0], rawInput); err == nil {
+				t.Fatal("recomputed foreign context bound")
+			}
+		})
+	}
+
+	t.Log("actual four-source installed closure and independent source-bound tool: two action-specific native material requests; missing actions/subjects, answers, scope, dependency lock and legacy route refused; no execution/publication claim")
 }

@@ -2,6 +2,7 @@ package newimages
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
 	"github.com/tplAIter/tplaiter/internal/engine"
 	"github.com/tplAIter/tplaiter/internal/managedblocks"
 	"github.com/tplAIter/tplaiter/internal/manifest"
@@ -23,6 +25,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/sourceadapter"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/survey"
+	"github.com/tplAIter/tplaiter/internal/trustload"
 	"gopkg.in/yaml.v3"
 )
 
@@ -46,10 +49,10 @@ func Build(c Context) (map[string][]byte, error) {
 	if c.Source == nil || c.Prepared == nil || c.Resources == nil || c.Result == nil {
 		return nil, ErrUnsafe
 	}
-	return build(c.ID, c.Source, c.Info, c.Port, c.Result, c.Prepared, c.Resources, c.Sources, c.Interactive)
+	return build(c.ID, c.Source, c.Info, c.Port, c.Result, c.Prepared.RootLock(), c.Prepared.DependencyLock(), c.Resources, c.Sources, c.Interactive)
 }
 
-func build(id string, src *sourceadapter.Source, info manifest.ProjectInfo, port int, result *renderref.Result, prepared *operationtrust.PreparedNew, resourceImages *resources.ResourceImages, sources map[string]survey.Source, interactive bool) (files map[string][]byte, err error) {
+func build(id string, src *sourceadapter.Source, info manifest.ProjectInfo, port int, result *renderref.Result, rootLock provenance.RootTemplateLock, dependencyLock provenance.TemplateLock, resourceImages *resources.ResourceImages, sources map[string]survey.Source, interactive bool) (files map[string][]byte, err error) {
 	if result == nil || result.Template == nil {
 		return nil, ErrUnsafe
 	}
@@ -81,7 +84,6 @@ func build(id string, src *sourceadapter.Source, info manifest.ProjectInfo, port
 		}
 		inv.Artifacts = append(inv.Artifacts, artifact)
 	}
-	rootLock, dependencyLock := prepared.RootLock(), prepared.DependencyLock()
 	if err := resourceImages.Validate(rootLock); err != nil {
 		return nil, err
 	}
@@ -113,7 +115,7 @@ func build(id string, src *sourceadapter.Source, info manifest.ProjectInfo, port
 		}
 		answers[k] = stateledger.Answer{Value: v, Source: source}
 	}
-	marker := stateledger.ProjectV2{APIVersion: stateledger.ProjectV2APIVersion, Kind: "Project", ID: id, Template: stateledger.TemplateIdentity{Repo: src.Alias, Name: src.Name, RequestedRef: prepared.RootLock().Root.RequestedRef, ResolvedCommit: prepared.RootLock().Root.Commit}, Project: map[string]any{"name": info.Name, "slug": info.Slug, "module": info.Module, "system": info.System, "domain": info.Domain}, Answers: answers, Runtime: map[string]any{"port": port}, State: stateledger.StandardPointers()}
+	marker := stateledger.ProjectV2{APIVersion: stateledger.ProjectV2APIVersion, Kind: "Project", ID: id, Template: stateledger.TemplateIdentity{Repo: src.Alias, Name: src.Name, RequestedRef: rootLock.Root.RequestedRef, ResolvedCommit: rootLock.Root.Commit}, Project: map[string]any{"name": info.Name, "slug": info.Slug, "module": info.Module, "system": info.System, "domain": info.Domain}, Answers: answers, Runtime: map[string]any{"port": port}, State: stateledger.StandardPointers()}
 	images := map[string]any{
 		engine.BaselineRelPath:           result.Baseline,
 		ownership.InventoryRelPath:       inv,
@@ -159,7 +161,43 @@ func build(id string, src *sourceadapter.Source, info manifest.ProjectInfo, port
 // exactly the outputs obtained from verified formatter pairs and independently
 // rebuild these complete images before admitting either warm or cold writes.
 func BuildManaged(c Context, formatted map[string][]byte) (map[string][]byte, error) {
-	if c.Result == nil || c.Result.Baseline == nil || c.Prepared == nil || len(formatted) == 0 {
+	if c.Prepared == nil {
+		return nil, ErrUnsafe
+	}
+	return buildManaged(c, c.Prepared.RootLock(), c.Prepared.DependencyLock(), formatted)
+}
+
+// BuildContextManaged consumes only the same runtime's genuine native-v2 intent.
+// It calculates images; it grants neither execution nor publication authority.
+func BuildContextManaged(ctx context.Context, r *trustload.Runtime, intent *contextsource.PreparedNativeNew, c Context, formatted map[string][]byte) (map[string][]byte, error) {
+	if intent == nil || c.Prepared != nil {
+		return nil, ErrUnsafe
+	}
+	result, err := intent.Rendered(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	root, err := intent.RootLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	dependencies, err := intent.DependencyLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	c.Result = result
+	images, err := buildManaged(c, root, dependencies, formatted)
+	if err != nil {
+		return nil, err
+	}
+	if err = intent.RecheckFor(ctx, r); err != nil {
+		return nil, err
+	}
+	return images, nil
+}
+
+func buildManaged(c Context, root provenance.RootTemplateLock, dependencies provenance.TemplateLock, formatted map[string][]byte) (map[string][]byte, error) {
+	if c.Source == nil || c.Resources == nil || c.Result == nil || c.Result.Baseline == nil || len(formatted) == 0 {
 		return nil, ErrUnsafe
 	}
 	result := *c.Result
@@ -194,11 +232,11 @@ func BuildManaged(c Context, formatted map[string][]byte) (map[string][]byte, er
 	}
 	result.Baseline = &baseline
 	c.Result = &result
-	files, err := Build(c)
+	files, err := build(c.ID, c.Source, c.Info, c.Port, c.Result, root, dependencies, c.Resources, c.Sources, c.Interactive)
 	if err != nil {
 		return nil, err
 	}
-	managed, err := managedblocks.SignedRootBaseline(result.Files, c.Prepared.RootLock().Root)
+	managed, err := managedblocks.SignedRootBaseline(result.Files, root.Root)
 	if err != nil || len(managed.Files) == 0 {
 		return nil, ErrUnsafe
 	}

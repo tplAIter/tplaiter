@@ -41,7 +41,7 @@ type ManagedPublicationRecord struct {
 }
 
 func validManagedPublication(v ManagedPublication) bool {
-	if v.APIVersion != "tplaiter.dev/managed-publication/v1" || (v.Kind != "new" && v.Kind != "link") || v.ProjectID == "" || v.Root == "" || len(v.Input) == 0 || len(v.Input) > 1<<20 || !validManagedDigest(v.ProfileBindingSHA256) || !validManagedDigest(v.ImagesSHA256) || len(v.RegistryBefore) > 4<<20 || len(v.RegistryAfter) == 0 || len(v.RegistryAfter) > 4<<20 || len(v.FormatterFrames) == 0 || len(v.FormatterFrames) > 4096 {
+	if (v.APIVersion != "tplaiter.dev/managed-publication/v1" && v.APIVersion != "tplaiter.dev/managed-publication/v2") || (v.Kind != "new" && v.Kind != "link") || (v.APIVersion == "tplaiter.dev/managed-publication/v2" && v.Kind != "new") || v.ProjectID == "" || v.Root == "" || len(v.Input) == 0 || len(v.Input) > 1<<20 || !validManagedDigest(v.ProfileBindingSHA256) || !validManagedDigest(v.ImagesSHA256) || len(v.RegistryBefore) > 4<<20 || len(v.RegistryAfter) == 0 || len(v.RegistryAfter) > 4<<20 || len(v.FormatterFrames) == 0 || len(v.FormatterFrames) > 4096 {
 		return false
 	}
 	for path, digest := range v.FormatterFrames {
@@ -90,7 +90,7 @@ func (v ManagedPublication) Digest() (string, error) {
 	if !validManagedPublication(v) {
 		return "", ErrAuthentication
 	}
-	return bootstrap.DomainDigest("tplaiter.dev/managed-publication/v1", v)
+	return bootstrap.DomainDigest(v.APIVersion, v)
 }
 
 func StoreManagedPublication(ctx context.Context, r *trustload.Runtime, v ManagedPublication) (*ManagedPublicationRecord, error) {
@@ -202,7 +202,11 @@ func (v ManagedPublication) Locator() (string, error) {
 	if !validManagedPublication(v) {
 		return "", ErrAuthentication
 	}
-	return bootstrap.DomainDigest("tplaiter.dev/managed-publication-frame/v1", struct {
+	domain := "tplaiter.dev/managed-publication-frame/v1"
+	if v.APIVersion == "tplaiter.dev/managed-publication/v2" {
+		domain = "tplaiter.dev/managed-publication-frame/v2"
+	}
+	return bootstrap.DomainDigest(domain, struct {
 		APIVersion           string            `json:"apiVersion"`
 		Kind                 string            `json:"kind"`
 		ProjectID            string            `json:"projectID"`
@@ -212,7 +216,7 @@ func (v ManagedPublication) Locator() (string, error) {
 		RegistryBefore       Bytes             `json:"registryBefore"`
 		RegistryAfter        Bytes             `json:"registryAfter"`
 		FormatterFrames      map[string]string `json:"formatterFrames"`
-	}{"tplaiter.dev/managed-publication-frame/v1", v.Kind, v.ProjectID, v.Root, v.ProfileBindingSHA256, v.Input, v.RegistryBefore, v.RegistryAfter, v.FormatterFrames})
+	}{domain, v.Kind, v.ProjectID, v.Root, v.ProfileBindingSHA256, v.Input, v.RegistryBefore, v.RegistryAfter, v.FormatterFrames})
 }
 
 func mustManagedPublicationDigest(v ManagedPublication) string {
@@ -326,4 +330,60 @@ func (c *CommittedUpdate) MaterialFor(ctx context.Context, r *trustload.Runtime)
 		return Material{}, ErrInspectionChanged
 	}
 	return material, nil
+}
+
+// FindCommittedUpdateForLineage searches only the bounded native transaction
+// namespace. A match is an actual committed authenticated owner material, never
+// a caller transaction ID, reported phase, decoded journal or sealing key.
+func FindCommittedUpdateForLineage(ctx context.Context, r *trustload.Runtime, home string, lineage []byte) (*CommittedUpdate, error) {
+	if ctx == nil || r == nil || len(lineage) == 0 || len(lineage) > 1<<20 {
+		return nil, ErrAuthentication
+	}
+	entries, err := confinedReadDir(filepath.Join(home, "transactions", "project"))
+	if err != nil {
+		return nil, err
+	}
+	var found *CommittedUpdate
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		name := entry.Name()
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !strings.HasPrefix(name, "tx-") {
+			continue
+		}
+		id := strings.TrimPrefix(name, "tx-")
+		if len(id) != 32 {
+			continue
+		}
+		valid := true
+		for _, ch := range id {
+			if !(ch >= '0' && ch <= '9' || ch >= 'a' && ch <= 'f') {
+				valid = false
+			}
+		}
+		if !valid {
+			continue
+		}
+		receipt, err := ReadCommittedUpdate(ctx, r, home, id)
+		if err != nil {
+			continue
+		}
+		material, err := receipt.MaterialFor(ctx, r)
+		if err != nil {
+			return nil, err
+		}
+		file, ok := material.After[".tplaiter/managed-lineage.json"]
+		if !ok || file.Directory || file.Mode != 0o644 || !bytes.Equal(file.Data, lineage) {
+			continue
+		}
+		if found != nil {
+			return nil, ErrAuthentication
+		}
+		found = receipt
+	}
+	if found == nil {
+		return nil, ErrAuthentication
+	}
+	return found, nil
 }

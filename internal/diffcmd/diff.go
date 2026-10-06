@@ -177,7 +177,20 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 		return Report{}, failure(StateCode, stateledger.ErrUnsafe)
 	}
 	expected := prepared.Rendered()
-	hasManaged := false
+	blockRaw, err := read(".tplaiter/managed-blocks.json")
+	if err != nil {
+		return Report{}, failure(BlockCode, err)
+	}
+	recordedBlocks, err := managedblocks.ParseBaseline(blockRaw)
+	if err != nil {
+		return Report{}, failure(BlockCode, err)
+	}
+	lineage, err := reader.ReadState(ctx, managed.LineagePath)
+	if err != nil {
+		return Report{}, failure(BlockCode, err)
+	}
+	hasManaged := lineage.Exists || len(recordedBlocks.Files) > 0
+	var authenticatedBlocks *managedblocks.Baseline
 	for _, data := range expected.Files {
 		if bytes.Contains(data, []byte("tplater:managed-")) {
 			hasManaged = true
@@ -189,6 +202,8 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 		if err != nil {
 			return Report{}, failure(BlockCode, err)
 		}
+		blocks := projection.Blocks()
+		authenticatedBlocks = &blocks
 		expected, err = projection.RenderedFor(expected)
 		if err != nil {
 			return Report{}, failure(BlockCode, err)
@@ -213,6 +228,9 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 	built, err := signedBlocks(expected.Files, s)
 	if err != nil {
 		return Report{}, failure(BlockCode, err)
+	}
+	if authenticatedBlocks != nil {
+		built = authenticatedBlocks.Clone()
 	}
 	if !reflect.DeepEqual(managed, built) {
 		return Report{}, failure(BlockCode, errors.New("managed baseline does not equal signed reconstruction"))
@@ -285,7 +303,13 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 				continue
 			}
 		}
-		changes, blocks, e := compare(p, files[p], actual)
+		var bound *managedblocks.FileBaseline
+		if authenticatedBlocks != nil {
+			if baseline, exists := authenticatedBlocks.Files[p]; exists {
+				bound = &baseline
+			}
+		}
+		changes, blocks, e := compareBound(p, files[p], actual, bound)
 		if e != nil {
 			return Report{}, failure(BlockCode, e)
 		}
@@ -347,8 +371,15 @@ func signedBlocks(files map[string][]byte, source provenance.RootSubject) (manag
 }
 
 func compare(path string, expected []byte, actual ownership.State) ([]Change, int, error) {
+	return compareBound(path, expected, actual, nil)
+}
+
+// bound is populated only after Run reconstructs the committed publication and
+// matches the entire recorded ledger. It permits inspection of retained blocks,
+// never a new topology or any execution/publication authority.
+func compareBound(path string, expected []byte, actual ownership.State, bound *managedblocks.FileBaseline) ([]Change, int, error) {
 	changes := []Change{}
-	managed := bytes.Contains(expected, []byte("tplater:managed-"))
+	managed := bytes.Contains(expected, []byte("tplater:managed-")) || bound != nil && len(bound.Blocks) > 0
 	if !managed {
 		if bytes.Contains(actual.Data, []byte("tplater:managed-")) {
 			return nil, 0, errors.New("unsigned managed topology")
@@ -375,11 +406,40 @@ func compare(path string, expected []byte, actual ownership.State) ([]Change, in
 	if err != nil {
 		return nil, 0, err
 	}
+	retained := map[string]managedblocks.BlockBaseline{}
+	if bound != nil {
+		for id, block := range bound.Blocks {
+			if _, exists := base.ByID[id]; !exists && block.State == managedblocks.StateUpstreamDeletedLocalRetained && block.Tombstone != nil && block.Tombstone.Side == managedblocks.TombstoneUpstream {
+				retained[id] = block
+			}
+		}
+	}
 	for id, r := range current.ByID {
 		b, exists := base.ByID[id]
-		if !exists || r.Provider != b.Provider {
-			return nil, 0, errors.New("unbound managed block")
+		if exists && r.Provider == b.Provider {
+			continue
 		}
+		if block, permitted := retained[id]; !exists && permitted && r.Provider == block.Provider {
+			continue
+		}
+		return nil, 0, errors.New("unbound managed block")
+	}
+	retainedIDs := make([]string, 0, len(retained))
+	for id := range retained {
+		retainedIDs = append(retainedIDs, id)
+	}
+	sort.Strings(retainedIDs)
+	for _, id := range retainedIDs {
+		block := retained[id]
+		region, exists := current.ByID[id]
+		action, after := "delete", ""
+		if exists {
+			action, after = "modify", evidencecas.Digest(region.Body)
+			if after == block.BodySHA256 && region.Ordinal == block.Anchor.Ordinal {
+				continue
+			}
+		}
+		changes = append(changes, Change{Path: path, BlockID: id, Provider: block.Provider, Action: action, BeforeSHA256: block.BodySHA256, AfterSHA256: after})
 	}
 	for _, b := range base.Regions {
 		c, exists := current.ByID[b.ID]
@@ -408,7 +468,7 @@ func compare(path string, expected []byte, actual ownership.State) ([]Change, in
 	if !bytes.Equal(beforeSkeleton, afterSkeleton) || (actual.Exists && actual.Mode.Perm() != 0o644) {
 		changes = append(changes, Change{Path: path, Action: "skeleton", BeforeSHA256: evidencecas.Digest(beforeSkeleton), AfterSHA256: evidencecas.Digest(afterSkeleton)})
 	}
-	return changes, len(base.Regions), nil
+	return changes, len(base.Regions) + len(retained), nil
 }
 
 func exclusionObservation(p string, files map[string][]byte, policy *adoptionpolicy.Policy, source provenance.RootSubject, actual ownership.State) resultdto.DiffExclusion {

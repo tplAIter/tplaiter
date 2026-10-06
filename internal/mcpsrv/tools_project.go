@@ -53,6 +53,10 @@ type updateArgs struct {
 	DryRun         bool   `json:"dryRun"`
 	Check          bool   `json:"check"`
 	SourceInput    string `json:"sourceInput"`
+	Prepare        bool   `json:"prepare"`
+	FormatStage    bool   `json:"formatStage"`
+	FormatInput    string `json:"formatInput"`
+	DecisionsInput string `json:"decisionsInput"`
 }
 
 type doctorArgs struct {
@@ -149,16 +153,35 @@ func (s *Server) addProjectTools() {
 		mcp.WithBoolean("dryRun", mcp.Description("Show plan without modifying files"), mcp.DefaultBool(false)),
 		mcp.WithBoolean("check", mcp.Description("Check tree for conflict markers (exit code 1 if found)"), mcp.DefaultBool(false)),
 		mcp.WithString("sourceInput", mcp.Description("Path to the closed JSON source selection")),
+		mcp.WithBoolean("prepare", mcp.DefaultBool(false)),
+		mcp.WithBoolean("formatStage", mcp.DefaultBool(false)),
+		mcp.WithString("formatInput", mcp.Description("Closed tool selection and signed approvals")),
+		mcp.WithString("decisionsInput", mcp.Description("Closed source/target-bound managed decisions")),
 		// The operation depends on the flags, so the schema is the union of
 		// the update operations; the envelope itself names the operation.
 		mcp.WithRawOutputSchema(updateOutputSchema()),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a updateArgs) (*mcp.CallToolResult, error) {
 		op := updateOperation(a.DryRun, a.Check)
+		if a.Prepare && !a.Check {
+			op = resultdto.OperationUpdatePlan
+		}
 		cwd, failure := s.workDir(op, "dir", a.Dir)
 		if failure != nil {
 			return failure, nil
 		}
 		argv := argvUpdate(a.To, a.DryRun, a.Check, a.SourceInput)
+		if a.Prepare {
+			argv = append(argv, "--prepare")
+		}
+		if a.FormatStage {
+			argv = append(argv, "--format-stage")
+		}
+		if a.FormatInput != "" {
+			argv = append(argv, "--format-input", a.FormatInput)
+		}
+		if a.DecisionsInput != "" {
+			argv = append(argv, "--decisions-input", a.DecisionsInput)
+		}
 		argv = append(argv, "--dir", cwd)
 		if a.ProjectContext != "" {
 			argv = append(argv, "--project-context", a.ProjectContext)

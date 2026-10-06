@@ -11,6 +11,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/blockmarkers"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
+	"github.com/tplAIter/tplaiter/internal/contextauth"
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/trustload"
@@ -25,6 +26,8 @@ type RuntimeAdapter struct {
 	runner  *execx.ApprovedRunner
 }
 type FormatSelection struct {
+	sources                *contextauth.VerifiedSourceClosure
+	calculation            *operationtrust.ContextNewFormatterCalculation
 	adapter                *RuntimeAdapter
 	provider, toolProvider *trustverify.VerifiedResolution
 	plan                   Plan
@@ -141,6 +144,23 @@ func (s *FormatSelection) Actions() []trustverify.ActionMaterial {
 }
 
 func (a *RuntimeAdapter) Bind(ctx context.Context, selection *FormatSelection, operation trustverify.OperationInputs) (*PreparedFormat, error) {
+	if selection == nil || selection.calculation != nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	return a.bind(ctx, selection, operation)
+}
+
+func (a *RuntimeAdapter) BindContextNativeNew(ctx context.Context, selection *FormatSelection, operation trustverify.OperationInputs) (*PreparedFormat, error) {
+	if a == nil || selection == nil || selection.adapter != a || selection.calculation == nil || operation.Scope != "new" {
+		return nil, ErrRuntimeUnavailable
+	}
+	if err := selection.calculation.RecheckFor(ctx, a.runtime); err != nil {
+		return nil, err
+	}
+	return a.bind(ctx, selection, operation)
+}
+
+func (a *RuntimeAdapter) bind(ctx context.Context, selection *FormatSelection, operation trustverify.OperationInputs) (*PreparedFormat, error) {
 	if a == nil || a.runtime == nil || a.runtime.TrustRuntime() != a.stable || selection == nil || selection.adapter != a || ctx == nil || ctx.Err() != nil || len(operation.Actions) == 0 {
 		return nil, ErrRuntimeUnavailable
 	}
@@ -175,11 +195,19 @@ func (a *RuntimeAdapter) Bind(ctx context.Context, selection *FormatSelection, o
 			return nil, ErrRuntimeUnavailable
 		}
 		input := operationtrust.FormatterInput{Path: selection.plan.Path, Mode: selection.plan.InputMode, Bytes: selection.input, PlanJSON: mustCanonical(selection.plan), ContextJSON: selection.context}
-		fs, e := operationtrust.ResolveFormatterComposition(ctx, a.stable, selection.provider, selection.toolProvider, operation, action, input)
-		if e != nil {
-			return nil, e
+		var fs *operationtrust.FormatterSelection
+		var e error
+		if selection.calculation != nil {
+			fs, e = operationtrust.ResolveContextNewFormatterComposition(ctx, a.runtime, selection.calculation, selection.toolProvider, operation, action, input)
+			if e == nil {
+				materials[i], e = operationtrust.BindContextNewFormatterMaterial(ctx, a.runtime, selection.calculation, selection.toolProvider, operation, action, input, fs)
+			}
+		} else {
+			fs, e = operationtrust.ResolveFormatterComposition(ctx, a.stable, selection.provider, selection.toolProvider, operation, action, input)
+			if e == nil {
+				materials[i], e = operationtrust.BindFormatterMaterial(ctx, a.stable, selection.provider, selection.toolProvider, operation, action, input, fs)
+			}
 		}
-		materials[i], e = operationtrust.BindFormatterMaterial(ctx, a.stable, selection.provider, selection.toolProvider, operation, action, input, fs)
 		if e != nil {
 			return nil, e
 		}
@@ -337,4 +365,28 @@ func makeRequest(op trustverify.OperationInputs, digest string, a trustverify.Ac
 	d, e := r.ComputeRequestSHA256()
 	r.RequestSHA256 = d
 	return r, e
+}
+
+// SelectContextNativeNew consumes only the actual installed closure. A v2
+// context cannot enter ordinary SelectManaged or ordinary Bind by retry.
+func (a *RuntimeAdapter) SelectContextNativeNew(ctx context.Context, calculation *operationtrust.ContextNewFormatterCalculation, toolProvider *trustverify.VerifiedResolution, plan Plan, input, contextJSON []byte) (*FormatSelection, error) {
+	if a == nil || a.runtime == nil || calculation == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	if _, err := operationtrust.ParseContextNewFormatterContext(contextJSON); err != nil {
+		return nil, err
+	}
+	if err := calculation.ValidateContext(ctx, a.runtime, contextJSON, plan.Path, input); err != nil {
+		return nil, err
+	}
+	root, err := calculation.RootResolution(ctx, a.runtime)
+	if err != nil {
+		return nil, err
+	}
+	selected, err := a.selectContext(ctx, root, toolProvider, plan, input, contextJSON)
+	if err != nil {
+		return nil, err
+	}
+	selected.calculation = calculation
+	return selected, nil
 }

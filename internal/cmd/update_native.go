@@ -14,6 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/managedblocks"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction"
 	"github.com/tplAIter/tplaiter/internal/renderref"
@@ -25,18 +27,21 @@ import (
 )
 
 type nativeUpdateControls struct {
-	key, dir, to, sourceInput string
-	all, dryRun, check        bool
+	key, dir, to, sourceInput, formatInput, decisionsInput string
+	all, dryRun, check, prepare, formatStage               bool
 }
 
 func runNativeUpdate(cmd *cobra.Command, c nativeUpdateControls) error {
 	op := resultdto.OperationUpdateApply
 	if c.check {
 		op = resultdto.OperationUpdateCheck
-	} else if c.dryRun {
+	} else if c.dryRun || c.prepare {
 		op = resultdto.OperationUpdatePlan
 	}
 	setResultOperation(cmd, op)
+	if c.prepare && (c.check || c.dryRun || c.formatStage) || c.formatStage && (c.check || c.dryRun) || (c.formatInput == "") != (c.decisionsInput == "") || (c.prepare || c.formatStage) && c.formatInput == "" {
+		return ErrFormatControls
+	}
 	if c.all {
 		return update.ErrLifecycleUnavailable
 	}
@@ -47,7 +52,7 @@ func runNativeUpdate(cmd *cobra.Command, c nativeUpdateControls) error {
 	}
 	defer r.Close()
 	if c.check && c.sourceInput == "" {
-		if c.to != "" || c.dryRun {
+		if c.to != "" || c.dryRun || c.prepare || c.formatStage || c.formatInput != "" {
 			return &usageError{err: errors.New("update: target checks require --source-input")}
 		}
 		if _, err := stateledger.VerifyStable(cmd.Context(), r.ProjectContext().RootPath, r.TrustRuntime(), stateledger.StableVerifyOptions{}); err != nil {
@@ -87,7 +92,71 @@ func runNativeUpdate(cmd *cobra.Command, c nativeUpdateControls) error {
 	if err != nil {
 		return err
 	}
-	plan, err := backend.Prepare(cmd.Context(), updateplan.Input{SourceInput: source, TargetInput: target})
+	input := updateplan.Input{SourceInput: source, TargetInput: target}
+	if c.formatInput != "" {
+		raw, err := readUntrustedDocument(cmd.Context(), c.formatInput)
+		if err != nil {
+			return err
+		}
+		controls, err := ParseFormatInput(raw)
+		if err != nil {
+			return err
+		}
+		choices, err := readUntrustedDocument(cmd.Context(), c.decisionsInput)
+		if err != nil {
+			return err
+		}
+		decisions, err := managedblocks.ParseDecisions(choices)
+		if err != nil {
+			return err
+		}
+		choices, err = canonicaljson.Canonical(decisions)
+		if err != nil {
+			return err
+		}
+		tool, err := canonicaljson.Canonical(controls.ToolSource)
+		if err != nil {
+			return err
+		}
+		input.Managed = &updateplan.ManagedInput{ToolSource: tool, Decisions: choices}
+		if c.prepare || c.formatStage {
+			prepared, err := backend.PrepareManagedEffects(cmd.Context(), input, *input.Managed)
+			if err != nil {
+				return err
+			}
+			phase, requests, err := prepared.PhaseRequests(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if c.prepare && len(controls.Approvals) != 0 {
+				return ErrFormatControls
+			}
+			if c.formatStage {
+				approvals, err := importExactFormatApprovals(cmd, controls, requests)
+				if err != nil {
+					return err
+				}
+				if err := prepared.StageCurrentPhase(cmd.Context(), approvals); err != nil {
+					return err
+				}
+				phase, requests, err = prepared.PhaseRequests(cmd.Context())
+				if err != nil {
+					return err
+				}
+			}
+			env := newResult(op)
+			env.Project = trustProject(r.ProjectContext())
+			env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-I-MANAGED-UPDATE-PHASE", Severity: "info", Message: "source-owned managed Update formatter phase", Details: map[string]any{"phase": phase, "requests": requests}})
+			if err := env.SetData(resultdto.UpdateData{DryRun: c.prepare, To: selected.Subject.Commit, ConflictMarkers: []string{}}); err != nil {
+				return err
+			}
+			return emitNativeUpdate(cmd, env, resultdto.ExitSuccess, nil)
+		}
+		if len(controls.Approvals) != 0 {
+			return ErrFormatControls
+		}
+	}
+	plan, err := backend.Prepare(cmd.Context(), input)
 	if err != nil {
 		return err
 	}

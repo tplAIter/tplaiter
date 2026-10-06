@@ -5,30 +5,45 @@ package managed
 import (
 	"bytes"
 	"context"
-	"errors"
+	"encoding/json"
 	"strings"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
-	"github.com/tplAIter/tplaiter/internal/engine"
 	"github.com/tplAIter/tplaiter/internal/managedblocks"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction/formatproof"
 	"github.com/tplAIter/tplaiter/internal/projectverify"
-	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/trustload"
+	"github.com/tplAIter/tplaiter/internal/updateplan"
 )
 
 const LineagePath = ".tplaiter/managed-lineage.json"
 
-var ErrLineage = errors.New("managed clean projection: invalid or unavailable authenticated lineage")
+var ErrLineage = formatproof.ErrRootLineage
 
 // CleanProjection can only be constructed by fresh source/effect and observed
 // control-image verification. Its contents are detached on every read.
-type CleanProjection struct {
-	files    map[string][]byte
-	baseline engine.Baseline
-	blocks   managedblocks.Baseline
+type (
+	cleanReader interface {
+		RenderedFor(*renderref.Result) (*renderref.Result, error)
+		Blocks() managedblocks.Baseline
+	}
+	CleanProjection struct{ owner cleanReader }
+)
+
+func (p *CleanProjection) RenderedFor(signed *renderref.Result) (*renderref.Result, error) {
+	if p == nil || p.owner == nil {
+		return nil, ErrLineage
+	}
+	return p.owner.RenderedFor(signed)
+}
+
+func (p *CleanProjection) Blocks() managedblocks.Baseline {
+	if p == nil || p.owner == nil {
+		return managedblocks.Baseline{}
+	}
+	return p.owner.Blocks()
 }
 
 // ReadNew verifies the current New lineage without importing approvals,
@@ -36,7 +51,11 @@ type CleanProjection struct {
 // and Link lineage have separate purpose-bound owners; they cannot use this
 // New branch as a receipt or authority fallback.
 func ReadNew(ctx context.Context, r *trustload.Runtime, home, renderer string) (*CleanProjection, error) {
-	return readCurrent(ctx, r, home, renderer, "new")
+	value, err := formatproof.ReadRootNew(ctx, r, home, renderer)
+	if err != nil {
+		return nil, err
+	}
+	return &CleanProjection{owner: value}, nil
 }
 
 // Read selects only an authenticated purpose-bound publication kind. Caller
@@ -63,7 +82,43 @@ func readCurrent(ctx context.Context, r *trustload.Runtime, home, renderer, requ
 	if err != nil {
 		return nil, err
 	}
-	projection, images, err := reconstructProjection(ctx, r, home, renderer, raw, requiredKind)
+	var header struct {
+		APIVersion string `json:"apiVersion"`
+	}
+	var projection *CleanProjection
+	var images map[string][]byte
+	if json.Unmarshal(raw, &header) == nil && header.APIVersion == "tplaiter.dev/managed-update-lineage/v1" {
+		if requiredKind != "" {
+			return nil, ErrLineage
+		}
+		controls := map[string][]byte{LineagePath: raw}
+		// The committed material supplies the exact finite control inventory; the
+		// observation then reads those files under the existing stable snapshot.
+		intent, err := formatproof.CommittedUpdateIntent(ctx, r, home, raw)
+		if err != nil {
+			return nil, err
+		}
+		var material updateplan.UpdateMaterial
+		if canonicaljson.DecodeStrict(intent, &material) != nil {
+			return nil, ErrLineage
+		}
+		for name, file := range material.After {
+			if strings.HasPrefix(name, ".tplaiter/") && !file.Directory {
+				controls[name], err = obs.ReadVerified(ctx, snapshot, name)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		value, after, e := updateplan.ReadManagedUpdateProjection(ctx, r, home, renderer, controls)
+		err = e
+		images = after
+		if err == nil {
+			projection = &CleanProjection{owner: value}
+		}
+	} else {
+		projection, images, err = reconstructProjection(ctx, r, home, renderer, raw, requiredKind)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -93,47 +148,27 @@ func readCurrent(ctx context.Context, r *trustload.Runtime, home, renderer, requ
 
 // RenderedFor replaces only the clean file projection of the matching signed
 // render. Ours and caller-built maps cannot become the upstream baseline.
-func (p *CleanProjection) RenderedFor(signed *renderref.Result) (*renderref.Result, error) {
-	if p == nil || signed == nil || signed.Baseline == nil || signed.Baseline.ContextHash != p.baseline.ContextHash || signed.Baseline.TemplateVersion != p.baseline.TemplateVersion || len(signed.Files) != len(p.files) {
-		return nil, ErrLineage
-	}
-	files := map[string][]byte{}
-	for name, raw := range signed.Files {
-		clean, ok := p.files[name]
-		if !ok {
-			return nil, ErrLineage
-		}
-		if !bytes.Contains(raw, []byte("tplater:managed-")) && !bytes.Equal(raw, clean) {
-			return nil, ErrLineage
-		}
-		files[name] = append([]byte(nil), clean...)
-	}
-	result := *signed
-	result.Files = files
-	baseline := p.baseline
-	baseline.Files = map[string]string{}
-	for name, digest := range p.baseline.Files {
-		baseline.Files[name] = digest
-	}
-	result.Baseline = &baseline
-	return &result, nil
-}
-
-func (p *CleanProjection) Blocks() managedblocks.Baseline {
-	if p == nil {
-		return managedblocks.Baseline{}
-	}
-	return p.blocks.Clone()
-}
-
 // ReconstructNew verifies source/effect evidence against immutable beforeimage
 // data. It never treats supplied maps as receipts or writer authority. Cold
 // transaction callers must authenticate their native receipt and phase first.
-func ReconstructNew(ctx context.Context, r *trustload.Runtime, home, renderer string, controls map[string][]byte) (*CleanProjection, error) {
+// Reconstruct verifies the MAC-bound original publication against immutable
+// control beforeimages. It returns only a clean reader projection, never a
+// transaction or execution capability.
+func Reconstruct(ctx context.Context, r *trustload.Runtime, home, renderer string, controls map[string][]byte) (*CleanProjection, error) {
 	if ctx == nil || r == nil || r.TrustRuntime() == nil || renderer == "" || len(controls) > 16384 {
 		return nil, ErrLineage
 	}
-	projection, images, err := reconstructNew(ctx, r, home, renderer, controls[LineagePath])
+	var header struct {
+		APIVersion string `json:"apiVersion"`
+	}
+	if json.Unmarshal(controls[LineagePath], &header) == nil && header.APIVersion == "tplaiter.dev/managed-update-lineage/v1" {
+		value, _, err := updateplan.ReadManagedUpdateProjection(ctx, r, home, renderer, controls)
+		if err != nil {
+			return nil, err
+		}
+		return &CleanProjection{owner: value}, nil
+	}
+	projection, images, err := reconstructProjection(ctx, r, home, renderer, controls[LineagePath], "")
 	if err != nil {
 		return nil, err
 	}
@@ -145,73 +180,22 @@ func ReconstructNew(ctx context.Context, r *trustload.Runtime, home, renderer st
 	return projection, nil
 }
 
+func ReconstructNew(ctx context.Context, r *trustload.Runtime, home, renderer string, controls map[string][]byte) (*CleanProjection, error) {
+	value, err := formatproof.ReconstructRootNew(ctx, r, home, renderer, controls)
+	if err != nil {
+		return nil, err
+	}
+	return &CleanProjection{owner: value}, nil
+}
+
 func reconstructNew(ctx context.Context, r *trustload.Runtime, home, renderer string, raw []byte) (*CleanProjection, map[string][]byte, error) {
 	return reconstructProjection(ctx, r, home, renderer, raw, "new")
 }
 
 func reconstructProjection(ctx context.Context, r *trustload.Runtime, home, renderer string, raw []byte, requiredKind string) (*CleanProjection, map[string][]byte, error) {
-	var locator struct {
-		APIVersion            string                           `json:"apiVersion"`
-		Publication           formatproof.PublicationReference `json:"publication"`
-		RootLockSHA256        string                           `json:"rootLockSHA256"`
-		ManagedBaselineSHA256 string                           `json:"managedBaselineSHA256"`
-		FormatterFrames       map[string]string                `json:"formatterFrames"`
-	}
-	if canonicaljson.DecodeStrict(raw, &locator) != nil || locator.APIVersion != "tplaiter.dev/managed-lineage/v1" || locator.FormatterFrames == nil {
-		return nil, nil, ErrLineage
-	}
-	kind, err := formatproof.PublicationKind(ctx, r, locator.Publication)
+	value, images, err := formatproof.ReconstructRootPublication(ctx, r, home, renderer, raw, requiredKind)
 	if err != nil {
 		return nil, nil, err
 	}
-	if requiredKind != "" && kind != requiredKind {
-		return nil, nil, ErrLineage
-	}
-	var pub interface {
-		ImagesFor(context.Context, *trustload.Runtime) (map[string][]byte, error)
-		RegistryFor(*trustload.Runtime) (string, []byte, []byte, error)
-	}
-	switch kind {
-	case "new":
-		pub, err = formatproof.OpenNewPublication(ctx, r, locator.Publication)
-	case "link":
-		pub, err = formatproof.OpenLinkPublication(ctx, r, locator.Publication)
-	default:
-		return nil, nil, ErrLineage
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	actualHome, _, _, err := pub.RegistryFor(r)
-	if err != nil || actualHome != home {
-		return nil, nil, ErrLineage
-	}
-	images, err := pub.ImagesFor(ctx, r)
-	if err != nil {
-		return nil, nil, err
-	}
-	if !bytes.Equal(raw, images[LineagePath]) {
-		return nil, nil, ErrLineage
-	}
-	lock, err := provenance.DecodeRootTemplateLock(images[".tplaiter/root-template.lock.json"])
-	if err != nil || lock.Renderer.Version != renderer || lock.RootLockSHA256 != locator.RootLockSHA256 {
-		return nil, nil, ErrLineage
-	}
-	var baseline engine.Baseline
-	if canonicaljson.DecodeStrict(images[engine.BaselineRelPath], &baseline) != nil || baseline.Schema != engine.BaselineSchema || baseline.Files == nil {
-		return nil, nil, ErrLineage
-	}
-	blocks, err := managedblocks.ParseBaseline(images[".tplaiter/managed-blocks.json"])
-	if err != nil {
-		return nil, nil, err
-	}
-	files := map[string][]byte{}
-	for name := range baseline.Files {
-		data, ok := images[name]
-		if !ok {
-			return nil, nil, ErrLineage
-		}
-		files[name] = append([]byte(nil), data...)
-	}
-	return &CleanProjection{files: files, baseline: baseline, blocks: blocks}, images, nil
+	return &CleanProjection{owner: value}, images, nil
 }

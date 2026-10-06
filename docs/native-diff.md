@@ -73,3 +73,16 @@ approved closed toolchain, persistent signed approval import, and a real
 process receipt. Its unsigned, stale-binding, and cancellation refusals remain
 typed; default generation builds and dependency-bearing or Temporal builds are
 still outside the approved scope.
+
+
+## Connected managed Update lineage
+
+The [managed root-Go lifecycle](native-managed-decisions.md) separately derives
+New/Link clean lineage and committed native Update lineage from actual
+source/effect owner records. Diff reconstructs that owner intent and verifies
+the complete recorded ledger. A KEEP block absent from the signed target may be
+inspected only through its authenticated upstream tombstone. Unknown block IDs
+or providers still refuse; an unverified baseline never licenses new topology.
+The clean formatted target remains the upstream comparison baseline, separate
+from retained local content. This connected reader does not alter the historical
+initial Diff fixture's qualification or grant recovery, execution or writing.

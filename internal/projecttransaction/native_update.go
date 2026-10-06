@@ -32,6 +32,9 @@ func BeginUpdate(ctx context.Context, p *updateplan.Plan, expected string) (*Upd
 	if err != nil {
 		return nil, err
 	}
+	if err := updateplan.RevalidateManagedUpdatePublication(ctx, r, initial.RendererVersion, initial); err != nil {
+		return nil, err
+	}
 	draft, err := updateEngineMaterial(initial)
 	if err != nil {
 		return nil, err
@@ -192,6 +195,17 @@ func (t *UpdateTransaction) Commit(ctx context.Context) error {
 	if err := t.authenticateUpdate(context.WithoutCancel(ctx)); err != nil {
 		return err
 	}
+	checked, err := t.physical.CheckedMaterial()
+	if err != nil {
+		return err
+	}
+	var material updateplan.UpdateMaterial
+	if err := canonicaljson.DecodeStrict(checked.Intent, &material); err != nil {
+		return err
+	}
+	if err := updateplan.RevalidateManagedUpdatePublication(ctx, t.runtime, t.rendererVersion, material); err != nil {
+		return err
+	}
 	if scope, e := t.adoptionScope(ctx); e != nil {
 		return e
 	} else if scope != nil {
@@ -234,6 +248,7 @@ func updateReadOnlyPaths(m updateplan.UpdateMaterial) []string {
 	}
 	return out
 }
+
 func (t *UpdateTransaction) adoptionScope(ctx context.Context) (*engine.AdoptionTransaction, error) {
 	m, err := t.physical.CheckedMaterial()
 	if err != nil {

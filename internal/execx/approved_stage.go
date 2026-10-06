@@ -142,7 +142,7 @@ func gofmtInputIndex(m trustverify.StagedMaterial) (int, bool) {
 			if len(m.Content) != 4 {
 				return 0, false
 			}
-			if _, err := operationtrust.ParseManagedFormatterContext(m.ContentBytes[i]); err != nil {
+			if err := operationtrust.ValidateRetainedFormatterContext(m.ContentBytes[i], m.Request.Scope); err != nil {
 				return 0, false
 			}
 		default:

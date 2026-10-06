@@ -61,6 +61,11 @@ func (a *RuntimeAdapter) AuthorizeSelectedPasses(ctx context.Context, p *Prepare
 	if a == nil || a.runtime == nil || a.runtime.TrustRuntime() != a.stable || p == nil || p.selection.adapter != a || len(p.selection.context) == 0 || len(p.requests) != 2 || len(refs) == 0 || len(refs) > 2 || ctx == nil || ctx.Err() != nil {
 		return nil, ErrRuntimeUnavailable
 	}
+	if p.selection.sources != nil {
+		if err := p.selection.sources.RecheckFor(ctx, a.runtime); err != nil {
+			return nil, err
+		}
+	}
 	for ordinal := range refs {
 		if ordinal < 1 || ordinal > 2 {
 			return nil, ErrRuntimeUnavailable
@@ -138,7 +143,7 @@ func CheckRetainedPair(a, b PassData) (Check, error) {
 	if a.Ordinal != 1 || b.Ordinal != 2 || a.Request.RequestSHA256 == b.Request.RequestSHA256 || a.Request.Action.ID == b.Request.Action.ID || a.Request.Tool != b.Request.Tool || a.Request.EnvironmentPolicySHA256 != b.Request.EnvironmentPolicySHA256 {
 		return Check{}, ErrRuntimeUnavailable
 	}
-	if _, err := operationtrust.ParseManagedFormatterContext(a.Context); err != nil {
+	if err := operationtrust.ValidateRetainedFormatterContext(a.Context, a.Operation.Scope); err != nil {
 		return Check{}, err
 	}
 	if !equalPassMaterial(a, b) {

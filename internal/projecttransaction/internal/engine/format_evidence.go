@@ -64,15 +64,24 @@ type FormatterPass struct {
 }
 
 func (f FormatFrame) Digest() (string, error) {
-	if f.APIVersion != "tplaiter.dev/formatter-frame/v1" || len(f.Requests) != 2 || len(f.Input) > 16<<20 || len(f.Context) > 1<<20 {
+	if (f.APIVersion != "tplaiter.dev/formatter-frame/v1" && f.APIVersion != "tplaiter.dev/formatter-frame/v2") || len(f.Requests) != 2 || len(f.Input) > 16<<20 || len(f.Context) > 1<<20 {
 		return "", ErrAuthentication
 	}
 	plan, err := blockformatter.ParsePlan(f.Plan)
 	if err != nil || plan.InputSHA256 != evidencecas.Digest(f.Input) {
 		return "", ErrAuthentication
 	}
-	if _, err := operationtrust.ParseManagedFormatterContext(f.Context); err != nil {
-		return "", ErrAuthentication
+	if f.APIVersion == "tplaiter.dev/formatter-frame/v1" {
+		if _, err := operationtrust.ParseManagedFormatterContext(f.Context); err != nil {
+			return "", ErrAuthentication
+		}
+	} else {
+		if f.Operation.Scope != "new" {
+			return "", ErrAuthentication
+		}
+		if _, err := operationtrust.ParseContextNewFormatterContext(f.Context); err != nil {
+			return "", ErrAuthentication
+		}
 	}
 	op, err := trustverify.ComputeOperationInputsSHA256(f.Operation)
 	if err != nil {
@@ -86,7 +95,7 @@ func (f FormatFrame) Digest() (string, error) {
 	if f.Requests[0].RequestSHA256 == f.Requests[1].RequestSHA256 || f.Requests[0].Action.ID == f.Requests[1].Action.ID {
 		return "", ErrAuthentication
 	}
-	return bootstrap.DomainDigest("tplaiter.dev/formatter-frame/v1", f)
+	return bootstrap.DomainDigest(f.APIVersion, f)
 }
 
 func formatterStorage(ctx context.Context, r *trustload.Runtime, f FormatFrame, create bool) (*FormatterStore, error) {
