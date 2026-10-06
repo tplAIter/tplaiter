@@ -29,37 +29,37 @@
         ],
         "type": "object"
       },
-      "type": "array",
-      "maxItems": 256
+      "maxItems": 256,
+      "type": "array"
     },
     "compatibility": {
       "additionalProperties": false,
       "properties": {
         "layouts": {
           "items": {
-            "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$",
+            "type": "string"
           },
-          "type": "array",
-          "minItems": 1,
           "maxItems": 32,
+          "minItems": 1,
+          "type": "array",
           "uniqueItems": true
         },
         "minimumCLI": {
-          "type": "string",
-          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$",
+          "type": "string"
         },
         "portableAPI": {
           "const": "tplaiter.dev/portable/v1"
         },
         "runtimes": {
           "items": {
-            "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$",
+            "type": "string"
           },
-          "type": "array",
-          "minItems": 1,
           "maxItems": 32,
+          "minItems": 1,
+          "type": "array",
           "uniqueItems": true
         }
       },
@@ -88,8 +88,8 @@
         ],
         "type": "object"
       },
-      "type": "array",
-      "maxItems": 256
+      "maxItems": 256,
+      "type": "array"
     },
     "kind": {
       "const": "Modifier"
@@ -98,12 +98,12 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$",
+          "type": "string"
         },
         "version": {
-          "type": "string",
-          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$",
+          "type": "string"
         }
       },
       "required": [
@@ -133,8 +133,8 @@
         ],
         "type": "object"
       },
-      "type": "array",
-      "maxItems": 256
+      "maxItems": 256,
+      "type": "array"
     },
     "renames": {
       "items": {
@@ -165,8 +165,8 @@
         ],
         "type": "object"
       },
-      "type": "array",
-      "maxItems": 256
+      "maxItems": 256,
+      "type": "array"
     },
     "replaces": {
       "items": {
@@ -193,8 +193,8 @@
         ],
         "type": "object"
       },
-      "type": "array",
-      "maxItems": 256
+      "maxItems": 256,
+      "type": "array"
     },
     "requires": {
       "additionalProperties": false,
@@ -216,8 +216,8 @@
             ],
             "type": "object"
           },
-          "type": "array",
-          "maxItems": 256
+          "maxItems": 256,
+          "type": "array"
         },
         "exports": {
           "items": {
@@ -240,8 +240,8 @@
             ],
             "type": "object"
           },
-          "type": "array",
-          "maxItems": 256
+          "maxItems": 256,
+          "type": "array"
         }
       },
       "required": [
@@ -897,31 +897,66 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "enum": [
+                    "keep",
+                    "compose",
+                    "retire",
+                    "replace-definition",
+                    "replace-active-association",
+                    "string-slots"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "file",
+                    "generator",
+                    "export"
+                  ]
+                },
+                "original": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "plan",
+                "kind",
+                "original"
+              ]
+            }
           }
         ],
         "properties": {
           "after": {
             "items": {
-              "type": "string",
-              "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+              "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$",
+              "type": "string"
             },
-            "type": "array",
-            "maxItems": 256
+            "maxItems": 256,
+            "type": "array"
           },
           "before": {
             "items": {
-              "type": "string",
-              "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+              "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$",
+              "type": "string"
             },
-            "type": "array",
-            "maxItems": 256
+            "maxItems": 256,
+            "type": "array"
           },
           "export": {
             "type": "string"
           },
           "id": {
-            "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$",
+            "type": "string"
           },
           "kind": {
             "enum": [
@@ -935,7 +970,13 @@
             "enum": [
               "add",
               "replace",
-              "remove"
+              "remove",
+              "keep",
+              "compose",
+              "retire",
+              "replace-definition",
+              "replace-active-association",
+              "string-slots"
             ]
           },
           "original": {
@@ -1505,9 +1546,110 @@
               }
             ]
           },
+          "plan": {
+            "additionalProperties": false,
+            "properties": {
+              "after": {
+                "additionalProperties": false,
+                "properties": {
+                  "present": {
+                    "type": "boolean"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "present",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "before": {
+                "additionalProperties": false,
+                "properties": {
+                  "present": {
+                    "type": "boolean"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "present",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "expectedPresence": {
+                "type": "boolean"
+              },
+              "expectedValue": {
+                "type": "string"
+              },
+              "id": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$",
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "add",
+                  "replace",
+                  "remove",
+                  "keep",
+                  "compose",
+                  "retire",
+                  "replace-definition",
+                  "replace-active-association",
+                  "string-slots"
+                ]
+              },
+              "parentAfter": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "parentOriginal": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "pointer": {
+                "pattern": "^(|/(?:[^/~]|~[01])+/(?:[^/~]|~[01])+)$",
+                "type": "string"
+              },
+              "source": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$",
+                "type": "string"
+              },
+              "successorSelector": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "source",
+              "parentOriginal",
+              "parentAfter",
+              "target",
+              "pointer",
+              "op",
+              "expectedPresence",
+              "expectedValue",
+              "successorSelector",
+              "before",
+              "after"
+            ],
+            "type": "object"
+          },
           "source": {
-            "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$",
+            "type": "string"
           }
         },
         "required": [
@@ -1527,20 +1669,20 @@
       "type": "array"
     },
     "selfSource": {
-      "type": "string",
-      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$",
+      "type": "string"
     },
     "sourceConstraints": {
       "items": {
         "additionalProperties": false,
         "properties": {
           "alias": {
-            "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$",
+            "type": "string"
           },
           "commit": {
-            "type": "string",
-            "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+            "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+            "type": "string"
           },
           "commitAlgorithm": {
             "enum": [
@@ -1549,33 +1691,33 @@
             ]
           },
           "contentDigest": {
-            "type": "string",
-            "pattern": "^sha256:[0-9a-f]{64}$"
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
           },
           "contractDigest": {
-            "type": "string",
-            "pattern": "^sha256:[0-9a-f]{64}$"
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
           },
           "dependencies": {
             "items": {
-              "type": "string",
-              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$",
+              "type": "string"
             },
-            "type": "array",
-            "maxItems": 16
+            "maxItems": 16,
+            "type": "array"
           },
           "origin": {
-            "type": "string",
+            "maxLength": 1024,
             "minLength": 1,
-            "maxLength": 1024
+            "type": "string"
           },
           "parameters": {
             "items": {
               "additionalProperties": false,
               "properties": {
                 "name": {
-                  "type": "string",
-                  "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+                  "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$",
+                  "type": "string"
                 },
                 "value": {
                   "type": [
@@ -1591,17 +1733,17 @@
               ],
               "type": "object"
             },
-            "type": "array",
-            "maxItems": 256
+            "maxItems": 256,
+            "type": "array"
           },
           "templatePath": {
-            "type": "string",
+            "maxLength": 1024,
             "minLength": 1,
-            "maxLength": 1024
+            "type": "string"
           },
           "treeDigest": {
-            "type": "string",
-            "pattern": "^sha256:[0-9a-f]{64}$"
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
           }
         },
         "required": [
@@ -1643,8 +1785,8 @@
         ],
         "type": "object"
       },
-      "type": "array",
-      "maxItems": 256
+      "maxItems": 256,
+      "type": "array"
     }
   },
   "required": [

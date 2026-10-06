@@ -32,14 +32,15 @@ type AuthoredSourceConstraint struct {
 }
 
 type AuthoredOperation struct {
-	ID       string          `json:"id"`
-	Op       string          `json:"op"`
-	Before   []string        `json:"before"`
-	After    []string        `json:"after"`
-	Source   string          `json:"source"`
-	Kind     string          `json:"kind"`
-	Original json.RawMessage `json:"original"`
-	Export   string          `json:"export"`
+	ID       string              `json:"id"`
+	Op       string              `json:"op"`
+	Before   []string            `json:"before"`
+	After    []string            `json:"after"`
+	Source   string              `json:"source"`
+	Kind     string              `json:"kind"`
+	Original json.RawMessage     `json:"original"`
+	Export   string              `json:"export"`
+	Plan     *ModifierPlanRecord `json:"plan,omitempty"`
 }
 
 type AuthoredModifier struct {
@@ -108,7 +109,7 @@ func ParseAuthoredModifier(raw []byte) (AuthoredModifier, error) {
 		}
 	}
 	for _, row := range nested.Rules {
-		if e := authoredFields(row, []string{"id", "op", "before", "after", "source", "kind", "original", "export"}); e != nil {
+		if e := authoredFieldsOptional(row, []string{"id", "op", "before", "after", "source", "kind", "original", "export"}, "plan"); e != nil {
 			return a, e
 		}
 	}
@@ -201,8 +202,37 @@ func ParseAuthoredModifier(raw []byte) (AuthoredModifier, error) {
 			if op.Op == "replace" && !selectorRE.MatchString(op.Export) {
 				return a, fmt.Errorf("AUTHORED_EXPORT")
 			}
+		case "keep", "compose", "retire", "replace-definition", "replace-active-association", "string-slots":
+			if e := validateAuthoredOriginal(op.Kind, op.Original); e != nil {
+				return a, e
+			}
+			if op.Plan == nil {
+				return a, fmt.Errorf("AUTHORED_PLAN_REQUIRED")
+			}
 		default:
 			return a, fmt.Errorf("AUTHORED_OPERATION")
+		}
+		if op.Plan != nil {
+			if op.Plan.ID != op.ID || op.Plan.Source != op.Source || op.Plan.Op != op.Op {
+				return a, fmt.Errorf("AUTHORED_PLAN_IDENTITY")
+			}
+			if e := validateModifierPlanRecord(op.Plan); e != nil {
+				return a, fmt.Errorf("AUTHORED_PLAN: %w", e)
+			}
+			if op.Plan.Pointer != "" {
+				parent, key, e := modifierPointerParts(op.Plan.Pointer)
+				if e != nil || parent == "" || key == "" {
+					return a, fmt.Errorf("AUTHORED_PLAN_POINTER")
+				}
+				beforePresent, beforeValue, e := modifierParentLeaf(op.Plan.ParentOriginal, key)
+				if e != nil || beforePresent != op.Plan.Before.Present || (beforePresent && beforeValue != op.Plan.Before.Value) {
+					return a, fmt.Errorf("AUTHORED_PLAN_BEFORE_PARENT")
+				}
+				afterPresent, afterValue, e := modifierParentLeaf(op.Plan.ParentAfter, key)
+				if e != nil || afterPresent != op.Plan.After.Present || (afterPresent && afterValue != op.Plan.After.Value) {
+					return a, fmt.Errorf("AUTHORED_PLAN_AFTER_PARENT")
+				}
+			}
 		}
 	}
 	return a, nil
@@ -265,6 +295,27 @@ func authoredFields(row map[string]json.RawMessage, keys []string) error {
 	return nil
 }
 
+func authoredFieldsOptional(row map[string]json.RawMessage, keys []string, optional ...string) error {
+	allowed := map[string]bool{}
+	for _, key := range keys {
+		allowed[key] = true
+	}
+	for _, key := range optional {
+		allowed[key] = true
+	}
+	for _, key := range keys {
+		if _, ok := row[key]; !ok {
+			return fmt.Errorf("AUTHORED_FIELDS")
+		}
+	}
+	for key := range row {
+		if !allowed[key] {
+			return fmt.Errorf("AUTHORED_FIELDS")
+		}
+	}
+	return nil
+}
+
 // authoredDecode retains producer-emitted null slices/default data in complete
 // original records. It does not normalize them, and rejects unknown/folded keys.
 // Required author collections are separately required to be non-null above.
@@ -296,6 +347,8 @@ func authoredShape(value any, typ reflect.Type) error {
 		return fmt.Errorf("AUTHORED_NULL_FIELD")
 	}
 	switch typ.Kind() {
+	case reflect.Pointer:
+		return authoredShape(value, typ.Elem())
 	case reflect.Struct:
 		object, ok := value.(map[string]any)
 		if !ok {
