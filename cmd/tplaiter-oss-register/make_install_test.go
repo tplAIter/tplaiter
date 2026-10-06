@@ -53,11 +53,19 @@ func TestMakeInstallPinnedRouteRejectsEnrollmentBeforeRecipes(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	// Existing pins alone still produce the expected linker/build/install route.
-	cmd := exec.CommandContext(ctx, "make", "-n", "-f", path, "install", "REGISTRATION_PATH=/public/registration.json", "REGISTRATION_SHA256=sha256:"+strings.Repeat("a", 64))
+	// Existing pins alone still produce one typed transaction invocation with
+	// the exact destination and registration pair.
+	registrationPath := "/public/registration.json"
+	registrationSHA := "sha256:" + strings.Repeat("a", 64)
+	prefix := "/review-prefix"
+	destdir := "/stage"
+	destination := destdir + prefix + "/bin/tplaiter"
+	cmd := exec.CommandContext(ctx, "make", "-n", "-f", path, "install", "PREFIX="+prefix, "DESTDIR="+destdir, "REGISTRATION_PATH="+registrationPath, "REGISTRATION_SHA256="+registrationSHA)
 	cmd.Dir = dir
 	raw, err := cmd.CombinedOutput()
-	if err != nil || !strings.Contains(string(raw), "installedRegistrationPath=/public/registration.json") || strings.Contains(string(raw), "go run ./cmd/tplaiter-oss-register") {
+	command := `go run ./cmd/tplaiter-oss-register --transaction --root "/review-prefix/lib/tplaiter/trust" --destination "` + destination + `" --version "dev" --registration-path "` + registrationPath + `" --registration-sha256 "` + registrationSHA + `"`
+	output := string(raw)
+	if err != nil || strings.Count(output, command) != 1 || strings.Contains(output, "--publishers") || strings.Contains(output, "--local-sources") || strings.Contains(output, "--source-packages") || strings.Contains(output, "--project-contexts") || strings.Contains(output, "--rotate") || strings.Contains(output, "--output") {
 		t.Fatalf("pinned route regression: %s (%v)", raw, err)
 	}
 }

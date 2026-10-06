@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,35 @@ import (
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/ossinstall"
 )
+
+type transactionPhase string
+
+const (
+	transactionLocked            transactionPhase = "locked"
+	transactionGenerated         transactionPhase = "generated"
+	transactionBuilt             transactionPhase = "built"
+	transactionBeforePublication transactionPhase = "before-publication"
+	transactionPublished         transactionPhase = "published"
+)
+
+type transactionPhaseEvent struct {
+	Phase              transactionPhase
+	BuildOutput        string
+	Destination        string
+	RegistrationPath   string
+	RegistrationSHA256 string
+}
+
+// transactionPhaseHook is a typed test-only observation seam. Production has
+// no command, executable, or environment input that can install a hook.
+var transactionPhaseHook func(transactionPhaseEvent) error
+
+func observeTransactionPhase(event transactionPhaseEvent) error {
+	if transactionPhaseHook == nil {
+		return nil
+	}
+	return transactionPhaseHook(event)
+}
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
@@ -49,6 +79,11 @@ func runWithContext(ctx context.Context, args []string, stdout io.Writer) error 
 	executionEvidence := flags.String("execution-evidence", "", "public digest/base64 chunk JSON, fresh registration only")
 	rotate := flags.Bool("rotate", false, "discard an existing installation (and its trust store) and generate a new one")
 	output := flags.String("output", "", "write the linker pins to this file instead of stdout")
+	transaction := flags.Bool("transaction", false, "run the complete serialized source install")
+	destination := flags.String("destination", "", "final executable destination for --transaction")
+	version := flags.String("version", "dev", "version linker value for --transaction")
+	registrationPath := flags.String("registration-path", "", "existing registration path for an explicit-pin --transaction")
+	registrationSHA256 := flags.String("registration-sha256", "", "existing registration digest for an explicit-pin --transaction")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -64,6 +99,19 @@ func runWithContext(ctx context.Context, args []string, stdout io.Writer) error 
 	}
 	if strings.ContainsAny(absRoot, linkerUnsafe) {
 		return fmt.Errorf("install root %q contains characters that cannot be passed to the linker", absRoot)
+	}
+	if *transaction && *destination == "" {
+		return errors.New("--transaction requires --destination")
+	}
+	if *transaction && *output != "" {
+		return errors.New("--transaction does not accept --output; pins use a private transaction path")
+	}
+	explicitPins := *registrationPath != "" || *registrationSHA256 != ""
+	if explicitPins && (*registrationPath == "" || *registrationSHA256 == "") {
+		return errors.New("set both --registration-path and --registration-sha256, or neither")
+	}
+	if *transaction && explicitPins && (*local != "" || *publishers != "" || *sources != "" || *projects != "" || *localProviders != "" || *approvers != "" || *executionEvidence != "" || *rotate) {
+		return errors.New("explicit transaction pins conflict with trust enrollment inputs or rotation")
 	}
 	if *local != "" && (*sources != "" || *publishers != "" || *rotate || *projects == "") {
 		return errors.New("--local-sources requires --project-contexts and forbids --publishers, --source-packages and --rotate")
@@ -136,6 +184,9 @@ func runWithContext(ctx context.Context, args []string, stdout io.Writer) error 
 			}
 		}
 	}
+	if *transaction {
+		return runTransaction(ctx, options, *destination, *version, *registrationPath, *registrationSHA256, stdout)
+	}
 	result, err := ossinstall.GenerateWithContext(ctx, options)
 	if err != nil {
 		return err
@@ -162,6 +213,155 @@ func runWithContext(ctx context.Context, args []string, stdout io.Writer) error 
 		return &ossinstall.PublicationCommittedError{Cause: err}
 	}
 	return nil
+}
+
+func runTransaction(ctx context.Context, options ossinstall.Options, destination, version, registrationPath, registrationSHA256 string, stdout io.Writer) (err error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	destination, err = filepath.Abs(destination)
+	if err != nil {
+		return err
+	}
+	if filepath.Clean(destination) != destination {
+		return errors.New("destination must be a clean absolute path")
+	}
+	root := options.Root
+	if registrationPath != "" {
+		// Explicit pins have no generated trust-root transaction. They still
+		// coordinate the final destination, but do not create or inspect a root.
+		root = ""
+	}
+	locks, err := ossinstall.AcquireInstallLocks(ctx, root, destination)
+	if err != nil {
+		return err
+	}
+	state := transactionPrePublication
+	defer func() {
+		if closeErr := locks.Close(); err == nil && closeErr != nil {
+			err = classifyTransactionError(closeErr, state)
+		}
+	}()
+	if err := observeTransactionPhase(transactionPhaseEvent{Phase: transactionLocked, Destination: destination}); err != nil {
+		return err
+	}
+
+	transactionDir, err := os.MkdirTemp("", "tplaiter-install-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(transactionDir)
+
+	if registrationPath == "" {
+		result, generateErr := ossinstall.GenerateWithContext(ctx, options)
+		if generateErr != nil {
+			return generateErr
+		}
+		registrationPath = result.RegistrationPath
+		registrationSHA256 = result.RegistrationSHA256
+		installState := "generated"
+		if result.Reused {
+			installState = "reused"
+		}
+		fmt.Fprintf(os.Stderr, "tplaiter-oss-register: %s OSS installation %s at %s\n", installState, result.InstallationID, result.Root)
+		if !result.Reused {
+			state = transactionGeneratedPublicationCommitted
+		} else {
+			state = transactionReusedRoot
+		}
+		if err := observeTransactionPhase(transactionPhaseEvent{Phase: transactionGenerated, Destination: destination, RegistrationPath: registrationPath, RegistrationSHA256: registrationSHA256}); err != nil {
+			return classifyTransactionError(err, state)
+		}
+	} else {
+		state = transactionExplicitPins
+		if err := observeTransactionPhase(transactionPhaseEvent{Phase: transactionGenerated, Destination: destination, RegistrationPath: registrationPath, RegistrationSHA256: registrationSHA256}); err != nil {
+			return err
+		}
+	}
+	if strings.ContainsAny(registrationPath, linkerUnsafe) || strings.ContainsAny(registrationSHA256, linkerUnsafe) {
+		return classifyTransactionError(errors.New("transaction linker pins contain unsafe characters"), state)
+	}
+	pinsPath := filepath.Join(transactionDir, "registration.pins")
+	pins := fmt.Sprintf("REGISTRATION_PATH=%s\nREGISTRATION_SHA256=%s\n", registrationPath, registrationSHA256)
+	if err := os.WriteFile(pinsPath, []byte(pins), 0o600); err != nil {
+		return classifyTransactionError(err, state)
+	}
+
+	buildOutput := filepath.Join(transactionDir, "tplaiter")
+	ldflags := strings.Join([]string{
+		"-s", "-w",
+		"-X", "github.com/tplAIter/tplaiter/internal/cmd.version=" + version,
+		"-X", "github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationPath=" + registrationPath,
+		"-X", "github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationSHA256=" + registrationSHA256,
+	}, " ")
+	build := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags", ldflags, "-o", buildOutput, ".")
+	build.Dir, err = os.Getwd()
+	if err != nil {
+		return classifyTransactionError(err, state)
+	}
+	build.Env = replaceEnv(os.Environ(), "CGO_ENABLED", "0")
+	build.Stdout = os.Stdout
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		return classifyTransactionError(fmt.Errorf("build transaction binary: %w", err), state)
+	}
+	if err := observeTransactionPhase(transactionPhaseEvent{Phase: transactionBuilt, BuildOutput: buildOutput, Destination: destination, RegistrationPath: registrationPath, RegistrationSHA256: registrationSHA256}); err != nil {
+		return classifyTransactionError(err, state)
+	}
+	if err := observeTransactionPhase(transactionPhaseEvent{Phase: transactionBeforePublication, BuildOutput: buildOutput, Destination: destination, RegistrationPath: registrationPath, RegistrationSHA256: registrationSHA256}); err != nil {
+		return classifyTransactionError(err, state)
+	}
+	if err := ossinstall.ValidateInstallDestination(destination); err != nil {
+		return classifyTransactionError(err, state)
+	}
+	publication, publishErr := ossinstall.PublishExecutable(buildOutput, destination)
+	if publication.Committed {
+		state = transactionBinaryPublished
+	}
+	if publishErr != nil {
+		return classifyTransactionError(fmt.Errorf("publish transaction binary: %w", publishErr), state)
+	}
+	if err := observeTransactionPhase(transactionPhaseEvent{Phase: transactionPublished, BuildOutput: buildOutput, Destination: destination, RegistrationPath: registrationPath, RegistrationSHA256: registrationSHA256}); err != nil {
+		return classifyTransactionError(err, state)
+	}
+	if _, err = io.WriteString(stdout, pins); err != nil {
+		return classifyTransactionError(err, state)
+	}
+	return nil
+}
+
+type transactionState uint8
+
+const (
+	transactionPrePublication transactionState = iota
+	transactionReusedRoot
+	transactionExplicitPins
+	transactionGeneratedPublicationCommitted
+	transactionBinaryPublished
+)
+
+func classifyTransactionError(err error, state transactionState) error {
+	if err == nil {
+		return nil
+	}
+	if state == transactionGeneratedPublicationCommitted || state == transactionBinaryPublished {
+		if errors.Is(err, ossinstall.ErrPublicationCommitted) {
+			return err
+		}
+		return &ossinstall.PublicationCommittedError{Cause: err}
+	}
+	return err
+}
+
+func replaceEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	result := make([]string, 0, len(env)+1)
+	for _, item := range env {
+		if !strings.HasPrefix(item, prefix) {
+			result = append(result, item)
+		}
+	}
+	return append(result, prefix+value)
 }
 
 // linkerUnsafe lists characters that cannot travel through make variables and

@@ -156,21 +156,17 @@ cross: ## Compile every package for all supported targets (windows is informatio
 
 install: ## Generate the OSS trust registration, link against it, and install into $(DESTDIR)$(BINDIR).
 	@if [ -n "$(TRUST_LOCAL_SOURCES)" ] && { [ -n "$(TRUST_PUBLISHERS)$(TRUST_SOURCE_PACKAGES)" ] || [ -n "$(filter 1 yes true,$(TRUST_ROTATE))" ] || [ -z "$(TRUST_PROJECT_CONTEXTS)" ]; }; then echo "install: TRUST_LOCAL_SOURCES requires TRUST_PROJECT_CONTEXTS and forbids external publishers/packages and rotation" >&2; exit 1; fi
-	@mkdir -p "$(dir $(BIN))"
 ifeq ($(strip $(REGISTRATION_PATH)$(REGISTRATION_SHA256)),)
 	@if [ -n "$(DESTDIR)" ]; then echo "install: DESTDIR staging cannot generate an operator-pinned registration; set REGISTRATION_PATH and REGISTRATION_SHA256" >&2; exit 1; fi
-	go run ./cmd/tplaiter-oss-register --root "$(TRUST_ROOT)" --output "$(dir $(BIN))registration.pins" \
+	go run ./cmd/tplaiter-oss-register --transaction --root "$(TRUST_ROOT)" --destination "$(DESTDIR)$(BINDIR)/$(NAME)" --version "$(VERSION)" \
 		$(if $(TRUST_PUBLISHERS),--publishers "$(TRUST_PUBLISHERS)") \
 		$(if $(TRUST_LOCAL_SOURCES),--local-sources "$(TRUST_LOCAL_SOURCES)") \
 		$(if $(TRUST_SOURCE_PACKAGES),--source-packages "$(TRUST_SOURCE_PACKAGES)") \
 		$(if $(TRUST_PROJECT_CONTEXTS),--project-contexts "$(TRUST_PROJECT_CONTEXTS)") $(if $(filter 1 yes true,$(TRUST_ROTATE)),--rotate)
-	$(MAKE) --no-print-directory build $$(cat "$(dir $(BIN))registration.pins")
 else
 	@if [ -z "$(REGISTRATION_PATH)" ] || [ -z "$(REGISTRATION_SHA256)" ]; then echo "install: set both REGISTRATION_PATH and REGISTRATION_SHA256, or neither" >&2; exit 1; fi
-	$(MAKE) --no-print-directory build
+	go run ./cmd/tplaiter-oss-register --transaction --root "$(TRUST_ROOT)" --destination "$(DESTDIR)$(BINDIR)/$(NAME)" --version "$(VERSION)" --registration-path "$(REGISTRATION_PATH)" --registration-sha256 "$(REGISTRATION_SHA256)"
 endif
-	install -d "$(DESTDIR)$(BINDIR)"
-	install -m 0755 $(BIN) "$(DESTDIR)$(BINDIR)/$(NAME)"
 	@echo "installed $(DESTDIR)$(BINDIR)/$(NAME)"
 	@echo "next: run '$(DESTDIR)$(BINDIR)/$(NAME) trust provision' once to enroll the trust store"
 

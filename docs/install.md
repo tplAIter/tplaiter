@@ -23,15 +23,31 @@ make install PREFIX="$HOME/.local"
 
 `make install` does three things:
 
-1. It runs `go run ./cmd/tplaiter-oss-register --root "$TRUST_ROOT"`. `TRUST_ROOT` defaults to `$(PREFIX)/lib/tplaiter/trust`. The tool generates a fresh operator-pinned OSS installation there, described below, and prints the registration path and digest.
-2. It builds `bin/tplaiter` with those two values as linker pins:
+1. It runs the transaction form of `go run ./cmd/tplaiter-oss-register --root "$TRUST_ROOT" --destination "$(PREFIX)/bin/tplaiter"`. `TRUST_ROOT` defaults to `$(PREFIX)/lib/tplaiter/trust`. The transaction generates or reuses the operator-pinned OSS installation there, described below, and carries the resulting registration path and digest forward without using a shared pins file.
+2. It builds a private transaction output with those two values as linker pins:
 
    ```
    -X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationPath=<TRUST_ROOT>/registration.json
    -X github.com/tplAIter/tplaiter/internal/cmd.installedRegistrationSHA256=sha256:<digest>
    ```
 
-3. It installs the binary into `$(PREFIX)/bin`.
+3. It publishes that completed binary to the exact `$(PREFIX)/bin/tplaiter` leaf while the same resource locks remain held.
+
+Generated installs serialize the complete transaction for the canonical trust
+root and final executable destination. The coordinator holds stable sibling
+flocks, acquired in a fixed path order, from registration generation through
+the linker-pinned build and final binary publication. The lock files are
+regular `0600` coordination files outside the rotating trust root and are
+retained for reuse; they are not trust material or ownership markers. Explicit
+registration pins still use the destination coordinator so concurrent binary
+publication cannot interleave. Each transaction uses private build and pin
+paths, so installers do not share `bin/tplaiter` or `bin/registration.pins`
+intermediates.
+The completed private binary is copied to a same-directory temporary leaf,
+checked as a regular single-link file, and renamed atomically over the exact
+destination leaf. Existing destination bytes remain unchanged when any
+pre-rename step fails; a sync or close error after rename is reported as a
+committed publication error.
 
 The install root is resolved to a symlink-free absolute path, because the loaders open every path component without following symlinks. Paths containing whitespace, quotes, `$`, backquotes or backslashes are rejected, since they cannot pass through make and the linker intact.
 
