@@ -403,8 +403,13 @@
         "type": { "type": "string", "enum": ["string", "bool", "int", "fields"] },
         "required": { "type": "boolean" },
         "default": {},
-        "description": { "type": "string" }
-      }
+        "description": { "type": "string" },
+        "pattern": { "type": "string", "description": "Optional RE2 expression checked by the runtime before rendering; an empty value is ignored." }
+      },
+      "allOf": [{
+        "if": { "required": ["pattern"], "properties": { "pattern": { "type": "string", "minLength": 1 } } },
+        "then": { "properties": { "type": { "enum": ["string", "int"] } } }
+      }]
     },
     "generatorTarget": {
       "type": "object",
