@@ -69,10 +69,15 @@ func (s *selectionRecord) fresh(ctx context.Context) error {
 		return fail(Stale, "selection pins/floor")
 	}
 	if s.projection != "" {
-		if s.projection != contextindex.RootFactsAPIVersion {
+		var facts any
+		switch s.projection {
+		case contextindex.RootFactsAPIVersion:
+			facts, e = contextindex.EncodeRootFactsV2(p)
+		case contextindex.SourceFactsAPIVersion:
+			facts, e = contextindex.EncodeSourceFactsV3(p)
+		default:
 			return fail(Invalid, "selection projection")
 		}
-		facts, e := contextindex.EncodeRootFactsV2(p)
 		if e != nil {
 			return e
 		}
@@ -114,4 +119,46 @@ func (s *selectionRecord) deliveryBytes() []byte {
 		return s.wire
 	}
 	return s.raw
+}
+
+// FactorProjectSelectionV3 retains the opaque C03 selection and every concrete
+// same-runtime source binding. Data facts cannot replace source authentication.
+func FactorProjectSelectionV3(ctx context.Context, s *Selection) (*Selection, error) {
+	if e := selectionFresh(ctx, s); e != nil {
+		return nil, e
+	}
+	if !s.request.IncludeExcerpts || len(s.bindings) < 2 || len(s.bindings) > 32 {
+		return nil, fail(Invalid, "authenticated source projection")
+	}
+	var p contextindex.Packet
+	if e := json.Unmarshal(s.raw, &p); e != nil {
+		return nil, e
+	}
+	if len(s.bindings) != len(p.Sources) {
+		return nil, fail(Invalid, "complete source bindings")
+	}
+	byID := map[string]contextindex.Binding{}
+	runtime := s.bindings[0].Runtime
+	for _, b := range s.bindings {
+		if b.Runtime == nil || b.Runtime != runtime || b.Resolution == nil || byID[b.SourceID].SourceID != "" {
+			return nil, fail(Invalid, "unique same-runtime source bindings")
+		}
+		byID[b.SourceID] = b
+	}
+	for _, source := range p.Sources {
+		if byID[source.ID].SourceID == "" {
+			return nil, fail(Invalid, "missing concrete source binding")
+		}
+	}
+	facts, e := contextindex.EncodeSourceFactsV3(p)
+	if e != nil {
+		return nil, e
+	}
+	wire, e := encode(facts)
+	if e != nil {
+		return nil, e
+	}
+	copy := *s.selectionRecord
+	copy.wire, copy.projection = wire, contextindex.SourceFactsAPIVersion
+	return &Selection{selectionRecord: &copy}, nil
 }
