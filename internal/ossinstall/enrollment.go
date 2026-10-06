@@ -20,6 +20,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
@@ -203,6 +204,12 @@ func validateNativeSnapshot(snapshot *trustverify.SourceSnapshot) error {
 	manifestRaw, ok := snapshot.Blob("template.manifest.yaml")
 	if !ok {
 		return errors.New("ossinstall: manifest missing")
+	}
+	if _, err := contextsource.DecodeNativeContextContractV2(snapshot.ContractBytes(), manifestRaw); err == nil {
+		if err := validateManifestShape(manifestRaw); err != nil {
+			return err
+		}
+		return resources.ValidateNativeGeneratorsV2(snapshot)
 	}
 	if _, err := operationtrust.DecodeNativeContract(snapshot.ContractBytes(), manifestRaw); err != nil {
 		return err
@@ -419,6 +426,9 @@ func generateEnrollment(ctx context.Context, o Options) (Result, error) {
 			if err := ctx.Err(); err != nil {
 				return Result{}, err
 			}
+			if err := verifyContextSelectionReuse(ctx, result, o.SourcePackages); err != nil {
+				return Result{}, err
+			}
 			result.SelectionsPath = filepath.Join(o.Root, "config", "source-selections.json")
 			return result, nil
 		}
@@ -611,15 +621,7 @@ func (g *generator) publishSources(origins []trustload.ObjectOrigin) error {
 			}
 		}
 	}
-	if g.selections == nil {
-		g.selections = []operationtrust.SourceSelection{}
-	}
-	raw, err := marshal(g.selections)
-	if err != nil {
-		return err
-	}
-	_, err = g.writeDocument(filepath.Join(g.root, "config", "source-selections.json"), raw)
-	return err
+	return g.publishContextSelections()
 }
 
 // RFC 6962 split-at-largest-power-of-two tree, using the existing verifier's

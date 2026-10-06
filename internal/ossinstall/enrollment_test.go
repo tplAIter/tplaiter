@@ -47,21 +47,49 @@ func signedPackage(t *testing.T, origin string, mutate func(map[string][]byte)) 
 		objects[id] = raw
 		return id
 	}
-	names := []string{}
-	for name := range files {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	tree := []byte{}
 	entries := []trustverify.SourceEntry{}
-	for _, name := range names {
-		id := add("blob", files[name])
-		b, _ := hex.DecodeString(id)
-		tree = append(tree, []byte("100644 "+name+"\x00")...)
-		tree = append(tree, b...)
-		entries = append(entries, trustverify.SourceEntry{Path: name, Kind: "file", Mode: "100644", ContentSHA256: evidencecas.Digest(files[name])})
+	var tree func(string) string
+	tree = func(prefix string) string {
+		nested := map[string]bool{}
+		for name := range files {
+			if strings.HasPrefix(name, prefix) {
+				part, _, directory := strings.Cut(strings.TrimPrefix(name, prefix), "/")
+				nested[part] = nested[part] || directory
+			}
+		}
+		names := []string{}
+		for name := range nested {
+			names = append(names, name)
+		}
+		sort.Slice(names, func(i, j int) bool {
+			a, b := names[i], names[j]
+			if nested[a] {
+				a += "/"
+			}
+			if nested[b] {
+				b += "/"
+			}
+			return a < b
+		})
+		raw := []byte{}
+		for _, name := range names {
+			mode, kind, id, digest := "100644", "file", "", ""
+			if nested[name] {
+				mode, kind = "40000", "directory"
+				id = tree(prefix + name + "/")
+			} else {
+				id = add("blob", files[prefix+name])
+				digest = evidencecas.Digest(files[prefix+name])
+			}
+			oid, _ := hex.DecodeString(id)
+			raw = append(raw, []byte(mode+" "+name+"\x00")...)
+			raw = append(raw, oid...)
+			entries = append(entries, trustverify.SourceEntry{Path: prefix + name, Kind: kind, Mode: mode, ContentSHA256: digest})
+		}
+		return add("tree", raw)
 	}
-	treeID := add("tree", tree)
+	treeID := tree("")
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 	commit := add("commit", []byte("tree "+treeID+"\n\ntest only\n"))
 	treeHash, err := bootstrap.DomainDigest("tplaiter.dev/source-content-tree/v1", struct {
 		APIVersion string                    `json:"apiVersion"`
