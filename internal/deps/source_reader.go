@@ -26,10 +26,29 @@ func NewSourceReader(runtime *trustverify.Runtime) (*SourceReader, error) {
 // VerifiedSource is a defensive copy of the snapshot material that matched a
 // PinnedSource. Its values cannot be used as proof for another runtime.
 type VerifiedSource struct {
-	subject  trustverify.Subject
-	entries  []trustverify.SourceEntry
-	contract []byte
-	blobs    map[string][]byte
+	subject     trustverify.Subject
+	entries     []trustverify.SourceEntry
+	contract    []byte
+	blobs       map[string][]byte
+	acceptedPin *PinnedSource
+}
+
+// AcceptedPin returns the exact data pin accepted by Read, not a new authority.
+// ProviderID and RequestedRef remain caller-selected provenance labels.
+func (s *VerifiedSource) AcceptedPin() (PinnedSource, bool) {
+	if s == nil || s.acceptedPin == nil {
+		return PinnedSource{}, false
+	}
+	return copyAcceptedPin(*s.acceptedPin), true
+}
+
+func copyAcceptedPin(pin PinnedSource) PinnedSource {
+	pin.Parameters = append([]Parameter{}, pin.Parameters...)
+	for i := range pin.Parameters {
+		pin.Parameters[i].Value = append([]byte(nil), pin.Parameters[i].Value...)
+	}
+	pin.Dependencies = append([]string{}, pin.Dependencies...)
+	return pin
 }
 
 func (s *VerifiedSource) Subject() trustverify.Subject {
@@ -120,7 +139,8 @@ func (r *SourceReader) Read(ctx context.Context, resolution *trustverify.Verifie
 	if pin.ContentDigest != content {
 		return nil, sourceError(SourceContentMismatch, "snapshot content does not match immutable pin")
 	}
-	return &VerifiedSource{subject: subject, entries: append([]trustverify.SourceEntry(nil), entries...), contract: append([]byte(nil), contract...), blobs: blobs}, nil
+	accepted := copyAcceptedPin(pin)
+	return &VerifiedSource{acceptedPin: &accepted, subject: subject, entries: append([]trustverify.SourceEntry(nil), entries...), contract: append([]byte(nil), contract...), blobs: blobs}, nil
 }
 
 // SnapshotContentDigest returns the exact content-closure digest expected in a

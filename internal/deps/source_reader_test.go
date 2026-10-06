@@ -344,3 +344,42 @@ func TestSourceReaderRejectsUnboundResolutionAndNilRuntime(t *testing.T) {
 		t.Fatal("foreign runtime resolution accepted")
 	}
 }
+
+func TestAcceptedPinOnlyAfterReadAndDefensiveCopies(t *testing.T) {
+	var absent *VerifiedSource
+	if _, ok := absent.AcceptedPin(); ok {
+		t.Fatal("nil source accepted")
+	}
+	if _, ok := (&VerifiedSource{}).AcceptedPin(); ok {
+		t.Fatal("zero source accepted")
+	}
+	r, resolution, f := readerRuntime(t)
+	reader, err := NewSourceReader(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin := readerPin(t, r, resolution, f)
+	pin.Parameters = []Parameter{{Name: "test", Value: json.RawMessage(`"original"`)}}
+	pin.Dependencies = []string{"dependency"}
+	source, err := reader.Read(context.Background(), resolution, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin.Parameters[0].Value[1] = 'x'
+	pin.Dependencies[0] = "mutated"
+	accepted, ok := source.AcceptedPin()
+	if !ok || string(accepted.Parameters[0].Value) != `"original"` || accepted.Dependencies[0] != "dependency" {
+		t.Fatal("input pin aliased")
+	}
+	accepted.Parameters[0].Value[1] = 'x'
+	accepted.Dependencies[0] = "mutated"
+	again, _ := source.AcceptedPin()
+	if string(again.Parameters[0].Value) != `"original"` || again.Dependencies[0] != "dependency" || again.EvidenceDigest != resolution.Evidence().StatementCAS {
+		t.Fatal("returned pin aliased or evidence lost")
+	}
+	bad := again
+	bad.EvidenceDigest = strings.Replace(bad.EvidenceDigest, "sha256:", "sha256:0", 1)
+	if invalid, err := reader.Read(context.Background(), resolution, bad); err == nil || invalid != nil {
+		t.Fatal("failed Read published source")
+	}
+}
