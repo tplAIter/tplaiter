@@ -98,6 +98,7 @@ type LocalProvider struct {
 	endpoint     *localEndpoint
 	closed       bool
 	expires      time.Time
+	timer        *time.Timer
 }
 
 func (r *Runtime) localRegistration(ctx context.Context, id string) (localRegistration, FilePin, error) {
@@ -177,7 +178,10 @@ func (r *Runtime) OpenLocalProvider(ctx context.Context, id string) (*LocalProvi
 	}
 	p := &LocalProvider{runtime: r, pin: pin, registration: registration, endpoint: endpoint, expires: expires}
 	p.observation = LocalSelectionObservation{RegistrationID: id, RegistrationSHA256: pin.SHA256, InstallationID: registration.InstallationID, ProjectContext: r.ProjectContext().Key, EndpointIdentity: "installed-path-observed-kernel-peer", CodeIdentity: "unchecked", PeerUID: endpoint.uid, PeerPID: endpoint.pid}
-	if err = p.Recheck(bounded); err != nil {
+	if err = p.armLifetime(); err == nil {
+		err = p.Recheck(bounded)
+	}
+	if err != nil {
 		_ = p.Close()
 		return nil, err
 	}
@@ -205,8 +209,8 @@ func (p *LocalProvider) Recheck(ctx context.Context) error {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.closed {
-		return ErrLocalProvider
+	if err := p.lifetimeErrorLocked(); err != nil {
+		return err
 	}
 	_, pin, err := p.runtime.localRegistration(ctx, p.registration.RegistrationID)
 	if err != nil {
@@ -215,7 +219,10 @@ func (p *LocalProvider) Recheck(ctx context.Context) error {
 	if pin != p.pin {
 		return ErrPinMismatch
 	}
-	return p.endpoint.recheck()
+	if err := p.endpoint.recheck(); err != nil {
+		return err
+	}
+	return p.lifetimeErrorLocked()
 }
 
 // Limits is copied installed data, not a caller's connection authority.
@@ -234,72 +241,141 @@ type LocalReadLimits struct {
 	DeadlineMs  int `json:"deadlineMs"`
 }
 
-func (p *LocalProvider) connection() net.Conn {
+// armLifetime installs the acquisition-relative ceiling before returning the carrier.
+// Cancellation by a consumer closes the carrier; its timer needs no caller context.
+func (p *LocalProvider) armLifetime() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.lifetimeErrorLocked(); err != nil {
+		return err
+	}
+	if p.expires.IsZero() || p.timer != nil {
+		return ErrLocalProvider
+	}
+	if err := p.endpoint.conn.SetDeadline(p.expires); err != nil {
+		return err
+	}
+	p.timer = time.AfterFunc(time.Until(p.expires), func() { _ = p.Close() })
+	return nil
+}
+
+// Expiry remains distinguishable after the timer has closed the descriptors.
+func (p *LocalProvider) lifetimeErrorLocked() error {
+	if !p.expires.IsZero() && !time.Now().Before(p.expires) {
+		_ = p.closeLocked()
+		return context.DeadlineExceeded
+	}
+	if p.closed || p.endpoint == nil {
+		return ErrLocalProvider
+	}
+	return nil
+}
+
+func (p *LocalProvider) connection() (net.Conn, error) {
 	if p == nil {
-		return nil
+		return nil, ErrLocalProvider
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.closed || p.endpoint == nil {
-		return nil
+	if err := p.lifetimeErrorLocked(); err != nil {
+		return nil, err
 	}
-	return p.endpoint.conn
+	return p.endpoint.conn, nil
+}
+
+func (p *LocalProvider) ioLifetimeError() error {
+	if p == nil {
+		return ErrLocalProvider
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lifetimeErrorLocked()
 }
 
 func (p *LocalProvider) Read(b []byte) (int, error) {
-	c := p.connection()
-	if c == nil {
-		return 0, ErrLocalProvider
+	c, err := p.connection()
+	if err != nil {
+		return 0, err
 	}
-	return c.Read(b)
+	n, err := c.Read(b)
+	if ended := p.ioLifetimeError(); ended != nil {
+		return 0, ended
+	}
+	return n, err
 }
 
 func (p *LocalProvider) Write(b []byte) (int, error) {
-	c := p.connection()
-	if c == nil {
-		return 0, ErrLocalProvider
+	c, err := p.connection()
+	if err != nil {
+		return 0, err
 	}
-	return c.Write(b)
+	n, err := c.Write(b)
+	// Bytes may already have reached the peer, but expiry cannot report success.
+	if ended := p.ioLifetimeError(); ended != nil {
+		return n, ended
+	}
+	return n, err
 }
 
 func (p *LocalProvider) LocalAddr() net.Addr {
-	c := p.connection()
-	if c == nil {
+	c, err := p.connection()
+	if err != nil {
 		return nil
 	}
 	return c.LocalAddr()
 }
 
 func (p *LocalProvider) RemoteAddr() net.Addr {
-	c := p.connection()
-	if c == nil {
+	c, err := p.connection()
+	if err != nil {
 		return nil
 	}
 	return c.RemoteAddr()
 }
 
-func (p *LocalProvider) SetDeadline(t time.Time) error {
-	c := p.connection()
-	if c == nil {
+func (p *LocalProvider) setDeadline(t time.Time, kind int) error {
+	if p == nil {
 		return ErrLocalProvider
 	}
-	return c.SetDeadline(t)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.lifetimeErrorLocked(); err != nil {
+		return err
+	}
+	if t.IsZero() || t.After(p.expires) {
+		t = p.expires
+	}
+	var err error
+	switch kind {
+	case 1:
+		err = p.endpoint.conn.SetReadDeadline(t)
+	case 2:
+		err = p.endpoint.conn.SetWriteDeadline(t)
+	default:
+		err = p.endpoint.conn.SetDeadline(t)
+	}
+	if ended := p.lifetimeErrorLocked(); ended != nil {
+		return ended
+	}
+	return err
 }
 
-func (p *LocalProvider) SetReadDeadline(t time.Time) error {
-	c := p.connection()
-	if c == nil {
-		return ErrLocalProvider
-	}
-	return c.SetReadDeadline(t)
-}
+func (p *LocalProvider) SetDeadline(t time.Time) error      { return p.setDeadline(t, 0) }
+func (p *LocalProvider) SetReadDeadline(t time.Time) error  { return p.setDeadline(t, 1) }
+func (p *LocalProvider) SetWriteDeadline(t time.Time) error { return p.setDeadline(t, 2) }
 
-func (p *LocalProvider) SetWriteDeadline(t time.Time) error {
-	c := p.connection()
-	if c == nil {
-		return ErrLocalProvider
+func (p *LocalProvider) closeLocked() error {
+	if p.closed {
+		return nil
 	}
-	return c.SetWriteDeadline(t)
+	p.closed = true
+	if p.timer != nil {
+		p.timer.Stop()
+	}
+	if p.endpoint == nil {
+		return nil
+	}
+	return p.endpoint.close()
 }
 
 func (p *LocalProvider) Close() error {
@@ -308,14 +384,7 @@ func (p *LocalProvider) Close() error {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.closed {
-		return nil
-	}
-	p.closed = true
-	if p.endpoint == nil {
-		return nil
-	}
-	return p.endpoint.close()
+	return p.closeLocked()
 }
 
 // ValidateLocalProviderDocument validates data only; it cannot establish a
