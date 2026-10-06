@@ -184,7 +184,7 @@ func (s *Server) installGraphHooks() {
 			return errors.New("GRAPH_ARGUMENT_INVALID")
 		}
 		encoded, err := json.Marshal(id)
-		if err != nil || !bytes.Equal(encoded, call.id) {
+		if err != nil || !bytes.Equal(encoded, call.id) && !discoverySDKIDMatches(call, encoded) {
 			return errors.New("GRAPH_ARGUMENT_INVALID")
 		}
 		call.sdkBound = true
@@ -368,6 +368,7 @@ func (g *graphTransport) dispatch(call *graphCall) {
 	}()
 	ctx := context.WithValue(call.ctx, graphCallKey{}, call)
 	response := g.server.mcp.HandleMessage(ctx, call.raw)
+	response = discoveryOriginalResponseID(call, response)
 	raw, err := json.Marshal(response)
 	if err != nil || response == nil {
 		raw = graphNullRefusal()

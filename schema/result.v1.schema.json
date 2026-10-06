@@ -714,6 +714,25 @@
       "if": {
         "properties": {
           "operation": {
+            "const": "template.discover"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "TemplateDiscover"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
             "const": "template.init"
           }
         },
@@ -949,6 +968,7 @@
               "repo.list",
               "repo.remove",
               "repo.update",
+              "template.discover",
               "template.init",
               "template.lint",
               "template.list",
@@ -1167,6 +1187,7 @@
         "SettingsSet",
         "SettingsShow",
         "SourceGraph",
+        "TemplateDiscover",
         "TemplateInit",
         "TemplateLint",
         "TemplateList",
@@ -1235,6 +1256,7 @@
         "settings.reanswer",
         "settings.set",
         "settings.show",
+        "template.discover",
         "template.init",
         "template.lint",
         "template.list",

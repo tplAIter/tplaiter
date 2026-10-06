@@ -188,6 +188,7 @@ var dataSchemas = map[resultdto.Operation]func() (json.RawMessage, error){
 	resultdto.OperationRepoUpdate:          schemaOf[resultdto.RepoListData],
 	resultdto.OperationRepoRemove:          schemaOf[resultdto.RepoRemoveData],
 	resultdto.OperationTemplateList:        schemaOf[resultdto.TemplateListData],
+	resultdto.OperationTemplateDiscover:    discoveryDataSchema,
 	resultdto.OperationTemplateShow:        schemaOf[resultdto.TemplateShowData],
 	resultdto.OperationTemplateLint:        schemaOf[resultdto.TemplateLintData],
 	resultdto.OperationTemplateInit:        schemaOf[resultdto.TemplateInitData],
@@ -405,4 +406,93 @@ func actionRunDataSchema() (json.RawMessage, error) {
 		fields[name] = map[string]any{"type": []string{"string", "null"}, "contentEncoding": "base64", "maxLength": limit}
 	}
 	return json.Marshal(schema)
+}
+
+// discoveryDataSchema closes the neutral descriptive wire, including the two
+// existing read-only transports. Schema strings cannot confer admission.
+func discoveryDataSchema() (json.RawMessage, error) {
+	raw, err := schemaOf[resultdto.TemplateDiscoverData]()
+	if err != nil {
+		return nil, err
+	}
+	var root map[string]any
+	if err = json.Unmarshal(raw, &root); err != nil {
+		return nil, err
+	}
+	kinds := []any{"template", "installable-block", "context", "documentation-recipe", "test-fixture", "skill", "unknown"}
+	readiness := []any{"ready", "experimental", "planned", "deprecated", "unknown"}
+	digest := map[string]any{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+	str := func(max int) map[string]any { return map[string]any{"type": "string", "maxLength": max} }
+	object := func(props map[string]any, required []string) map[string]any {
+		return map[string]any{"type": "object", "additionalProperties": false, "properties": props, "required": required}
+	}
+	call := func(tool string, args map[string]any, required []string) map[string]any {
+		return object(map[string]any{"tool": map[string]any{"const": tool}, "arguments": object(args, required)}, []string{"tool", "arguments"})
+	}
+	show := call("template_show", map[string]any{"ref": str(257), "commit": map[string]any{"type": "string", "pattern": "^[0-9a-f]{40}$"}, "manifestSHA256": digest}, []string{"ref", "commit", "manifestSHA256"})
+	graph := call("graph_exports", map[string]any{"dir": str(4096), "projectContext": str(256), "sourceInput": str(4096), "expectedDigest": map[string]any{"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "selectors": map[string]any{"type": "array", "minItems": 1, "maxItems": 1, "items": str(512)}, "limit": map[string]any{"const": 1}, "maxBytes": map[string]any{"const": 4096}, "representation": map[string]any{"const": "page"}}, []string{"dir", "projectContext", "sourceInput", "expectedDigest", "selectors", "limit", "maxBytes", "representation"})
+	var walk func(map[string]any)
+	walk = func(n map[string]any) {
+		if types, ok := n["type"].([]any); ok {
+			for _, v := range types {
+				if v == "array" {
+					n["type"] = "array"
+				}
+			}
+		}
+		if items, ok := n["items"].(map[string]any); ok {
+			walk(items)
+		}
+		props, _ := n["properties"].(map[string]any)
+		for key, value := range props {
+			child, ok := value.(map[string]any)
+			if !ok {
+				continue
+			}
+			walk(child)
+			switch key {
+			case "description":
+				child["maxLength"] = 512
+			case "candidateKind":
+				child["enum"] = kinds
+			case "readiness":
+				child["enum"] = readiness
+			case "declarationStatus":
+				child["const"] = "metadata-declared"
+			case "availability":
+				child["enum"] = []any{"metadata-declared", "admitted-record", "unavailable"}
+			case "domain":
+				child["enum"] = []any{"block", "skill", "approach"}
+			case "metadataSHA256", "manifestSHA256", "contentSHA256", "contractSHA256", "catalogSource", "sha256":
+				child["pattern"] = "^sha256:[0-9a-f]{64}$"
+			case "commit":
+				child["pattern"] = "^[0-9a-f]{40}$"
+			case "sourcePin":
+				child["oneOf"] = []any{map[string]any{"properties": map[string]any{"qualification": map[string]any{"const": "local-observed"}}, "required": []string{"repo", "path", "commit", "manifestSHA256"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"sourceID"}}, map[string]any{"required": []string{"revision"}}, map[string]any{"required": []string{"contentSHA256"}}}}}, map[string]any{"properties": map[string]any{"qualification": map[string]any{"const": "owner-supplied"}}, "required": []string{"sourceID", "revision", "contentSHA256"}}}
+			case "status":
+				child["enum"] = []any{"not-requested", "empty", "observed", "unavailable"}
+			case "suggestions":
+				child["maxItems"] = 20
+			case "diagnostics", "blocks", "skills":
+				child["maxItems"] = 32
+			case "reasons":
+				child["maxItems"] = 16
+			case "frameworks":
+				child["maxItems"] = 8
+			case "evidence":
+				child["maxItems"] = 3
+			case "nextToolCalls":
+				child["maxItems"] = 4
+				child["items"] = map[string]any{"oneOf": []any{show, graph}}
+			}
+		}
+	}
+	walk(root)
+	props := root["properties"].(map[string]any)
+	props["apiVersion"].(map[string]any)["const"] = "tplaiter.dev/template-discovery/v1"
+	props["qualification"].(map[string]any)["const"] = "descriptive-data-only"
+	root["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+	root["$id"] = "https://tplaiter.dev/schema/template-discovery.v1.schema.json"
+	root["description"] = "Bounded descriptive data only. Source pins and metadata do not grant authority. JSON Schema lengths count characters; the implementation separately enforces UTF8 byte bounds."
+	return json.Marshal(root)
 }

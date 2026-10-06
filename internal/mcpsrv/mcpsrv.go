@@ -115,6 +115,7 @@ func (s *Server) ServeStdio() error {
 	rootWriter := &rootResponseWriter{frames: s.rootFrames, server: s, out: output}
 	graph := newGraphTransport(ctx, s, &rootCancellationReader{in: os.Stdin, frames: s.rootFrames}, rootWriter, output)
 	graph.input = bufio.NewReader(&semanticInput{input: graph.input, graph: graph})
+	graph.input = bufio.NewReader(&discoveryInput{input: graph.input, graph: graph})
 	graph.stopStdio = cancel
 	s.mu.Lock()
 	s.graph = graph

@@ -46,6 +46,7 @@ const (
 	OperationRepoUpdate          Operation = "repo.update"
 	OperationRepoRemove          Operation = "repo.remove"
 	OperationTemplateList        Operation = "template.list"
+	OperationTemplateDiscover    Operation = "template.discover"
 	OperationTemplateShow        Operation = "template.show"
 	OperationTemplateLint        Operation = "template.lint"
 	OperationTemplateInit        Operation = "template.init"
@@ -112,6 +113,7 @@ var operationRegistry = map[Operation]operationSpec{
 	OperationRepoUpdate:          {"RepoUpdate", ScopeGlobal},
 	OperationRepoRemove:          {"RepoRemove", ScopeGlobal},
 	OperationTemplateList:        {"TemplateList", ScopeGlobal},
+	OperationTemplateDiscover:    {"TemplateDiscover", ScopeGlobal},
 	OperationTemplateShow:        {"TemplateShow", ScopeGlobal},
 	OperationTemplateLint:        {"TemplateLint", ScopeGlobal},
 	OperationTemplateInit:        {"TemplateInit", ScopeGlobal},

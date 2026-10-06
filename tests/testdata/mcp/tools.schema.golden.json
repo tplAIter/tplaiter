@@ -1,10 +1,10 @@
 [
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Generate AI artifacts (CLAUDE.md, .cursor/**, AGENTS.md, GEMINI.md) to project root (dir).",
     "inputSchema": {
@@ -274,10 +274,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "Read installed signed context with bounded local byte plans. Model window stays unknown. Local preview-catalog/preview-resource return explicitly untrusted observed data; authenticated ROOT select returns complete task context; signed actions discover/search/get/continue/plan; pull schema on demand.",
     "inputSchema": {
@@ -524,10 +524,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "Captured source graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
     "inputSchema": {
@@ -1393,10 +1393,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": false,
       "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": true
+      "openWorldHint": false
     },
     "description": "Read-only offline verification using an authenticated installed project context. No refresh, network or execution.",
     "inputSchema": {
@@ -1665,10 +1665,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "Check environment and tools of the active template. dir is optional (default is server's cwd).",
     "inputSchema": {
@@ -1937,10 +1937,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Execute an Ansible playbook for the project environment (dir). Ansible setup is confirmed automatically (yes is always true).",
     "inputSchema": {
@@ -2208,10 +2208,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Generate files and anchor insertions from the project's sealed native generator sources. Default build uses a signed exact projected-input request and persistent operator approval through the approved Go runner; noBuild requests file-only generation. Formatter and hooks remain refused.",
     "inputSchema": {
@@ -2242,7 +2242,7 @@
           "type": "boolean"
         },
         "params": {
-          "description": "Generator parameters: key→string value (serialized as dynamic CLI flags --<param>)",
+          "description": "Generator parameters: key→string value (serialized as dynamic CLI flags --\u003cparam\u003e)",
           "properties": {},
           "type": "object"
         },
@@ -2749,10 +2749,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Atomically generate files and anchor insertions from sealed native generator sources. Default build uses a signed exact projected-input request and persistent operator approval through the approved Go runner; noBuild requests file-only generation. Formatter and hooks remain refused.",
     "inputSchema": {
@@ -3308,10 +3308,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "List available generator kinds from the project's sealed native generator sources.",
     "inputSchema": {
@@ -3590,10 +3590,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Captured ast graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
     "inputSchema": {
@@ -4459,10 +4459,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "Captured exports graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
     "inputSchema": {
@@ -5328,10 +5328,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "Captured source graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
     "inputSchema": {
@@ -6197,10 +6197,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "Captured stats graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
     "inputSchema": {
@@ -7066,16 +7066,16 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Create a template repository with full tooling (manifest, files/, generators, ai-config, CI).",
     "inputSchema": {
       "properties": {
         "dir": {
-          "description": "Target repository directory (created; default ./<name>)",
+          "description": "Target repository directory (created; default ./\u003cname\u003e)",
           "type": "string"
         },
         "multi": {
@@ -7302,10 +7302,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "Self-test template repository for edge case combinations. Failure returns a non-zero exit code (isError).",
     "inputSchema": {
@@ -7552,10 +7552,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": false,
       "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": true
+      "openWorldHint": false
     },
     "description": "Read-only offline verification using an authenticated installed project context. No refresh, network or execution.",
     "inputSchema": {
@@ -7910,10 +7910,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": false,
       "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": true
+      "openWorldHint": false
     },
     "description": "Read-only offline diff against the authenticated signed baseline. Reports path and blockId independently; no link, adoption, update or execution.",
     "inputSchema": {
@@ -8233,10 +8233,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": false,
       "idempotentHint": false,
-      "openWorldHint": false,
-      "readOnlyHint": false
+      "openWorldHint": false
     },
     "description": "Link/adopt signed state only; preserves user files. Conflicts require explicit ownership path=track or path=user-owned. User-owned adoption preserves full signed baseline lineage and excludes those paths from Update writes. Cold recovery uses qualified CLI commands.",
     "inputSchema": {
@@ -8649,12 +8649,12 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
-    "description": "Create a project from a template (always non-interactive). Select an authenticated installed projectContext; targetDir must match its root. Omitted targetDir uses <dir>/<slug>. If set is incomplete, the tool will return an error about required groups — or set defaults=true.",
+    "description": "Create a project from a template (always non-interactive). Select an authenticated installed projectContext; targetDir must match its root. Omitted targetDir uses \u003cdir\u003e/\u003cslug\u003e. If set is incomplete, the tool will return an error about required groups — or set defaults=true.",
     "inputSchema": {
       "properties": {
         "defaults": {
@@ -8955,10 +8955,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": false,
       "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": true
+      "openWorldHint": false
     },
     "description": "Read-only offline verification using an authenticated installed project context. No refresh, network or execution.",
     "inputSchema": {
@@ -9239,10 +9239,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "List of projects in the local registry (path, template, time, status).",
     "inputSchema": {
@@ -9481,10 +9481,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Add a git repository for templates (Helm-style). Token is NOT passed through the agent: private repositories must be authorized by a person in advance.",
     "inputSchema": {
@@ -9739,10 +9739,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "List of added template repositories (alias, URL, type, number of templates, update time).",
     "inputSchema": {
@@ -9981,10 +9981,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Remove a template repository from local state.",
     "inputSchema": {
@@ -10200,10 +10200,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "git fetch + reindexing all template repositories or one by alias.",
     "inputSchema": {
@@ -10447,10 +10447,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Prepare or execute an authenticated signed pure-Go project build with a persistent operator approval; no shell fallback.",
     "inputSchema": {
@@ -11145,10 +11145,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Prepare or execute a finite ordered authenticated readonly native command batch; ONE operation, complete signed approval vector, no shell or child-process widening.",
     "inputSchema": {
@@ -13162,10 +13162,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "Show current values of project settings (dir) as result/v1 settings.show.",
     "inputSchema": {
@@ -13733,10 +13733,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "Report of project (dir) drift from template (drift-score, file statuses, updateability classes) in data.report.",
     "inputSchema": {
@@ -13991,10 +13991,1050 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
+    },
+    "description": "Bounded deterministic task-oriented discovery from immutable descriptive metadata and observed project facts. Metadata, rankings and readiness are untrusted data, never installation or execution authority. No network, checkout or state writes. Captured observation does not hold a source lease through final SDK delivery.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "description": "Optional project directory for bounded read-only facts",
+          "type": "string"
+        },
+        "framework": {
+          "description": "Exact declared framework constraint",
+          "type": "string"
+        },
+        "labels": {
+          "description": "group=value AND constraints",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "language": {
+          "description": "Exact declared language constraint",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Result limit1..20; default5",
+          "maximum": 20,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "maxBytes": {
+          "description": "Whole serialized stdio response budget2048..32768 bytes; default16384 (CLI supports65536)",
+          "maximum": 32768,
+          "minimum": 2048,
+          "type": "integer"
+        },
+        "maxCandidates": {
+          "description": "Ranked candidate shortlist1..256; default64; calculation input bounded4096",
+          "maximum": 256,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "projectContext": {
+          "description": "Exact installed context key for admitted catalog discovery",
+          "type": "string"
+        },
+        "sourceInput": {
+          "description": "Optional original source-selection locator for installed admitted catalog records",
+          "type": "string"
+        },
+        "task": {
+          "description": "Natural task, up to4096 UTF8 bytes",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "task"
+      ],
+      "type": "object"
+    },
+    "name": "template_discover",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "description": "Bounded descriptive data only. Source pins and metadata do not grant authority. JSON Schema lengths count characters; the implementation separately enforces UTF8 byte bounds.",
+          "properties": {
+            "apiVersion": {
+              "const": "tplaiter.dev/template-discovery/v1",
+              "type": "string"
+            },
+            "budget": {
+              "additionalProperties": false,
+              "properties": {
+                "bytes": {
+                  "type": "integer"
+                },
+                "considered": {
+                  "type": "integer"
+                },
+                "emitted": {
+                  "type": "integer"
+                },
+                "maxBytes": {
+                  "type": "integer"
+                },
+                "maxCandidates": {
+                  "type": "integer"
+                },
+                "maxResults": {
+                  "type": "integer"
+                },
+                "truncated": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "maxCandidates",
+                "maxResults",
+                "maxBytes",
+                "considered",
+                "emitted",
+                "bytes",
+                "truncated"
+              ],
+              "type": "object"
+            },
+            "diagnostics": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "candidateID": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "field": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "candidateID",
+                  "field"
+                ],
+                "type": "object"
+              },
+              "maxItems": 32,
+              "type": "array"
+            },
+            "facts": {
+              "additionalProperties": false,
+              "properties": {
+                "evidence": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "sha256": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "sha256"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 3,
+                  "type": "array"
+                },
+                "frameworks": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 8,
+                  "type": "array"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "not-requested",
+                    "empty",
+                    "observed",
+                    "unavailable"
+                  ],
+                  "type": "string"
+                },
+                "template": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status",
+                "language",
+                "frameworks",
+                "template",
+                "evidence"
+              ],
+              "type": "object"
+            },
+            "qualification": {
+              "const": "descriptive-data-only",
+              "type": "string"
+            },
+            "suggestions": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "blocks": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "availability": {
+                          "enum": [
+                            "metadata-declared",
+                            "admitted-record",
+                            "unavailable"
+                          ],
+                          "type": "string"
+                        },
+                        "candidateKind": {
+                          "enum": [
+                            "template",
+                            "installable-block",
+                            "context",
+                            "documentation-recipe",
+                            "test-fixture",
+                            "skill",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        "declarationStatus": {
+                          "const": "metadata-declared",
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "catalogSource": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "contentSHA256": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "contractSHA256": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "domain": {
+                              "enum": [
+                                "block",
+                                "skill",
+                                "approach"
+                              ],
+                              "type": "string"
+                            },
+                            "exportID": {
+                              "type": "string"
+                            },
+                            "provider": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "catalogSource",
+                            "provider",
+                            "contractSHA256",
+                            "exportID",
+                            "domain",
+                            "contentSHA256"
+                          ],
+                          "type": [
+                            "null",
+                            "object"
+                          ]
+                        },
+                        "readiness": {
+                          "enum": [
+                            "ready",
+                            "experimental",
+                            "planned",
+                            "deprecated",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        "sourcePin": {
+                          "additionalProperties": false,
+                          "oneOf": [
+                            {
+                              "not": {
+                                "anyOf": [
+                                  {
+                                    "required": [
+                                      "sourceID"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "revision"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "contentSHA256"
+                                    ]
+                                  }
+                                ]
+                              },
+                              "properties": {
+                                "qualification": {
+                                  "const": "local-observed"
+                                }
+                              },
+                              "required": [
+                                "repo",
+                                "path",
+                                "commit",
+                                "manifestSHA256"
+                              ]
+                            },
+                            {
+                              "properties": {
+                                "qualification": {
+                                  "const": "owner-supplied"
+                                }
+                              },
+                              "required": [
+                                "sourceID",
+                                "revision",
+                                "contentSHA256"
+                              ]
+                            }
+                          ],
+                          "properties": {
+                            "commit": {
+                              "pattern": "^[0-9a-f]{40}$",
+                              "type": "string"
+                            },
+                            "contentSHA256": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "manifestSHA256": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "qualification": {
+                              "type": "string"
+                            },
+                            "repo": {
+                              "type": "string"
+                            },
+                            "revision": {
+                              "type": "string"
+                            },
+                            "sourceID": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "qualification"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourcePin",
+                        "candidateKind",
+                        "readiness",
+                        "declarationStatus",
+                        "availability",
+                        "provenance"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 32,
+                    "type": "array"
+                  },
+                  "candidateKind": {
+                    "enum": [
+                      "template",
+                      "installable-block",
+                      "context",
+                      "documentation-recipe",
+                      "test-fixture",
+                      "skill",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  "description": {
+                    "maxLength": 512,
+                    "type": "string"
+                  },
+                  "descriptionTruncated": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "metadataSHA256": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "nextToolCalls": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "arguments": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "commit": {
+                                  "pattern": "^[0-9a-f]{40}$",
+                                  "type": "string"
+                                },
+                                "manifestSHA256": {
+                                  "pattern": "^sha256:[0-9a-f]{64}$",
+                                  "type": "string"
+                                },
+                                "ref": {
+                                  "maxLength": 257,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "ref",
+                                "commit",
+                                "manifestSHA256"
+                              ],
+                              "type": "object"
+                            },
+                            "tool": {
+                              "const": "template_show"
+                            }
+                          },
+                          "required": [
+                            "tool",
+                            "arguments"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "arguments": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "dir": {
+                                  "maxLength": 4096,
+                                  "type": "string"
+                                },
+                                "expectedDigest": {
+                                  "pattern": "^sha256:[a-f0-9]{64}$",
+                                  "type": "string"
+                                },
+                                "limit": {
+                                  "const": 1
+                                },
+                                "maxBytes": {
+                                  "const": 4096
+                                },
+                                "projectContext": {
+                                  "maxLength": 256,
+                                  "type": "string"
+                                },
+                                "representation": {
+                                  "const": "page"
+                                },
+                                "selectors": {
+                                  "items": {
+                                    "maxLength": 512,
+                                    "type": "string"
+                                  },
+                                  "maxItems": 1,
+                                  "minItems": 1,
+                                  "type": "array"
+                                },
+                                "sourceInput": {
+                                  "maxLength": 4096,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "dir",
+                                "projectContext",
+                                "sourceInput",
+                                "expectedDigest",
+                                "selectors",
+                                "limit",
+                                "maxBytes",
+                                "representation"
+                              ],
+                              "type": "object"
+                            },
+                            "tool": {
+                              "const": "graph_exports"
+                            }
+                          },
+                          "required": [
+                            "tool",
+                            "arguments"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 4,
+                    "type": "array"
+                  },
+                  "readiness": {
+                    "enum": [
+                      "ready",
+                      "experimental",
+                      "planned",
+                      "deprecated",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  "reasons": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "token": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "token",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
+                  },
+                  "score": {
+                    "type": "integer"
+                  },
+                  "skills": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "availability": {
+                          "enum": [
+                            "metadata-declared",
+                            "admitted-record",
+                            "unavailable"
+                          ],
+                          "type": "string"
+                        },
+                        "candidateKind": {
+                          "enum": [
+                            "template",
+                            "installable-block",
+                            "context",
+                            "documentation-recipe",
+                            "test-fixture",
+                            "skill",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        "declarationStatus": {
+                          "const": "metadata-declared",
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "catalogSource": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "contentSHA256": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "contractSHA256": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "domain": {
+                              "enum": [
+                                "block",
+                                "skill",
+                                "approach"
+                              ],
+                              "type": "string"
+                            },
+                            "exportID": {
+                              "type": "string"
+                            },
+                            "provider": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "catalogSource",
+                            "provider",
+                            "contractSHA256",
+                            "exportID",
+                            "domain",
+                            "contentSHA256"
+                          ],
+                          "type": [
+                            "null",
+                            "object"
+                          ]
+                        },
+                        "readiness": {
+                          "enum": [
+                            "ready",
+                            "experimental",
+                            "planned",
+                            "deprecated",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        "sourcePin": {
+                          "additionalProperties": false,
+                          "oneOf": [
+                            {
+                              "not": {
+                                "anyOf": [
+                                  {
+                                    "required": [
+                                      "sourceID"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "revision"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "contentSHA256"
+                                    ]
+                                  }
+                                ]
+                              },
+                              "properties": {
+                                "qualification": {
+                                  "const": "local-observed"
+                                }
+                              },
+                              "required": [
+                                "repo",
+                                "path",
+                                "commit",
+                                "manifestSHA256"
+                              ]
+                            },
+                            {
+                              "properties": {
+                                "qualification": {
+                                  "const": "owner-supplied"
+                                }
+                              },
+                              "required": [
+                                "sourceID",
+                                "revision",
+                                "contentSHA256"
+                              ]
+                            }
+                          ],
+                          "properties": {
+                            "commit": {
+                              "pattern": "^[0-9a-f]{40}$",
+                              "type": "string"
+                            },
+                            "contentSHA256": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "manifestSHA256": {
+                              "pattern": "^sha256:[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "qualification": {
+                              "type": "string"
+                            },
+                            "repo": {
+                              "type": "string"
+                            },
+                            "revision": {
+                              "type": "string"
+                            },
+                            "sourceID": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "qualification"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourcePin",
+                        "candidateKind",
+                        "readiness",
+                        "declarationStatus",
+                        "availability",
+                        "provenance"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 32,
+                    "type": "array"
+                  },
+                  "sourcePin": {
+                    "additionalProperties": false,
+                    "oneOf": [
+                      {
+                        "not": {
+                          "anyOf": [
+                            {
+                              "required": [
+                                "sourceID"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "revision"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "contentSHA256"
+                              ]
+                            }
+                          ]
+                        },
+                        "properties": {
+                          "qualification": {
+                            "const": "local-observed"
+                          }
+                        },
+                        "required": [
+                          "repo",
+                          "path",
+                          "commit",
+                          "manifestSHA256"
+                        ]
+                      },
+                      {
+                        "properties": {
+                          "qualification": {
+                            "const": "owner-supplied"
+                          }
+                        },
+                        "required": [
+                          "sourceID",
+                          "revision",
+                          "contentSHA256"
+                        ]
+                      }
+                    ],
+                    "properties": {
+                      "commit": {
+                        "pattern": "^[0-9a-f]{40}$",
+                        "type": "string"
+                      },
+                      "contentSHA256": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "manifestSHA256": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "qualification": {
+                        "type": "string"
+                      },
+                      "repo": {
+                        "type": "string"
+                      },
+                      "revision": {
+                        "type": "string"
+                      },
+                      "sourceID": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "qualification"
+                    ],
+                    "type": "object"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "metadataSHA256",
+                  "sourcePin",
+                  "name",
+                  "description",
+                  "descriptionTruncated",
+                  "version",
+                  "candidateKind",
+                  "readiness",
+                  "score",
+                  "reasons",
+                  "blocks",
+                  "skills",
+                  "nextToolCalls"
+                ],
+                "type": "object"
+              },
+              "maxItems": 20,
+              "type": "array"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "qualification",
+            "facts",
+            "suggestions",
+            "diagnostics",
+            "budget"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "TemplateDiscover"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "template.discover"
+        },
+        "project": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
     },
     "description": "Catalog of templates from added repositories with filters.",
     "inputSchema": {
@@ -14258,14 +15298,22 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "Metadata, settings groups, commands, and documentation of template by reference (repo/name@version or short name).",
     "inputSchema": {
       "properties": {
+        "commit": {
+          "description": "Optional exact local Git commit; requires manifestSHA256; no checkout or fetch",
+          "type": "string"
+        },
+        "manifestSHA256": {
+          "description": "Expected raw manifest SHA256; requires commit",
+          "type": "string"
+        },
         "ref": {
           "description": "Template reference: repo/name@version or short name",
           "type": "string"
@@ -14554,10 +15602,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
     "description": "Check and return the pinned trust-profile binding (result/v1 trust.inspect; the binding is in data.binding).",
     "inputSchema": {
@@ -14767,10 +15815,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Update the authenticated native project to its signed pinned target. Conflicting plans preserve project and registry. operation is update.check with check=true, update.plan with dryRun=true, otherwise update.apply.",
     "inputSchema": {
@@ -15141,10 +16189,10 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Add an independently signed native service under the finite installed workspace and service contexts; atomically register go.work and the project registry.",
     "inputSchema": {
@@ -15164,7 +16212,7 @@
           "type": "boolean"
         },
         "module": {
-          "description": "Go module of service; default <workspace module>/services/<slug>",
+          "description": "Go module of service; default \u003cworkspace module\u003e/services/\u003cslug\u003e",
           "type": "string"
         },
         "name": {
@@ -15190,7 +16238,7 @@
           "type": "string"
         },
         "serviceContext": {
-          "description": "Authenticated installed service context at services/<slug>",
+          "description": "Authenticated installed service context at services/\u003cslug\u003e",
           "type": "string"
         },
         "set": {

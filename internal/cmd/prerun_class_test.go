@@ -13,6 +13,27 @@ import (
 // A work package that adds a readonly, trust-owned or legacy-action command
 // adds its row here together with the annotation in its own file.
 var wantPrerunClass = map[string]prerunClass{
+	"tplaiter adopt":                    prerunTrustOwned,
+	"tplaiter adopt abort":              prerunTrustOwned,
+	"tplaiter adopt continue":           prerunTrustOwned,
+	"tplaiter context preview-catalog":  prerunReadonly,
+	"tplaiter context preview-resource": prerunReadonly,
+	"tplaiter context select":           prerunReadonly,
+	"tplaiter deps graph":               prerunTrustOwned,
+	"tplaiter graph":                    prerunReadonly,
+	"tplaiter graph ast":                prerunTrustOwned,
+	"tplaiter graph exports":            prerunTrustOwned,
+	"tplaiter graph source":             prerunTrustOwned,
+	"tplaiter graph stats":              prerunTrustOwned,
+	"tplaiter link":                     prerunTrustOwned,
+	"tplaiter link abort":               prerunTrustOwned,
+	"tplaiter link continue":            prerunTrustOwned,
+	"tplaiter new abort":                prerunTrustOwned,
+	"tplaiter new continue":             prerunTrustOwned,
+	"tplaiter semantic":                 prerunReadonly,
+	"tplaiter semantic preview":         prerunTrustOwned,
+
+	"tplaiter template discover":     prerunReadonly,
 	"tplaiter context":               prerunReadonly,
 	"tplaiter context continue":      prerunReadonly,
 	"tplaiter context discover":      prerunReadonly,
@@ -159,7 +180,7 @@ func TestPreRunClassificationMatchesLegacySwitch(t *testing.T) {
 				want = "skip" // Context owns authenticated read-only composition.
 			}
 			switch c.CommandPath() {
-			case "tplaiter diff", "tplaiter workspace abort", "tplaiter workspace add-service", "tplaiter workspace continue":
+			case "tplaiter adopt", "tplaiter adopt abort", "tplaiter adopt continue", "tplaiter deps graph", "tplaiter graph", "tplaiter graph ast", "tplaiter graph exports", "tplaiter graph source", "tplaiter graph stats", "tplaiter link", "tplaiter link abort", "tplaiter link continue", "tplaiter new abort", "tplaiter new continue", "tplaiter semantic", "tplaiter semantic preview", "tplaiter template discover", "tplaiter diff", "tplaiter workspace abort", "tplaiter workspace add-service", "tplaiter workspace continue":
 				if want != "hooks" {
 					t.Errorf("%q: historical baseline=%s, want hooks", c.CommandPath(), want)
 				}

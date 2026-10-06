@@ -41,6 +41,7 @@ func newTemplateCmd() *cobra.Command {
 	}
 	c.AddCommand(
 		newTemplateListCmd(),
+		newTemplateDiscoverCmd(),
 		newTemplateShowCmd(),
 		newTemplatePullCmd(),
 	)
@@ -211,7 +212,8 @@ func reportEmptyTemplateList(out io.Writer, mgr *repo.Manager) error {
 }
 
 func newTemplateShowCmd() *cobra.Command {
-	return withResult(&cobra.Command{
+	var commit, manifestSHA string
+	c := withResult(&cobra.Command{
 		Use:   "show <ref>",
 		Short: "Template metadata, settings tree, and documentation",
 		Long: "Resolves reference <ref> (full `repo/name@version` or short `name`), " +
@@ -219,7 +221,16 @@ func newTemplateShowCmd() *cobra.Command {
 			"command list (`commands`), and docs file rendering (glamour with color output, " +
 			"otherwise as-is).",
 		Args: cobra.ExactArgs(1),
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if commit != "" || manifestSHA != "" {
+				return nil
+			}
+			return rootPreRun(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if commit != "" || manifestSHA != "" {
+				return runPinnedTemplateShow(cmd, args[0], commit, manifestSHA)
+			}
 			mgr, st, err := newManager(cmd)
 			if err != nil {
 				return err
@@ -229,6 +240,9 @@ func newTemplateShowCmd() *cobra.Command {
 			return runTemplateShow(cmd, mgr, args[0])
 		},
 	}, resultdto.OperationTemplateShow)
+	c.Flags().StringVar(&commit, "commit", "", "Exact local Git commit; requires --manifest-sha256 and avoids checkout")
+	c.Flags().StringVar(&manifestSHA, "manifest-sha256", "", "Expected raw manifest sha256 digest; requires --commit")
+	return c
 }
 
 func runTemplateShow(cmd *cobra.Command, mgr *repo.Manager, ref string) error {

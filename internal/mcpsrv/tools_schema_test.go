@@ -18,6 +18,7 @@ import (
 // A tool added without an entry fails TestEveryToolHasOutputSchema.
 var toolOperations = map[string][]resultdto.Operation{
 	"context":               {resultdto.OperationContextQuery},
+	"semantic_preview":      {resultdto.OperationSemanticPreview},
 	"project_link":          {resultdto.OperationProjectLink, resultdto.OperationProjectAdopt},
 	"graph_source":          {resultdto.OperationGraphSource},
 	"dependency_graph":      {resultdto.OperationGraphSource},
@@ -34,6 +35,7 @@ var toolOperations = map[string][]resultdto.Operation{
 	"repo_update":           {resultdto.OperationRepoUpdate},
 	"repo_remove":           {resultdto.OperationRepoRemove},
 	"template_list":         {resultdto.OperationTemplateList},
+	"template_discover":     {resultdto.OperationTemplateDiscover},
 	"template_show":         {resultdto.OperationTemplateShow},
 	"project_new":           {resultdto.OperationProjectNew},
 	"run":                   {resultdto.OperationProjectRun},
@@ -168,7 +170,7 @@ func TestCompactSummaryIsBounded(t *testing.T) {
 
 func TestLocalPreviewKeepsAllNativeOutputSchemas(t *testing.T) {
 	s := New("/nonexistent", "test", nil)
-	if len(s.MCP().ListTools()) != 30 {
+	if len(s.MCP().ListTools()) != 38 {
 		t.Fatal("native tool inventory")
 	}
 	for name, tool := range s.MCP().ListTools() {
@@ -192,8 +194,8 @@ func TestRunActionCompiledMetadataGolden(t *testing.T) {
 	if err := json.Unmarshal(raw, &golden); err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 37 || len(golden) != 37 {
-		t.Fatalf("expected original36 + semantic descriptor, got %d/%d", len(tools), len(golden))
+	if len(tools) != 38 || len(golden) != 38 {
+		t.Fatalf("expected original36 + semantic descriptor + template discovery, got %d/%d", len(tools), len(golden))
 	}
 	seen := make(map[string]bool)
 	for _, want := range golden {

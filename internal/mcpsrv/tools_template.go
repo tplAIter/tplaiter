@@ -17,10 +17,13 @@ type templateListArgs struct {
 }
 
 type templateShowArgs struct {
-	Ref string `json:"ref"`
+	Ref            string `json:"ref"`
+	Commit         string `json:"commit"`
+	ManifestSHA256 string `json:"manifestSHA256"`
 }
 
 func (s *Server) addTemplateTools() {
+	s.addTemplateDiscoverTool()
 	s.mcp.AddTool(mcp.NewTool(
 		"template_list",
 		mcp.WithDescription("Catalog of templates from added repositories with filters."),
@@ -38,9 +41,11 @@ func (s *Server) addTemplateTools() {
 		"template_show",
 		mcp.WithDescription("Metadata, settings groups, commands, and documentation of template by reference (repo/name@version or short name)."),
 		mcp.WithString("ref", mcp.Required(), mcp.Description("Template reference: repo/name@version or short name")),
+		mcp.WithString("commit", mcp.Description("Optional exact local Git commit; requires manifestSHA256; no checkout or fetch")),
+		mcp.WithString("manifestSHA256", mcp.Description("Expected raw manifest SHA256; requires commit")),
 		mcp.WithReadOnlyHintAnnotation(true),
 		outputSchema(resultdto.OperationTemplateShow),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a templateShowArgs) (*mcp.CallToolResult, error) {
-		return s.callStructured(ctx, resultdto.OperationTemplateShow, "", argvTemplateShow(a.Ref), shortCall), nil
+		return s.callStructured(ctx, resultdto.OperationTemplateShow, "", argvTemplateShowPinned(a.Ref, a.Commit, a.ManifestSHA256), shortCall), nil
 	}))
 }
