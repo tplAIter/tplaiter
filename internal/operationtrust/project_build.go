@@ -415,6 +415,20 @@ func ValidateProjectBuildDeclaration(snapshot *trustverify.SourceSnapshot, tpl *
 	if _, err := requireNativeContract(snapshot.ContractBytes(), raw); err != nil {
 		return ErrProjectBuild
 	}
+	return ValidateBoundProjectBuildContent(snapshot, tpl)
+}
+
+// ValidateBoundProjectBuildContent checks only retained source content and the
+// exact parsed manifest. Native contract admission remains the caller's separate
+// versioned gate; this function provides no runtime or execution capability.
+func ValidateBoundProjectBuildContent(snapshot *trustverify.SourceSnapshot, tpl *manifest.Template) error {
+	if snapshot == nil || tpl == nil {
+		return ErrProjectBuild
+	}
+	raw, ok := snapshot.Blob("template.manifest.yaml")
+	if !ok {
+		return ErrProjectBuild
+	}
 	bound, err := manifest.ParseTemplate(raw)
 	if err != nil || !reflect.DeepEqual(bound, tpl) {
 		return ErrProjectBuild

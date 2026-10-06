@@ -31,8 +31,16 @@ func (f nativeObjectFixture) ReadObject(_ context.Context, _ trustverify.SourceO
 
 func nativeSnapshotFixture(t *testing.T, extra string, files map[string][]byte, executable bool, modes ...string) (*trustverify.SourceSnapshot, error) {
 	t.Helper()
+	return nativeSnapshotContractFixture(t, extra, files, executable, nil, modes...)
+}
+
+func nativeSnapshotContractFixture(t *testing.T, extra string, files map[string][]byte, executable bool, change func([]byte) []byte, modes ...string) (*trustverify.SourceSnapshot, error) {
+	t.Helper()
 	rawManifest := []byte("apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata:\n  name: inert\n  version: 1.0.0\n  description: inert fixture\nengine:\n  type: gotemplate\n  root: files\n" + extra)
 	contract := []byte(`{"apiVersion":"tplaiter.dev/native-template-contract/v1","kind":"NativeTemplate","manifestPath":"template.manifest.yaml","manifestSHA256":"` + evidencecas.Digest(rawManifest) + `","dependencies":[]}`)
+	if change != nil {
+		contract = change(contract)
+	}
 	blobs := map[string][]byte{"template.manifest.yaml": rawManifest, "template.contract.json": contract, "files/output.txt": []byte("rendered")}
 	for p, b := range files {
 		blobs[p] = b
@@ -231,6 +239,16 @@ func TestNativeGeneratorImageBoundsModesAndCollisions(t *testing.T) {
 			if ValidateNativeGenerators(snapshot) == nil {
 				t.Fatal("unsafe image accepted")
 			}
+			v2, err := nativeSnapshotContractFixture(t, extra, files, executable, func(raw []byte) []byte {
+				return []byte(strings.Replace(string(raw), "native-template-contract/v1", "native-template-contract/v2", 1))
+			}, modesForCounter(mode)...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ValidateNativeGeneratorsV2(v2) == nil {
+				t.Fatal("unsafe v2 image accepted")
+			}
+
 		})
 	}
 	if ValidateNativeGenerators(nil) == nil {
@@ -327,6 +345,19 @@ func TestNativeGeneratorProjectBuildAdmission(t *testing.T) {
 			} else if e == nil {
 				t.Fatal("unsafe declaration admitted")
 			}
+
+			v2, e := nativeSnapshotContractFixture(t, extra, files, false, func(raw []byte) []byte {
+				return []byte(strings.Replace(string(raw), "native-template-contract/v1", "native-template-contract/v2", 1))
+			})
+			if e != nil {
+				t.Fatal(e)
+			}
+			if e := ValidateNativeGeneratorsV2(v2); (e == nil) != allowed {
+				t.Fatalf("v2 complete build content: %v", e)
+			}
+			if ValidateNativeGenerators(v2) == nil {
+				t.Fatal("v1 contract gate changed")
+			}
 		})
 	}
 }
@@ -343,4 +374,66 @@ func TestNativeGeneratorBuildCannotUseForeignManifest(t *testing.T) {
 	if operationtrust.ValidateProjectBuildDeclaration(snapshot, foreign) == nil {
 		t.Fatal("foreign caller manifest admitted")
 	}
+}
+
+func TestNativeGeneratorsV2StrictContentGate(t *testing.T) {
+	v2 := func(raw []byte) []byte {
+		return []byte(strings.Replace(string(raw), "native-template-contract/v1", "native-template-contract/v2", 1))
+	}
+	for _, tc := range []struct {
+		name       string
+		extra      string
+		files      map[string][]byte
+		executable bool
+		change     func([]byte) []byte
+		valid      bool
+	}{
+		{"inert exact image", singleNativeDeclaration("generators/one.tmpl"), map[string][]byte{"generators/one.tmpl": []byte("{{ retain exactly }}\n")}, false, v2, true},
+		{"missing image", singleNativeDeclaration("generators/missing.tmpl"), nil, false, v2, false},
+		{"executable image", singleNativeDeclaration("generators/one.tmpl"), map[string][]byte{"generators/one.tmpl": []byte("inert")}, true, v2, false},
+		{"unadmitted build", "commands:\n  - name: build\n    run: echo forbidden\n", nil, false, v2, false},
+		{"manifest drift", "", nil, false, func(raw []byte) []byte { return []byte(strings.Replace(string(v2(raw)), "sha256:", "sha256:0", 1)) }, false},
+		{"unknown field", "", nil, false, func(raw []byte) []byte { b := v2(raw); return append(b[:len(b)-1], []byte(`,"trusted":true}`)...) }, false},
+		{"missing dependencies", "", nil, false, func(raw []byte) []byte { return []byte(strings.Replace(string(v2(raw)), `,"dependencies":[]`, "", 1)) }, false},
+		{"null dependencies", "", nil, false, func(raw []byte) []byte {
+			return []byte(strings.Replace(string(v2(raw)), `"dependencies":[]`, `"dependencies":null`, 1))
+		}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snapshot, err := nativeSnapshotContractFixture(t, tc.extra, tc.files, tc.executable, tc.change)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ValidateNativeGeneratorsV2(snapshot); (err == nil) != tc.valid {
+				t.Fatalf("v2 gate: %v", err)
+			}
+			if ValidateNativeGenerators(snapshot) == nil {
+				t.Fatal("v1 gate accepted v2")
+			}
+			if tc.valid {
+				raw, _ := snapshot.Blob("template.manifest.yaml")
+				tpl, err := manifest.ParseTemplate(raw)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if operationtrust.ValidateBoundProjectBuildContent(snapshot, tpl) != nil {
+					t.Fatal("bound content refused")
+				}
+				if operationtrust.ValidateProjectBuildDeclaration(snapshot, tpl) == nil {
+					t.Fatal("v1 build gate weakened")
+				}
+				tpl.Metadata.Description = "caller substitution"
+				if operationtrust.ValidateBoundProjectBuildContent(snapshot, tpl) == nil {
+					t.Fatal("unbound template accepted")
+				}
+			}
+		})
+	}
+}
+
+func modesForCounter(mode string) []string {
+	if mode == "" {
+		return nil
+	}
+	return []string{mode}
 }

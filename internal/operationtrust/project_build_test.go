@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 	"os"
@@ -92,5 +93,21 @@ func TestProjectBuildMaterialGuardLossRefuses(t *testing.T) {
 	}
 	if _, _, e := m.ProjectBuildFor(nil, nil, trustverify.ExecutionRequest{}); e != ErrProjectBuild {
 		t.Fatalf("nil guard not typed refused: %v", e)
+	}
+}
+
+func TestBoundProjectBuildContentHasNoAdmissionCapability(t *testing.T) {
+	for _, tpl := range []*manifest.Template{nil, {}} {
+		if err := ValidateBoundProjectBuildContent(nil, tpl); err != ErrProjectBuild {
+			t.Fatalf("absent retained source: %v", err)
+		}
+		if err := ValidateProjectBuildDeclaration(nil, tpl); err != ErrProjectBuild {
+			t.Fatalf("v1 guard: %v", err)
+		}
+	}
+	// The pure extraction cannot create material or bypass a runtime owner.
+	m := &ExecutionMaterial{}
+	if _, _, err := m.ProjectBuildFor(context.Background(), &trustload.Runtime{}, trustverify.ExecutionRequest{}); err == nil {
+		t.Fatal("pure content gate enabled execution")
 	}
 }

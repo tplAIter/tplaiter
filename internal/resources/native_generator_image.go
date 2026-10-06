@@ -15,6 +15,7 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
@@ -111,7 +112,30 @@ func nativeGeneratorFiles(snapshot *trustverify.SourceSnapshot) (map[string][]by
 	if err != nil {
 		return nil, err
 	}
-	manifestRaw, err = fs.ReadFile(src, contract.ManifestPath)
+	return nativeGeneratorContent(snapshot, src, contract.ManifestPath)
+}
+
+// ValidateNativeGeneratorsV2 validates retained v2 source declarations without
+// conferring source admission, a runtime capability or execution permission.
+func ValidateNativeGeneratorsV2(snapshot *trustverify.SourceSnapshot) error {
+	src, err := retainSnapshot(snapshot)
+	if err != nil {
+		return err
+	}
+	raw, err := fs.ReadFile(src, "template.manifest.yaml")
+	if err != nil || len(raw) > maxNativeResourceBytes {
+		return operationtrust.ErrSourceAdapterUnsupported
+	}
+	contract, err := contextsource.DecodeNativeContextContractV2(snapshot.ContractBytes(), raw)
+	if err != nil {
+		return err
+	}
+	_, err = nativeGeneratorContent(snapshot, src, contract.ManifestPath)
+	return err
+}
+
+func nativeGeneratorContent(snapshot *trustverify.SourceSnapshot, src retainedSnapshotFS, manifestPath string) (map[string][]byte, error) {
+	manifestRaw, err := fs.ReadFile(src, manifestPath)
 	if err != nil {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
@@ -122,7 +146,7 @@ func nativeGeneratorFiles(snapshot *trustverify.SourceSnapshot) (map[string][]by
 	if err != nil || tpl.Validate() != nil {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
-	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || operationtrust.ValidateProjectBuildDeclaration(snapshot, tpl) != nil || tpl.AIConfig.Path != "" {
+	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || operationtrust.ValidateBoundProjectBuildContent(snapshot, tpl) != nil || tpl.AIConfig.Path != "" {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
 	refs := make(map[string]string)
