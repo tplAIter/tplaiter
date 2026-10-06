@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplaiter.dev/schema/graph-query.v1.schema.json",
+  "title": "Graph query calculation input; sourceInput is untrusted source-selection bytes",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "layer"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/graph-query/v1"
+    },
+    "layer": {
+      "enum": [
+        "source",
+        "exports",
+        "ast",
+        "stats"
+      ]
+    },
+    "sourceInput": {
+      "type": "string",
+      "contentEncoding": "base64",
+      "maxLength": 2796204
+    },
+    "selections": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "apiVersion",
+          "selector",
+          "bindings"
+        ],
+        "properties": {
+          "apiVersion": {
+            "const": "tplaiter.dev/export-selection/v1"
+          },
+          "selector": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "bindings": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "value"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                "value": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "expectedDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "cursor": {
+      "type": "string",
+      "maxLength": 1024
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 256,
+      "default": 64
+    },
+    "maxBytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 32768,
+      "default": 16384
+    },
+    "representation": {
+      "enum": [
+        "whole",
+        "page"
+      ],
+      "default": "page"
+    },
+    "cache": {
+      "enum": [
+        "read",
+        "off",
+        "refresh"
+      ],
+      "default": "read"
+    }
+  }
+}

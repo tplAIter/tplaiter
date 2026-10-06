@@ -34,6 +34,7 @@ var toolRegistrars = []func(*Server){
 	(*Server).addWorkspaceTools,
 	(*Server).addTemplateAuthorTools,
 	(*Server).addMiscTools,
+	(*Server).addGraphTools,
 }
 
 // registerTools registers every tool domain listed in toolRegistrars.

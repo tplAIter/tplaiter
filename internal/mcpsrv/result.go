@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
+	"github.com/tplAIter/tplaiter/internal/resultwire"
 )
 
 // maxSummaryLines bounds the compact text summary that accompanies every
@@ -128,42 +127,9 @@ func (s *Server) contractFailure(op resultdto.Operation, res execx.Result, runEr
 // summary. Content that fails canonical encoding is a server bug and is
 // reported as a plain tool error.
 func structuredResult(env resultdto.Result, isError bool) *mcp.CallToolResult {
-	raw, err := resultdto.MarshalCanonical(env)
-	if err != nil {
-		return mcp.NewToolResultError("MCP_CONTRACT_INVALID")
-	}
-	var structured map[string]any
-	if err := json.Unmarshal(raw, &structured); err != nil {
-		return mcp.NewToolResultError("MCP_CONTRACT_INVALID")
-	}
-	out := mcp.NewToolResultStructured(structured, compactSummary(env))
-	out.IsError = isError
-	return out
+	return resultwire.Structured(env, isError)
 }
-
-// compactSummary renders at most maxSummaryLines lines: the outcome, the
-// counters, and the diagnostic codes. The full envelope is always in the
-// structured content.
-func compactSummary(env resultdto.Result) string {
-	lines := []string{string(env.Operation) + ": " + string(env.Status)}
-	if env.Project != nil {
-		lines = append(lines, "project: "+env.Project.Root)
-	}
-	if n := len(env.Changes); n > 0 || env.Summary.FilesChanged > 0 || env.Summary.Conflicts > 0 {
-		lines = append(lines, "changes: "+strconv.Itoa(n)+", files changed: "+strconv.Itoa(env.Summary.FilesChanged)+", conflicts: "+strconv.Itoa(env.Summary.Conflicts))
-	}
-	for i, d := range env.Diagnostics {
-		if len(lines) >= maxSummaryLines-2 {
-			lines = append(lines, "… "+strconv.Itoa(len(env.Diagnostics)-i)+" more diagnostic(s)")
-			break
-		}
-		lines = append(lines, d.Severity+" "+d.Code+": "+d.Message)
-	}
-	if len(env.Data) > 0 && len(lines) < maxSummaryLines {
-		lines = append(lines, "data: see structured content")
-	}
-	return strings.Join(lines, "\n")
-}
+func compactSummary(env resultdto.Result) string { return resultwire.Summary(env) }
 
 // outputSchema returns the tool option declaring the result/v1 outputSchema
 // of op. The schema is generated from the resultdto registry and the Go

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tplaiter.dev/schema/graph-cache.v1.schema.json",
+  "title": "Derived bounded syntax cache",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "cacheKey",
+    "analyzerVersion",
+    "optionsDigest",
+    "inputManifestDigest",
+    "graphDigest",
+    "files",
+    "graphBytes",
+    "nodeCount",
+    "edgeCount",
+    "diagnosticCount",
+    "graph"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/graph-cache/v1"
+    },
+    "cacheKey": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "analyzerVersion": {
+      "const": "tplaiter/ast-files/v1"
+    },
+    "optionsDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "inputManifestDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "graphDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "files": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "hash",
+          "mode",
+          "bytes"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "mode": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 511
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1048576
+          }
+        }
+      }
+    },
+    "graphBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8388608
+    },
+    "nodeCount": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8192
+    },
+    "edgeCount": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 32768
+    },
+    "diagnosticCount": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1024
+    },
+    "graph": {
+      "type": "object",
+      "description": "Existing tplaiter.dev/graph/v2 document, validated by graphdoc.Verify; no authority is cached."
+    }
+  }
+}

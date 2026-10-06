@@ -1,11 +1,16 @@
 ai_gen
 context
+dependency_graph
 deps_verify
 doctor
 env_setup
 gen
 gen_batch
 gen_list
+graph_ast
+graph_exports
+graph_source
+graph_stats
 init_template
 lint_template
 project_check

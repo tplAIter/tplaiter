@@ -201,6 +201,82 @@
       "if": {
         "properties": {
           "operation": {
+            "const": "graph.ast"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ASTGraph"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "graph.exports"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ExportGraph"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "graph.source"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "SourceGraph"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "graph.stats"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "GraphStats"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
             "const": "new.abort"
           }
         },
@@ -1017,13 +1093,16 @@
     "kind": {
       "enum": [
         "AIGen",
+        "ASTGraph",
         "ContextQuery",
         "DepsVerify",
         "DoctorCheck",
         "EnvSetup",
+        "ExportGraph",
         "GenBatch",
         "GenList",
         "GenRun",
+        "GraphStats",
         "NewAbort",
         "NewContinue",
         "NewStatus",
@@ -1045,6 +1124,7 @@
         "SettingsReanswer",
         "SettingsSet",
         "SettingsShow",
+        "SourceGraph",
         "TemplateInit",
         "TemplateLint",
         "TemplateList",
@@ -1086,6 +1166,10 @@
         "gen.batch",
         "gen.list",
         "gen.run",
+        "graph.ast",
+        "graph.exports",
+        "graph.source",
+        "graph.stats",
         "new.abort",
         "new.continue",
         "new.status",

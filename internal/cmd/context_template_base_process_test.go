@@ -824,6 +824,13 @@ func TestTemplateBaseRootV2Other29Descriptors(t *testing.T) {
 	s := mcpsrv.New("/nonexistent", "test", nil)
 	tools := s.MCP().ListTools()
 	other := map[string]json.RawMessage{}
+	// Preserve the original30 inventory; additions are separately accepted domain tools.
+	for _, name := range []string{"graph_source", "dependency_graph", "graph_exports", "graph_ast", "graph_stats"} {
+		if tools[name] == nil {
+			t.Fatal("missing registered graph domain")
+		}
+		delete(tools, name)
+	}
 	for name, v := range tools {
 		if name != "context" {
 			other[name] = rootB2JSON(t, v.Tool)

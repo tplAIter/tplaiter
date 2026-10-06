@@ -43,6 +43,7 @@ type Server struct {
 	closeErr   error
 	children   sync.WaitGroup
 	rootFrames *rootFrames
+	graph      *graphTransport
 }
 
 // New constructs the tplaiter MCP server and registers all tools and resources.
@@ -70,6 +71,7 @@ func New(exe, version string, runner execx.Runner) *Server {
 	s.registerTools()
 	s.registerResources()
 	s.rootFrames = s.installRootFrames()
+	s.installGraphHooks()
 	return s
 }
 
@@ -107,9 +109,17 @@ func (s *Server) ServeStdio() error {
 		return errTransportUnavailable
 	}
 	defer closeOutput()
+	rootWriter := &rootResponseWriter{frames: s.rootFrames, server: s, out: output}
+	graph := newGraphTransport(ctx, s, &rootCancellationReader{in: os.Stdin, frames: s.rootFrames}, rootWriter, output)
+	graph.stopStdio = cancel
+	s.mu.Lock()
+	s.graph = graph
+	s.mu.Unlock()
+	defer graph.close()
 	stdio := server.NewStdioServer(s.mcp)
+	stdio.SetContextFunc(graph.bindSession)
 	stdio.SetErrorLogger(errLog)
-	serveErr := stdio.Listen(ctx, &rootCancellationReader{in: os.Stdin, frames: s.rootFrames}, &rootResponseWriter{frames: s.rootFrames, server: s, out: output})
+	serveErr := stdio.Listen(ctx, graph, graph)
 	s.rootFrames.close()
 	closeErr := s.Close()
 	if serveErr != nil || closeErr != nil {
@@ -132,7 +142,11 @@ func (s *Server) Close() error {
 		return s.closeErr
 	}
 	s.closed = true
+	graph := s.graph
 	s.mu.Unlock()
+	if graph != nil {
+		graph.close()
+	}
 	s.rootFrames.close()
 	s.children.Wait()
 	var err error

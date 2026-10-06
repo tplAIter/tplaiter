@@ -274,12 +274,12 @@
   },
   {
     "annotations": {
+      "readOnlyHint": true,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": true
+      "openWorldHint": true
     },
-    "description": "Read installed signed context with bounded local byte plans. Model window stays unknown. Local preview-catalog/preview-resource return explicitly untrusted observed data; signed actions discover/search/get/continue/plan; pull schema on demand.",
+    "description": "Read installed signed context with bounded local byte plans. Model window stays unknown. Local preview-catalog/preview-resource return explicitly untrusted observed data; authenticated ROOT select returns complete task context; signed actions discover/search/get/continue/plan; pull schema on demand.",
     "inputSchema": {
       "properties": {
         "action": {
@@ -291,7 +291,8 @@
             "plan",
             "schema",
             "preview-catalog",
-            "preview-resource"
+            "preview-resource",
+            "select"
           ],
           "type": "string"
         },
@@ -310,6 +311,11 @@
         },
         "request": {
           "description": "Typed selectors/byte bounds; action=schema gives full contract",
+          "properties": {},
+          "type": "object"
+        },
+        "rootSelection": {
+          "description": "Authenticated installed ROOT selectors, expected snapshot and complete byte bounds; exclusive with request/preview",
           "properties": {},
           "type": "object"
         }
@@ -518,58 +524,65 @@
   },
   {
     "annotations": {
-      "destructiveHint": false,
+      "readOnlyHint": true,
+      "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": false,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
-    "description": "Link/adopt signed state only; preserves user files. Conflicts require explicit ownership path=track or path=user-owned. User-owned adoption preserves full signed baseline lineage and excludes those paths from Update writes. Cold recovery uses qualified CLI commands.",
+    "description": "Captured source graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
     "inputSchema": {
       "properties": {
-        "action": {
+        "cache": {
           "enum": [
-            "link",
-            "adopt"
+            "read",
+            "off",
+            "refresh"
           ],
           "type": "string"
         },
+        "cursor": {
+          "type": "string"
+        },
         "dir": {
+          "description": "Installed project root locator",
           "type": "string"
         },
-        "dryRun": {
-          "default": false,
-          "type": "boolean"
-        },
-        "module": {
+        "expectedDigest": {
           "type": "string"
         },
-        "name": {
-          "type": "string"
+        "limit": {
+          "type": "number"
         },
-        "ownership": {
-          "properties": {},
-          "type": "object"
+        "maxBytes": {
+          "type": "number"
         },
         "projectContext": {
           "type": "string"
         },
-        "ref": {
+        "representation": {
+          "enum": [
+            "page",
+            "whole"
+          ],
           "type": "string"
         },
+        "selectors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "sourceInput": {
+          "description": "Operator-enrolled source-selection file locator",
           "type": "string"
         }
       },
       "required": [
-        "action",
-        "dir",
-        "ref",
-        "name",
-        "sourceInput"
+        "dir"
       ],
       "type": "object"
     },
-    "name": "project_link",
+    "name": "dependency_graph",
     "outputSchema": {
       "$defs": {
         "project": {
@@ -588,76 +601,6 @@
           "type": "object"
         }
       },
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "operation": {
-                "const": "project.link"
-              }
-            },
-            "required": [
-              "operation"
-            ]
-          },
-          "then": {
-            "properties": {
-              "kind": {
-                "const": "ProjectLink"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "operation": {
-                "const": "project.adopt"
-              }
-            },
-            "required": [
-              "operation"
-            ]
-          },
-          "then": {
-            "properties": {
-              "kind": {
-                "const": "ProjectAdopt"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "operation": {
-                "enum": [
-                  "project.link",
-                  "project.adopt"
-                ]
-              },
-              "status": {
-                "enum": [
-                  "ok",
-                  "changes",
-                  "conflicted"
-                ]
-              }
-            },
-            "required": [
-              "operation",
-              "status"
-            ]
-          },
-          "then": {
-            "properties": {
-              "project": {
-                "$ref": "#/$defs/project"
-              }
-            }
-          }
-        }
-      ],
       "properties": {
         "apiVersion": {
           "const": "tplaiter.dev/result/v1"
@@ -711,13 +654,19 @@
         "data": {
           "additionalProperties": false,
           "properties": {
-            "action": {
+            "apiVersion": {
               "type": "string"
             },
-            "dryRun": {
-              "type": "boolean"
+            "cacheState": {
+              "type": "string"
             },
-            "excludedPaths": {
+            "fullGraphDigest": {
+              "type": "string"
+            },
+            "graphStatus": {
+              "type": "string"
+            },
+            "inputDigests": {
               "items": {
                 "type": "string"
               },
@@ -726,53 +675,540 @@
                 "array"
               ]
             },
-            "ownershipChoices": {
-              "items": {
-                "additionalProperties": false,
-                "properties": {
-                  "choice": {
-                    "type": "string"
-                  },
-                  "path": {
-                    "type": "string"
-                  },
-                  "state": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "path",
-                  "state",
-                  "choice"
-                ],
-                "type": "object"
-              },
-              "type": [
-                "null",
-                "array"
-              ]
-            },
-            "ref": {
+            "layer": {
               "type": "string"
             },
-            "trackedConflicts": {
+            "observationBasis": {
+              "type": "string"
+            },
+            "page": {
+              "additionalProperties": false,
+              "properties": {
+                "nextCursor": {
+                  "type": "string"
+                },
+                "omittedRecords": {
+                  "type": "integer"
+                },
+                "pageDigest": {
+                  "type": "string"
+                },
+                "representation": {
+                  "type": "string"
+                },
+                "returnedRecords": {
+                  "type": "integer"
+                },
+                "totalRecords": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "representation",
+                "pageDigest",
+                "returnedRecords",
+                "totalRecords",
+                "omittedRecords"
+              ],
+              "type": "object"
+            },
+            "queryDigest": {
+              "type": "string"
+            },
+            "records": {
               "items": {
                 "additionalProperties": false,
                 "properties": {
-                  "choice": {
+                  "diagnostic": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "severity": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "severity",
+                      "message"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "edge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attributes": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "from": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "declared": {
+                              "type": "boolean"
+                            },
+                            "detected": {
+                              "type": "boolean"
+                            },
+                            "evidence": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "to": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to",
+                      "kind"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "export": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bindingSHA256": {
+                        "type": "string"
+                      },
+                      "chains": {
+                        "items": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "contentDigest": {
+                        "type": "string"
+                      },
+                      "contractDigest": {
+                        "type": "string"
+                      },
+                      "domain": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "parameters": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "oneOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "provider": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "sourceParameterSHA256": {
+                        "type": "string"
+                      },
+                      "toolDigest": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "provider",
+                      "id",
+                      "domain",
+                      "name",
+                      "version",
+                      "contentDigest",
+                      "contractDigest",
+                      "parameters",
+                      "bindingSHA256",
+                      "sourceParameterSHA256",
+                      "toolDigest",
+                      "chains"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "exportEdge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "consumer": {
+                        "type": "string"
+                      },
+                      "dependency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dependency",
+                      "consumer"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "identity": {
                     "type": "string"
                   },
-                  "path": {
+                  "kind": {
                     "type": "string"
                   },
-                  "state": {
-                    "type": "string"
+                  "node": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attributes": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "declared": {
+                              "type": "boolean"
+                            },
+                            "detected": {
+                              "type": "boolean"
+                            },
+                            "evidence": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "pins": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "alias": {
+                          "type": "string"
+                        },
+                        "apiVersion": {
+                          "type": "string"
+                        },
+                        "commit": {
+                          "type": "string"
+                        },
+                        "commitAlgorithm": {
+                          "type": "string"
+                        },
+                        "contentDigest": {
+                          "type": "string"
+                        },
+                        "contractDigest": {
+                          "type": "string"
+                        },
+                        "dependencies": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "evidenceDigest": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "providerID": {
+                          "type": "string"
+                        },
+                        "requestedRef": {
+                          "type": "string"
+                        },
+                        "templatePath": {
+                          "type": "string"
+                        },
+                        "treeDigest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "apiVersion",
+                        "alias",
+                        "providerID",
+                        "origin",
+                        "templatePath",
+                        "requestedRef",
+                        "commitAlgorithm",
+                        "commit",
+                        "treeDigest",
+                        "contentDigest",
+                        "contractDigest",
+                        "evidenceDigest",
+                        "parameters",
+                        "dependencies"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "null",
+                      "array"
+                    ]
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "identity": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "commit": {
+                            "type": "string"
+                          },
+                          "commitAlgorithm": {
+                            "type": "string"
+                          },
+                          "contentDigest": {
+                            "type": "string"
+                          },
+                          "contractDigest": {
+                            "type": "string"
+                          },
+                          "evidenceDigest": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "parameterSHA256": {
+                            "type": "string"
+                          },
+                          "providerID": {
+                            "type": "string"
+                          },
+                          "templatePath": {
+                            "type": "string"
+                          },
+                          "treeDigest": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "commit",
+                          "commitAlgorithm",
+                          "contentDigest",
+                          "contractDigest",
+                          "evidenceDigest",
+                          "origin",
+                          "parameterSHA256",
+                          "providerID",
+                          "templatePath",
+                          "treeDigest"
+                        ],
+                        "type": "object"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "alias": {
+                              "type": "string"
+                            },
+                            "requestedRef": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "alias",
+                            "requestedRef"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "identity",
+                      "provenance"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "sourceEdge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "consumer": {
+                        "type": "string"
+                      },
+                      "dependency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dependency",
+                      "consumer"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
                   }
                 },
                 "required": [
-                  "path",
-                  "state",
-                  "choice"
+                  "kind"
                 ],
                 "type": "object"
               },
@@ -780,13 +1216,53 @@
                 "null",
                 "array"
               ]
+            },
+            "stats": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "diagnostics": {
+                    "type": "integer"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "edges": {
+                    "type": "integer"
+                  },
+                  "nodes": {
+                    "type": "integer"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "state",
+                  "nodes",
+                  "edges",
+                  "diagnostics"
+                ],
+                "type": "object"
+              },
+              "type": "object"
+            },
+            "verificationLevel": {
+              "type": "string"
             }
           },
           "required": [
-            "action",
-            "dryRun",
-            "ref",
-            "trackedConflicts"
+            "apiVersion",
+            "layer",
+            "queryDigest",
+            "observationBasis",
+            "inputDigests",
+            "fullGraphDigest",
+            "verificationLevel",
+            "cacheState",
+            "graphStatus",
+            "records",
+            "page"
           ],
           "type": "object"
         },
@@ -830,10 +1306,7 @@
           "type": "array"
         },
         "kind": {
-          "enum": [
-            "ProjectAdopt",
-            "ProjectLink"
-          ]
+          "const": "SourceGraph"
         },
         "meta": {
           "properties": {
@@ -851,10 +1324,7 @@
           "type": "object"
         },
         "operation": {
-          "enum": [
-            "project.link",
-            "project.adopt"
-          ]
+          "const": "graph.source"
         },
         "project": {
           "anyOf": [
@@ -3120,6 +3590,3482 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Captured ast graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
+    "inputSchema": {
+      "properties": {
+        "cache": {
+          "enum": [
+            "read",
+            "off",
+            "refresh"
+          ],
+          "type": "string"
+        },
+        "cursor": {
+          "type": "string"
+        },
+        "dir": {
+          "description": "Installed project root locator",
+          "type": "string"
+        },
+        "expectedDigest": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "number"
+        },
+        "maxBytes": {
+          "type": "number"
+        },
+        "projectContext": {
+          "type": "string"
+        },
+        "representation": {
+          "enum": [
+            "page",
+            "whole"
+          ],
+          "type": "string"
+        },
+        "selectors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sourceInput": {
+          "description": "Operator-enrolled source-selection file locator",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir"
+      ],
+      "type": "object"
+    },
+    "name": "graph_ast",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "type": "string"
+            },
+            "cacheState": {
+              "type": "string"
+            },
+            "fullGraphDigest": {
+              "type": "string"
+            },
+            "graphStatus": {
+              "type": "string"
+            },
+            "inputDigests": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "layer": {
+              "type": "string"
+            },
+            "observationBasis": {
+              "type": "string"
+            },
+            "page": {
+              "additionalProperties": false,
+              "properties": {
+                "nextCursor": {
+                  "type": "string"
+                },
+                "omittedRecords": {
+                  "type": "integer"
+                },
+                "pageDigest": {
+                  "type": "string"
+                },
+                "representation": {
+                  "type": "string"
+                },
+                "returnedRecords": {
+                  "type": "integer"
+                },
+                "totalRecords": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "representation",
+                "pageDigest",
+                "returnedRecords",
+                "totalRecords",
+                "omittedRecords"
+              ],
+              "type": "object"
+            },
+            "queryDigest": {
+              "type": "string"
+            },
+            "records": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "diagnostic": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "severity": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "severity",
+                      "message"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "edge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attributes": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "from": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "declared": {
+                              "type": "boolean"
+                            },
+                            "detected": {
+                              "type": "boolean"
+                            },
+                            "evidence": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "to": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to",
+                      "kind"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "export": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bindingSHA256": {
+                        "type": "string"
+                      },
+                      "chains": {
+                        "items": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "contentDigest": {
+                        "type": "string"
+                      },
+                      "contractDigest": {
+                        "type": "string"
+                      },
+                      "domain": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "parameters": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "oneOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "provider": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "sourceParameterSHA256": {
+                        "type": "string"
+                      },
+                      "toolDigest": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "provider",
+                      "id",
+                      "domain",
+                      "name",
+                      "version",
+                      "contentDigest",
+                      "contractDigest",
+                      "parameters",
+                      "bindingSHA256",
+                      "sourceParameterSHA256",
+                      "toolDigest",
+                      "chains"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "exportEdge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "consumer": {
+                        "type": "string"
+                      },
+                      "dependency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dependency",
+                      "consumer"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "identity": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "node": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attributes": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "declared": {
+                              "type": "boolean"
+                            },
+                            "detected": {
+                              "type": "boolean"
+                            },
+                            "evidence": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "pins": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "alias": {
+                          "type": "string"
+                        },
+                        "apiVersion": {
+                          "type": "string"
+                        },
+                        "commit": {
+                          "type": "string"
+                        },
+                        "commitAlgorithm": {
+                          "type": "string"
+                        },
+                        "contentDigest": {
+                          "type": "string"
+                        },
+                        "contractDigest": {
+                          "type": "string"
+                        },
+                        "dependencies": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "evidenceDigest": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "providerID": {
+                          "type": "string"
+                        },
+                        "requestedRef": {
+                          "type": "string"
+                        },
+                        "templatePath": {
+                          "type": "string"
+                        },
+                        "treeDigest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "apiVersion",
+                        "alias",
+                        "providerID",
+                        "origin",
+                        "templatePath",
+                        "requestedRef",
+                        "commitAlgorithm",
+                        "commit",
+                        "treeDigest",
+                        "contentDigest",
+                        "contractDigest",
+                        "evidenceDigest",
+                        "parameters",
+                        "dependencies"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "null",
+                      "array"
+                    ]
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "identity": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "commit": {
+                            "type": "string"
+                          },
+                          "commitAlgorithm": {
+                            "type": "string"
+                          },
+                          "contentDigest": {
+                            "type": "string"
+                          },
+                          "contractDigest": {
+                            "type": "string"
+                          },
+                          "evidenceDigest": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "parameterSHA256": {
+                            "type": "string"
+                          },
+                          "providerID": {
+                            "type": "string"
+                          },
+                          "templatePath": {
+                            "type": "string"
+                          },
+                          "treeDigest": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "commit",
+                          "commitAlgorithm",
+                          "contentDigest",
+                          "contractDigest",
+                          "evidenceDigest",
+                          "origin",
+                          "parameterSHA256",
+                          "providerID",
+                          "templatePath",
+                          "treeDigest"
+                        ],
+                        "type": "object"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "alias": {
+                              "type": "string"
+                            },
+                            "requestedRef": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "alias",
+                            "requestedRef"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "identity",
+                      "provenance"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "sourceEdge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "consumer": {
+                        "type": "string"
+                      },
+                      "dependency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dependency",
+                      "consumer"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "stats": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "diagnostics": {
+                    "type": "integer"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "edges": {
+                    "type": "integer"
+                  },
+                  "nodes": {
+                    "type": "integer"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "state",
+                  "nodes",
+                  "edges",
+                  "diagnostics"
+                ],
+                "type": "object"
+              },
+              "type": "object"
+            },
+            "verificationLevel": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "layer",
+            "queryDigest",
+            "observationBasis",
+            "inputDigests",
+            "fullGraphDigest",
+            "verificationLevel",
+            "cacheState",
+            "graphStatus",
+            "records",
+            "page"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "ASTGraph"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "graph.ast"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Captured exports graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
+    "inputSchema": {
+      "properties": {
+        "cache": {
+          "enum": [
+            "read",
+            "off",
+            "refresh"
+          ],
+          "type": "string"
+        },
+        "cursor": {
+          "type": "string"
+        },
+        "dir": {
+          "description": "Installed project root locator",
+          "type": "string"
+        },
+        "expectedDigest": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "number"
+        },
+        "maxBytes": {
+          "type": "number"
+        },
+        "projectContext": {
+          "type": "string"
+        },
+        "representation": {
+          "enum": [
+            "page",
+            "whole"
+          ],
+          "type": "string"
+        },
+        "selectors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sourceInput": {
+          "description": "Operator-enrolled source-selection file locator",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir"
+      ],
+      "type": "object"
+    },
+    "name": "graph_exports",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "type": "string"
+            },
+            "cacheState": {
+              "type": "string"
+            },
+            "fullGraphDigest": {
+              "type": "string"
+            },
+            "graphStatus": {
+              "type": "string"
+            },
+            "inputDigests": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "layer": {
+              "type": "string"
+            },
+            "observationBasis": {
+              "type": "string"
+            },
+            "page": {
+              "additionalProperties": false,
+              "properties": {
+                "nextCursor": {
+                  "type": "string"
+                },
+                "omittedRecords": {
+                  "type": "integer"
+                },
+                "pageDigest": {
+                  "type": "string"
+                },
+                "representation": {
+                  "type": "string"
+                },
+                "returnedRecords": {
+                  "type": "integer"
+                },
+                "totalRecords": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "representation",
+                "pageDigest",
+                "returnedRecords",
+                "totalRecords",
+                "omittedRecords"
+              ],
+              "type": "object"
+            },
+            "queryDigest": {
+              "type": "string"
+            },
+            "records": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "diagnostic": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "severity": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "severity",
+                      "message"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "edge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attributes": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "from": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "declared": {
+                              "type": "boolean"
+                            },
+                            "detected": {
+                              "type": "boolean"
+                            },
+                            "evidence": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "to": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to",
+                      "kind"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "export": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bindingSHA256": {
+                        "type": "string"
+                      },
+                      "chains": {
+                        "items": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "contentDigest": {
+                        "type": "string"
+                      },
+                      "contractDigest": {
+                        "type": "string"
+                      },
+                      "domain": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "parameters": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "oneOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "provider": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "sourceParameterSHA256": {
+                        "type": "string"
+                      },
+                      "toolDigest": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "provider",
+                      "id",
+                      "domain",
+                      "name",
+                      "version",
+                      "contentDigest",
+                      "contractDigest",
+                      "parameters",
+                      "bindingSHA256",
+                      "sourceParameterSHA256",
+                      "toolDigest",
+                      "chains"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "exportEdge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "consumer": {
+                        "type": "string"
+                      },
+                      "dependency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dependency",
+                      "consumer"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "identity": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "node": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attributes": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "declared": {
+                              "type": "boolean"
+                            },
+                            "detected": {
+                              "type": "boolean"
+                            },
+                            "evidence": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "pins": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "alias": {
+                          "type": "string"
+                        },
+                        "apiVersion": {
+                          "type": "string"
+                        },
+                        "commit": {
+                          "type": "string"
+                        },
+                        "commitAlgorithm": {
+                          "type": "string"
+                        },
+                        "contentDigest": {
+                          "type": "string"
+                        },
+                        "contractDigest": {
+                          "type": "string"
+                        },
+                        "dependencies": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "evidenceDigest": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "providerID": {
+                          "type": "string"
+                        },
+                        "requestedRef": {
+                          "type": "string"
+                        },
+                        "templatePath": {
+                          "type": "string"
+                        },
+                        "treeDigest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "apiVersion",
+                        "alias",
+                        "providerID",
+                        "origin",
+                        "templatePath",
+                        "requestedRef",
+                        "commitAlgorithm",
+                        "commit",
+                        "treeDigest",
+                        "contentDigest",
+                        "contractDigest",
+                        "evidenceDigest",
+                        "parameters",
+                        "dependencies"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "null",
+                      "array"
+                    ]
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "identity": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "commit": {
+                            "type": "string"
+                          },
+                          "commitAlgorithm": {
+                            "type": "string"
+                          },
+                          "contentDigest": {
+                            "type": "string"
+                          },
+                          "contractDigest": {
+                            "type": "string"
+                          },
+                          "evidenceDigest": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "parameterSHA256": {
+                            "type": "string"
+                          },
+                          "providerID": {
+                            "type": "string"
+                          },
+                          "templatePath": {
+                            "type": "string"
+                          },
+                          "treeDigest": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "commit",
+                          "commitAlgorithm",
+                          "contentDigest",
+                          "contractDigest",
+                          "evidenceDigest",
+                          "origin",
+                          "parameterSHA256",
+                          "providerID",
+                          "templatePath",
+                          "treeDigest"
+                        ],
+                        "type": "object"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "alias": {
+                              "type": "string"
+                            },
+                            "requestedRef": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "alias",
+                            "requestedRef"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "identity",
+                      "provenance"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "sourceEdge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "consumer": {
+                        "type": "string"
+                      },
+                      "dependency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dependency",
+                      "consumer"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "stats": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "diagnostics": {
+                    "type": "integer"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "edges": {
+                    "type": "integer"
+                  },
+                  "nodes": {
+                    "type": "integer"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "state",
+                  "nodes",
+                  "edges",
+                  "diagnostics"
+                ],
+                "type": "object"
+              },
+              "type": "object"
+            },
+            "verificationLevel": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "layer",
+            "queryDigest",
+            "observationBasis",
+            "inputDigests",
+            "fullGraphDigest",
+            "verificationLevel",
+            "cacheState",
+            "graphStatus",
+            "records",
+            "page"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "ExportGraph"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "graph.exports"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Captured source graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
+    "inputSchema": {
+      "properties": {
+        "cache": {
+          "enum": [
+            "read",
+            "off",
+            "refresh"
+          ],
+          "type": "string"
+        },
+        "cursor": {
+          "type": "string"
+        },
+        "dir": {
+          "description": "Installed project root locator",
+          "type": "string"
+        },
+        "expectedDigest": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "number"
+        },
+        "maxBytes": {
+          "type": "number"
+        },
+        "projectContext": {
+          "type": "string"
+        },
+        "representation": {
+          "enum": [
+            "page",
+            "whole"
+          ],
+          "type": "string"
+        },
+        "selectors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sourceInput": {
+          "description": "Operator-enrolled source-selection file locator",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir"
+      ],
+      "type": "object"
+    },
+    "name": "graph_source",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "type": "string"
+            },
+            "cacheState": {
+              "type": "string"
+            },
+            "fullGraphDigest": {
+              "type": "string"
+            },
+            "graphStatus": {
+              "type": "string"
+            },
+            "inputDigests": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "layer": {
+              "type": "string"
+            },
+            "observationBasis": {
+              "type": "string"
+            },
+            "page": {
+              "additionalProperties": false,
+              "properties": {
+                "nextCursor": {
+                  "type": "string"
+                },
+                "omittedRecords": {
+                  "type": "integer"
+                },
+                "pageDigest": {
+                  "type": "string"
+                },
+                "representation": {
+                  "type": "string"
+                },
+                "returnedRecords": {
+                  "type": "integer"
+                },
+                "totalRecords": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "representation",
+                "pageDigest",
+                "returnedRecords",
+                "totalRecords",
+                "omittedRecords"
+              ],
+              "type": "object"
+            },
+            "queryDigest": {
+              "type": "string"
+            },
+            "records": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "diagnostic": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "severity": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "severity",
+                      "message"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "edge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attributes": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "from": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "declared": {
+                              "type": "boolean"
+                            },
+                            "detected": {
+                              "type": "boolean"
+                            },
+                            "evidence": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "to": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to",
+                      "kind"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "export": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bindingSHA256": {
+                        "type": "string"
+                      },
+                      "chains": {
+                        "items": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "contentDigest": {
+                        "type": "string"
+                      },
+                      "contractDigest": {
+                        "type": "string"
+                      },
+                      "domain": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "parameters": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "oneOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "provider": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "sourceParameterSHA256": {
+                        "type": "string"
+                      },
+                      "toolDigest": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "provider",
+                      "id",
+                      "domain",
+                      "name",
+                      "version",
+                      "contentDigest",
+                      "contractDigest",
+                      "parameters",
+                      "bindingSHA256",
+                      "sourceParameterSHA256",
+                      "toolDigest",
+                      "chains"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "exportEdge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "consumer": {
+                        "type": "string"
+                      },
+                      "dependency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dependency",
+                      "consumer"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "identity": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "node": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attributes": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "declared": {
+                              "type": "boolean"
+                            },
+                            "detected": {
+                              "type": "boolean"
+                            },
+                            "evidence": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "pins": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "alias": {
+                          "type": "string"
+                        },
+                        "apiVersion": {
+                          "type": "string"
+                        },
+                        "commit": {
+                          "type": "string"
+                        },
+                        "commitAlgorithm": {
+                          "type": "string"
+                        },
+                        "contentDigest": {
+                          "type": "string"
+                        },
+                        "contractDigest": {
+                          "type": "string"
+                        },
+                        "dependencies": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "evidenceDigest": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "providerID": {
+                          "type": "string"
+                        },
+                        "requestedRef": {
+                          "type": "string"
+                        },
+                        "templatePath": {
+                          "type": "string"
+                        },
+                        "treeDigest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "apiVersion",
+                        "alias",
+                        "providerID",
+                        "origin",
+                        "templatePath",
+                        "requestedRef",
+                        "commitAlgorithm",
+                        "commit",
+                        "treeDigest",
+                        "contentDigest",
+                        "contractDigest",
+                        "evidenceDigest",
+                        "parameters",
+                        "dependencies"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "null",
+                      "array"
+                    ]
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "identity": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "commit": {
+                            "type": "string"
+                          },
+                          "commitAlgorithm": {
+                            "type": "string"
+                          },
+                          "contentDigest": {
+                            "type": "string"
+                          },
+                          "contractDigest": {
+                            "type": "string"
+                          },
+                          "evidenceDigest": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "parameterSHA256": {
+                            "type": "string"
+                          },
+                          "providerID": {
+                            "type": "string"
+                          },
+                          "templatePath": {
+                            "type": "string"
+                          },
+                          "treeDigest": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "commit",
+                          "commitAlgorithm",
+                          "contentDigest",
+                          "contractDigest",
+                          "evidenceDigest",
+                          "origin",
+                          "parameterSHA256",
+                          "providerID",
+                          "templatePath",
+                          "treeDigest"
+                        ],
+                        "type": "object"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "alias": {
+                              "type": "string"
+                            },
+                            "requestedRef": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "alias",
+                            "requestedRef"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "identity",
+                      "provenance"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "sourceEdge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "consumer": {
+                        "type": "string"
+                      },
+                      "dependency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dependency",
+                      "consumer"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "stats": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "diagnostics": {
+                    "type": "integer"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "edges": {
+                    "type": "integer"
+                  },
+                  "nodes": {
+                    "type": "integer"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "state",
+                  "nodes",
+                  "edges",
+                  "diagnostics"
+                ],
+                "type": "object"
+              },
+              "type": "object"
+            },
+            "verificationLevel": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "layer",
+            "queryDigest",
+            "observationBasis",
+            "inputDigests",
+            "fullGraphDigest",
+            "verificationLevel",
+            "cacheState",
+            "graphStatus",
+            "records",
+            "page"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "SourceGraph"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "graph.source"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Captured stats graph observation through installed CLI; separate from task-context delivery and execution permission. AST cache refresh explicitly writes only rebuildable cache.",
+    "inputSchema": {
+      "properties": {
+        "cache": {
+          "enum": [
+            "read",
+            "off",
+            "refresh"
+          ],
+          "type": "string"
+        },
+        "cursor": {
+          "type": "string"
+        },
+        "dir": {
+          "description": "Installed project root locator",
+          "type": "string"
+        },
+        "expectedDigest": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "number"
+        },
+        "maxBytes": {
+          "type": "number"
+        },
+        "projectContext": {
+          "type": "string"
+        },
+        "representation": {
+          "enum": [
+            "page",
+            "whole"
+          ],
+          "type": "string"
+        },
+        "selectors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sourceInput": {
+          "description": "Operator-enrolled source-selection file locator",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir"
+      ],
+      "type": "object"
+    },
+    "name": "graph_stats",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "apiVersion": {
+              "type": "string"
+            },
+            "cacheState": {
+              "type": "string"
+            },
+            "fullGraphDigest": {
+              "type": "string"
+            },
+            "graphStatus": {
+              "type": "string"
+            },
+            "inputDigests": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "layer": {
+              "type": "string"
+            },
+            "observationBasis": {
+              "type": "string"
+            },
+            "page": {
+              "additionalProperties": false,
+              "properties": {
+                "nextCursor": {
+                  "type": "string"
+                },
+                "omittedRecords": {
+                  "type": "integer"
+                },
+                "pageDigest": {
+                  "type": "string"
+                },
+                "representation": {
+                  "type": "string"
+                },
+                "returnedRecords": {
+                  "type": "integer"
+                },
+                "totalRecords": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "representation",
+                "pageDigest",
+                "returnedRecords",
+                "totalRecords",
+                "omittedRecords"
+              ],
+              "type": "object"
+            },
+            "queryDigest": {
+              "type": "string"
+            },
+            "records": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "diagnostic": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "severity": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "severity",
+                      "message"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "edge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attributes": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "from": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "declared": {
+                              "type": "boolean"
+                            },
+                            "detected": {
+                              "type": "boolean"
+                            },
+                            "evidence": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "to": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to",
+                      "kind"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "export": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bindingSHA256": {
+                        "type": "string"
+                      },
+                      "chains": {
+                        "items": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "contentDigest": {
+                        "type": "string"
+                      },
+                      "contractDigest": {
+                        "type": "string"
+                      },
+                      "domain": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "parameters": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "oneOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      },
+                      "provider": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "sourceParameterSHA256": {
+                        "type": "string"
+                      },
+                      "toolDigest": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "provider",
+                      "id",
+                      "domain",
+                      "name",
+                      "version",
+                      "contentDigest",
+                      "contractDigest",
+                      "parameters",
+                      "bindingSHA256",
+                      "sourceParameterSHA256",
+                      "toolDigest",
+                      "chains"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "exportEdge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "consumer": {
+                        "type": "string"
+                      },
+                      "dependency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dependency",
+                      "consumer"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "identity": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "node": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attributes": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "declared": {
+                              "type": "boolean"
+                            },
+                            "detected": {
+                              "type": "boolean"
+                            },
+                            "evidence": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "pins": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "alias": {
+                          "type": "string"
+                        },
+                        "apiVersion": {
+                          "type": "string"
+                        },
+                        "commit": {
+                          "type": "string"
+                        },
+                        "commitAlgorithm": {
+                          "type": "string"
+                        },
+                        "contentDigest": {
+                          "type": "string"
+                        },
+                        "contractDigest": {
+                          "type": "string"
+                        },
+                        "dependencies": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "evidenceDigest": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "oneOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "null",
+                            "array"
+                          ]
+                        },
+                        "providerID": {
+                          "type": "string"
+                        },
+                        "requestedRef": {
+                          "type": "string"
+                        },
+                        "templatePath": {
+                          "type": "string"
+                        },
+                        "treeDigest": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "apiVersion",
+                        "alias",
+                        "providerID",
+                        "origin",
+                        "templatePath",
+                        "requestedRef",
+                        "commitAlgorithm",
+                        "commit",
+                        "treeDigest",
+                        "contentDigest",
+                        "contractDigest",
+                        "evidenceDigest",
+                        "parameters",
+                        "dependencies"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "null",
+                      "array"
+                    ]
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "identity": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "commit": {
+                            "type": "string"
+                          },
+                          "commitAlgorithm": {
+                            "type": "string"
+                          },
+                          "contentDigest": {
+                            "type": "string"
+                          },
+                          "contractDigest": {
+                            "type": "string"
+                          },
+                          "evidenceDigest": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "parameterSHA256": {
+                            "type": "string"
+                          },
+                          "providerID": {
+                            "type": "string"
+                          },
+                          "templatePath": {
+                            "type": "string"
+                          },
+                          "treeDigest": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "commit",
+                          "commitAlgorithm",
+                          "contentDigest",
+                          "contractDigest",
+                          "evidenceDigest",
+                          "origin",
+                          "parameterSHA256",
+                          "providerID",
+                          "templatePath",
+                          "treeDigest"
+                        ],
+                        "type": "object"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "alias": {
+                              "type": "string"
+                            },
+                            "requestedRef": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "alias",
+                            "requestedRef"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "null",
+                          "array"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "identity",
+                      "provenance"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  },
+                  "sourceEdge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "consumer": {
+                        "type": "string"
+                      },
+                      "dependency": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "dependency",
+                      "consumer"
+                    ],
+                    "type": [
+                      "null",
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "stats": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "diagnostics": {
+                    "type": "integer"
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "edges": {
+                    "type": "integer"
+                  },
+                  "nodes": {
+                    "type": "integer"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "state",
+                  "nodes",
+                  "edges",
+                  "diagnostics"
+                ],
+                "type": "object"
+              },
+              "type": "object"
+            },
+            "verificationLevel": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "apiVersion",
+            "layer",
+            "queryDigest",
+            "observationBasis",
+            "inputDigests",
+            "fullGraphDigest",
+            "verificationLevel",
+            "cacheState",
+            "graphStatus",
+            "records",
+            "page"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "GraphStats"
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "const": "graph.stats"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
       "destructiveHint": true,
       "idempotentHint": false,
       "openWorldHint": true,
@@ -4287,10 +8233,426 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "description": "Link/adopt signed state only; preserves user files. Conflicts require explicit ownership path=track or path=user-owned. User-owned adoption preserves full signed baseline lineage and excludes those paths from Update writes. Cold recovery uses qualified CLI commands.",
+    "inputSchema": {
+      "properties": {
+        "action": {
+          "enum": [
+            "link",
+            "adopt"
+          ],
+          "type": "string"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "dryRun": {
+          "default": false,
+          "type": "boolean"
+        },
+        "formatInput": {
+          "type": "string"
+        },
+        "formatStage": {
+          "default": false,
+          "type": "boolean"
+        },
+        "module": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ownership": {
+          "properties": {},
+          "type": "object"
+        },
+        "prepare": {
+          "default": false,
+          "type": "boolean"
+        },
+        "projectContext": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "sourceInput": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "dir",
+        "ref",
+        "name",
+        "sourceInput"
+      ],
+      "type": "object"
+    },
+    "name": "project_link",
+    "outputSchema": {
+      "$defs": {
+        "project": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "root"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "project.link"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "ProjectLink"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "project.adopt"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "ProjectAdopt"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "project.link",
+                  "project.adopt"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "ok",
+                  "changes",
+                  "conflicted"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "project": {
+                "$ref": "#/$defs/project"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "tplaiter.dev/result/v1"
+        },
+        "artifacts": {
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "action"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "excludedPaths": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "ownershipChoices": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "choice": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path",
+                  "state",
+                  "choice"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            },
+            "ref": {
+              "type": "string"
+            },
+            "trackedConflicts": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "choice": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path",
+                  "state",
+                  "choice"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "null",
+                "array"
+              ]
+            }
+          },
+          "required": [
+            "action",
+            "dryRun",
+            "ref",
+            "trackedConflicts"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "properties": {
+              "blockId": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "enum": [
+            "ProjectAdopt",
+            "ProjectLink"
+          ]
+        },
+        "meta": {
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "tplaiterVersion": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tplaiterVersion",
+            "schemaVersion"
+          ],
+          "type": "object"
+        },
+        "operation": {
+          "enum": [
+            "project.link",
+            "project.adopt"
+          ]
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/project"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "changes",
+            "conflicted",
+            "blocked",
+            "failed",
+            "not-applicable"
+          ]
+        },
+        "summary": {
+          "properties": {
+            "blocksChanged": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflicts": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "filesChanged": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filesChanged",
+            "blocksChanged",
+            "conflicts"
+          ],
+          "type": "object"
+        },
+        "transactionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "operation",
+        "status",
+        "project",
+        "transactionId",
+        "summary",
+        "changes",
+        "diagnostics",
+        "artifacts",
+        "meta"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Create a project from a template (always non-interactive). Select an authenticated installed projectContext; targetDir must match its root. Omitted targetDir uses <dir>/<slug>. If set is incomplete, the tool will return an error about required groups — or set defaults=true.",
     "inputSchema": {
@@ -4307,6 +8669,14 @@
         "dryRun": {
           "default": false,
           "description": "Prepare a plan without changing files",
+          "type": "boolean"
+        },
+        "formatInput": {
+          "description": "Path to closed formatter tool-source/approval selection JSON",
+          "type": "string"
+        },
+        "formatStage": {
+          "description": "Execute admitted formatting-only stage, without project publication",
           "type": "boolean"
         },
         "name": {
@@ -4331,6 +8701,10 @@
         "port": {
           "description": "Project port (.Runtime.Port); 0 — don't set",
           "type": "number"
+        },
+        "prepare": {
+          "description": "Report source-owned formatter requests without executing or publishing",
+          "type": "boolean"
         },
         "projectContext": {
           "description": "Exact authenticated installed context key; omitted uses registration default",
@@ -8486,6 +12860,10 @@
           "description": "Check tree for conflict markers (exit code 1 if found)",
           "type": "boolean"
         },
+        "decisionsInput": {
+          "description": "Closed source/target-bound managed decisions",
+          "type": "string"
+        },
         "dir": {
           "description": "Project directory",
           "type": "string"
@@ -8493,6 +12871,18 @@
         "dryRun": {
           "default": false,
           "description": "Show plan without modifying files",
+          "type": "boolean"
+        },
+        "formatInput": {
+          "description": "Closed tool selection and signed approvals",
+          "type": "string"
+        },
+        "formatStage": {
+          "default": false,
+          "type": "boolean"
+        },
+        "prepare": {
+          "default": false,
           "type": "boolean"
         },
         "projectContext": {

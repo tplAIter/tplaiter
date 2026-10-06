@@ -549,6 +549,43 @@ func TestMCPStdioContract(t *testing.T) {
 			}
 		})
 	}
+	// The graph domain has its own real installed fixture: successful calls
+	// use normal enrollment/New instead of fabricating the old fixture's locks.
+	t.Run("graph installed configured operator", func(t *testing.T) {
+		receipts := t.TempDir()
+		child := exec.Command("go", "test", "./internal/cmd", "-run", "^TestGraphInstalledConfiguredOperatorCLIAndMCP$", "-count=1", "-args", "-graph-installed-process", "-graph-process-receipts", receipts)
+		child.Dir = ".."
+		if raw, e := child.CombinedOutput(); e != nil {
+			t.Fatalf("actual installed graph consumer: %v %s", e, raw)
+		}
+		for _, name := range []string{"graph_source", "dependency_graph", "graph_exports", "graph_ast", "graph_stats"} {
+			raw, e := os.ReadFile(filepath.Join(receipts, "mcp-"+name+".json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			var response struct {
+				Error  json.RawMessage `json:"error"`
+				Result struct {
+					IsError           bool `json:"isError"`
+					StructuredContent struct {
+						Status    string `json:"status"`
+						Operation string `json:"operation"`
+					} `json:"structuredContent"`
+				} `json:"result"`
+			}
+			if e = json.Unmarshal(raw, &response); e != nil || len(response.Error) > 0 || response.Result.IsError || response.Result.StructuredContent.Status != "ok" {
+				t.Fatalf("tool %s was not actually called successfully: %v %s", name, e, raw)
+			}
+			op := "graph." + strings.TrimPrefix(name, "graph_")
+			if name == "dependency_graph" {
+				op = "graph.source"
+			}
+			if response.Result.StructuredContent.Operation != op {
+				t.Fatal("graph operation mismatch", name)
+			}
+			called[name] = true
+		}
+	})
 	t.Run("every tool called", func(t *testing.T) {
 		for _, name := range listToolNames(t, c) {
 			if !called[name] {
