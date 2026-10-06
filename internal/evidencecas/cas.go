@@ -108,3 +108,56 @@ func parseDigest(digest string) (string, error) {
 	}
 	return h, nil
 }
+
+// ErrBoundExceeded indicates that a blob cannot fit the caller's byte cap.
+var ErrBoundExceeded = errors.New("evidencecas: bounded read exceeds byte cap")
+
+// ErrBlobChanged indicates an inconsistent size, identity or content observation.
+var ErrBlobChanged = errors.New("evidencecas: blob changed during bounded read")
+
+// ErrPlatformUnsupported indicates that strict bounded descriptor reads are unavailable.
+var ErrPlatformUnsupported = errors.New("evidencecas: bounded descriptor reads unsupported")
+
+// ReadBounded verifies a raw blob without allocating beyond its observed size
+// plus one growth sentinel. maximumBytes is a body cap, not a heap budget; the
+// existing 16 MiB per-blob ceiling still applies. It never falls back to Read.
+func (r *FSReader) ReadBounded(ctx context.Context, digest string, maximumBytes int64) ([]byte, error) {
+	if ctx == nil {
+		return nil, errors.New("evidencecas: nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if maximumBytes < 0 {
+		return nil, ErrBoundExceeded
+	}
+	if r == nil {
+		return nil, errors.New("evidencecas: nil reader")
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.closed || r.root == nil {
+		return nil, errors.New("evidencecas: reader is closed")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	h, err := parseDigest(digest)
+	if err != nil {
+		return nil, err
+	}
+	blob, err := r.root.readBounded(ctx, h, maximumBytes)
+	if err != nil {
+		return nil, fmt.Errorf("evidencecas: bounded read %s: %w", digest, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if Digest(blob) != digest {
+		return nil, fmt.Errorf("evidencecas: digest mismatch for %s", digest)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return blob, nil
+}
