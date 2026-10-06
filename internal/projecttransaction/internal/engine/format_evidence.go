@@ -64,7 +64,7 @@ type FormatterPass struct {
 }
 
 func (f FormatFrame) Digest() (string, error) {
-	if (f.APIVersion != "tplaiter.dev/formatter-frame/v1" && f.APIVersion != "tplaiter.dev/formatter-frame/v2") || len(f.Requests) != 2 || len(f.Input) > 16<<20 || len(f.Context) > 1<<20 {
+	if (f.APIVersion != "tplaiter.dev/formatter-frame/v1" && f.APIVersion != "tplaiter.dev/formatter-frame/v2" && f.APIVersion != "tplaiter.dev/formatter-frame/v3") || len(f.Requests) != 2 || len(f.Input) > 16<<20 || len(f.Context) > 1<<20 {
 		return "", ErrAuthentication
 	}
 	plan, err := blockformatter.ParsePlan(f.Plan)
@@ -73,6 +73,14 @@ func (f FormatFrame) Digest() (string, error) {
 	}
 	if f.APIVersion == "tplaiter.dev/formatter-frame/v1" {
 		if _, err := operationtrust.ParseManagedFormatterContext(f.Context); err != nil {
+			return "", ErrAuthentication
+		}
+	} else if f.APIVersion == "tplaiter.dev/formatter-frame/v3" {
+		if f.Operation.Scope != "update" {
+			return "", ErrAuthentication
+		}
+		c, err := operationtrust.ParseContextUpdateFormatterContext(f.Context)
+		if err != nil || c.ObservedProjectSHA256 != f.Operation.PreimageSHA256 || c.RendererAnswersSHA256 != f.Operation.AnswersSHA256 {
 			return "", ErrAuthentication
 		}
 	} else {

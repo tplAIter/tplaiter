@@ -61,6 +61,11 @@ func (a *RuntimeAdapter) AuthorizeSelectedPasses(ctx context.Context, p *Prepare
 	if a == nil || a.runtime == nil || a.runtime.TrustRuntime() != a.stable || p == nil || p.selection.adapter != a || len(p.selection.context) == 0 || len(p.requests) != 2 || len(refs) == 0 || len(refs) > 2 || ctx == nil || ctx.Err() != nil {
 		return nil, ErrRuntimeUnavailable
 	}
+	if p.selection.updateCalculation != nil {
+		if err := p.selection.updateCalculation.RecheckFor(ctx, a.runtime); err != nil {
+			return nil, err
+		}
+	}
 	if p.selection.sources != nil {
 		if err := p.selection.sources.RecheckFor(ctx, a.runtime); err != nil {
 			return nil, err

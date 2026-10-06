@@ -17,6 +17,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/adoptionpolicy"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
 	"github.com/tplAIter/tplaiter/internal/engine"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/managedblocks"
@@ -31,6 +32,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/resources"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
+	"github.com/tplAIter/tplaiter/internal/sourceadapter"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/stateledger/runtimeassembly"
 	"github.com/tplAIter/tplaiter/internal/trustload"
@@ -125,8 +127,24 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 	if err != nil {
 		return Report{}, failure(StateCode, err)
 	}
-	if len(tpl.Commands) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || tpl.AIConfig.Path != "" {
-		return Report{}, operationtrust.ErrSourceAdapterUnsupported
+	verifiedSource, err := r.TrustRuntime().VerifiedSnapshot(resolution)
+	if err != nil {
+		return Report{}, failure(StateCode, err)
+	}
+	manifestRaw, ok := verifiedSource.Blob("template.manifest.yaml")
+	if !ok {
+		return Report{}, failure(StateCode, stateledger.ErrUnsafe)
+	}
+	_, contextErr := contextsource.DecodeNativeContextContractV2(verifiedSource.ContractBytes(), manifestRaw)
+	nativeV2 := contextErr == nil
+	if nativeV2 {
+		if len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || tpl.AIConfig.Path != "" || operationtrust.ValidateBoundProjectBuildContent(verifiedSource, tpl) != nil {
+			return Report{}, operationtrust.ErrSourceAdapterUnsupported
+		}
+	} else {
+		if len(tpl.Commands) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || tpl.AIConfig.Path != "" {
+			return Report{}, operationtrust.ErrSourceAdapterUnsupported
+		}
 	}
 	raw, err = read(".tplaiter/project.yaml")
 	if err != nil {
@@ -169,14 +187,45 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 	for k, v := range marker.Answers {
 		values[k] = v.Value
 	}
-	prepared, err := operationtrust.PrepareSnapshot(ctx, r, operationtrust.PrepareSnapshotInput{SourceInput: input, RendererVersion: opts.RendererVersion, Render: renderref.Input{Repo: marker.Template.Repo, Values: renderref.Values(values), Project: manifest.ProjectInfo{Name: text("name"), Slug: text("slug"), Module: text("module"), System: text("system"), Domain: text("domain")}, Runtime: manifest.ProjectRuntime{Port: port}}})
-	if err != nil {
-		return Report{}, failure(StateCode, err)
+	var expected *renderref.Result
+	var contextSnapshot *contextsource.PreparedNativeSnapshot
+	if nativeV2 {
+		rootRaw, err := canonicaljson.Canonical(root)
+		if err != nil {
+			return Report{}, failure(StateCode, err)
+		}
+		depsRaw, err := canonicaljson.Canonical(deps)
+		if err != nil {
+			return Report{}, failure(StateCode, err)
+		}
+		sources, err := sourceadapter.PrepareRecordedContextSources(ctx, r, rootRaw, depsRaw)
+		if err != nil {
+			return Report{}, failure(StateCode, err)
+		}
+		defer sources.Close()
+		contextSnapshot, err = contextsource.PrepareRecordedNativeSnapshot(ctx, r, sources, contextsource.RecordedNativeSnapshotInput{Render: renderref.Input{Repo: marker.Template.Repo, Values: renderref.Values(values), Project: manifest.ProjectInfo{Name: text("name"), Slug: text("slug"), Module: text("module"), System: text("system"), Domain: text("domain")}, Runtime: manifest.ProjectRuntime{Port: port}}, RecordedValues: renderref.Values(values), RendererVersion: opts.RendererVersion})
+		if err != nil {
+			return Report{}, failure(StateCode, err)
+		}
+		defer contextSnapshot.Close()
+		expected, err = contextSnapshot.Rendered(ctx, r)
+		if err != nil {
+			return Report{}, failure(StateCode, err)
+		}
+		if expected.Template.Metadata.Name != marker.Template.Name {
+			return Report{}, failure(StateCode, stateledger.ErrUnsafe)
+		}
+	} else {
+		prepared, err := operationtrust.PrepareSnapshot(ctx, r, operationtrust.PrepareSnapshotInput{SourceInput: input, RendererVersion: opts.RendererVersion, Render: renderref.Input{Repo: marker.Template.Repo, Values: renderref.Values(values), Project: manifest.ProjectInfo{Name: text("name"), Slug: text("slug"), Module: text("module"), System: text("system"), Domain: text("domain")}, Runtime: manifest.ProjectRuntime{Port: port}}})
+		if err != nil {
+			return Report{}, failure(StateCode, err)
+		}
+		if !prepared.ValidFor(r.TrustRuntime()) || prepared.RootLock() != *root || prepared.Rendered().Template.Metadata.Name != marker.Template.Name {
+			return Report{}, failure(StateCode, stateledger.ErrUnsafe)
+		}
+		expected = prepared.Rendered()
+
 	}
-	if !prepared.ValidFor(r.TrustRuntime()) || prepared.RootLock() != *root || prepared.Rendered().Template.Metadata.Name != marker.Template.Name {
-		return Report{}, failure(StateCode, stateledger.ErrUnsafe)
-	}
-	expected := prepared.Rendered()
 	blockRaw, err := read(".tplaiter/managed-blocks.json")
 	if err != nil {
 		return Report{}, failure(BlockCode, err)
@@ -235,7 +284,12 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 	if !reflect.DeepEqual(managed, built) {
 		return Report{}, failure(BlockCode, errors.New("managed baseline does not equal signed reconstruction"))
 	}
-	images, err := resources.PlanNativeGeneratorImages(r.TrustRuntime(), resolution, *root)
+	var images *resources.ResourceImages
+	if contextSnapshot != nil {
+		images, err = resources.PlanContextNativeSnapshotGeneratorImages(ctx, r, contextSnapshot)
+	} else {
+		images, err = resources.PlanNativeGeneratorImages(r.TrustRuntime(), resolution, *root)
+	}
 	if err != nil {
 		return Report{}, err
 	}

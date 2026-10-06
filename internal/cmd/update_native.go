@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
 	"github.com/tplAIter/tplaiter/internal/managedblocks"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction"
@@ -70,15 +71,27 @@ func runNativeUpdate(cmd *cobra.Command, c nativeUpdateControls) error {
 	// This is the same closed, operator-enrolled input as new. Selection is
 	// untrusted transport; Backend.Prepare freshly verifies both signed closures
 	// using installed object/evidence roots, never ambient Git or local manifests.
-	selected, err := operationtrust.DecodeSourceSelection(target)
-	if err != nil {
-		return err
-	}
-	if c.to != "" && c.to != selected.Subject.Commit {
-		return resultdto.NewError("TRUST_SOURCE_SELECTION_MISMATCH", resultdto.ExitTrust, nil)
-	}
-	if err := nativeUpdateTargetPolicy(cmd.Context(), r, *selected); err != nil {
-		return err
+	targetCommit := ""
+	if selected, decodeErr := contextsource.DecodeSourceSelectionV2(target); decodeErr == nil {
+		targetCommit = selected.Root.Subject.Commit
+		if c.to != "" && c.to != targetCommit {
+			return resultdto.NewError("TRUST_SOURCE_SELECTION_MISMATCH", resultdto.ExitTrust, nil)
+		}
+		if err := nativeUpdateContextTargetPolicy(cmd.Context(), r, target); err != nil {
+			return err
+		}
+	} else {
+		selected, err := operationtrust.DecodeSourceSelection(target)
+		if err != nil {
+			return err
+		}
+		targetCommit = selected.Subject.Commit
+		if c.to != "" && c.to != targetCommit {
+			return resultdto.NewError("TRUST_SOURCE_SELECTION_MISMATCH", resultdto.ExitTrust, nil)
+		}
+		if err := nativeUpdateTargetPolicy(cmd.Context(), r, *selected); err != nil {
+			return err
+		}
 	}
 	source, err := registeredSourceInput(cmd.Context(), r)
 	if err != nil {
@@ -147,7 +160,7 @@ func runNativeUpdate(cmd *cobra.Command, c nativeUpdateControls) error {
 			env := newResult(op)
 			env.Project = trustProject(r.ProjectContext())
 			env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-I-MANAGED-UPDATE-PHASE", Severity: "info", Message: "source-owned managed Update formatter phase", Details: map[string]any{"phase": phase, "requests": requests}})
-			if err := env.SetData(resultdto.UpdateData{DryRun: c.prepare, To: selected.Subject.Commit, ConflictMarkers: []string{}}); err != nil {
+			if err := env.SetData(resultdto.UpdateData{DryRun: c.prepare, To: targetCommit, ConflictMarkers: []string{}}); err != nil {
 				return err
 			}
 			return emitNativeUpdate(cmd, env, resultdto.ExitSuccess, nil)
@@ -268,6 +281,47 @@ func nativeUpdateTargetPolicy(ctx context.Context, r *trustload.Runtime, selecte
 		return operationtrust.ErrSourceAdapterUnsupported
 	}
 	return nil
+}
+
+// The v2 target is a complete freshly admitted DAG. Command declarations are
+// checked as pure bound native content; this preparation executes none of them.
+func nativeUpdateContextTargetPolicy(ctx context.Context, r *trustload.Runtime, raw []byte) error {
+	sources, err := contextsource.PrepareContextSources(ctx, r, raw)
+	if err != nil {
+		return err
+	}
+	defer sources.Close()
+	pin, err := sources.RootPin(ctx)
+	if err != nil {
+		return err
+	}
+	resolution, err := sources.Resolution(ctx, pin.Alias)
+	if err != nil {
+		return err
+	}
+	verified, err := r.TrustRuntime().VerifiedSnapshot(resolution)
+	if err != nil {
+		return err
+	}
+	manifestRaw, ok := verified.Blob("template.manifest.yaml")
+	if !ok {
+		return operationtrust.ErrSourceAdapterUnsupported
+	}
+	if _, err := contextsource.DecodeNativeContextContractV2(verified.ContractBytes(), manifestRaw); err != nil {
+		return err
+	}
+	snapshot, err := operationtrust.SnapshotFS(r.TrustRuntime(), resolution)
+	if err != nil {
+		return err
+	}
+	tpl, err := renderref.LoadTemplate(snapshot)
+	if err != nil {
+		return err
+	}
+	if len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || tpl.AIConfig.Path != "" || operationtrust.ValidateBoundProjectBuildContent(verified, tpl) != nil {
+		return operationtrust.ErrSourceAdapterUnsupported
+	}
+	return sources.RecheckFor(ctx, r)
 }
 
 // Conflict scanning uses the authenticated root and the existing bounded,

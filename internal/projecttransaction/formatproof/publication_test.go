@@ -711,6 +711,11 @@ func contextMerkle(h bootstrap.MerkleHash) string { return "sha256:" + hex.Encod
 // actual installed loader, stable runtime and SourceReader perform admission;
 // no fixture snapshot/resolution/reader is supplied to the carrier.
 func newContextFixture(t *testing.T, alter func(string, map[string][]byte)) *contextFixture {
+	return newContextFixtureScopes(t, alter, []string{"new"})
+}
+
+// Scopes are fixture-authored before enrollment; no live policy is changed.
+func newContextFixtureScopes(t *testing.T, alter func(string, map[string][]byte), scopesForFixture []string) *contextFixture {
 	t.Helper()
 	dir, e := filepath.EvalSymlinks(t.TempDir())
 	if e != nil {
@@ -929,6 +934,13 @@ func newContextFixture(t *testing.T, alter func(string, map[string][]byte)) *con
 	state.StateSHA256 = state.ComputedSHA256()
 	approverPub := approver.Public().(ed25519.PublicKey)
 	policy = trustverify.ExecutionPolicy{APIVersion: trustverify.ExecutionPolicyAPIVersion, PolicyID: "t6b-policy", Profile: "oss", MinimumProfile: "oss", Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Principals: []trustverify.Principal{{ID: "principal:approver"}, {ID: "principal:publisher"}, {ID: "principal:submitter"}}, IssuerPrincipals: []trustverify.IssuerPrincipal{{Issuer: "publisher-1", PrincipalID: "principal:publisher"}}, SourceRules: []trustverify.SourceRule{{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: origin, TemplatePath: ".", Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"}}, Approvers: []trustverify.Approver{{ID: "t6b-approver", PrincipalID: "principal:approver", IdentityClass: "operator", KeyFingerprint: bootstrap.Fingerprint(approverPub), PublicKeyBase64: base64.StdEncoding.EncodeToString(approverPub), Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Scopes: []trustverify.ApprovalScope{{ProjectID: "project-t6b", OperationScope: "new", ActionKind: "formatter", Origin: origin, TemplatePath: "root"}}}}, AllowInvocationHuman: false, MaxTimeoutMillis: 5000}
+	policy.Approvers[0].Scopes = nil
+	for _, scope := range scopesForFixture {
+		if scope != "new" && scope != "update" {
+			t.Fatal("unsupported synthetic fixture scope")
+		}
+		policy.Approvers[0].Scopes = append(policy.Approvers[0].Scopes, trustverify.ApprovalScope{ProjectID: "project-t6b", OperationScope: scope, ActionKind: "formatter", Origin: origin, TemplatePath: "root"})
+	}
 	if policy.PolicySHA256, err = policy.ComputePolicySHA256(); err != nil {
 		t.Fatal(err)
 	}
@@ -1304,4 +1316,457 @@ func TestContextNativeFormatterMaterialActualSourceAndRefusals(t *testing.T) {
 	}
 
 	t.Log("actual four-source installed closure and independent source-bound tool: two action-specific native material requests; missing actions/subjects, answers, scope, dependency lock and legacy route refused; no execution/publication claim")
+}
+
+func TestContextUpdateFormatterMaterialActualRecordedClosuresAndRefusals(t *testing.T) {
+	f := newContextFixture(t, nil)
+	ctx := context.Background()
+	home := filepath.Join(filepath.Dir(f.policyPath), "material-home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw := contextJSON(t, f.input)
+	source, err := sourceadapter.ResolveContextSources(ctx, f.runtime, home, f.input.Root.Subject.Commit, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	rootSource, err := source.Root(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admitted, err := source.Sources(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetAdmitted, err := contextsource.PrepareContextSources(ctx, f.runtime, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer targetAdmitted.Close()
+	render := renderref.Input{Repo: rootSource.Alias, Values: settings.Values{}, Project: manifest.ProjectInfo{Name: "Example", Slug: "example", Module: "example.invalid/project"}}
+	observed := evidencecas.Digest([]byte("actual synthetic project observation"))
+	intent, err := contextsource.PrepareNativeUpdate(ctx, f.runtime, admitted, targetAdmitted, contextsource.NativeUpdateInput{SourceRender: render, TargetRender: render, SourceRecordedValues: settings.Values{}, TargetRecordedValues: settings.Values{}, RendererVersion: "1.0.0", PreimageSHA256: observed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer intent.Close()
+	targetSnapshot, err := intent.TargetSnapshot(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceSnapshot, err := intent.SourceSnapshot(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceClosure, err := sourceSnapshot.FormatterSources(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closure, err := targetSnapshot.FormatterSources(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := intent.Rendered(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := intent.OperationBase(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf := f.proofs["leaf"]
+	toolSelection := operationtrust.SourceSelection{Subject: leaf.Subject, Evidence: leaf.Evidence}
+	tool, err := f.runtime.TrustRuntime().VerifySubject(ctx, toolSelection.TrustSubject(), toolSelection.EvidenceRefs())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := f.runtime.TrustRuntime().VerifiedSnapshot(tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recordRaw, ok := snapshot.Blob("formatter/tool.json")
+	if !ok {
+		t.Fatal("actual tool record missing")
+	}
+	var record struct {
+		APIVersion      string `json:"apiVersion"`
+		Adapter         string `json:"adapter"`
+		ToolID          string `json:"toolID"`
+		ToolVersion     string `json:"toolVersion"`
+		BinarySHA256    string `json:"binarySHA256"`
+		VersionEvidence struct {
+			Kind     string `json:"kind"`
+			Identity string `json:"identity"`
+		} `json:"versionEvidence"`
+		NativeEnvelope string `json:"nativeEnvelope"`
+	}
+	if err := canonicaljson.DecodeStrict(recordRaw, &record); err != nil {
+		t.Fatal(err)
+	}
+	input := result.Files["main.go"]
+	markers, err := blockmarkers.Validate(blockmarkers.LanguageGo, "main.go", input)
+	if err != nil || len(markers) == 0 {
+		t.Fatal("actual managed inventory", err)
+	}
+	options := []string{}
+	optionsDigest, err := trustverify.ComputeToolOptionsSHA256(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := blockformatter.BuildPlan(blockformatter.PlanInput{Path: "main.go", Language: "go", Adapter: "gofmt-stdin-v1", Tool: trustverify.Tool{ID: record.ToolID, Version: record.ToolVersion, BinarySHA256: record.BinarySHA256, OptionsSHA256: optionsDigest}, Options: options, InputMode: "100644", Markers: markers, TimeoutMillis: 5000, OutputLimitBytes: 16 << 20, Input: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := operationtrust.PrepareContextUpdateFormatterCalculation(ctx, f.runtime, closure, closure, render, render, settings.Values{}, settings.Values{}, "1.0.0", observed, evidencecas.Digest(nil), []byte(`{"apiVersion":"tplaiter.dev/managed-decisions/v1","decisions":[]}`)); err == nil {
+		t.Fatal("same admitted source closure accepted for both formatter roles")
+	}
+	calculation, err := operationtrust.PrepareContextUpdateFormatterCalculation(ctx, f.runtime, sourceClosure, closure, render, render, settings.Values{}, settings.Values{}, "1.0.0", observed, evidencecas.Digest(nil), []byte(`{"apiVersion":"tplaiter.dev/managed-decisions/v1","decisions":[]}`))
+	if err != nil {
+		t.Fatal("owned recorded calculation", err)
+	}
+	contextData, err := calculation.Context(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contextRaw, err := canonicaljson.Canonical(contextData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := blockformatter.NewRuntimeAdapter(f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, err := adapter.SelectContextNativeUpdate(ctx, calculation, tool, plan, input, contextRaw)
+	if err != nil {
+		t.Fatal("actual native material selection", err)
+	}
+	operation.Actions = selection.Actions()
+	if len(operation.Subjects) != 4 || len(operation.Actions) != 2 {
+		t.Fatal("actual full DAG/actions missing")
+	}
+	bound, err := adapter.BindContextNativeUpdate(ctx, selection, operation)
+	if err != nil {
+		t.Fatal("actual native material bind", err)
+	}
+	requests := bound.Requests()
+	if len(requests) != 2 || requests[0].RequestSHA256 == requests[1].RequestSHA256 || requests[0].Action.ID == requests[1].Action.ID {
+		t.Fatal("actual distinct requests missing")
+	}
+	for _, request := range requests {
+		if request.Scope != "update" || request.VerifyRequestSHA256() != nil {
+			t.Fatal("actual request scope/digest")
+		}
+	}
+	if _, err := adapter.Bind(ctx, selection, operation); err == nil {
+		t.Fatal("v2 selection entered legacy binding")
+	}
+	for _, mutate := range []func(*trustverify.OperationInputs){func(op *trustverify.OperationInputs) { op.Actions = nil }, func(op *trustverify.OperationInputs) { op.Subjects = op.Subjects[:len(op.Subjects)-1] }, func(op *trustverify.OperationInputs) { op.Scope = "new" }, func(op *trustverify.OperationInputs) {
+		op.AnswersSHA256 = evidencecas.Digest([]byte("foreign answers"))
+	}} {
+		candidate := operation
+		candidate.Subjects = append([]trustverify.Provider(nil), operation.Subjects...)
+		candidate.Actions = append([]trustverify.ActionMaterial(nil), operation.Actions...)
+		mutate(&candidate)
+		if _, err := adapter.BindContextNativeUpdate(ctx, selection, candidate); err == nil {
+			t.Fatal("mismatched operation material accepted")
+		}
+	}
+	for name, mutate := range map[string]func(*operationtrust.ContextUpdateFormatterContext){
+		"dependency-lock": func(c *operationtrust.ContextUpdateFormatterContext) {
+			c.TargetDependencyLockSHA256 = evidencecas.Digest([]byte("foreign lock"))
+		},
+		"root-lock": func(c *operationtrust.ContextUpdateFormatterContext) {
+			c.SourceRootLockSHA256 = evidencecas.Digest([]byte("foreign root"))
+			c.TargetRootLockSHA256 = c.SourceRootLockSHA256
+		},
+		"native-context": func(c *operationtrust.ContextUpdateFormatterContext) {
+			c.TargetNativeContextSHA256 = evidencecas.Digest([]byte("foreign native"))
+		},
+		"answers": func(c *operationtrust.ContextUpdateFormatterContext) {
+			c.RendererAnswersSHA256 = evidencecas.Digest([]byte("foreign answers"))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := contextData
+			mutate(&changed)
+			badRaw := contextJSON(t, changed)
+			// Recompute the actual canonical content closure and both action identities;
+			// refusal cannot be explained by binding stale actions from the positive.
+			planRaw := contextJSON(t, plan)
+			content := []trustverify.ContentEntry{{Root: "project", Path: plan.Path, Mode: plan.InputMode, ContentSHA256: evidencecas.Digest(input)}, {Root: "project", Path: "formatter/plan.json", Mode: "100644", ContentSHA256: evidencecas.Digest(planRaw)}, {Root: "project", Path: "formatter/tool.json", Mode: "100644", ContentSHA256: evidencecas.Digest(recordRaw)}, {Root: "project", Path: "formatter/context.json", Mode: "100644", ContentSHA256: evidencecas.Digest(badRaw)}}
+			sort.Slice(content, func(i, j int) bool {
+				return content[i].Root+"\x00"+content[i].Path < content[j].Root+"\x00"+content[j].Path
+			})
+			closureDigest, err := trustverify.ComputeContentClosureSHA256(content)
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidate := operation
+			candidate.Actions = selection.Actions()
+			candidate.AnswersSHA256 = changed.RendererAnswersSHA256
+			id := strings.TrimPrefix(evidencecas.Digest(append(append([]byte(nil), planRaw...), badRaw...)), "sha256:")
+			for i := range candidate.Actions {
+				candidate.Actions[i].Action.ID = fmt.Sprintf("format-%s-%d", id, i+1)
+				candidate.Actions[i].Action.ContentClosureSHA256 = closureDigest
+			}
+			if _, err := trustverify.ComputeOperationInputsSHA256(candidate); err != nil {
+				t.Fatal("recomputed operation", err)
+			}
+			if reflect.DeepEqual(candidate.Actions, operation.Actions) {
+				t.Fatal("negative retained stale actions")
+			}
+			if _, err := adapter.SelectContextNativeUpdate(ctx, calculation, tool, plan, input, badRaw); err == nil {
+				t.Fatal("foreign context selected")
+			}
+			rawInput := operationtrust.FormatterInput{Path: plan.Path, Mode: plan.InputMode, Bytes: input, PlanJSON: planRaw, ContextJSON: badRaw}
+			if _, err := operationtrust.ResolveContextUpdateFormatterComposition(ctx, f.runtime, calculation, tool, candidate, candidate.Actions[0], rawInput); err == nil {
+				t.Fatal("recomputed foreign context bound")
+			}
+		})
+	}
+
+	t.Log("actual independently admitted recorded source/target closures and signed tool: two action-specific Update material requests; recalculated foreign locks/native facts/answers/scope/subjects refuse; no execution/publication claim")
+}
+
+func TestContextUpdateFormatterRejectsSameAdmittedClosure(t *testing.T) {
+	f := newContextFixtureScopes(t, nil, []string{"new", "update"})
+	ctx := context.Background()
+	home := filepath.Join(filepath.Dir(f.policyPath), "same-closure-home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw := contextJSON(t, f.input)
+	admitted, err := sourceadapter.ResolveContextSources(ctx, f.runtime, home, f.input.Root.Subject.Commit, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admitted.Close()
+	sources, err := admitted.Sources(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sources.Close()
+	render := renderref.Input{Values: settings.Values{}, Project: manifest.ProjectInfo{Name: "Example", Slug: "example", Module: "example.invalid/project"}}
+	snapshot, err := contextsource.PrepareRecordedNativeSnapshot(ctx, f.runtime, sources, contextsource.RecordedNativeSnapshotInput{Render: render, RendererVersion: "1.0.0", RecordedValues: settings.Values{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snapshot.Close()
+	closure, err := snapshot.FormatterSources(ctx, f.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := operationtrust.PrepareContextUpdateFormatterCalculation(ctx, f.runtime, closure, closure, render, render, settings.Values{}, settings.Values{}, "1.0.0", evidencecas.Digest([]byte("actual same-closure observation")), evidencecas.Digest([]byte("actual same-closure registry")), []byte(`{"apiVersion":"tplaiter.dev/managed-decisions/v1","decisions":[]}`)); err == nil {
+		t.Fatal("same actual admitted closure accepted for both formatter roles")
+	}
+}
+
+func TestContextUpdateCleanMergedActualEffectsAndRetainedNoRepeat(t *testing.T) {
+	started := time.Now()
+	f := newContextFixtureScopes(t, nil, []string{"new", "update"})
+	ctx := context.Background()
+	t.Logf("fixture enrolled at %s; actual v2 source/target admission", time.Since(started))
+	raw := contextJSON(t, f.input)
+	source, err := contextsource.PrepareContextSources(ctx, f.runtime, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	target, err := contextsource.PrepareContextSources(ctx, f.runtime, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+	render := renderref.Input{Repo: "root", Values: settings.Values{}, Project: manifest.ProjectInfo{Name: "Example", Slug: "example", Module: "example.invalid/project"}}
+	before := evidencecas.Digest([]byte("bounded synthetic observed project"))
+	intent, err := contextsource.PrepareNativeUpdate(ctx, f.runtime, source, target, contextsource.NativeUpdateInput{SourceRender: render, TargetRender: render, SourceRecordedValues: settings.Values{}, TargetRecordedValues: settings.Values{}, RendererVersion: "1.0.0", PreimageSHA256: before})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer intent.Close()
+	leaf := f.proofs["leaf"]
+	tool := operationtrust.SourceSelection{APIVersion: operationtrust.SourceSelectionAPIVersion, Subject: leaf.Subject, Evidence: leaf.Evidence, Dependencies: []string{}}
+	decisions := []byte(`{"apiVersion":"tplaiter.dev/managed-decisions/v1","decisions":[]}`)
+	clean, err := PrepareContextUpdateClean(ctx, f.runtime, intent, contextJSON(t, tool), render, render, settings.Values{}, settings.Values{}, before, evidencecas.Digest(nil), decisions)
+	if err != nil {
+		t.Fatal("clean preparation", err)
+	}
+	requests, err := clean.RequiredRequests(ctx)
+	if err != nil || len(requests) != 2 {
+		t.Fatalf("actual clean requests %d: %v", len(requests), err)
+	}
+	for _, ref := range clean.References() {
+		if ref.APIVersion != "tplaiter.dev/formatter-reference/v3" {
+			t.Fatal("legacy clean frame")
+		}
+	}
+	if _, err := StageUpdateClean(ctx, clean, nil); err == nil {
+		t.Fatal("missing clean approvals accepted")
+	}
+	var policy trustverify.ExecutionPolicy
+	if err := json.Unmarshal(mustContextRead(t, f.policyPath), &policy); err != nil {
+		t.Fatal(err)
+	}
+	owner := &managedNewIntegrationFixture{policy: policy, approver: ed25519.NewKeyFromSeed([]byte("23456789012345678901234567890123")), evidence: filepath.Join(filepath.Dir(f.policyPath), "evidence")}
+	approvals := map[string]trustverify.ApprovalRefs{}
+	for _, request := range requests {
+		approvals[request.RequestSHA256] = managedNewApprove(t, owner, request)
+	}
+	t.Logf("actual two clean formatter actions start at %s", time.Since(started))
+	projection, err := StageUpdateClean(ctx, clean, approvals)
+	if err != nil {
+		t.Fatal("clean effects", err)
+	}
+	result, err := projection.RenderedFor(ctx, clean)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("actual clean actions completed at %s", time.Since(started))
+	t.Run("CleanRetained", func(t *testing.T) {
+		pending, err := clean.RequiredRequests(ctx)
+		if err != nil || len(pending) != 0 {
+			t.Fatal("completed clean ordinals pending", err)
+		}
+		if _, err := StageUpdateClean(ctx, clean, approvals); err == nil {
+			t.Fatal("unused approvals accepted for completed effects")
+		}
+		retained, err := StageUpdateClean(ctx, clean, map[string]trustverify.ApprovalRefs{})
+		if err != nil {
+			t.Fatal("clean retained pair", err)
+		}
+		again, err := retained.RenderedFor(ctx, clean)
+		if err != nil || !bytes.Equal(again.Files["main.go"], result.Files["main.go"]) {
+			t.Fatal("retained clean image changed", err)
+		}
+		if result.Baseline.Files["main.go"] != strings.TrimPrefix(evidencecas.Digest(result.Files["main.go"]), "sha256:") {
+			t.Fatal("clean baseline not actual output")
+		}
+		refs := clean.References()
+		ref := refs["main.go"]
+		ref.APIVersion = "tplaiter.dev/formatter-reference/v1"
+		refs["main.go"] = ref
+		if _, err := OpenUpdateClean(ctx, clean, refs); err == nil {
+			t.Fatal("downgraded frame accepted")
+		}
+		t.Logf("actual v3 clean pair and retained zero-repeat reopening complete at %s; no merged, transaction or installed CLI claim", time.Since(started))
+	})
+	t.Run("Merged", func(t *testing.T) {
+		candidate := append(bytes.Clone(result.Files["main.go"]), []byte("\n// local unmanaged comment\n")...)
+		if _, err := PrepareUpdateMerged(ctx, clean, &UpdateCleanProjection{}, map[string][]byte{"main.go": candidate}); err == nil {
+			t.Fatal("fabricated clean predecessor accepted")
+		}
+		merged, err := PrepareUpdateMerged(ctx, clean, projection, map[string][]byte{"main.go": candidate})
+		if err != nil {
+			t.Fatal("merged preparation", err)
+		}
+		mergedRequests, err := merged.RequiredRequests(ctx)
+		if err != nil || len(mergedRequests) != 2 {
+			t.Fatalf("actual merged requests %d: %v", len(mergedRequests), err)
+		}
+		mergedApprovals := map[string]trustverify.ApprovalRefs{}
+		for _, request := range mergedRequests {
+			for _, cleanRequest := range requests {
+				if request.RequestSHA256 == cleanRequest.RequestSHA256 {
+					t.Fatal("clean action reused")
+				}
+			}
+			mergedApprovals[request.RequestSHA256] = managedNewApprove(t, owner, request)
+		}
+		if _, err := StageUpdateMerged(ctx, merged, approvals); err == nil {
+			t.Fatal("clean approvals accepted for candidate")
+		}
+		t.Log("actual two predecessor-bound merged formatter actions")
+		completed, err := StageUpdateMerged(ctx, merged, mergedApprovals)
+		if err != nil {
+			t.Fatal("merged effects", err)
+		}
+		files, err := completed.FilesFor(ctx, merged)
+		if err != nil || !bytes.Contains(files["main.go"], []byte("// local unmanaged comment")) {
+			t.Fatal("candidate lost local span", err)
+		}
+		for _, ref := range merged.References() {
+			if ref.APIVersion != "tplaiter.dev/formatter-reference/v3" {
+				t.Fatal("legacy merged frame")
+			}
+		}
+		if pending, err := merged.RequiredRequests(ctx); err != nil || len(pending) != 0 {
+			t.Fatal("completed effects still request execution", err)
+		}
+		retained, err := StageUpdateMerged(ctx, merged, map[string]trustverify.ApprovalRefs{})
+		if err != nil {
+			t.Fatal("retained completed pair", err)
+		}
+		again, err := retained.FilesFor(ctx, merged)
+		if err != nil || !bytes.Equal(again["main.go"], files["main.go"]) {
+			t.Fatal("retained output changed", err)
+		}
+		t.Log("actual 2+2 formatter actions; retained same-runtime reopening has zero pending ordinals; no Update transaction, installed CLI or fresh-runtime cold claim")
+	})
+}
+
+func TestContextNewRecordedProjectionActualOwnerAndPurpose(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 350*time.Second)
+	defer cancel()
+	f := newContextFixture(t, nil)
+	home := filepath.Join(filepath.Dir(f.policyPath), "recorded-read-home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	leaf := f.proofs["leaf"]
+	tool := operationtrust.SourceSelection{APIVersion: operationtrust.SourceSelectionAPIVersion, Subject: leaf.Subject, Evidence: leaf.Evidence, Dependencies: []string{}}
+	input := NewCleanInput{APIVersion: "tplaiter.dev/managed-new-clean-input/v2", Home: home, Ref: f.input.Root.Subject.Commit, SourceInput: contextJSON(t, f.input), ToolSource: contextJSON(t, tool), Render: renderref.Input{Repo: "pinned", Values: settings.Values{}, Project: manifest.ProjectInfo{Name: "Example", Slug: "example", Module: "example.invalid/project"}}, RendererVersion: "1.0.0", Origins: map[string]survey.Source{}}
+	prep, err := PrepareNewClean(ctx, f.runtime, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var policy trustverify.ExecutionPolicy
+	if err := json.Unmarshal(mustContextRead(t, f.policyPath), &policy); err != nil {
+		t.Fatal(err)
+	}
+	owner := &managedNewIntegrationFixture{policy: policy, approver: ed25519.NewKeyFromSeed([]byte("23456789012345678901234567890123")), evidence: filepath.Join(filepath.Dir(f.policyPath), "evidence")}
+	signed := map[string]trustverify.ApprovalRefs{}
+	for _, q := range prep.Requests() {
+		signed[q.RequestSHA256] = managedNewApprove(t, owner, q)
+	}
+	clean, err := StageNewClean(ctx, prep, signed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, err := BuildNewPublication(ctx, prep, clean)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Access this package-private fresh owner only to assert exact reader bytes;
+	// the production entry still reopens the real immutable publication record.
+	want := pub.images
+	projection, images, err := ReconstructRootPublication(ctx, f.runtime, home, "1.0.0", want[newLineagePath], "new")
+	if err != nil || projection == nil {
+		t.Fatal("actual owner reconstruction", err)
+	}
+	a, _ := canonicaljson.Canonical(want)
+	b, _ := canonicaljson.Canonical(images)
+	if !bytes.Equal(a, b) {
+		t.Fatal("authenticated projection changed")
+	}
+	images["main.go"][0] = 'X'
+	if bytes.Equal(images["main.go"], pub.images["main.go"]) {
+		t.Fatal("caller mutation escaped into retained owner")
+	}
+	if _, _, err := ReconstructRootPublication(ctx, f.runtime, home, "1.0.0", want[newLineagePath], "link"); err == nil {
+		t.Fatal("wrong literal purpose accepted")
+	}
+	var locator newLineage
+	if err := canonicaljson.DecodeStrict(want[newLineagePath], &locator); err != nil {
+		t.Fatal(err)
+	}
+	locator.Publication.APIVersion = "tplaiter.dev/managed-publication-reference/v1"
+	raw, err := canonicaljson.Canonical(locator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ReconstructRootPublication(ctx, f.runtime, home, "1.0.0", raw, "new"); err == nil {
+		t.Fatal("downgraded reference accepted")
+	}
+	t.Log("fresh signed native-v2 New owner read: exact detached projection, foreign purpose and downgraded reference refused; no transaction publication or cold claim")
 }

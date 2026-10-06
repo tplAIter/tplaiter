@@ -31,6 +31,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/resources"
+	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/sourceadapter"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/survey"
@@ -907,6 +908,8 @@ func PublicationKind(ctx context.Context, r *trustload.Runtime, reference Public
 // UpdateCleanPreparation retains the actual same-runtime source/target intent.
 // It can prepare and verify effects, but cannot construct a transaction grant.
 type UpdateCleanPreparation struct {
+	nativeIntent         *contextsource.PreparedNativeUpdate
+	contextCalculation   *operationtrust.ContextUpdateFormatterCalculation
 	runtime              *trustload.Runtime
 	intent               *operationtrust.PreparedUpdate
 	source, target, tool operationtrust.SourceSelection
@@ -1056,7 +1059,20 @@ func updateSelectionMatchesRoot(selection operationtrust.SourceSelection, lock p
 }
 
 func (p *UpdateCleanPreparation) recheck(ctx context.Context) error {
-	if ctx == nil || ctx.Err() != nil || p == nil || p.runtime == nil || p.intent == nil || !p.intent.ValidFor(p.runtime.TrustRuntime()) {
+	if ctx == nil || ctx.Err() != nil || p == nil || p.runtime == nil {
+		return ErrUnavailable
+	}
+	if p.nativeIntent != nil {
+		if p.intent != nil || p.contextCalculation == nil {
+			return ErrUnavailable
+		}
+		if err := p.nativeIntent.RecheckFor(ctx, p.runtime); err != nil {
+			return err
+		}
+		if err := p.contextCalculation.RecheckFor(ctx, p.runtime); err != nil {
+			return err
+		}
+	} else if p.intent == nil || !p.intent.ValidFor(p.runtime.TrustRuntime()) {
 		return ErrUnavailable
 	}
 	for _, selection := range []operationtrust.SourceSelection{p.source, p.target, p.tool} {
@@ -1154,7 +1170,16 @@ func (v *UpdateCleanProjection) RenderedFor(ctx context.Context, p *UpdateCleanP
 	if err := p.recheck(ctx); err != nil {
 		return nil, err
 	}
-	result := p.intent.Rendered()
+	var result *renderref.Result
+	if p.nativeIntent != nil {
+		var err error
+		result, err = p.nativeIntent.Rendered(ctx, p.runtime)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		result = p.intent.Rendered()
+	}
 	// Re-read declarations from the original verified target. Rendered() is a
 	// detached data projection, not authority for a replacement declaration.
 	resolution, err := p.runtime.TrustRuntime().VerifySubject(ctx, p.target.TrustSubject(), p.target.EvidenceRefs())
@@ -1238,11 +1263,27 @@ func PrepareUpdateMerged(ctx context.Context, clean *UpdateCleanPreparation, ver
 	if err != nil {
 		return nil, err
 	}
-	formats := &UpdateCleanPreparation{runtime: r, intent: clean.intent, source: clean.source, target: clean.target, tool: clean.tool, paths: append([]string(nil), clean.paths...), formats: map[string]*Prepared{}, operation: clean.operation}
+	formats := &UpdateCleanPreparation{runtime: r, nativeIntent: clean.nativeIntent, contextCalculation: clean.contextCalculation, intent: clean.intent, source: clean.source, target: clean.target, tool: clean.tool, paths: append([]string(nil), clean.paths...), formats: map[string]*Prepared{}, operation: clean.operation}
 	for _, path := range clean.paths {
 		input, ok := candidates[path]
 		if !ok || len(input) == 0 || len(input) > 16<<20 {
 			return nil, ErrUnavailable
+		}
+		if clean.nativeIntent != nil {
+			if clean.formats[path].Reference().APIVersion != "tplaiter.dev/formatter-reference/v3" {
+				return nil, ErrUnavailable
+			}
+			// The verified projection above authenticates the actual retained clean
+			// pair before its reference is admitted as predecessor data.
+			calculation, err := operationtrust.PrepareContextUpdateMergedFormatterCalculation(ctx, r, clean.contextCalculation, path, input, clean.formats[path].Reference().FrameSHA256)
+			if err != nil {
+				return nil, err
+			}
+			formats.formats[path], err = prepareContextNativeUpdateMergedFile(ctx, r, clean.nativeIntent, clean.contextCalculation, calculation, tool, path, input)
+			if err != nil {
+				return nil, err
+			}
+			continue
 		}
 		context := clean.managed
 		context.Role = "merged-candidate"
@@ -1385,13 +1426,9 @@ func prepareContextNewClean(ctx context.Context, r *trustload.Runtime, in NewCle
 			intent.Close()
 		}
 	}()
-	projection, err := intent.Projection(ctx, r)
+	result, err := intent.Rendered(ctx, r)
 	if err != nil {
 		return nil, err
-	}
-	result := projection.Rendered
-	if result == nil {
-		return nil, ErrUnavailable
 	}
 	for name, origin := range in.Origins {
 		if _, exists := in.Render.Values[name]; !exists || (origin != survey.SourceDefault && origin != survey.SourceSet && origin != survey.SourceAnswer && origin != survey.SourcePrompt && origin != survey.SourceImplied) {
@@ -1425,10 +1462,13 @@ func prepareContextNewClean(ctx context.Context, r *trustload.Runtime, in NewCle
 		}
 		registry = append([]byte(nil), data.RegistryBefore...)
 	}
-	root := projection.RootLock
+	root, err := intent.RootLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
 	p := &NewCleanPreparation{runtime: r, input: in, nativeSources: src, nativeIntent: intent, root: root, purpose: "new", registrySHA256: evidencecas.Digest(registry), formats: map[string]*Prepared{}, context: newimages.Context{ID: r.ProjectContext().ProjectID, Source: rootSource, Info: in.Render.Project, Port: in.Render.Runtime.Port, Result: result, Resources: resourceImages, Sources: in.Origins, Interactive: in.Interactive}}
-	inventory := projection.ManagedFiles
-	if len(inventory) == 0 || len(inventory) > 4096 {
+	inventory, err := intent.ManagedFiles(ctx, r)
+	if err != nil || len(inventory) == 0 || len(inventory) > 4096 {
 		return nil, ErrUnavailable
 	}
 	for _, file := range inventory {
@@ -1510,28 +1550,43 @@ func ReconstructRootPublication(ctx context.Context, r *trustload.Runtime, home,
 	if requiredKind != "" && kind != requiredKind {
 		return nil, nil, ErrRootLineage
 	}
-	var pub interface {
-		ImagesFor(context.Context, *trustload.Runtime) (map[string][]byte, error)
-		RegistryFor(*trustload.Runtime) (string, []byte, []byte, error)
-	}
-	switch kind {
-	case "new":
-		pub, err = OpenNewPublication(ctx, r, locator.Publication)
-	case "link":
-		pub, err = OpenLinkPublication(ctx, r, locator.Publication)
-	default:
-		return nil, nil, ErrRootLineage
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	actualHome, _, _, err := pub.RegistryFor(r)
-	if err != nil || actualHome != home {
-		return nil, nil, ErrRootLineage
-	}
-	images, err := pub.ImagesFor(ctx, r)
-	if err != nil {
-		return nil, nil, err
+	var images map[string][]byte
+	if kind == "new" && locator.Publication.APIVersion == "tplaiter.dev/managed-publication-reference/v2" {
+		// The actual read owner performs a fresh full source/effect reconstruction
+		// and copies its authenticated images. Calling ImagesFor on that freshly
+		// reopened owner would repeat the same reconstruction, not add authority.
+		projection, err := ReadNewPublicationProjection(ctx, r, locator.Publication)
+		if err != nil {
+			return nil, nil, err
+		}
+		if projection.Home != home {
+			return nil, nil, ErrRootLineage
+		}
+		images = projection.Images
+	} else {
+		var pub interface {
+			ImagesFor(context.Context, *trustload.Runtime) (map[string][]byte, error)
+			RegistryFor(*trustload.Runtime) (string, []byte, []byte, error)
+		}
+		switch kind {
+		case "new":
+			pub, err = OpenNewPublication(ctx, r, locator.Publication)
+		case "link":
+			pub, err = OpenLinkPublication(ctx, r, locator.Publication)
+		default:
+			return nil, nil, ErrRootLineage
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		actualHome, _, _, err := pub.RegistryFor(r)
+		if err != nil || actualHome != home {
+			return nil, nil, ErrRootLineage
+		}
+		images, err = pub.ImagesFor(ctx, r)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	if !bytes.Equal(raw, images[newLineagePath]) {
 		return nil, nil, ErrRootLineage
@@ -1710,4 +1765,94 @@ func CommittedUpdateIntent(ctx context.Context, r *trustload.Runtime, home strin
 		return nil, err
 	}
 	return append(json.RawMessage(nil), material.Intent...), nil
+}
+
+// PrepareContextUpdateClean derives v3 clean frames from the actual recorded
+// source/target intent. No source selection is relabelled as a v1 preparation.
+func PrepareContextUpdateClean(ctx context.Context, r *trustload.Runtime, intent *contextsource.PreparedNativeUpdate, toolRaw []byte, sourceRender, targetRender renderref.Input, sourceRecorded, targetRecorded settings.Values, observed, registry string, decisions []byte) (*UpdateCleanPreparation, error) {
+	if intent == nil || r == nil {
+		return nil, ErrUnavailable
+	}
+	if err := intent.RecheckFor(ctx, r); err != nil {
+		return nil, err
+	}
+	source, err := intent.SourceSnapshot(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	target, err := intent.TargetSnapshot(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	sourceClosure, err := source.FormatterSources(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	targetClosure, err := target.FormatterSources(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	calculation, err := operationtrust.PrepareContextUpdateFormatterCalculation(ctx, r, sourceClosure, targetClosure, sourceRender, targetRender, sourceRecorded, targetRecorded, sourceRenderVersion(ctx, r, source), observed, registry, decisions)
+	if err != nil {
+		return nil, err
+	}
+	tool, err := operationtrust.DecodeSourceSelection(toolRaw)
+	if err != nil {
+		return nil, err
+	}
+	toolProvider, err := r.TrustRuntime().VerifySubject(ctx, tool.TrustSubject(), tool.EvidenceRefs())
+	if err != nil {
+		return nil, err
+	}
+	sourceRoot, err := source.RootLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	targetRoot, err := target.RootLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	selection := func(root provenance.RootTemplateLock) operationtrust.SourceSelection {
+		s := root.Root
+		return operationtrust.SourceSelection{APIVersion: operationtrust.SourceSelectionAPIVersion, Subject: operationtrust.SelectionSubject{Origin: s.Origin, TemplatePath: s.TemplatePath, RequestedRef: s.RequestedRef, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256}, Evidence: operationtrust.SelectionEvidence{Format: bootstrap.PublisherStatementAPIVersion, StatementCAS: s.StatementCAS, SignatureCAS: s.SignatureCAS, KeyFingerprint: s.KeyFingerprint, CheckpointCAS: s.CheckpointCAS, InclusionProofCAS: s.InclusionProofCAS}, Dependencies: []string{}}
+	}
+	operation, err := intent.OperationBase(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	p := &UpdateCleanPreparation{runtime: r, nativeIntent: intent, contextCalculation: calculation, source: selection(sourceRoot), target: selection(targetRoot), tool: *tool, formats: map[string]*Prepared{}, operation: operation}
+	before, err := source.Rendered(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	after, err := target.Rendered(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	for name, input := range after.Files {
+		if !bytes.Contains(input, []byte("tplater:managed-")) && !bytes.Contains(before.Files[name], []byte("tplater:managed-")) {
+			continue
+		}
+		p.formats[name], err = PrepareContextNativeUpdateFile(ctx, r, intent, calculation, toolProvider, name)
+		if err != nil {
+			return nil, err
+		}
+		p.paths = append(p.paths, name)
+	}
+	if len(p.paths) == 0 || len(p.paths) > 4096 {
+		return nil, ErrUnavailable
+	}
+	sort.Strings(p.paths)
+	if err := p.recheck(ctx); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func sourceRenderVersion(ctx context.Context, r *trustload.Runtime, source *contextsource.PreparedNativeSnapshot) string {
+	root, err := source.RootLock(ctx, r)
+	if err != nil {
+		return ""
+	}
+	return root.Renderer.Version
 }

@@ -11,11 +11,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec" //nolint:depguard // test fixture builds and runs signed helper binaries
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +30,43 @@ import (
 )
 
 type t6BClock struct{}
+
+var cachedGofmtImage = sync.OnceValues(func() ([]byte, error) {
+	if FormatterNativeEnvelope() == "" {
+		return nil, errors.New("unsupported native formatter envelope")
+	}
+	root, err := goRoot()
+	if err != nil || root == "" {
+		return nil, err
+	}
+	gofmtPath := filepath.Join(root, "bin", "gofmt")
+	info, err := os.Stat(gofmtPath)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+		return nil, errors.New("selected gofmt is unavailable")
+	}
+	raw, err := os.ReadFile(gofmtPath)
+	if err != nil {
+		return nil, err
+	}
+	build, err := buildinfo.Read(bytes.NewReader(raw))
+	if err != nil || build == nil || build.Path != "cmd/gofmt" || build.GoVersion == "" {
+		return nil, errors.New("selected gofmt buildinfo is unavailable")
+	}
+	settings := map[string]string{}
+	for _, setting := range build.Settings {
+		settings[setting.Key] = setting.Value
+	}
+	if settings["GOOS"] != runtime.GOOS || settings["GOARCH"] != runtime.GOARCH {
+		return nil, errors.New("selected gofmt target mismatch")
+	}
+	versionCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	version, err := exec.CommandContext(versionCtx, filepath.Join(root, "bin", "go"), "env", "GOVERSION").Output()
+	if err != nil || strings.TrimSpace(string(version)) != build.GoVersion {
+		return nil, errors.New("selected gofmt toolchain mismatch")
+	}
+	return append([]byte(nil), raw...), nil
+})
 
 func (t6BClock) Now() time.Time { return time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) }
 
@@ -141,6 +181,11 @@ func NewGofmtFixture(t *testing.T) *Fixture {
 
 func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 	t.Helper()
+	if mode == "gofmt" {
+		if raw, err := cachedGofmtImage(); err == nil {
+			return append([]byte(nil), raw...)
+		}
+	}
 	src, out := filepath.Join(dir, "native-helper.go"), filepath.Join(dir, "native-tool")
 	var raw []byte
 	switch mode {
@@ -172,7 +217,9 @@ func t6BBuildHelper(t *testing.T, dir, mode string) []byte {
 	if err := os.Mkdir(cache, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(GoBinary(t), args...)
+	buildCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(buildCtx, GoBinary(t), args...)
 	cmd.Env = []string{"HOME=" + filepath.Join(dir, "home"), "GOMODCACHE=" + filepath.Join(dir, "modcache"), "GOCACHE=" + cache, "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0", "PATH=" + filepath.Join(GoRoot(t), "bin") + ":/usr/bin:/bin"}
 	cmd.Env = append(cmd.Env, NativeTargetEnv()...)
 	if err := cmd.Run(); err != nil {

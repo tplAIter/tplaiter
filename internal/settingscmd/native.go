@@ -11,6 +11,8 @@ import (
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
+	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/managedblocks"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/migrations"
@@ -22,8 +24,10 @@ import (
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/resources"
 	"github.com/tplAIter/tplaiter/internal/settings"
+	"github.com/tplAIter/tplaiter/internal/sourceadapter"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/trustload"
+	"github.com/tplAIter/tplaiter/internal/updateplan"
 )
 
 // Native uses one concrete installed runtime. Neither discovery manifests nor
@@ -34,12 +38,13 @@ type Native struct {
 }
 
 type NativeView struct {
-	Warnings  []string
-	Template  *manifest.Template
-	Values    settings.Values
-	Answers   map[string]stateledger.Answer
-	Selection stateledger.TemplateIdentity
-	source    []byte
+	Warnings       []string
+	Template       *manifest.Template
+	Values         settings.Values
+	Answers        map[string]stateledger.Answer
+	Selection      stateledger.TemplateIdentity
+	source         []byte
+	snapshotSHA256 string
 }
 
 func NewNative(r *trustload.Runtime, home, renderer string) (*Native, error) {
@@ -131,12 +136,54 @@ func (n *Native) Read(ctx context.Context) (*NativeView, error) {
 	if !bytes.Equal(snapshotManifest, manifestBytes) || marker.Template.Name != tpl.Metadata.Name || marker.Template.ResolvedCommit != lock.Root.Commit || marker.Template.RequestedRef != lock.Root.RequestedRef {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
-	if _, err := operationtrust.DecodeNativeContract(rawManifest.ContractBytes(), manifestBytes); err != nil {
-		return nil, err
+	values := settings.Values{}
+	for key, answer := range marker.Answers {
+		values[key] = answer.Value
 	}
-	images, err := resources.PlanNativeGeneratorImages(r.TrustRuntime(), resolution, *lock)
-	if err != nil {
-		return nil, err
+	text := func(key string) string { value, _ := marker.Project[key].(string); return value }
+	port, ok := marker.Runtime["port"].(int)
+	if !ok || port < 0 || port > 65535 {
+		return nil, stateledger.ErrUnsafe
+	}
+	render := renderref.Input{Repo: marker.Template.Repo, Values: renderref.Values(values), Project: manifest.ProjectInfo{Name: text("name"), Slug: text("slug"), Module: text("module"), System: text("system"), Domain: text("domain")}, Runtime: manifest.ProjectRuntime{Port: port}}
+	var images *resources.ResourceImages
+	var rendered *renderref.Result
+	if _, legacyErr := operationtrust.DecodeNativeContract(rawManifest.ContractBytes(), manifestBytes); legacyErr == nil {
+		images, err = resources.PlanNativeGeneratorImages(r.TrustRuntime(), resolution, *lock)
+		if err != nil {
+			return nil, err
+		}
+		prepared, err := operationtrust.PrepareSnapshot(ctx, r, operationtrust.PrepareSnapshotInput{SourceInput: input, RendererVersion: n.renderer, Render: render})
+		if err != nil {
+			return nil, err
+		}
+		rendered = prepared.Rendered()
+	} else {
+		if _, err := contextsource.DecodeNativeContextContractV2(rawManifest.ContractBytes(), manifestBytes); err != nil {
+			return nil, err
+		}
+		sources, err := sourceadapter.PrepareRecordedContextSources(ctx, r, rootRaw, depRaw)
+		if err != nil {
+			return nil, err
+		}
+		defer sources.Close()
+		input, err = sourceadapter.RecordedContextSourceInput(ctx, r, rootRaw, depRaw)
+		if err != nil {
+			return nil, err
+		}
+		prepared, err := contextsource.PrepareRecordedNativeSnapshot(ctx, r, sources, contextsource.RecordedNativeSnapshotInput{Render: render, RecordedValues: values, RendererVersion: n.renderer})
+		if err != nil {
+			return nil, err
+		}
+		defer prepared.Close()
+		images, err = resources.PlanContextNativeSnapshotGeneratorImages(ctx, r, prepared)
+		if err != nil {
+			return nil, err
+		}
+		rendered, err = prepared.Rendered(ctx, r)
+		if err != nil {
+			return nil, err
+		}
 	}
 	resourceLock, err := read("resources.lock.json")
 	if err != nil {
@@ -159,21 +206,6 @@ func (n *Native) Read(ctx context.Context) (*NativeView, error) {
 	if err := migrations.ValidateAppliedHistory(tpl.Migrations, tpl.Metadata.Version, ledger); err != nil {
 		return nil, err
 	}
-	values := settings.Values{}
-	for key, a := range marker.Answers {
-		values[key] = a.Value
-	}
-	// A stripped lineage must not enter the ordinary reader merely because the
-	// locator is absent. Derive managed presence from the authenticated render.
-	text := func(key string) string { value, _ := marker.Project[key].(string); return value }
-	port, ok := marker.Runtime["port"].(int)
-	if !ok || port < 0 || port > 65535 {
-		return nil, stateledger.ErrUnsafe
-	}
-	prepared, err := operationtrust.PrepareSnapshot(ctx, r, operationtrust.PrepareSnapshotInput{SourceInput: input, RendererVersion: n.renderer, Render: renderref.Input{Repo: marker.Template.Repo, Values: renderref.Values(values), Project: manifest.ProjectInfo{Name: text("name"), Slug: text("slug"), Module: text("module"), System: text("system"), Domain: text("domain")}, Runtime: manifest.ProjectRuntime{Port: port}}})
-	if err != nil {
-		return nil, err
-	}
 	blockRaw, err := read("managed-blocks.json")
 	if err != nil {
 		return nil, err
@@ -183,7 +215,7 @@ func (n *Native) Read(ctx context.Context) (*NativeView, error) {
 		return nil, err
 	}
 	required := len(recordedBlocks.Files) > 0
-	for _, raw := range prepared.Rendered().Files {
+	for _, raw := range rendered.Files {
 		if bytes.Contains(raw, []byte("tplater:managed-")) {
 			required = true
 			break
@@ -214,7 +246,7 @@ func (n *Native) Read(ctx context.Context) (*NativeView, error) {
 	if err != nil || !bytes.Equal(before, after) {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
-	return &NativeView{Warnings: append([]string(nil), resolved.Report.Warnings...), Template: tpl, Values: resolved.Values.Clone(), Answers: marker.Answers, Selection: marker.Template, source: input}, nil
+	return &NativeView{Warnings: append([]string(nil), resolved.Report.Warnings...), Template: tpl, Values: resolved.Values.Clone(), Answers: marker.Answers, Selection: marker.Template, source: input, snapshotSHA256: evidencecas.Digest(before)}, nil
 }
 
 func (n *Native) Prepare(ctx context.Context, pairs []string) (*projecttransaction.SettingsPlan, error) {
@@ -223,6 +255,92 @@ func (n *Native) Prepare(ctx context.Context, pairs []string) (*projecttransacti
 		return nil, err
 	}
 	return projecttransaction.PlanSettings(ctx, n.runtime, n.home, n.renderer, view.source, pairs)
+}
+
+// CapturedSettingsPairs carries bounded operator choices between formatter
+// phases. Its digests detect stale observations; this record grants no action.
+type CapturedSettingsPairs struct {
+	APIVersion        string   `json:"apiVersion"`
+	SourceInputSHA256 string   `json:"sourceInputSHA256"`
+	SnapshotSHA256    string   `json:"snapshotSHA256"`
+	Group             string   `json:"group"`
+	Pairs             []string `json:"pairs"`
+}
+
+func captureSettingsPairs(view *NativeView, group string, pairs []string) (CapturedSettingsPairs, error) {
+	if view == nil || view.Template == nil || len(view.source) == 0 || view.snapshotSHA256 == "" || len(pairs) == 0 {
+		return CapturedSettingsPairs{}, updateplan.ErrSettingsInput
+	}
+	if _, err := updateplan.ResolveSettingsAnswers(view.Template, view.Answers, pairs); err != nil {
+		return CapturedSettingsPairs{}, err
+	}
+	if group != "" {
+		if !groupExists(view.Template, group) {
+			return CapturedSettingsPairs{}, updateplan.ErrSettingsInput
+		}
+		allowed := groupWithDescendants(view.Template, group)
+		for _, pair := range pairs {
+			key, _, err := settings.ParseRecordedSet(view.Template, pair, view.Values)
+			if err != nil || !allowed[key] {
+				return CapturedSettingsPairs{}, updateplan.ErrSettingsInput
+			}
+		}
+	}
+	return CapturedSettingsPairs{APIVersion: "tplaiter.dev/settings-pairs/v1", SourceInputSHA256: evidencecas.Digest(view.source), SnapshotSHA256: view.snapshotSHA256, Group: group, Pairs: append([]string(nil), pairs...)}, nil
+}
+
+// CapturePairs persists the selected intent as detached canonical data. Both
+// preparation and publication still resolve the pairs against fresh state.
+func CapturePairs(view *NativeView, group string, pairs []string) ([]byte, error) {
+	captured, err := captureSettingsPairs(view, group, pairs)
+	if err != nil {
+		return nil, err
+	}
+	return canonicaljson.Canonical(captured)
+}
+
+// RestorePairs requires a newly authenticated view and rechecks every pair.
+// Completed formatter effects do not authorize a changed answer or snapshot.
+func RestorePairs(view *NativeView, group string, raw []byte) ([]string, error) {
+	if len(raw) == 0 || len(raw) > 1<<17 {
+		return nil, updateplan.ErrSettingsInput
+	}
+	var record CapturedSettingsPairs
+	if canonicaljson.DecodeStrict(raw, &record) != nil || record.APIVersion != "tplaiter.dev/settings-pairs/v1" || record.Group != group {
+		return nil, updateplan.ErrSettingsInput
+	}
+	canonical, err := canonicaljson.Canonical(record)
+	if err != nil || !bytes.Equal(canonical, raw) {
+		return nil, updateplan.ErrSettingsInput
+	}
+	fresh, err := captureSettingsPairs(view, group, record.Pairs)
+	if err != nil {
+		return nil, err
+	}
+	if fresh.SourceInputSHA256 != record.SourceInputSHA256 || fresh.SnapshotSHA256 != record.SnapshotSHA256 {
+		return nil, updateplan.ErrStale
+	}
+	return append([]string(nil), fresh.Pairs...), nil
+}
+
+// PrepareManaged reads the authenticated current source again before preparing
+// the same-version mutation with retained formatter evidence.
+func (n *Native) PrepareManaged(ctx context.Context, pairs []string, transport updateplan.ManagedInput) (*projecttransaction.SettingsPlan, error) {
+	view, err := n.Read(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return projecttransaction.PlanManagedSettings(ctx, n.runtime, n.home, n.renderer, view.source, pairs, transport)
+}
+
+// PrepareManagedEffects exposes requests from the actual lifecycle owner;
+// detached settings values and request projections do not grant execution.
+func (n *Native) PrepareManagedEffects(ctx context.Context, pairs []string, transport updateplan.ManagedInput) (*updateplan.ManagedEffects, error) {
+	view, err := n.Read(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return projecttransaction.PrepareManagedSettingsEffects(ctx, n.runtime, n.home, n.renderer, view.source, pairs, transport)
 }
 
 // Reanswer asks only the selected group/subtree against the verified manifest;

@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/managedblocks"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
 	"github.com/tplAIter/tplaiter/internal/settingscmd"
@@ -20,8 +22,12 @@ import (
 )
 
 type nativeSettingsControls struct {
-	key, dir, value string
-	dryRun, yes     bool
+	readGroup                               string
+	export                                  bool
+	key, dir, value                         string
+	dryRun, yes                             bool
+	prepare, formatStage                    bool
+	formatInput, decisionsInput, pairsInput string
 }
 
 func addNativeSettingsFlags(cmd *cobra.Command, c *nativeSettingsControls, mutable bool) {
@@ -30,6 +36,11 @@ func addNativeSettingsFlags(cmd *cobra.Command, c *nativeSettingsControls, mutab
 	if mutable {
 		cmd.Flags().BoolVar(&c.dryRun, "dry-run", false, "show signed plan without publication")
 		cmd.Flags().BoolVar(&c.yes, "yes", false, "apply without interactive confirmation")
+		cmd.Flags().BoolVar(&c.prepare, "prepare", false, "show actual managed Settings formatter requests")
+		cmd.Flags().BoolVar(&c.formatStage, "format-stage", false, "stage the current managed Settings formatter phase with exact approvals")
+		cmd.Flags().StringVar(&c.formatInput, "format-input", "", "bounded formatter selection and approval transport")
+		cmd.Flags().StringVar(&c.decisionsInput, "decisions-input", "", "canonical typed managed decisions")
+		cmd.Flags().StringVar(&c.pairsInput, "pairs-input", "", "captured reanswer pairs from the unchanged authenticated snapshot")
 	}
 }
 
@@ -47,6 +58,15 @@ func nativeSettingsReadError(err error) error {
 }
 
 func runNativeSettings(cmd *cobra.Command, c nativeSettingsControls, args []string, op resultdto.Operation) error {
+	if c.prepare && (c.formatStage || c.dryRun) || c.formatStage && c.dryRun || (c.formatInput == "") != (c.decisionsInput == "") || (c.prepare || c.formatStage) && c.formatInput == "" {
+		return ErrFormatControls
+	}
+	if c.pairsInput != "" && (op != resultdto.OperationSettingsReanswer || len(args) != 1 || cmd.Flags().Changed("value")) {
+		return nativeSettingsInput(errors.New("captured pairs require exactly the original edit group"))
+	}
+	if op == resultdto.OperationSettingsShow && (c.formatInput != "" || c.prepare || c.formatStage || c.pairsInput != "") {
+		return ErrFormatControls
+	}
 	if op == resultdto.OperationSettingsReanswer && len(args) == 0 && cmd.Flags().Changed("value") {
 		return nativeSettingsInput(errors.New("settings edit --value requires a group"))
 	}
@@ -69,6 +89,13 @@ func runNativeSettings(cmd *cobra.Command, c nativeSettingsControls, args []stri
 	}
 	d := settingscmd.Deps{Out: humanOut(cmd), Err: cmd.ErrOrStderr(), Palette: ui.Default(), Prompter: survey.HuhPrompter{In: cmd.InOrStdin(), Out: humanOut(cmd)}, Interactive: term.IsTerminal(int(os.Stdin.Fd())) && !jsonMode(cmd)}
 	if op == resultdto.OperationSettingsShow || op == resultdto.OperationSettingsReanswer && len(args) == 0 {
+		if c.readGroup != "" {
+			value, exists := view.Values[c.readGroup]
+			if !exists {
+				return nativeSettingsInput(fmt.Errorf("unknown recorded settings group %q", c.readGroup))
+			}
+			view.Values = map[string]any{c.readGroup: value}
+		}
 		env := newResult(op)
 		env.Project = trustProject(r.ProjectContext())
 		for _, w := range view.Warnings {
@@ -82,12 +109,29 @@ func runNativeSettings(cmd *cobra.Command, c nativeSettingsControls, args []stri
 		if jsonMode(cmd) {
 			return emitResult(cmd, env, resultdto.ExitSuccess, nil)
 		}
+		if c.export {
+			raw, err := canonicaljson.Canonical(view.Values)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(raw))
+			return err
+		}
 		settingscmd.PrintNativeView(d, view)
 		return nil
 	}
 	pairs := args
 	if op == resultdto.OperationSettingsReanswer {
-		if cmd.Flags().Changed("value") {
+		if c.pairsInput != "" {
+			raw, err := readUntrustedDocument(cmd.Context(), c.pairsInput)
+			if err != nil {
+				return err
+			}
+			pairs, err = settingscmd.RestorePairs(view, args[0], raw)
+			if err != nil {
+				return nativeSettingsInput(err)
+			}
+		} else if cmd.Flags().Changed("value") {
 			pairs = []string{args[0] + "=" + c.value}
 		} else {
 			if !d.Interactive {
@@ -99,7 +143,87 @@ func runNativeSettings(cmd *cobra.Command, c nativeSettingsControls, args []stri
 			}
 		}
 	}
-	plan, err := backend.Prepare(cmd.Context(), pairs)
+	var transport *updateplan.ManagedInput
+	if c.formatInput != "" {
+		if op == resultdto.OperationSettingsReanswer && len(args) != 1 {
+			return nativeSettingsInput(errors.New("managed settings edit requires a selected group"))
+		}
+		raw, err := readUntrustedDocument(cmd.Context(), c.formatInput)
+		if err != nil {
+			return err
+		}
+		controls, err := ParseFormatInput(raw)
+		if err != nil {
+			return err
+		}
+		choices, err := readUntrustedDocument(cmd.Context(), c.decisionsInput)
+		if err != nil {
+			return err
+		}
+		decisions, err := managedblocks.ParseDecisions(choices)
+		if err != nil {
+			return err
+		}
+		canonical, err := canonicaljson.Canonical(decisions)
+		if err != nil || string(canonical) != string(choices) {
+			return ErrFormatControls
+		}
+		tool, err := canonicaljson.Canonical(controls.ToolSource)
+		if err != nil {
+			return err
+		}
+		transport = &updateplan.ManagedInput{ToolSource: tool, Decisions: choices}
+		if c.prepare || c.formatStage {
+			if c.prepare && len(controls.Approvals) != 0 {
+				return ErrFormatControls
+			}
+			prepared, err := backend.PrepareManagedEffects(cmd.Context(), pairs, *transport)
+			if err != nil {
+				return nativeSettingsReadError(err)
+			}
+			phase, requests, err := prepared.PhaseRequests(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if c.formatStage {
+				approvals, err := importExactFormatApprovals(cmd, controls, requests)
+				if err != nil {
+					return err
+				}
+				if err := prepared.StageCurrentPhase(cmd.Context(), approvals); err != nil {
+					return err
+				}
+				phase, requests, err = prepared.PhaseRequests(cmd.Context())
+				if err != nil {
+					return err
+				}
+			}
+			group := ""
+			if op == resultdto.OperationSettingsReanswer {
+				group = args[0]
+			}
+			captured, err := settingscmd.CapturePairs(view, group, pairs)
+			if err != nil {
+				return err
+			}
+			env := newResult(op)
+			env.Project = trustProject(r.ProjectContext())
+			env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-I-MANAGED-SETTINGS-PHASE", Severity: "info", Message: "source-owned managed Settings formatter phase", Details: map[string]any{"phase": phase, "requests": requests, "pairs": json.RawMessage(captured)}})
+			if err := env.SetData(resultdto.SettingsSetData{DryRun: c.prepare}); err != nil {
+				return err
+			}
+			return emitNativeSettings(cmd, env, resultdto.ExitSuccess, nil)
+		}
+		if len(controls.Approvals) != 0 {
+			return ErrFormatControls
+		}
+	}
+	var plan *projecttransaction.SettingsPlan
+	if transport == nil {
+		plan, err = backend.Prepare(cmd.Context(), pairs)
+	} else {
+		plan, err = backend.PrepareManaged(cmd.Context(), pairs, *transport)
+	}
 	if err != nil {
 		if errors.Is(err, updateplan.ErrSettingsInput) {
 			return nativeSettingsInput(err)

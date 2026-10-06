@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"sort"
 
 	"github.com/tplAIter/tplaiter/internal/blockformatter"
@@ -28,6 +29,9 @@ var (
 )
 
 type Prepared struct {
+	updateMerged           *operationtrust.ContextUpdateMergedFormatterCalculation
+	nativeUpdate           *contextsource.PreparedNativeUpdate
+	updateCalculation      *operationtrust.ContextUpdateFormatterCalculation
 	nativeIntent           *contextsource.PreparedNativeNew
 	sources                *contextauth.VerifiedSourceClosure
 	runtime                *trustload.Runtime
@@ -111,12 +115,27 @@ func (p *Prepared) Reference() Reference {
 	if p == nil {
 		return Reference{}
 	}
-	return Reference{APIVersion: "tplaiter.dev/formatter-reference/v1", FrameSHA256: p.digest}
+	version := "tplaiter.dev/formatter-reference/v1"
+	if p.frame.APIVersion == "tplaiter.dev/formatter-frame/v3" {
+		version = "tplaiter.dev/formatter-reference/v3"
+	}
+	return Reference{APIVersion: version, FrameSHA256: p.digest}
 }
 
 func (p *Prepared) valid(ctx context.Context) error {
 	if ctx == nil || ctx.Err() != nil || p == nil || p.runtime == nil || p.runtime.TrustRuntime() == nil {
 		return ErrUnavailable
+	}
+	if p.nativeUpdate != nil {
+		if p.nativeIntent != nil || p.updateCalculation == nil {
+			return ErrUnavailable
+		}
+		if err := p.nativeUpdate.RecheckFor(ctx, p.runtime); err != nil {
+			return err
+		}
+		if err := p.updateCalculation.RecheckFor(ctx, p.runtime); err != nil {
+			return err
+		}
 	}
 	if p.sources != nil {
 		if p.nativeIntent == nil {
@@ -348,15 +367,14 @@ func PrepareContextNativeNewFile(ctx context.Context, r *trustload.Runtime, inte
 	if err := intent.RecheckFor(ctx, r); err != nil {
 		return nil, err
 	}
-	projection, err := intent.Projection(ctx, r)
-	if err != nil {
-		return nil, err
-	}
 	sources, err := intent.FormatterSources(ctx, r)
 	if err != nil {
 		return nil, err
 	}
-	inventory := projection.ManagedFiles
+	inventory, err := intent.ManagedFiles(ctx, r)
+	if err != nil {
+		return nil, err
+	}
 	found := false
 	for _, file := range inventory {
 		if file.Path == path && file.Mode == "100644" {
@@ -366,9 +384,9 @@ func PrepareContextNativeNewFile(ctx context.Context, r *trustload.Runtime, inte
 	if !found {
 		return nil, ErrUnavailable
 	}
-	rendered := projection.Rendered
-	if rendered == nil {
-		return nil, ErrUnavailable
+	rendered, err := intent.Rendered(ctx, r)
+	if err != nil {
+		return nil, err
 	}
 	if rendered.Template.ManagedBlocks != nil && len(rendered.Template.ManagedBlocks.Replacements) != 0 {
 		return nil, ErrUnavailable
@@ -382,9 +400,18 @@ func PrepareContextNativeNewFile(ctx context.Context, r *trustload.Runtime, inte
 			return nil, ErrUnavailable
 		}
 	}
-	root := projection.RootLock
-	dependencies := projection.DependencyLock
-	contextDigest := projection.NativeContextDigest
+	root, err := intent.RootLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	dependencies, err := intent.DependencyLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	contextDigest, err := intent.ContextDigest(ctx, r)
+	if err != nil {
+		return nil, err
+	}
 	graph, err := sources.SourceGraph(ctx)
 	if err != nil {
 		return nil, err
@@ -453,12 +480,197 @@ func PrepareContextNativeNewFile(ctx context.Context, r *trustload.Runtime, inte
 	if err != nil {
 		return nil, err
 	}
+	provider, err := sources.RootResolution(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	return &Prepared{runtime: r, adapter: adapter, provider: provider, toolProvider: toolProvider, bound: bound, frame: frame, digest: digest, nativeIntent: intent, sources: sources}, nil
+}
+
+// PrepareContextNativeUpdateFile binds the genuine recorded two-closure intent
+// to one clean target's two real requests. The action-empty base is not a grant.
+func PrepareContextNativeUpdateFile(ctx context.Context, r *trustload.Runtime, intent *contextsource.PreparedNativeUpdate, calculation *operationtrust.ContextUpdateFormatterCalculation, toolProvider *trustverify.VerifiedResolution, path string) (*Prepared, error) {
+	if intent == nil || calculation == nil || r == nil {
+		return nil, ErrUnavailable
+	}
 	if err := intent.RecheckFor(ctx, r); err != nil {
 		return nil, err
 	}
-	provider := projection.RootResolution
-	if provider == nil || !provider.ValidFor(r.TrustRuntime(), r.TrustRuntime().Binding()) {
+	c, err := calculation.Context(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	source, err := intent.SourceSnapshot(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	target, err := intent.TargetSnapshot(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	sourceRoot, err := source.RootLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	targetRoot, err := target.RootLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	sourceDeps, err := source.DependencyLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	targetDeps, err := target.DependencyLock(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	sourceDigest, err := source.ContextDigest(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	targetDigest, err := target.ContextDigest(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	operation, err := intent.OperationBase(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	if c.SourceRootLockSHA256 != sourceRoot.RootLockSHA256 || c.TargetRootLockSHA256 != targetRoot.RootLockSHA256 || c.SourceDependencyLockSHA256 != sourceDeps.LockSHA256 || c.TargetDependencyLockSHA256 != targetDeps.LockSHA256 || c.SourceNativeContextSHA256 != sourceDigest || c.TargetNativeContextSHA256 != targetDigest || c.RendererAnswersSHA256 != operation.AnswersSHA256 || c.ObservedProjectSHA256 != operation.PreimageSHA256 || len(operation.Actions) != 0 {
 		return nil, ErrUnavailable
 	}
-	return &Prepared{runtime: r, adapter: adapter, provider: provider, toolProvider: toolProvider, bound: bound, frame: frame, digest: digest, nativeIntent: intent, sources: sources}, nil
+	result, err := target.Rendered(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	input, ok := result.Files[path]
+	if !ok {
+		return nil, ErrUnavailable
+	}
+	raw, err := canonicaljson.Canonical(c)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := rootGoFormatterPlan(ctx, r, toolProvider, path, input)
+	if err != nil {
+		return nil, err
+	}
+	adapter, err := blockformatter.NewRuntimeAdapter(r)
+	if err != nil {
+		return nil, err
+	}
+	selection, err := adapter.SelectContextNativeUpdate(ctx, calculation, toolProvider, plan, input, raw)
+	if err != nil {
+		return nil, err
+	}
+	subjects, err := calculation.OperationSubjects(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	if !reflect.DeepEqual(subjects, operation.Subjects) {
+		return nil, ErrUnavailable
+	}
+	tool := toolProvider.Subject()
+	provider := trustverify.Provider{Origin: tool.Origin, TemplatePath: tool.TemplatePath, Commit: tool.Commit, TreeSHA256: tool.TreeSHA256, ContractSHA256: tool.ContractSHA256}
+	key := func(p trustverify.Provider) string { return p.Origin + "\x00" + p.TemplatePath + "\x00" + p.Commit }
+	found := false
+	for _, subject := range operation.Subjects {
+		if key(subject) == key(provider) && subject != provider {
+			return nil, ErrUnavailable
+		}
+		if subject == provider {
+			found = true
+		}
+	}
+	if !found {
+		operation.Subjects = append(operation.Subjects, provider)
+	}
+	sort.Slice(operation.Subjects, func(i, j int) bool { return key(operation.Subjects[i]) < key(operation.Subjects[j]) })
+	operation.Actions = selection.Actions()
+	bound, err := adapter.BindContextNativeUpdate(ctx, selection, operation)
+	if err != nil {
+		return nil, err
+	}
+	planRaw, err := canonicaljson.Canonical(plan)
+	if err != nil {
+		return nil, err
+	}
+	frame := engine.FormatFrame{APIVersion: "tplaiter.dev/formatter-frame/v3", Operation: operation, Requests: bound.Requests(), Plan: planRaw, Context: append(engine.Bytes{}, raw...), Input: append(engine.Bytes{}, input...)}
+	digest, err := frame.Digest()
+	if err != nil {
+		return nil, err
+	}
+	rootProvider, err := calculation.RootResolution(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	return &Prepared{runtime: r, adapter: adapter, provider: rootProvider, toolProvider: toolProvider, bound: bound, frame: frame, digest: digest, nativeUpdate: intent, updateCalculation: calculation}, nil
+}
+
+func prepareContextNativeUpdateMergedFile(ctx context.Context, r *trustload.Runtime, intent *contextsource.PreparedNativeUpdate, clean *operationtrust.ContextUpdateFormatterCalculation, calculation *operationtrust.ContextUpdateMergedFormatterCalculation, toolProvider *trustverify.VerifiedResolution, path string, input []byte) (*Prepared, error) {
+	if intent == nil || clean == nil || calculation == nil {
+		return nil, ErrUnavailable
+	}
+	if err := intent.RecheckFor(ctx, r); err != nil {
+		return nil, err
+	}
+	c, err := calculation.Context(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := canonicaljson.Canonical(c)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := rootGoFormatterPlan(ctx, r, toolProvider, path, input)
+	if err != nil {
+		return nil, err
+	}
+	adapter, err := blockformatter.NewRuntimeAdapter(r)
+	if err != nil {
+		return nil, err
+	}
+	selection, err := adapter.SelectContextNativeUpdateMerged(ctx, clean, calculation, toolProvider, plan, input, raw)
+	if err != nil {
+		return nil, err
+	}
+	operation, err := intent.OperationBase(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	tool := toolProvider.Subject()
+	provider := trustverify.Provider{Origin: tool.Origin, TemplatePath: tool.TemplatePath, Commit: tool.Commit, TreeSHA256: tool.TreeSHA256, ContractSHA256: tool.ContractSHA256}
+	key := func(p trustverify.Provider) string { return p.Origin + "\x00" + p.TemplatePath + "\x00" + p.Commit }
+	found := false
+	for _, subject := range operation.Subjects {
+		if key(subject) == key(provider) && subject != provider {
+			return nil, ErrUnavailable
+		}
+		if subject == provider {
+			found = true
+		}
+	}
+	if !found {
+		operation.Subjects = append(operation.Subjects, provider)
+	}
+	sort.Slice(operation.Subjects, func(i, j int) bool { return key(operation.Subjects[i]) < key(operation.Subjects[j]) })
+	operation.Actions = selection.Actions()
+	bound, err := adapter.BindContextNativeUpdate(ctx, selection, operation)
+	if err != nil {
+		return nil, err
+	}
+	planRaw, err := canonicaljson.Canonical(plan)
+	if err != nil {
+		return nil, err
+	}
+	frame := engine.FormatFrame{APIVersion: "tplaiter.dev/formatter-frame/v3", Operation: operation, Requests: bound.Requests(), Plan: planRaw, Context: append(engine.Bytes{}, raw...), Input: append(engine.Bytes{}, input...)}
+	digest, err := frame.Digest()
+	if err != nil {
+		return nil, err
+	}
+	rootProvider, err := calculation.RootResolution(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	return &Prepared{runtime: r, adapter: adapter, provider: rootProvider, toolProvider: toolProvider, bound: bound, frame: frame, digest: digest, nativeUpdate: intent, updateCalculation: clean, updateMerged: calculation}, nil
 }

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/adoptionpolicy"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
 	"github.com/tplAIter/tplaiter/internal/engine"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/manifest"
@@ -27,6 +29,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/resources"
+	"github.com/tplAIter/tplaiter/internal/settings"
+	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 )
@@ -48,6 +52,88 @@ type Backend struct {
 	runtime         *trustload.Runtime
 	home            string
 	rendererVersion string
+}
+
+// planContextRegistryObserved keeps the existing-project registry calculation
+// on the live v2 carrier without changing registry.go's legacy helper ABI.
+func planContextRegistryObserved(ctx context.Context, r *trustload.Runtime, observed *registryObservation, home string, marker stateledger.ProjectV2, p *contextsource.PreparedNativeUpdate, baseline []byte, projectRoot string) (RegistryImage, *registryObservation, error) {
+	if err := p.RecheckFor(ctx, r); err != nil {
+		return RegistryImage{}, nil, err
+	}
+	source, err := p.SourceRootLock(ctx, r)
+	if err != nil {
+		return RegistryImage{}, nil, err
+	}
+	target, err := p.TargetRootLock(ctx, r)
+	if err != nil {
+		return RegistryImage{}, nil, err
+	}
+	rendered, err := p.Rendered(ctx, r)
+	if err != nil {
+		return RegistryImage{}, nil, err
+	}
+	image, observation, err := calculateContextRegistryObserved(observed, home, marker, source, target, rendered, baseline, projectRoot)
+	if err != nil {
+		return RegistryImage{}, nil, err
+	}
+	if err := p.RecheckFor(ctx, r); err != nil {
+		return RegistryImage{}, nil, err
+	}
+	return image, observation, nil
+}
+
+func calculateContextRegistryObserved(observed *registryObservation, home string, marker stateledger.ProjectV2, sourceRoot, targetRoot provenance.RootTemplateLock, target *renderref.Result, baseline []byte, projectRoot string) (RegistryImage, *registryObservation, error) {
+	if observed == nil || target == nil || target.Template == nil {
+		return RegistryImage{}, nil, ErrInvalid
+	}
+	var projects state.Projects
+	decoder := yaml.NewDecoder(bytes.NewReader(observed.raw))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&projects); err != nil {
+		return RegistryImage{}, nil, err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return RegistryImage{}, nil, ErrUnsafe
+	}
+	if projects.Version != state.ProjectsVersion {
+		return RegistryImage{}, nil, ErrUnsafe
+	}
+	ids, roots := map[string]bool{}, map[string]bool{}
+	index := -1
+	for i, item := range projects.Items {
+		if item.ID == "" || item.Path == "" || ids[item.ID] || roots[item.Path] {
+			return RegistryImage{}, nil, ErrUnsafe
+		}
+		ids[item.ID] = true
+		roots[item.Path] = true
+		if item.ID == marker.ID {
+			index = i
+		}
+	}
+	if index < 0 {
+		return RegistryImage{}, nil, ErrUnsafe
+	}
+	current := &projects.Items[index]
+	if current.Path != projectRoot || current.Path == home || strings.HasPrefix(home, current.Path+string(filepath.Separator)) || current.Template.Repo != marker.Template.Repo || current.Template.Name != marker.Template.Name || current.Template.Version != marker.Template.ResolvedCommit || current.BaselineSHA != strings.TrimPrefix(evidencecas.Digest(baseline), "sha256:") {
+		return RegistryImage{}, nil, ErrUnsafe
+	}
+	targetBaseline, err := canonicaljson.Canonical(target.Baseline)
+	if err != nil {
+		return RegistryImage{}, nil, err
+	}
+	current.Template.Name = target.Template.Metadata.Name
+	current.Template.Version = targetRoot.Root.Commit
+	current.BaselineSHA = strings.TrimPrefix(evidencecas.Digest(targetBaseline), "sha256:")
+	after, err := state.MarshalProjects(projects)
+	if err != nil {
+		return RegistryImage{}, nil, err
+	}
+	if sourceRoot == targetRoot && bytes.Equal(targetBaseline, baseline) {
+		after = bytes.Clone(observed.raw)
+	}
+	beforeImage := Image{Path: "projects.yaml", Kind: "file", Mode: observed.mode, SHA256: evidencecas.Digest(observed.raw)}
+	afterImage := Image{Path: "projects.yaml", Kind: "file", Mode: observed.mode, SHA256: evidencecas.Digest(after)}
+	return RegistryImage{Home: home, Before: beforeImage, BeforeContent: observed.raw, After: afterImage, AfterContent: after}, observed, nil
 }
 
 func New(runtime *trustload.Runtime, home, rendererVersion string) (*Backend, error) {
@@ -100,6 +186,7 @@ type Report struct {
 // Plan retains private preparation and root identity. Marshal returns only a
 // detached fingerprinted report; no decoder turns report bytes into a Plan.
 type Plan struct {
+	contextPrepared  *contextsource.PreparedNativeUpdate
 	managed          *ManagedEffects
 	policy           *adoptionpolicy.Policy
 	protection       *adoptionpolicy.Protection
@@ -244,37 +331,108 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := operationtrust.PrepareUpdate(ctx, b.runtime, operationtrust.PrepareUpdateInput{SourceInput: in.SourceInput, TargetInput: in.TargetInput, Render: targetRender, RecordedValues: answerRecordValues(targetAnswers), RendererVersion: b.rendererVersion, PreimageSHA256: preimage})
-	if err != nil {
-		return nil, err
+	var prepared *operationtrust.PreparedUpdate
+	var contextPrepared *contextsource.PreparedNativeUpdate
+	var baseResult, targetResult *renderref.Result
+	var sourceRoot, targetRoot provenance.RootTemplateLock
+	var targetDependencies provenance.TemplateLock
+	var sourceImages, targetImages *resources.ResourceImages
+	var operationDigest string
+	_, sourceV2err := contextsource.DecodeSourceSelectionV2(in.SourceInput)
+	_, targetV2err := contextsource.DecodeSourceSelectionV2(in.TargetInput)
+	if sourceV2err == nil || targetV2err == nil {
+		if sourceV2err != nil || targetV2err != nil {
+			return nil, operationtrust.ErrSourceAdapterUnsupported
+		}
+		contextPrepared, err = b.prepareContextUpdate(ctx, in, render, targetRender, answerRecordValues(targetAnswers), preimage, *current, *deps)
+		if err != nil {
+			return nil, err
+		}
+		sourceSnapshot, err := contextPrepared.SourceSnapshot(ctx, b.runtime)
+		if err != nil {
+			return nil, err
+		}
+		targetSnapshot, err := contextPrepared.TargetSnapshot(ctx, b.runtime)
+		if err != nil {
+			return nil, err
+		}
+		baseResult, err = sourceSnapshot.Rendered(ctx, b.runtime)
+		if err != nil {
+			return nil, err
+		}
+		targetResult, err = targetSnapshot.Rendered(ctx, b.runtime)
+		if err != nil {
+			return nil, err
+		}
+		sourceRoot, err = contextPrepared.SourceRootLock(ctx, b.runtime)
+		if err != nil {
+			return nil, err
+		}
+		targetRoot, err = contextPrepared.TargetRootLock(ctx, b.runtime)
+		if err != nil {
+			return nil, err
+		}
+		targetDependencies, err = contextPrepared.TargetDependencyLock(ctx, b.runtime)
+		if err != nil {
+			return nil, err
+		}
+		sourceImages, err = resources.PlanContextNativeSnapshotGeneratorImages(ctx, b.runtime, sourceSnapshot)
+		if err != nil {
+			return nil, err
+		}
+		targetImages, err = resources.PlanContextNativeSnapshotGeneratorImages(ctx, b.runtime, targetSnapshot)
+		if err != nil {
+			return nil, err
+		}
+		operationDigest, err = contextPrepared.OperationInputsSHA256(ctx, b.runtime)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		prepared, err = operationtrust.PrepareUpdate(ctx, b.runtime, operationtrust.PrepareUpdateInput{SourceInput: in.SourceInput, TargetInput: in.TargetInput, Render: targetRender, RecordedValues: answerRecordValues(targetAnswers), RendererVersion: b.rendererVersion, PreimageSHA256: preimage})
+		if err != nil {
+			return nil, err
+		}
+		if !prepared.ValidFor(stable) || prepared.SourceRootLock() != *current {
+			return nil, ErrUnsafe
+		}
+		// Render the independently verified source as the actual three-way base.
+		base, err := operationtrust.PrepareSnapshot(ctx, b.runtime, operationtrust.PrepareSnapshotInput{SourceInput: in.SourceInput, Render: render, RendererVersion: b.rendererVersion})
+		if err != nil {
+			return nil, err
+		}
+		if base.Rendered().Template.Metadata.Name != marker.Template.Name {
+			return nil, ErrUnsafe
+		}
+		sourceManifest, err := b.verifiedManifest(ctx, in.SourceInput)
+		if err != nil {
+			return nil, err
+		}
+		if !bytes.Equal(sourceManifest, observed.files[manifest.SnapshotRelPath]) {
+			return nil, ErrUnsafe
+		}
+		sourceImages, err = b.sourceImages(ctx, in.SourceInput, base.RootLock())
+		if err != nil {
+			return nil, err
+		}
+		targetImages, err = b.sourceImages(ctx, in.TargetInput, prepared.TargetRootLock())
+		if err != nil {
+			return nil, err
+		}
+		baseResult, targetResult = base.Rendered(), prepared.Rendered()
+
+		sourceRoot, targetRoot, targetDependencies = prepared.SourceRootLock(), prepared.TargetRootLock(), prepared.TargetDependencyLock()
+		operationDigest = prepared.OperationInputsSHA256()
 	}
-	if !prepared.ValidFor(stable) || prepared.SourceRootLock() != *current {
-		return nil, ErrUnsafe
+	if contextPrepared != nil {
+		if baseResult.Template.Metadata.Name != marker.Template.Name {
+			return nil, ErrUnsafe
+		}
+		sourceManifest, err := b.verifiedManifest(ctx, in.SourceInput)
+		if err != nil || !bytes.Equal(sourceManifest, observed.files[manifest.SnapshotRelPath]) {
+			return nil, ErrUnsafe
+		}
 	}
-	// Render the independently verified source as the actual three-way base.
-	base, err := operationtrust.PrepareSnapshot(ctx, b.runtime, operationtrust.PrepareSnapshotInput{SourceInput: in.SourceInput, Render: render, RendererVersion: b.rendererVersion})
-	if err != nil {
-		return nil, err
-	}
-	if base.Rendered().Template.Metadata.Name != marker.Template.Name {
-		return nil, ErrUnsafe
-	}
-	sourceManifest, err := b.verifiedManifest(ctx, in.SourceInput)
-	if err != nil {
-		return nil, err
-	}
-	if !bytes.Equal(sourceManifest, observed.files[manifest.SnapshotRelPath]) {
-		return nil, ErrUnsafe
-	}
-	sourceImages, err := b.sourceImages(ctx, in.SourceInput, base.RootLock())
-	if err != nil {
-		return nil, err
-	}
-	targetImages, err := b.sourceImages(ctx, in.TargetInput, prepared.TargetRootLock())
-	if err != nil {
-		return nil, err
-	}
-	baseResult, targetResult := base.Rendered(), prepared.Rendered()
 	var effects *ManagedEffects
 	if in.Managed != nil {
 		effects, err = b.prepareManagedEffects(ctx, in, *in.Managed, observed, registryObserved)
@@ -348,15 +506,15 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 			}
 		}
 	}
-	answers, err := settingsAnswerAfterimages(prepared.Rendered().Template, targetAnswers, prepared.Rendered().Resolved.Values, in.SettingsPairs)
+	answers, err := settingsAnswerAfterimages(targetResult.Template, targetAnswers, targetResult.Resolved.Values, in.SettingsPairs)
 	if err != nil {
 		return nil, err
 	}
-	metadata, err := targetMetadataResult(marker, prepared, targetImages, answers, targetResult)
+	metadata, err := targetMetadataProjection(marker, targetRoot, targetDependencies, targetImages, answers, targetResult)
 	if err != nil {
 		return nil, err
 	}
-	if effects == nil && current.RootLockSHA256 == prepared.TargetRootLock().RootLockSHA256 && settingsValuesEqual(base.Rendered().Resolved.Values, prepared.Rendered().Resolved.Values) && settingsAnswersEqual(marker.Answers, answers) {
+	if effects == nil && current.RootLockSHA256 == targetRoot.RootLockSHA256 && settingsValuesEqual(baseResult.Resolved.Values, targetResult.Resolved.Values) && settingsAnswersEqual(marker.Answers, answers) {
 		// Preserve exact valid existing metadata encoding for a genuine no-op.
 		for p := range metadata {
 			metadata[p] = observed.files[p]
@@ -384,7 +542,12 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 		changes = append(changes, decision(observed, path, raw, true, "metadata", false))
 	}
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
-	registry, registryObserved, err := planRegistryObserved(registryObserved, b.home, marker, prepared, observed.files[engine.BaselineRelPath], root)
+	var registry RegistryImage
+	if contextPrepared != nil {
+		registry, registryObserved, err = planContextRegistryObserved(ctx, b.runtime, registryObserved, b.home, marker, contextPrepared, observed.files[engine.BaselineRelPath], root)
+	} else {
+		registry, registryObserved, err = planRegistryObserved(registryObserved, b.home, marker, prepared, observed.files[engine.BaselineRelPath], root)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -394,14 +557,14 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 			return nil, err
 		}
 	}
-	publishable := resourceChangesValid(changes, targetImages, prepared.TargetRootLock())
+	publishable := resourceChangesValid(changes, targetImages, targetRoot)
 	for _, change := range changes {
 		if change.Conflict && !settingsConflictPublication(in, change) {
 			publishable = false
 		}
 	}
-	report := Report{Adoption: protection, Publishable: publishable, Registry: registry, APIVersion: APIVersion, ProjectID: marker.ID, Root: root, PreimageSHA256: preimage, OperationInputsSHA256: prepared.OperationInputsSHA256(), Source: prepared.SourceRootLock(), Target: prepared.TargetRootLock(), Preimages: observed.images, Changes: changes}
-	for _, warning := range prepared.Rendered().Resolved.Report.Warnings {
+	report := Report{Adoption: protection, Publishable: publishable, Registry: registry, APIVersion: APIVersion, ProjectID: marker.ID, Root: root, PreimageSHA256: preimage, OperationInputsSHA256: operationDigest, Source: sourceRoot, Target: targetRoot, Preimages: observed.images, Changes: changes}
+	for _, warning := range targetResult.Resolved.Report.Warnings {
 		if strings.HasPrefix(warning, "deprecated ") {
 			report.Deprecations = append(report.Deprecations, warning)
 		}
@@ -417,7 +580,7 @@ func (b *Backend) reconstruct(ctx context.Context, in Input, observed *observati
 	if err != nil {
 		return nil, err
 	}
-	return &Plan{managed: effects, policy: policy, protection: protection, homeIdentity: registryObserved.identity, registryIdentity: registryObserved.fileIdentity, owner: b, input: in, report: report, digest: digest, observed: observed, prepared: prepared}, nil
+	return &Plan{managed: effects, policy: policy, protection: protection, homeIdentity: registryObserved.identity, registryIdentity: registryObserved.fileIdentity, owner: b, input: in, report: report, digest: digest, observed: observed, prepared: prepared, contextPrepared: contextPrepared}, nil
 }
 
 // Recheck rebuilds the plan with fresh authority and actual project bytes.
@@ -431,7 +594,7 @@ func (b *Backend) Recheck(ctx context.Context, p *Plan, expected string) error {
 // Return the freshly authenticated preparation, never material from a detached
 // report or an old preparation that merely has a matching stored digest.
 func (b *Backend) recheckPlan(ctx context.Context, p *Plan, expected string) (*Plan, error) {
-	if ctx == nil || b == nil || b.runtime == nil || p == nil || p.prepared == nil || p.owner != b || expected == "" || p.digest != expected || !p.prepared.ValidFor(b.runtime.TrustRuntime()) {
+	if ctx == nil || b == nil || b.runtime == nil || p == nil || p.owner != b || expected == "" || p.digest != expected || p.recheckPreparation(ctx) != nil {
 		return nil, ErrInvalid
 	}
 	digest, err := bootstrap.DomainDigest(APIVersion, p.report)
@@ -497,6 +660,33 @@ func (b *Backend) sourceImages(ctx context.Context, raw []byte, lock provenance.
 }
 
 func (b *Backend) verifiedManifest(ctx context.Context, raw []byte) ([]byte, error) {
+	if _, err := contextsource.DecodeSourceSelectionV2(raw); err == nil {
+		sources, err := contextsource.PrepareContextSources(ctx, b.runtime, raw)
+		if err != nil {
+			return nil, err
+		}
+		defer sources.Close()
+		pin, err := sources.RootPin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		resolution, err := sources.Resolution(ctx, pin.Alias)
+		if err != nil {
+			return nil, err
+		}
+		snapshot, err := operationtrust.SnapshotFS(b.runtime.TrustRuntime(), resolution)
+		if err != nil {
+			return nil, err
+		}
+		manifest, err := fs.ReadFile(snapshot, "template.manifest.yaml")
+		if err != nil {
+			return nil, err
+		}
+		if err := sources.RecheckFor(ctx, b.runtime); err != nil {
+			return nil, err
+		}
+		return manifest, nil
+	}
 	selection, err := operationtrust.DecodeSourceSelection(raw)
 	if err != nil {
 		return nil, err
@@ -617,6 +807,10 @@ func targetMetadata(marker stateledger.ProjectV2, p *operationtrust.PreparedUpda
 }
 
 func targetMetadataResult(marker stateledger.ProjectV2, p *operationtrust.PreparedUpdate, images *resources.ResourceImages, answers map[string]stateledger.Answer, result *renderref.Result) (map[string][]byte, error) {
+	return targetMetadataProjection(marker, p.TargetRootLock(), p.TargetDependencyLock(), images, answers, result)
+}
+
+func targetMetadataProjection(marker stateledger.ProjectV2, root provenance.RootTemplateLock, dependencies provenance.TemplateLock, images *resources.ResourceImages, answers map[string]stateledger.Answer, result *renderref.Result) (map[string][]byte, error) {
 	inv := ownership.Inventory{Version: 1, Artifacts: []ownership.Artifact{}}
 	for path, raw := range result.Files {
 		a, err := ownership.ArtifactFor(path, raw, 0o644, "")
@@ -647,12 +841,11 @@ func targetMetadataResult(marker stateledger.ProjectV2, p *operationtrust.Prepar
 		}
 	}
 	marker.Answers = answers
-	root := p.TargetRootLock()
 	marker.Template.RequestedRef = root.Root.RequestedRef
 	marker.Template.ResolvedCommit = root.Root.Commit
 	marker.Template.Name = result.Template.Metadata.Name
 	values := map[string]any{
-		".tplaiter/root-template.lock.json": root, ".tplaiter/template.lock.json": p.TargetDependencyLock(),
+		".tplaiter/root-template.lock.json": root, ".tplaiter/template.lock.json": dependencies,
 		engine.BaselineRelPath: result.Baseline, ownership.InventoryRelPath: inv, resources.NativeResourceLockPath: images.Lock,
 	}
 	out := map[string][]byte{}
@@ -955,4 +1148,68 @@ func resourceChangesValid(changes []Change, target *resources.ResourceImages, ro
 		}
 	}
 	return true
+}
+
+func (b *Backend) prepareContextUpdate(ctx context.Context, in Input, sourceRender, targetRender renderref.Input, targetRecorded settings.Values, preimage string, current provenance.RootTemplateLock, dependencies provenance.TemplateLock) (*contextsource.PreparedNativeUpdate, error) {
+	source, err := contextsource.PrepareContextSources(ctx, b.runtime, in.SourceInput)
+	if err != nil {
+		return nil, err
+	}
+	complete := false
+	defer func() {
+		if !complete {
+			source.Close()
+		}
+	}()
+	target, err := contextsource.PrepareContextSources(ctx, b.runtime, in.TargetInput)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if !complete {
+			target.Close()
+		}
+	}()
+	intent, err := contextsource.PrepareNativeUpdate(ctx, b.runtime, source, target, contextsource.NativeUpdateInput{SourceRender: sourceRender, TargetRender: targetRender, SourceRecordedValues: sourceRender.Values, TargetRecordedValues: targetRecorded, RendererVersion: b.rendererVersion, PreimageSHA256: preimage})
+	if err != nil {
+		return nil, err
+	}
+	root, err := intent.SourceRootLock(ctx, b.runtime)
+	if err != nil {
+		return nil, err
+	}
+	deps, err := intent.SourceDependencyLock(ctx, b.runtime)
+	if err != nil {
+		return nil, err
+	}
+	want, err := canonicaljson.Canonical(dependencies)
+	if err != nil {
+		return nil, err
+	}
+	actual, err := canonicaljson.Canonical(deps)
+	if err != nil {
+		return nil, err
+	}
+	if root != current || !bytes.Equal(want, actual) {
+		intent.Close()
+		return nil, ErrUnsafe
+	}
+	complete = true
+	return intent, nil
+}
+
+func (p *Plan) recheckPreparation(ctx context.Context) error {
+	if p == nil || p.owner == nil || p.owner.runtime == nil {
+		return ErrInvalid
+	}
+	if p.contextPrepared != nil {
+		if p.prepared != nil {
+			return ErrInvalid
+		}
+		return p.contextPrepared.RecheckFor(ctx, p.owner.runtime)
+	}
+	if p.prepared == nil || !p.prepared.ValidFor(p.owner.runtime.TrustRuntime()) {
+		return ErrInvalid
+	}
+	return nil
 }

@@ -21,6 +21,8 @@ import (
 	"github.com/tplAIter/tplaiter/internal/deps"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/exports"
+	"github.com/tplAIter/tplaiter/internal/managedblocks"
+	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/settings"
@@ -31,6 +33,8 @@ import (
 var ErrFormatterMaterialUnavailable = errors.New("TRUST_FORMATTER_MATERIAL_UNAVAILABLE")
 
 type FormatterSelection struct {
+	mergedCalculation                     *ContextUpdateMergedFormatterCalculation
+	updateCalculation                     *ContextUpdateFormatterCalculation
 	installed                             *trustload.Runtime
 	sources                               *contextauth.VerifiedSourceClosure
 	calculation                           *ContextNewFormatterCalculation
@@ -212,7 +216,18 @@ func (m *ExecutionMaterial) stagedFormatter(ctx context.Context, runtime *trustv
 		if s.installed == nil || s.installed.TrustRuntime() != runtime {
 			return trustverify.StagedMaterial{}, ErrFormatterMaterialUnavailable
 		}
-		if err := s.calculation.ValidateContext(ctx, s.installed, s.context, s.path, s.input); err != nil {
+		if s.updateCalculation != nil {
+			if s.calculation != nil {
+				return trustverify.StagedMaterial{}, ErrFormatterMaterialUnavailable
+			}
+			if s.mergedCalculation != nil {
+				if err := s.mergedCalculation.ValidateContext(ctx, s.installed, s.context, s.path, s.input); err != nil {
+					return trustverify.StagedMaterial{}, err
+				}
+			} else if err := s.updateCalculation.ValidateCleanContext(ctx, s.installed, s.context, s.path, s.input); err != nil {
+				return trustverify.StagedMaterial{}, err
+			}
+		} else if err := s.calculation.ValidateContext(ctx, s.installed, s.context, s.path, s.input); err != nil {
 			return trustverify.StagedMaterial{}, err
 		}
 	}
@@ -442,6 +457,12 @@ func ValidateRetainedFormatterContext(raw []byte, scope string) error {
 	case "tplaiter.dev/managed-formatter-context/v1":
 		_, err := ParseManagedFormatterContext(raw)
 		return err
+	case "tplaiter.dev/managed-formatter-context/v3":
+		if scope != "update" {
+			return ErrFormatterMaterialUnavailable
+		}
+		_, err := ParseContextUpdateFormatterContext(raw)
+		return err
 	case "tplaiter.dev/managed-formatter-context/v2":
 		if scope != "new" {
 			return ErrFormatterMaterialUnavailable
@@ -659,4 +680,536 @@ func (p *ContextNewFormatterCalculation) RootResolution(ctx context.Context, r *
 		return nil, err
 	}
 	return p.sources.RootResolution(ctx, r)
+}
+
+// ContextUpdateFormatterContext is a distinct closed native-v2 Update frame.
+// Both dependency closures are bound, including the previous clean effect for
+// a merged candidate. Parsing this data never grants execution or publication.
+type ContextUpdateFormatterContext struct {
+	APIVersion                    string `json:"apiVersion"`
+	Role                          string `json:"role"`
+	SourceRootLockSHA256          string `json:"sourceRootLockSHA256"`
+	TargetRootLockSHA256          string `json:"targetRootLockSHA256"`
+	SourceDependencyLockSHA256    string `json:"sourceDependencyLockSHA256"`
+	TargetDependencyLockSHA256    string `json:"targetDependencyLockSHA256"`
+	SourceGraphSHA256             string `json:"sourceGraphSHA256"`
+	TargetGraphSHA256             string `json:"targetGraphSHA256"`
+	SourceNativeContextSHA256     string `json:"sourceNativeContextSHA256"`
+	TargetNativeContextSHA256     string `json:"targetNativeContextSHA256"`
+	ReplacementDeclarationsSHA256 string `json:"replacementDeclarationsSHA256"`
+	DecisionsSHA256               string `json:"decisionsSHA256"`
+	ObservedProjectSHA256         string `json:"observedProjectSHA256"`
+	ObservedRegistrySHA256        string `json:"observedRegistrySHA256"`
+	RendererAnswersSHA256         string `json:"rendererAnswersSHA256"`
+	PredecessorCleanProofSHA256   string `json:"predecessorCleanProofSHA256,omitempty"`
+}
+
+func ParseContextUpdateFormatterContext(raw []byte) (ContextUpdateFormatterContext, error) {
+	var c ContextUpdateFormatterContext
+	if len(raw) == 0 || len(raw) > 1<<20 || canonicaljson.DecodeStrict(raw, &c) != nil {
+		return c, ErrFormatterMaterialUnavailable
+	}
+	encoded, err := canonicaljson.Canonical(c)
+	if err != nil || !bytes.Equal(encoded, raw) || c.APIVersion != "tplaiter.dev/managed-formatter-context/v3" || (c.Role != "clean-target" && c.Role != "merged-candidate") {
+		return ContextUpdateFormatterContext{}, ErrFormatterMaterialUnavailable
+	}
+	for _, d := range []string{c.SourceRootLockSHA256, c.TargetRootLockSHA256, c.SourceDependencyLockSHA256, c.TargetDependencyLockSHA256, c.SourceGraphSHA256, c.TargetGraphSHA256, c.SourceNativeContextSHA256, c.TargetNativeContextSHA256, c.ReplacementDeclarationsSHA256, c.DecisionsSHA256, c.ObservedProjectSHA256, c.ObservedRegistrySHA256, c.RendererAnswersSHA256} {
+		if !formatterDigest(d) {
+			return ContextUpdateFormatterContext{}, ErrFormatterMaterialUnavailable
+		}
+	}
+	if c.Role == "merged-candidate" && !formatterDigest(c.PredecessorCleanProofSHA256) || c.Role == "clean-target" && c.PredecessorCleanProofSHA256 != "" {
+		return ContextUpdateFormatterContext{}, ErrFormatterMaterialUnavailable
+	}
+	return c, nil
+}
+
+type recordedFormatterCalculation struct {
+	owner                                      *trustload.Runtime
+	sources                                    *contextauth.VerifiedSourceClosure
+	self                                       *recordedFormatterCalculation
+	root, dependencies, graph, native, answers string
+	files                                      map[string][]byte
+	template                                   *manifest.Template
+	provider                                   *trustverify.VerifiedResolution
+	subjects                                   []trustverify.Provider
+}
+
+// ContextUpdateFormatterCalculation is an opaque two-closure recorded
+// calculation. It owns source facts independently of supplied context digests.
+type ContextUpdateFormatterCalculation struct {
+	owner                                       *trustload.Runtime
+	self                                        *ContextUpdateFormatterCalculation
+	source, target                              *recordedFormatterCalculation
+	replacements, decisions, observed, registry string
+}
+
+func PrepareContextUpdateFormatterCalculation(ctx context.Context, r *trustload.Runtime, source, target *contextauth.VerifiedSourceClosure, sourceRender, targetRender renderref.Input, sourceRecorded, targetRecorded settings.Values, renderer, observed, registry string, decisionsRaw []byte) (*ContextUpdateFormatterCalculation, error) {
+	if source == nil || target == nil || source == target {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	if !formatterDigest(observed) || !formatterDigest(registry) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	decisions, err := managedblocks.ParseDecisions(decisionsRaw)
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := canonicaljson.Canonical(decisions)
+	if err != nil || !bytes.Equal(encoded, decisionsRaw) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	before, err := prepareRecordedFormatterCalculation(ctx, r, source, sourceRender, sourceRecorded, renderer)
+	if err != nil {
+		return nil, err
+	}
+	after, err := prepareRecordedFormatterCalculation(ctx, r, target, targetRender, targetRecorded, renderer)
+	if err != nil {
+		return nil, err
+	}
+	replacements := after.template.ManagedBlocks
+	if replacements == nil {
+		replacements = &manifest.ManagedBlocks{Version: 1, Replacements: []manifest.ManagedReplacement{}}
+	}
+	raw, err := canonicaljson.Canonical(replacements)
+	if err != nil {
+		return nil, err
+	}
+	p := &ContextUpdateFormatterCalculation{owner: r, source: before, target: after, replacements: evidencecas.Digest(raw), decisions: evidencecas.Digest(encoded), observed: observed, registry: registry}
+	p.self = p
+	if err := p.RecheckFor(ctx, r); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (p *ContextUpdateFormatterCalculation) RecheckFor(ctx context.Context, r *trustload.Runtime) error {
+	if p == nil || p.self != p || ctx == nil || r == nil || p.owner != r || p.source == nil || p.target == nil {
+		return ErrFormatterMaterialUnavailable
+	}
+	for _, c := range []*recordedFormatterCalculation{p.source, p.target} {
+		if c.self != c || c.owner != r || c.sources == nil {
+			return ErrFormatterMaterialUnavailable
+		}
+		if err := c.sources.RecheckFor(ctx, r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *ContextUpdateFormatterCalculation) Context(ctx context.Context, r *trustload.Runtime) (ContextUpdateFormatterContext, error) {
+	if err := p.RecheckFor(ctx, r); err != nil {
+		return ContextUpdateFormatterContext{}, err
+	}
+	return p.contextFacts(), nil
+}
+
+func (p *ContextUpdateFormatterCalculation) contextFacts() ContextUpdateFormatterContext {
+	return ContextUpdateFormatterContext{APIVersion: "tplaiter.dev/managed-formatter-context/v3", Role: "clean-target", SourceRootLockSHA256: p.source.root, TargetRootLockSHA256: p.target.root, SourceDependencyLockSHA256: p.source.dependencies, TargetDependencyLockSHA256: p.target.dependencies, SourceGraphSHA256: p.source.graph, TargetGraphSHA256: p.target.graph, SourceNativeContextSHA256: p.source.native, TargetNativeContextSHA256: p.target.native, ReplacementDeclarationsSHA256: p.replacements, DecisionsSHA256: p.decisions, ObservedProjectSHA256: p.observed, ObservedRegistrySHA256: p.registry, RendererAnswersSHA256: p.target.answers}
+}
+
+func (p *ContextUpdateFormatterCalculation) ValidateCleanContext(ctx context.Context, r *trustload.Runtime, raw []byte, name string, input []byte) error {
+	expected, err := p.Context(ctx, r)
+	if err != nil {
+		return err
+	}
+	c, err := ParseContextUpdateFormatterContext(raw)
+	if err != nil || c != expected {
+		return ErrFormatterMaterialUnavailable
+	}
+	data, ok := p.target.files[name]
+	if !ok || !bytes.Equal(data, input) {
+		return ErrFormatterMaterialUnavailable
+	}
+	if !bytes.Contains(data, []byte("tplater:managed-")) && !bytes.Contains(p.source.files[name], []byte("tplater:managed-")) {
+		return ErrFormatterMaterialUnavailable
+	}
+	return nil
+}
+
+func (p *ContextUpdateFormatterCalculation) ValidateCleanContextAndRoot(ctx context.Context, r *trustload.Runtime, raw []byte, name string, input []byte) (*trustverify.VerifiedResolution, error) {
+	if err := p.ValidateCleanContext(ctx, r, raw, name, input); err != nil {
+		return nil, err
+	}
+	provider := p.target.provider
+	if provider == nil || !provider.ValidFor(r.TrustRuntime(), r.TrustRuntime().Binding()) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	return provider, nil
+}
+
+func prepareRecordedFormatterCalculation(ctx context.Context, r *trustload.Runtime, sources *contextauth.VerifiedSourceClosure, render renderref.Input, recorded settings.Values, renderer string) (*recordedFormatterCalculation, error) {
+	if ctx == nil || r == nil || r.TrustRuntime() == nil || sources == nil || recorded == nil || !rendererToken.MatchString(renderer) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	if err := sources.RecheckFor(ctx, r); err != nil {
+		return nil, err
+	}
+	resolution, err := sources.RootResolution(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := r.TrustRuntime().VerifiedSnapshot(resolution)
+	if err != nil {
+		return nil, err
+	}
+	manifestRaw, ok := snapshot.Blob("template.manifest.yaml")
+	if !ok {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	if _, err := contextwire.DecodeNativeContextContractV2(snapshot.ContractBytes(), manifestRaw); err != nil {
+		return nil, err
+	}
+	src, err := SnapshotFS(r.TrustRuntime(), resolution)
+	if err != nil {
+		return nil, err
+	}
+	tpl, err := renderref.LoadTemplate(src)
+	if err != nil {
+		return nil, err
+	}
+	if len(tpl.Requires.Tools) != 0 || len(tpl.Environment.Playbooks) != 0 || len(tpl.Hooks.PostCreate) != 0 || len(tpl.Hooks.PostUpdate) != 0 || tpl.AIConfig.Path != "" || ValidateBoundProjectBuildContent(snapshot, tpl) != nil {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	render.Values = render.Values.Clone()
+	recorded = recorded.Clone()
+	result, err := renderref.RenderRecordedInScratch(ctx, src, render, r.ScratchRoot(), recorded)
+	if err != nil {
+		return nil, err
+	}
+	subject, evidence := resolution.Subject(), resolution.Evidence()
+	binding := r.TrustRuntime().Binding()
+	root := provenance.RootTemplateLock{APIVersion: provenance.RootTemplateLockAPIVersion, Kind: provenance.RootTemplateLockKind, TrustProfile: binding, Policy: provenance.PolicyBinding{PolicySHA256: binding.PolicySHA256}, Root: provenance.RootSubjectFromTrust(subject, bootstrap.PublisherEvidence{StatementCAS: evidence.StatementCAS, SignatureCAS: evidence.SignatureCAS, KeyFingerprint: evidence.KeyFingerprint}, evidence.CheckpointCAS, evidence.InclusionProofCAS), Renderer: provenance.RendererIdentity{Name: "go-text-template", Version: renderer}}
+	root.RootLockSHA256, err = provenance.ComputeRootLockSHA256(root)
+	if err != nil {
+		return nil, err
+	}
+	dependencies := provenance.TemplateLock{APIVersion: provenance.TemplateLockAPIVersion, Kind: provenance.DependencyExportLockKind, TrustProfile: binding, RootLockSHA256: root.RootLockSHA256, Dependencies: []provenance.DependencySubject{}}
+	pins, err := sources.Pins(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rootPin, err := sources.RootPin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, pin := range pins {
+		if pin.Alias == rootPin.Alias {
+			continue
+		}
+		resolved, err := sources.Resolution(ctx, pin.Alias)
+		if err != nil {
+			return nil, err
+		}
+		s, e := resolved.Subject(), resolved.Evidence()
+		dependencies.Dependencies = append(dependencies.Dependencies, provenance.DependencySubject(provenance.RootSubjectFromTrust(s, bootstrap.PublisherEvidence{StatementCAS: e.StatementCAS, SignatureCAS: e.SignatureCAS, KeyFingerprint: e.KeyFingerprint}, e.CheckpointCAS, e.InclusionProofCAS)))
+	}
+	sort.Slice(dependencies.Dependencies, func(i, j int) bool {
+		a, b := dependencies.Dependencies[i], dependencies.Dependencies[j]
+		return a.Origin+"\x00"+a.TemplatePath+"\x00"+a.Commit < b.Origin+"\x00"+b.TemplatePath+"\x00"+b.Commit
+	})
+	dependencies.LockSHA256, err = provenance.ComputeTemplateLockSHA256(dependencies)
+	if err != nil || provenance.ValidateLockPair(root, dependencies) != nil {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	graph, err := sources.SourceGraph(ctx)
+	if err != nil {
+		return nil, err
+	}
+	catalogs, err := sources.Catalogs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	catalogWires := []exports.Catalog{}
+	for _, c := range catalogs {
+		catalogWires = append(catalogWires, c.Catalog)
+	}
+	type image struct{ Path, Mode, ContentSHA256 string }
+	type managedFile struct {
+		Path, Mode, InputSHA256 string
+		Markers                 []blockmarkers.Marker
+	}
+	images := []image{}
+	managed := []managedFile{}
+	names := []string{}
+	folded := map[string]bool{}
+	for name := range result.Files {
+		key := strings.ToLower(name)
+		if !fs.ValidPath(name) || name == "." || strings.Contains(name, "\\") || folded[key] || key == ".tplaiter" || strings.HasPrefix(key, ".tplaiter/") || key == ".tplater" || strings.HasPrefix(key, ".tplater/") {
+			return nil, ErrFormatterMaterialUnavailable
+		}
+		folded[key] = true
+		names = append(names, name)
+	}
+	for key := range folded {
+		for parent := path.Dir(key); parent != "."; parent = path.Dir(parent) {
+			if folded[parent] {
+				return nil, ErrFormatterMaterialUnavailable
+			}
+		}
+	}
+	sort.Strings(names)
+	mentions := 0
+	for _, name := range names {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		data := result.Files[name]
+		digest := evidencecas.Digest(data)
+		images = append(images, image{name, "100644", digest})
+		if !bytes.Contains(data, []byte("tplater:managed-")) {
+			continue
+		}
+		mentions += bytes.Count(data, []byte("tplater:managed-"))
+		if !strings.HasSuffix(name, ".go") || mentions > 8192 || len(managed) >= 4096 {
+			return nil, ErrFormatterMaterialUnavailable
+		}
+		markers, err := blockmarkers.Validate(blockmarkers.LanguageGo, name, data)
+		if err != nil || len(markers) == 0 {
+			return nil, ErrFormatterMaterialUnavailable
+		}
+		managed = append(managed, managedFile{name, "100644", digest, markers})
+	}
+	native, err := bootstrap.DomainDigest("tplaiter.dev/native-recorded-context/v2", struct {
+		Root           provenance.RootTemplateLock
+		Dependencies   provenance.TemplateLock
+		Render         renderref.Input
+		RecordedValues settings.Values
+		Values         settings.Values
+		Graph          deps.SourceGraph
+		Catalogs       []exports.Catalog
+		Images         []image
+	}{root, dependencies, render, recorded, result.Resolved.Values, graph, catalogWires, images})
+	if err != nil {
+		return nil, err
+	}
+	graphDigest, err := bootstrap.DomainDigest("tplaiter.dev/managed-formatter-source-graph/v2", graph)
+	if err != nil {
+		return nil, err
+	}
+	answers, err := canonicaljson.Canonical(result.Resolved.Values)
+	if err != nil {
+		return nil, err
+	}
+	subjects, err := sources.OperationSubjects(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	p := &recordedFormatterCalculation{owner: r, sources: sources, provider: resolution, subjects: append([]trustverify.Provider(nil), subjects...), root: root.RootLockSHA256, dependencies: dependencies.LockSHA256, graph: graphDigest, native: native, answers: evidencecas.Digest(answers), files: map[string][]byte{}, template: tpl}
+	for name, raw := range result.Files {
+		p.files[name] = bytes.Clone(raw)
+	}
+	p.self = p
+	if err := sources.RecheckFor(ctx, r); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (p *ContextUpdateFormatterCalculation) RootResolution(ctx context.Context, r *trustload.Runtime) (*trustverify.VerifiedResolution, error) {
+	if err := p.RecheckFor(ctx, r); err != nil {
+		return nil, err
+	}
+	if p.target.provider == nil || !p.target.provider.ValidFor(r.TrustRuntime(), r.TrustRuntime().Binding()) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	return p.target.provider, nil
+}
+
+func (p *ContextUpdateFormatterCalculation) OperationSubjects(ctx context.Context, r *trustload.Runtime) ([]trustverify.Provider, error) {
+	if err := p.RecheckFor(ctx, r); err != nil {
+		return nil, err
+	}
+	return p.operationSubjectFacts()
+}
+
+func (p *ContextUpdateFormatterCalculation) operationSubjectFacts() ([]trustverify.Provider, error) {
+	key := func(p trustverify.Provider) string { return p.Origin + "\x00" + p.TemplatePath + "\x00" + p.Commit }
+	subjects := map[string]trustverify.Provider{}
+	for _, c := range []*recordedFormatterCalculation{p.source, p.target} {
+		providers := c.subjects
+		for _, provider := range providers {
+			k := key(provider)
+			if old, ok := subjects[k]; ok && old != provider {
+				return nil, ErrFormatterMaterialUnavailable
+			}
+			subjects[k] = provider
+		}
+	}
+	out := []trustverify.Provider{}
+	for _, provider := range subjects {
+		out = append(out, provider)
+	}
+	sort.Slice(out, func(i, j int) bool { return key(out[i]) < key(out[j]) })
+	return out, nil
+}
+
+func ResolveContextUpdateFormatterComposition(ctx context.Context, r *trustload.Runtime, calculation *ContextUpdateFormatterCalculation, toolProvider *trustverify.VerifiedResolution, operation trustverify.OperationInputs, action trustverify.ActionMaterial, input FormatterInput) (*FormatterSelection, error) {
+	return resolveContextUpdateFormatter(ctx, r, calculation, nil, toolProvider, operation, action, input)
+}
+
+func ResolveContextUpdateMergedFormatterComposition(ctx context.Context, r *trustload.Runtime, calculation *ContextUpdateMergedFormatterCalculation, toolProvider *trustverify.VerifiedResolution, operation trustverify.OperationInputs, action trustverify.ActionMaterial, input FormatterInput) (*FormatterSelection, error) {
+	if calculation == nil {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	return resolveContextUpdateFormatter(ctx, r, calculation.clean, calculation, toolProvider, operation, action, input)
+}
+
+func resolveContextUpdateFormatter(ctx context.Context, r *trustload.Runtime, calculation *ContextUpdateFormatterCalculation, merged *ContextUpdateMergedFormatterCalculation, toolProvider *trustverify.VerifiedResolution, operation trustverify.OperationInputs, action trustverify.ActionMaterial, input FormatterInput) (*FormatterSelection, error) {
+	if ctx == nil || r == nil || r.TrustRuntime() == nil || calculation == nil || toolProvider == nil || operation.Scope != "update" || operation.ProjectID != r.ProjectContext().ProjectID || len(operation.Actions) != 2 {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	if merged != nil {
+		if merged.clean != calculation {
+			return nil, ErrFormatterMaterialUnavailable
+		}
+		if err := merged.ValidateContext(ctx, r, input.ContextJSON, input.Path, input.Bytes); err != nil {
+			return nil, err
+		}
+	} else if err := calculation.ValidateCleanContext(ctx, r, input.ContextJSON, input.Path, input.Bytes); err != nil {
+		return nil, err
+	}
+	c := calculation.contextFacts()
+	binding, err := bootstrap.DomainDigest(bootstrap.ProfileBindingAPIVersion, r.TrustRuntime().Binding())
+	if err != nil || operation.ProfileBindingSHA256 != binding || operation.PreimageSHA256 != c.ObservedProjectSHA256 || operation.AnswersSHA256 != c.RendererAnswersSHA256 || !toolProvider.ValidFor(r.TrustRuntime(), r.TrustRuntime().Binding()) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	subjects, err := calculation.operationSubjectFacts()
+	if err != nil {
+		return nil, err
+	}
+	tool := toolProvider.Subject()
+	subjects = append(subjects, trustverify.Provider{Origin: tool.Origin, TemplatePath: tool.TemplatePath, Commit: tool.Commit, TreeSHA256: tool.TreeSHA256, ContractSHA256: tool.ContractSHA256})
+	key := func(p trustverify.Provider) string { return p.Origin + "\x00" + p.TemplatePath + "\x00" + p.Commit }
+	sort.Slice(subjects, func(i, j int) bool { return key(subjects[i]) < key(subjects[j]) })
+	expected := []trustverify.Provider{}
+	for _, subject := range subjects {
+		if len(expected) > 0 && key(expected[len(expected)-1]) == key(subject) {
+			if expected[len(expected)-1] != subject {
+				return nil, ErrFormatterMaterialUnavailable
+			}
+			continue
+		}
+		expected = append(expected, subject)
+	}
+	if !reflect.DeepEqual(operation.Subjects, expected) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	provider := calculation.target.provider
+	if provider == nil || !provider.ValidFor(r.TrustRuntime(), r.TrustRuntime().Binding()) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	selection, err := resolveFormatterTool(ctx, r.TrustRuntime(), provider, toolProvider, operation, action, input)
+	if err != nil {
+		return nil, err
+	}
+	selection.installed = r
+	selection.sources = calculation.target.sources
+	selection.updateCalculation = calculation
+	selection.mergedCalculation = merged
+	if err := calculation.RecheckFor(ctx, r); err != nil {
+		return nil, err
+	}
+	return selection, nil
+}
+
+func BindContextUpdateFormatterMaterial(ctx context.Context, r *trustload.Runtime, calculation *ContextUpdateFormatterCalculation, toolProvider *trustverify.VerifiedResolution, operation trustverify.OperationInputs, action trustverify.ActionMaterial, input FormatterInput, selection *FormatterSelection) (*ExecutionMaterial, error) {
+	if selection == nil || r == nil || selection.installed != r || selection.updateCalculation != calculation || selection.calculation != nil || selection.runtime != r.TrustRuntime() || selection.toolProvider != toolProvider || !reflect.DeepEqual(selection.operation, operation) || !reflect.DeepEqual(selection.action, action) || !bytes.Equal(selection.input, input.Bytes) || !bytes.Equal(selection.plan, input.PlanJSON) || !bytes.Equal(selection.context, input.ContextJSON) || selection.path != input.Path || selection.mode != input.Mode {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	again, err := ResolveContextUpdateFormatterComposition(ctx, r, calculation, toolProvider, operation, action, input)
+	if err != nil || again.provider != selection.provider || !bytes.Equal(again.tool, selection.tool) || !bytes.Equal(again.record, selection.record) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	return &ExecutionMaterial{formatter: selection}, nil
+}
+
+// ContextUpdateMergedFormatterCalculation owns one source-bound candidate and
+// predecessor data. It never authenticates an effect or grants publication;
+// the effect owner verifies the actual clean pair before construction.
+type ContextUpdateMergedFormatterCalculation struct {
+	self        *ContextUpdateMergedFormatterCalculation
+	clean       *ContextUpdateFormatterCalculation
+	name        string
+	input       []byte
+	predecessor string
+}
+
+func PrepareContextUpdateMergedFormatterCalculation(ctx context.Context, r *trustload.Runtime, clean *ContextUpdateFormatterCalculation, name string, input []byte, predecessor string) (*ContextUpdateMergedFormatterCalculation, error) {
+	if err := clean.RecheckFor(ctx, r); err != nil {
+		return nil, err
+	}
+	if !formatterDigest(predecessor) || len(input) == 0 || len(input) > 16<<20 || !strings.HasSuffix(name, ".go") {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	if _, ok := clean.target.files[name]; !ok {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	if !bytes.Contains(clean.target.files[name], []byte("tplater:managed-")) && !bytes.Contains(clean.source.files[name], []byte("tplater:managed-")) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	if _, err := blockmarkers.Validate(blockmarkers.LanguageGo, name, input); err != nil {
+		return nil, err
+	}
+	p := &ContextUpdateMergedFormatterCalculation{clean: clean, name: name, input: bytes.Clone(input), predecessor: predecessor}
+	p.self = p
+	return p, nil
+}
+
+func (p *ContextUpdateMergedFormatterCalculation) Context(ctx context.Context, r *trustload.Runtime) (ContextUpdateFormatterContext, error) {
+	if p == nil || p.self != p || p.clean == nil {
+		return ContextUpdateFormatterContext{}, ErrFormatterMaterialUnavailable
+	}
+	c, err := p.clean.Context(ctx, r)
+	if err != nil {
+		return c, err
+	}
+	c.Role = "merged-candidate"
+	c.PredecessorCleanProofSHA256 = p.predecessor
+	return c, nil
+}
+
+func (p *ContextUpdateMergedFormatterCalculation) ValidateContext(ctx context.Context, r *trustload.Runtime, raw []byte, name string, input []byte) error {
+	expected, err := p.Context(ctx, r)
+	if err != nil {
+		return err
+	}
+	c, err := ParseContextUpdateFormatterContext(raw)
+	if err != nil || c != expected || name != p.name || !bytes.Equal(input, p.input) {
+		return ErrFormatterMaterialUnavailable
+	}
+	return nil
+}
+
+func (p *ContextUpdateMergedFormatterCalculation) ValidateContextAndRoot(ctx context.Context, r *trustload.Runtime, clean *ContextUpdateFormatterCalculation, raw []byte, name string, input []byte) (*trustverify.VerifiedResolution, error) {
+	if p == nil || p.clean != clean {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	if err := p.ValidateContext(ctx, r, raw, name, input); err != nil {
+		return nil, err
+	}
+	provider := clean.target.provider
+	if provider == nil || !provider.ValidFor(r.TrustRuntime(), r.TrustRuntime().Binding()) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	return provider, nil
+}
+
+func (p *ContextUpdateMergedFormatterCalculation) RootResolution(ctx context.Context, r *trustload.Runtime) (*trustverify.VerifiedResolution, error) {
+	if _, err := p.Context(ctx, r); err != nil {
+		return nil, err
+	}
+	return p.clean.RootResolution(ctx, r)
+}
+
+func BindContextUpdateMergedFormatterMaterial(ctx context.Context, r *trustload.Runtime, calculation *ContextUpdateMergedFormatterCalculation, toolProvider *trustverify.VerifiedResolution, operation trustverify.OperationInputs, action trustverify.ActionMaterial, input FormatterInput, selection *FormatterSelection) (*ExecutionMaterial, error) {
+	if calculation == nil || selection == nil || r == nil || selection.mergedCalculation != calculation || selection.updateCalculation != calculation.clean || selection.installed != r || selection.calculation != nil || selection.runtime != r.TrustRuntime() || selection.toolProvider != toolProvider || !reflect.DeepEqual(selection.operation, operation) || !reflect.DeepEqual(selection.action, action) || !bytes.Equal(selection.input, input.Bytes) || !bytes.Equal(selection.plan, input.PlanJSON) || !bytes.Equal(selection.context, input.ContextJSON) || selection.path != input.Path || selection.mode != input.Mode {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	again, err := ResolveContextUpdateMergedFormatterComposition(ctx, r, calculation, toolProvider, operation, action, input)
+	if err != nil || again.provider != selection.provider || !bytes.Equal(again.tool, selection.tool) || !bytes.Equal(again.record, selection.record) {
+		return nil, ErrFormatterMaterialUnavailable
+	}
+	return &ExecutionMaterial{formatter: selection}, nil
 }

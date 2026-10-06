@@ -258,7 +258,7 @@ func (t *UpdateTransaction) adoptionScope(ctx context.Context) (*engine.Adoption
 	if err = canonicaljson.DecodeStrict(m.Intent, &in); err != nil {
 		return nil, err
 	}
-	if in.Version == 1 {
+	if in.Version == 1 || (in.Version == 3 && in.Protection == nil) {
 		return nil, nil
 	}
 	return engine.ScopeAdoption(ctx, t.physical)

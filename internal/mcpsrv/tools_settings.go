@@ -17,6 +17,10 @@ type nativeSettingsListArgs struct {
 }
 
 type settingsSetArgs struct {
+	Prepare        bool              `json:"prepare"`
+	FormatStage    bool              `json:"formatStage"`
+	FormatInput    string            `json:"formatInput"`
+	DecisionsInput string            `json:"decisionsInput"`
 	ProjectContext string            `json:"projectContext"`
 	DryRun         bool              `json:"dryRun"`
 	Dir            string            `json:"dir"`
@@ -24,6 +28,11 @@ type settingsSetArgs struct {
 }
 
 type nativeSettingsEditArgs struct {
+	Prepare        bool   `json:"prepare"`
+	FormatStage    bool   `json:"formatStage"`
+	FormatInput    string `json:"formatInput"`
+	DecisionsInput string `json:"decisionsInput"`
+	PairsInput     string `json:"pairsInput"`
 	Dir            string `json:"dir"`
 	ProjectContext string `json:"projectContext"`
 	Group          string `json:"group"`
@@ -57,6 +66,10 @@ func (s *Server) addSettingsTools() {
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithString("projectContext", mcp.Description("Exact authenticated installed context key; omitted uses registration default")),
 		mcp.WithBoolean("dryRun", mcp.Description("Show signed plan without publication"), mcp.DefaultBool(false)),
+		mcp.WithBoolean("prepare", mcp.Description("Report actual managed Settings formatter requests without execution")),
+		mcp.WithBoolean("formatStage", mcp.Description("Stage the current managed Settings formatter phase with exact approvals")),
+		mcp.WithString("formatInput", mcp.Description("Path to closed formatter selection and approval transport")),
+		mcp.WithString("decisionsInput", mcp.Description("Path to canonical typed managed decisions")),
 		mcp.WithObject("values", mcp.Required(), mcp.Description("New values: group→value")),
 		outputSchema(resultdto.OperationSettingsSet),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a settingsSetArgs) (*mcp.CallToolResult, error) {
@@ -76,6 +89,18 @@ func (s *Server) addSettingsTools() {
 		if a.DryRun {
 			argv = append(argv, "--dry-run")
 		}
+		if a.Prepare {
+			argv = append(argv, "--prepare")
+		}
+		if a.FormatStage {
+			argv = append(argv, "--format-stage")
+		}
+		if a.FormatInput != "" {
+			argv = append(argv, "--format-input", a.FormatInput)
+		}
+		if a.DecisionsInput != "" {
+			argv = append(argv, "--decisions-input", a.DecisionsInput)
+		}
 		return s.callStructured(ctx, resultdto.OperationSettingsSet, cwd, argv, longCall), nil
 	}))
 	s.mcp.AddTool(mcp.NewTool(
@@ -84,10 +109,15 @@ func (s *Server) addSettingsTools() {
 		mcp.WithString("dir", mcp.Required(), mcp.Description("Project directory")),
 		mcp.WithString("projectContext", mcp.Description("Exact authenticated installed context key; omitted uses registration default")),
 		mcp.WithString("group", mcp.Required(), mcp.Description("Signed manifest settings group")),
-		mcp.WithString("value", mcp.Required(), mcp.Description("Explicit answer, validated against the signed group type")),
+		mcp.WithString("value", mcp.Description("Explicit answer, validated against the signed group type")),
 		mcp.WithBoolean("dryRun", mcp.Description("Show signed plan without publication"), mcp.DefaultBool(false)),
+		mcp.WithBoolean("prepare", mcp.Description("Report actual managed Settings formatter requests without execution")),
+		mcp.WithBoolean("formatStage", mcp.Description("Stage the current managed Settings formatter phase with exact approvals")),
+		mcp.WithString("formatInput", mcp.Description("Path to closed formatter selection and approval transport")),
+		mcp.WithString("decisionsInput", mcp.Description("Path to canonical typed managed decisions")),
+		mcp.WithString("pairsInput", mcp.Description("Path to captured reanswer intent bound to the unchanged authenticated snapshot")),
 		outputSchema(resultdto.OperationSettingsReanswer),
-	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a nativeSettingsEditArgs) (*mcp.CallToolResult, error) {
+	), mcp.NewTypedToolHandler(func(ctx context.Context, request mcp.CallToolRequest, a nativeSettingsEditArgs) (*mcp.CallToolResult, error) {
 		cwd, failure := s.workDir(resultdto.OperationSettingsReanswer, "dir", a.Dir)
 		if failure != nil {
 			return failure, nil
@@ -95,12 +125,33 @@ func (s *Server) addSettingsTools() {
 		if a.Group == "" || strings.HasPrefix(strings.TrimSpace(a.Group), "-") || strings.Contains(a.Group, "=") {
 			return s.argumentFailure(resultdto.OperationSettingsReanswer, "group"), nil
 		}
-		argv := []string{"settings", "edit", a.Group, "--value=" + a.Value, "--yes", "--dir", cwd}
+		_, valuePresent := request.GetArguments()["value"]
+		if (a.PairsInput != "") == valuePresent {
+			return s.argumentFailure(resultdto.OperationSettingsReanswer, "value/pairsInput"), nil
+		}
+		argv := []string{"settings", "edit", a.Group, "--yes", "--dir", cwd}
+		if a.PairsInput != "" {
+			argv = append(argv, "--pairs-input", a.PairsInput)
+		} else {
+			argv = append(argv, "--value="+a.Value)
+		}
 		if a.ProjectContext != "" {
 			argv = append(argv, "--project-context", a.ProjectContext)
 		}
 		if a.DryRun {
 			argv = append(argv, "--dry-run")
+		}
+		if a.Prepare {
+			argv = append(argv, "--prepare")
+		}
+		if a.FormatStage {
+			argv = append(argv, "--format-stage")
+		}
+		if a.FormatInput != "" {
+			argv = append(argv, "--format-input", a.FormatInput)
+		}
+		if a.DecisionsInput != "" {
+			argv = append(argv, "--decisions-input", a.DecisionsInput)
 		}
 		return s.callStructured(ctx, resultdto.OperationSettingsReanswer, cwd, argv, longCall), nil
 	}))

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -13,13 +12,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/execx"
-	"github.com/tplAIter/tplaiter/internal/operationtrust"
-	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
+	"github.com/tplAIter/tplaiter/internal/sourceadapter"
 	"github.com/tplAIter/tplaiter/internal/trustload"
-	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
 // updateRunner — runner for `tplaiter update` post-update hooks. A package
@@ -73,11 +69,7 @@ func trustProject(pc trustload.ProjectContext) *resultdto.Project {
 // paths. The pair is only an assertion until it passes its strict decoders,
 // pair validation, exact active profile comparison, and the fresh verification
 // performed by operationtrust.PrepareUpdate.
-func registeredSourceInput(ctx context.Context, runtime interface {
-	ProjectContext() trustload.ProjectContext
-	TrustRuntime() *trustverify.Runtime
-},
-) ([]byte, error) {
+func registeredSourceInput(ctx context.Context, runtime *trustload.Runtime) ([]byte, error) {
 	if ctx == nil || runtime == nil || runtime.TrustRuntime() == nil {
 		return nil, errors.New("TRUST_RUNTIME_INVALID")
 	}
@@ -90,17 +82,7 @@ func registeredSourceInput(ctx context.Context, runtime interface {
 	if err != nil {
 		return nil, errors.New("TRUST_SOURCE_ADAPTER_UNSUPPORTED")
 	}
-	root, err := provenance.DecodeRootTemplateLock(rootRaw)
-	if err != nil {
-		return nil, errors.New("TRUST_SOURCE_ADAPTER_UNSUPPORTED")
-	}
-	deps, err := provenance.DecodeTemplateLock(depsRaw)
-	if err != nil || provenance.ValidateLockPair(*root, *deps) != nil || !root.TrustProfile.Equal(runtime.TrustRuntime().Binding()) || !deps.TrustProfile.Equal(runtime.TrustRuntime().Binding()) {
-		return nil, errors.New("TRUST_SOURCE_ADAPTER_UNSUPPORTED")
-	}
-	s := root.Root
-	selection := operationtrust.SourceSelection{APIVersion: operationtrust.SourceSelectionAPIVersion, Subject: operationtrust.SelectionSubject{Origin: s.Origin, TemplatePath: s.TemplatePath, RequestedRef: s.RequestedRef, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256}, Evidence: operationtrust.SelectionEvidence{Format: bootstrap.PublisherStatementAPIVersion, StatementCAS: s.StatementCAS, SignatureCAS: s.SignatureCAS, KeyFingerprint: s.KeyFingerprint, CheckpointCAS: s.CheckpointCAS, InclusionProofCAS: s.InclusionProofCAS}, Dependencies: []string{}}
-	raw, err := json.Marshal(selection)
+	raw, err := sourceadapter.RegisteredSourceInput(ctx, runtime, rootRaw, depsRaw)
 	if err != nil {
 		return nil, errors.New("TRUST_SOURCE_ADAPTER_UNSUPPORTED")
 	}

@@ -26,6 +26,8 @@ type RuntimeAdapter struct {
 	runner  *execx.ApprovedRunner
 }
 type FormatSelection struct {
+	mergedCalculation      *operationtrust.ContextUpdateMergedFormatterCalculation
+	updateCalculation      *operationtrust.ContextUpdateFormatterCalculation
 	sources                *contextauth.VerifiedSourceClosure
 	calculation            *operationtrust.ContextNewFormatterCalculation
 	adapter                *RuntimeAdapter
@@ -144,7 +146,7 @@ func (s *FormatSelection) Actions() []trustverify.ActionMaterial {
 }
 
 func (a *RuntimeAdapter) Bind(ctx context.Context, selection *FormatSelection, operation trustverify.OperationInputs) (*PreparedFormat, error) {
-	if selection == nil || selection.calculation != nil {
+	if selection == nil || selection.calculation != nil || selection.updateCalculation != nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	return a.bind(ctx, selection, operation)
@@ -197,7 +199,22 @@ func (a *RuntimeAdapter) bind(ctx context.Context, selection *FormatSelection, o
 		input := operationtrust.FormatterInput{Path: selection.plan.Path, Mode: selection.plan.InputMode, Bytes: selection.input, PlanJSON: mustCanonical(selection.plan), ContextJSON: selection.context}
 		var fs *operationtrust.FormatterSelection
 		var e error
-		if selection.calculation != nil {
+		if selection.updateCalculation != nil {
+			if selection.calculation != nil {
+				return nil, ErrRuntimeUnavailable
+			}
+			if selection.mergedCalculation != nil {
+				fs, e = operationtrust.ResolveContextUpdateMergedFormatterComposition(ctx, a.runtime, selection.mergedCalculation, selection.toolProvider, operation, action, input)
+				if e == nil {
+					materials[i], e = operationtrust.BindContextUpdateMergedFormatterMaterial(ctx, a.runtime, selection.mergedCalculation, selection.toolProvider, operation, action, input, fs)
+				}
+			} else {
+				fs, e = operationtrust.ResolveContextUpdateFormatterComposition(ctx, a.runtime, selection.updateCalculation, selection.toolProvider, operation, action, input)
+				if e == nil {
+					materials[i], e = operationtrust.BindContextUpdateFormatterMaterial(ctx, a.runtime, selection.updateCalculation, selection.toolProvider, operation, action, input, fs)
+				}
+			}
+		} else if selection.calculation != nil {
 			fs, e = operationtrust.ResolveContextNewFormatterComposition(ctx, a.runtime, selection.calculation, selection.toolProvider, operation, action, input)
 			if e == nil {
 				materials[i], e = operationtrust.BindContextNewFormatterMaterial(ctx, a.runtime, selection.calculation, selection.toolProvider, operation, action, input, fs)
@@ -389,4 +406,47 @@ func (a *RuntimeAdapter) SelectContextNativeNew(ctx context.Context, calculation
 	}
 	selected.calculation = calculation
 	return selected, nil
+}
+
+func (a *RuntimeAdapter) SelectContextNativeUpdate(ctx context.Context, calculation *operationtrust.ContextUpdateFormatterCalculation, toolProvider *trustverify.VerifiedResolution, plan Plan, input, contextJSON []byte) (*FormatSelection, error) {
+	if a == nil || calculation == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	provider, err := calculation.ValidateCleanContextAndRoot(ctx, a.runtime, contextJSON, plan.Path, input)
+	if err != nil {
+		return nil, err
+	}
+	selection, err := a.selectContext(ctx, provider, toolProvider, plan, input, contextJSON)
+	if err != nil {
+		return nil, err
+	}
+	selection.updateCalculation = calculation
+	return selection, nil
+}
+
+func (a *RuntimeAdapter) BindContextNativeUpdate(ctx context.Context, selection *FormatSelection, operation trustverify.OperationInputs) (*PreparedFormat, error) {
+	if a == nil || selection == nil || selection.adapter != a || selection.calculation != nil || selection.updateCalculation == nil || operation.Scope != "update" {
+		return nil, ErrRuntimeUnavailable
+	}
+	if err := selection.updateCalculation.RecheckFor(ctx, a.runtime); err != nil {
+		return nil, err
+	}
+	return a.bind(ctx, selection, operation)
+}
+
+func (a *RuntimeAdapter) SelectContextNativeUpdateMerged(ctx context.Context, clean *operationtrust.ContextUpdateFormatterCalculation, calculation *operationtrust.ContextUpdateMergedFormatterCalculation, toolProvider *trustverify.VerifiedResolution, plan Plan, input, contextJSON []byte) (*FormatSelection, error) {
+	if a == nil || clean == nil || calculation == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	provider, err := calculation.ValidateContextAndRoot(ctx, a.runtime, clean, contextJSON, plan.Path, input)
+	if err != nil {
+		return nil, err
+	}
+	selection, err := a.selectContext(ctx, provider, toolProvider, plan, input, contextJSON)
+	if err != nil {
+		return nil, err
+	}
+	selection.updateCalculation = clean
+	selection.mergedCalculation = calculation
+	return selection, nil
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/adoptionpolicy"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
 	renderengine "github.com/tplAIter/tplaiter/internal/engine"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/managedblocks"
@@ -20,6 +22,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/resources"
+	"github.com/tplAIter/tplaiter/internal/sourceadapter"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/trustload"
@@ -43,6 +46,7 @@ type ManagedEffects struct {
 	observed         *observation
 	registry         *registryObservation
 	intent           *operationtrust.PreparedUpdate
+	contextIntent    *contextsource.PreparedNativeUpdate
 	base             *renderref.Result
 	clean            *formatproof.UpdateCleanPreparation
 	cleanProjection  *formatproof.UpdateCleanProjection
@@ -123,6 +127,12 @@ func (b *Backend) prepareManagedEffects(ctx context.Context, in Input, transport
 	if err != nil {
 		return nil, err
 	}
+	if _, sourceErr := contextsource.DecodeSourceSelectionV2(in.SourceInput); sourceErr == nil {
+		if _, targetErr := contextsource.DecodeSourceSelectionV2(in.TargetInput); targetErr != nil {
+			return nil, operationtrust.ErrSourceAdapterUnsupported
+		}
+		return b.prepareContextManagedEffects(ctx, in, transport, observed, registry, marker, render)
+	}
 	baseIntent, err := operationtrust.PrepareSnapshot(ctx, b.runtime, operationtrust.PrepareSnapshotInput{SourceInput: in.SourceInput, Render: render, RendererVersion: b.rendererVersion})
 	if err != nil {
 		return nil, err
@@ -164,11 +174,120 @@ func (b *Backend) prepareManagedEffects(ctx context.Context, in Input, transport
 	return &ManagedEffects{backend: b, input: in, transport: transport, observed: observed, registry: registry, intent: intent, base: base, clean: clean, ledger: sourceProjection.Blocks(), sourceLedger: sourceProjection.Blocks(), plans: map[string]managedblocks.FilePlan{}}, nil
 }
 
+func (b *Backend) prepareContextManagedEffects(ctx context.Context, in Input, transport ManagedInput, observed *observation, registry *registryObservation, marker stateledger.ProjectV2, render renderref.Input) (*ManagedEffects, error) {
+	sources, err := sourceadapter.PrepareRecordedContextSources(ctx, b.runtime, observed.files[".tplaiter/root-template.lock.json"], observed.files[".tplaiter/template.lock.json"])
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 recorded sources: %w", err)
+	}
+	complete := false
+	defer func() {
+		if !complete {
+			sources.Close()
+		}
+	}()
+	// The supplied source must independently resolve to the recorded closure.
+	supplied, err := contextsource.PrepareContextSources(ctx, b.runtime, in.SourceInput)
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 supplied source: %w", err)
+	}
+	defer supplied.Close()
+	recordedRoot, recordedDeps, err := contextsource.ProjectContextSourceLocks(ctx, b.runtime, sources, b.rendererVersion)
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 recorded locks: %w", err)
+	}
+	suppliedRoot, suppliedDeps, err := contextsource.ProjectContextSourceLocks(ctx, b.runtime, supplied, b.rendererVersion)
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 supplied locks: %w", err)
+	}
+	a, err := canonicaljson.Canonical(recordedDeps)
+	if err != nil {
+		return nil, err
+	}
+	z, err := canonicaljson.Canonical(suppliedDeps)
+	if err != nil {
+		return nil, err
+	}
+	if recordedRoot != suppliedRoot || !bytes.Equal(a, z) {
+		return nil, ErrUnsafe
+	}
+	snapshot, err := contextsource.PrepareRecordedNativeSnapshot(ctx, b.runtime, sources, contextsource.RecordedNativeSnapshotInput{Render: render, RecordedValues: render.Values, RendererVersion: b.rendererVersion})
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 recorded snapshot: %w", err)
+	}
+	signed, err := snapshot.Rendered(ctx, b.runtime)
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 recorded render: %w", err)
+	}
+	projection, err := sourceManagedProjection(ctx, b.runtime, b.home, b.rendererVersion, observed.files)
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 committed source projection: %w", err)
+	}
+	base, err := projection.RenderedFor(signed)
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 source clean baseline: %w", err)
+	}
+	targetRender, err := b.settingsRender(ctx, in, render, marker.Answers)
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 settings resolution: %w", err)
+	}
+	targetRender, answers, _, err := b.migrationRender(ctx, in, targetRender, marker.Answers, observed.files[migrations.LedgerRelPath])
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 answer migrations: %w", err)
+	}
+	digest, err := bootstrap.DomainDigest(APIVersion+"/preimage", observed.images)
+	if err != nil {
+		return nil, err
+	}
+	target, err := contextsource.PrepareContextSources(ctx, b.runtime, in.TargetInput)
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 target sources: %w", err)
+	}
+	defer func() {
+		if !complete {
+			target.Close()
+		}
+	}()
+	intent, err := contextsource.PrepareNativeUpdate(ctx, b.runtime, sources, target, contextsource.NativeUpdateInput{SourceRender: render, TargetRender: targetRender, SourceRecordedValues: render.Values, TargetRecordedValues: answerRecordValues(answers), RendererVersion: b.rendererVersion, PreimageSHA256: digest})
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 source-target intent: %w", err)
+	}
+	clean, err := formatproof.PrepareContextUpdateClean(ctx, b.runtime, intent, transport.ToolSource, render, targetRender, render.Values, answerRecordValues(answers), digest, evidencecas.Digest(registry.raw), transport.Decisions)
+	if err != nil {
+		return nil, fmt.Errorf("native-v2 clean formatter material: %w", err)
+	}
+	complete = true
+	return &ManagedEffects{backend: b, input: in, transport: transport, observed: observed, registry: registry, contextIntent: intent, base: base, clean: clean, ledger: projection.Blocks(), sourceLedger: projection.Blocks(), plans: map[string]managedblocks.FilePlan{}}, nil
+}
+
+func (p *ManagedEffects) roots(ctx context.Context) (provenance.RootTemplateLock, provenance.RootTemplateLock, error) {
+	if p == nil || p.backend == nil {
+		return provenance.RootTemplateLock{}, provenance.RootTemplateLock{}, ErrInvalid
+	}
+	if p.contextIntent != nil {
+		if p.intent != nil {
+			return provenance.RootTemplateLock{}, provenance.RootTemplateLock{}, ErrInvalid
+		}
+		source, err := p.contextIntent.SourceRootLock(ctx, p.backend.runtime)
+		if err != nil {
+			return provenance.RootTemplateLock{}, provenance.RootTemplateLock{}, err
+		}
+		target, err := p.contextIntent.TargetRootLock(ctx, p.backend.runtime)
+		return source, target, err
+	}
+	if p.intent == nil || !p.intent.ValidFor(p.backend.runtime.TrustRuntime()) {
+		return provenance.RootTemplateLock{}, provenance.RootTemplateLock{}, ErrInvalid
+	}
+	return p.intent.SourceRootLock(), p.intent.TargetRootLock(), nil
+}
+
 func (p *ManagedEffects) recheck(ctx context.Context) error {
 	if p == nil || p.backend == nil || ctx == nil {
 		return ErrInvalid
 	}
 	b := p.backend
+	if _, _, err := p.roots(ctx); err != nil {
+		return err
+	}
 	if _, err := stateledger.VerifyStable(ctx, b.runtime.ProjectContext().RootPath, b.runtime.TrustRuntime(), stateledger.StableVerifyOptions{}); err != nil {
 		return err
 	}
@@ -240,6 +359,10 @@ func (p *ManagedEffects) StageCurrentPhase(ctx context.Context, approvals map[st
 }
 
 func (p *ManagedEffects) prepareMerged(ctx context.Context) error {
+	sourceRoot, targetRoot, err := p.roots(ctx)
+	if err != nil {
+		return err
+	}
 	projection, err := formatproof.OpenUpdateClean(ctx, p.clean, p.clean.References())
 	if err != nil {
 		return err
@@ -276,7 +399,7 @@ func (p *ManagedEffects) prepareMerged(ctx context.Context) error {
 		if !exists {
 			return ErrUnsafe
 		}
-		deletes, renames, err := managedblocks.FileDecisions(decisions, path, p.intent.SourceRootLock().RootLockSHA256, p.intent.TargetRootLock().RootLockSHA256, prior, ours, target.Files[path], target.Template.ManagedBlocks)
+		deletes, renames, err := managedblocks.FileDecisions(decisions, path, sourceRoot.RootLockSHA256, targetRoot.RootLockSHA256, prior, ours, target.Files[path], target.Template.ManagedBlocks)
 		if err != nil {
 			return err
 		}
@@ -291,7 +414,7 @@ func (p *ManagedEffects) prepareMerged(ctx context.Context) error {
 		candidates[path] = bytes.Clone(plan.Candidate)
 		// The clean target's skeleton/body becomes the upstream baseline; retained
 		// local content remains only in Candidate and explicit tombstone state.
-		next, err := managedblocks.SignedRootBaseline(map[string][]byte{path: target.Files[path]}, p.intent.TargetRootLock().Root)
+		next, err := managedblocks.SignedRootBaseline(map[string][]byte{path: target.Files[path]}, targetRoot.Root)
 		if err != nil {
 			return err
 		}
@@ -465,7 +588,17 @@ func managedRegistryBaseline(image RegistryImage, baseline *renderengine.Baselin
 
 // The committed transaction owner binds this closed reconstruction data to its
 // exact material afterimages. This document alone is never a receipt or grant.
+type ManagedContextLineage struct {
+	SourceDependencyLockSHA256 string `json:"sourceDependencyLockSHA256"`
+	TargetDependencyLockSHA256 string `json:"targetDependencyLockSHA256"`
+	SourceGraphSHA256          string `json:"sourceGraphSHA256"`
+	TargetGraphSHA256          string `json:"targetGraphSHA256"`
+	SourceNativeContextSHA256  string `json:"sourceNativeContextSHA256"`
+	TargetNativeContextSHA256  string `json:"targetNativeContextSHA256"`
+}
+
 type ManagedLineage struct {
+	Context              *ManagedContextLineage           `json:"context,omitempty"`
 	APIVersion           string                           `json:"apiVersion"`
 	SourceRootLockSHA256 string                           `json:"sourceRootLockSHA256"`
 	TargetRootLockSHA256 string                           `json:"targetRootLockSHA256"`
@@ -486,7 +619,56 @@ func (p *ManagedEffects) lineage(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return canonicaljson.Canonical(ManagedLineage{APIVersion: "tplaiter.dev/managed-update-lineage/v1", SourceRootLockSHA256: p.intent.SourceRootLock().RootLockSHA256, TargetRootLockSHA256: p.intent.TargetRootLock().RootLockSHA256, DecisionsSHA256: evidencecas.Digest(p.transport.Decisions), BaselineSHA256: evidencecas.Digest(baseline), CleanFrames: p.clean.References(), CandidateFrames: p.merged.References()})
+	sourceRoot, targetRoot, err := p.roots(ctx)
+	if err != nil {
+		return nil, err
+	}
+	lineage := ManagedLineage{APIVersion: "tplaiter.dev/managed-update-lineage/v1", SourceRootLockSHA256: sourceRoot.RootLockSHA256, TargetRootLockSHA256: targetRoot.RootLockSHA256, DecisionsSHA256: evidencecas.Digest(p.transport.Decisions), BaselineSHA256: evidencecas.Digest(baseline), CleanFrames: p.clean.References(), CandidateFrames: p.merged.References()}
+	if p.contextIntent != nil {
+		source, err := p.contextIntent.SourceSnapshot(ctx, p.backend.runtime)
+		if err != nil {
+			return nil, err
+		}
+		target, err := p.contextIntent.TargetSnapshot(ctx, p.backend.runtime)
+		if err != nil {
+			return nil, err
+		}
+		sd, err := source.DependencyLock(ctx, p.backend.runtime)
+		if err != nil {
+			return nil, err
+		}
+		td, err := target.DependencyLock(ctx, p.backend.runtime)
+		if err != nil {
+			return nil, err
+		}
+		sg, err := source.SourceGraph(ctx, p.backend.runtime)
+		if err != nil {
+			return nil, err
+		}
+		tg, err := target.SourceGraph(ctx, p.backend.runtime)
+		if err != nil {
+			return nil, err
+		}
+		sgh, err := bootstrap.DomainDigest("tplaiter.dev/managed-source-graph/v1", sg)
+		if err != nil {
+			return nil, err
+		}
+		tgh, err := bootstrap.DomainDigest("tplaiter.dev/managed-source-graph/v1", tg)
+		if err != nil {
+			return nil, err
+		}
+		sn, err := source.ContextDigest(ctx, p.backend.runtime)
+		if err != nil {
+			return nil, err
+		}
+		tn, err := target.ContextDigest(ctx, p.backend.runtime)
+		if err != nil {
+			return nil, err
+		}
+		lineage.APIVersion = "tplaiter.dev/managed-update-lineage/v2"
+		lineage.Context = &ManagedContextLineage{SourceDependencyLockSHA256: sd.LockSHA256, TargetDependencyLockSHA256: td.LockSHA256, SourceGraphSHA256: sgh, TargetGraphSHA256: tgh, SourceNativeContextSHA256: sn, TargetNativeContextSHA256: tn}
+	}
+	return canonicaljson.Canonical(lineage)
 }
 
 type managedProjection interface {
@@ -499,7 +681,7 @@ func sourceManagedProjection(ctx context.Context, r *trustload.Runtime, home, re
 	var header struct {
 		APIVersion string `json:"apiVersion"`
 	}
-	if json.Unmarshal(controls[".tplaiter/managed-lineage.json"], &header) == nil && header.APIVersion == "tplaiter.dev/managed-update-lineage/v1" {
+	if json.Unmarshal(controls[".tplaiter/managed-lineage.json"], &header) == nil && (header.APIVersion == "tplaiter.dev/managed-update-lineage/v1" || header.APIVersion == "tplaiter.dev/managed-update-lineage/v2") {
 		projection, _, err := ReadManagedUpdateProjection(ctx, r, home, renderer, controls)
 		return projection, err
 	}
@@ -542,6 +724,35 @@ func (p *ManagedUpdateProjection) RenderedFor(signed *renderref.Result) (*render
 	return &out, nil
 }
 
+func validManagedLineageVersion(l ManagedLineage) bool {
+	switch l.APIVersion {
+	case "tplaiter.dev/managed-update-lineage/v1":
+		return l.Context == nil
+	case "tplaiter.dev/managed-update-lineage/v2":
+		if l.Context == nil {
+			return false
+		}
+		for _, digest := range []string{l.Context.SourceDependencyLockSHA256, l.Context.TargetDependencyLockSHA256, l.Context.SourceGraphSHA256, l.Context.TargetGraphSHA256, l.Context.SourceNativeContextSHA256, l.Context.TargetNativeContextSHA256} {
+			if !strings.HasPrefix(digest, "sha256:") || len(digest) != 71 {
+				return false
+			}
+		}
+		for _, refs := range []map[string]formatproof.Reference{l.CleanFrames, l.CandidateFrames} {
+			if len(refs) == 0 {
+				return false
+			}
+			for _, ref := range refs {
+				if ref.APIVersion != "tplaiter.dev/formatter-reference/v3" {
+					return false
+				}
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
 func ReadManagedUpdateProjection(ctx context.Context, r *trustload.Runtime, home, renderer string, controls map[string][]byte) (*ManagedUpdateProjection, map[string][]byte, error) {
 	if ctx == nil || r == nil || controls == nil {
 		return nil, nil, ErrInvalid
@@ -553,7 +764,7 @@ func ReadManagedUpdateProjection(ctx context.Context, r *trustload.Runtime, home
 	ctx = context.WithValue(ctx, managedReadDepth{}, depth+1)
 	raw := controls[".tplaiter/managed-lineage.json"]
 	var lineage ManagedLineage
-	if canonicaljson.DecodeStrict(raw, &lineage) != nil || lineage.APIVersion != "tplaiter.dev/managed-update-lineage/v1" {
+	if canonicaljson.DecodeStrict(raw, &lineage) != nil || !validManagedLineageVersion(lineage) {
 		return nil, nil, ErrUnsafe
 	}
 	intent, err := formatproof.CommittedUpdateIntent(ctx, r, home, raw)
@@ -564,7 +775,11 @@ func ReadManagedUpdateProjection(ctx context.Context, r *trustload.Runtime, home
 	if canonicaljson.DecodeStrict(intent, &material) != nil || material.Managed == nil || material.Home != home || material.RendererVersion != renderer {
 		return nil, nil, ErrInvalid
 	}
-	if err := AuthenticateUpdateMaterial(ctx, r, renderer, material); err != nil {
+	// This may be a historical transaction in a nested managed lineage. Its
+	// sealed controls are checked below against the authenticated enclosing
+	// observation; requiring the present root marker here would reject a valid
+	// T1 lineage after T2 has published a new marker.
+	if err := authenticateUpdateMaterial(ctx, r, renderer, material, false); err != nil {
 		return nil, nil, err
 	}
 	observed, err := materialObservation(material.Before)

@@ -2242,7 +2242,7 @@
           "type": "boolean"
         },
         "params": {
-          "description": "Generator parameters: key→string value (serialized as dynamic CLI flags --\u003cparam\u003e)",
+          "description": "Generator parameters: key→string value (serialized as dynamic CLI flags --<param>)",
           "properties": {},
           "type": "object"
         },
@@ -12876,14 +12876,18 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Reanswer one authenticated native settings group on the pinned version using an explicit value; operation is settings.reanswer.",
     "inputSchema": {
       "properties": {
+        "decisionsInput": {
+          "description": "Path to canonical typed managed decisions",
+          "type": "string"
+        },
         "dir": {
           "description": "Project directory",
           "type": "string"
@@ -12893,9 +12897,25 @@
           "description": "Show signed plan without publication",
           "type": "boolean"
         },
+        "formatInput": {
+          "description": "Path to closed formatter selection and approval transport",
+          "type": "string"
+        },
+        "formatStage": {
+          "description": "Stage the current managed Settings formatter phase with exact approvals",
+          "type": "boolean"
+        },
         "group": {
           "description": "Signed manifest settings group",
           "type": "string"
+        },
+        "pairsInput": {
+          "description": "Path to captured reanswer intent bound to the unchanged authenticated snapshot",
+          "type": "string"
+        },
+        "prepare": {
+          "description": "Report actual managed Settings formatter requests without execution",
+          "type": "boolean"
         },
         "projectContext": {
           "description": "Exact authenticated installed context key; omitted uses registration default",
@@ -12908,8 +12928,7 @@
       },
       "required": [
         "dir",
-        "group",
-        "value"
+        "group"
       ],
       "type": "object"
     },
@@ -13426,14 +13445,18 @@
   },
   {
     "annotations": {
+      "readOnlyHint": false,
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false
+      "openWorldHint": true
     },
     "description": "Change project (dir) settings using 3-way merge on current template version. Applied without confirmation (--yes).",
     "inputSchema": {
       "properties": {
+        "decisionsInput": {
+          "description": "Path to canonical typed managed decisions",
+          "type": "string"
+        },
         "dir": {
           "description": "Project directory",
           "type": "string"
@@ -13441,6 +13464,18 @@
         "dryRun": {
           "default": false,
           "description": "Show signed plan without publication",
+          "type": "boolean"
+        },
+        "formatInput": {
+          "description": "Path to closed formatter selection and approval transport",
+          "type": "string"
+        },
+        "formatStage": {
+          "description": "Stage the current managed Settings formatter phase with exact approvals",
+          "type": "boolean"
+        },
+        "prepare": {
+          "description": "Report actual managed Settings formatter requests without execution",
           "type": "boolean"
         },
         "projectContext": {

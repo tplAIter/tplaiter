@@ -87,7 +87,7 @@ func readCurrent(ctx context.Context, r *trustload.Runtime, home, renderer, requ
 	}
 	var projection *CleanProjection
 	var images map[string][]byte
-	if json.Unmarshal(raw, &header) == nil && header.APIVersion == "tplaiter.dev/managed-update-lineage/v1" {
+	if json.Unmarshal(raw, &header) == nil && (header.APIVersion == "tplaiter.dev/managed-update-lineage/v1" || header.APIVersion == "tplaiter.dev/managed-update-lineage/v2") {
 		if requiredKind != "" {
 			return nil, ErrLineage
 		}
@@ -161,7 +161,7 @@ func Reconstruct(ctx context.Context, r *trustload.Runtime, home, renderer strin
 	var header struct {
 		APIVersion string `json:"apiVersion"`
 	}
-	if json.Unmarshal(controls[LineagePath], &header) == nil && header.APIVersion == "tplaiter.dev/managed-update-lineage/v1" {
+	if json.Unmarshal(controls[LineagePath], &header) == nil && (header.APIVersion == "tplaiter.dev/managed-update-lineage/v1" || header.APIVersion == "tplaiter.dev/managed-update-lineage/v2") {
 		value, _, err := updateplan.ReadManagedUpdateProjection(ctx, r, home, renderer, controls)
 		if err != nil {
 			return nil, err

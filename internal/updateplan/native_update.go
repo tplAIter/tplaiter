@@ -11,6 +11,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/adoptionpolicy"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
+	"github.com/tplAIter/tplaiter/internal/contextsource"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/trustload"
@@ -66,12 +67,12 @@ func (p *Plan) TransactionMaterialAfterLease(ctx context.Context, expected strin
 
 func (p *Plan) transactionMaterial(ctx context.Context, expected string, afterLease bool) (UpdateMaterial, *trustload.Runtime, error) {
 	fail := func(err error) (UpdateMaterial, *trustload.Runtime, error) { return UpdateMaterial{}, nil, err }
-	if ctx == nil || p == nil || p.owner == nil || p.prepared == nil || expected == "" || expected != p.digest {
+	if ctx == nil || p == nil || p.owner == nil || expected == "" || expected != p.digest {
 		return fail(ErrInvalid)
 	}
 	b := p.owner
 	digest, err := bootstrap.DomainDigest(APIVersion, p.report)
-	if err != nil || digest != expected || !p.prepared.ValidFor(b.runtime.TrustRuntime()) {
+	if err != nil || digest != expected || p.recheckPreparation(ctx) != nil {
 		return fail(ErrInvalid)
 	}
 	if _, err := stateledger.VerifyStable(ctx, p.report.Root, b.runtime.TrustRuntime(), stateledger.StableVerifyOptions{}); err != nil {
@@ -163,6 +164,13 @@ func materialFromPlan(p *Plan, actual *observation, added bool) (UpdateMaterial,
 		return UpdateMaterial{}, err
 	}
 	m := UpdateMaterial{Managed: p.input.Managed, SettingsPairs: append([]string(nil), p.input.SettingsPairs...), Version: 1, Root: p.report.Root, Home: p.owner.home, ProjectID: p.report.ProjectID, Binding: p.owner.runtime.TrustRuntime().Binding(), RendererVersion: p.owner.rendererVersion, SourceInput: bytes.Clone(p.input.SourceInput), TargetInput: bytes.Clone(p.input.TargetInput), ExpectedFingerprint: p.digest, ControlAdded: added, Before: map[string]UpdateFile{}, After: map[string]UpdateFile{}, Registry: updateRegistry(intent.registry)}
+	if p.contextPrepared != nil {
+		m.Version = 3
+		// The existing adoption scope accepts only legacy material v2. Never route a protected v3 through the raw engine.
+		if p.policy != nil {
+			return UpdateMaterial{}, ErrUnsafe
+		}
+	}
 	if p.policy != nil {
 		m.Version = 2
 		m.Protection = p.protection
@@ -198,8 +206,15 @@ func updateMaterialFingerprint(m UpdateMaterial) (string, error) {
 	if m.Version == 2 {
 		domain = "tplaiter.dev/native-update-material/v2"
 	}
+	if m.Version == 3 {
+		domain = "tplaiter.dev/native-update-material/v3"
+	}
 	if m.Managed != nil {
-		domain += "/managed/v1"
+		if m.Version == 3 {
+			domain += "/managed/v2"
+		} else {
+			domain += "/managed/v1"
+		}
 	}
 	return bootstrap.DomainDigest(domain, m)
 }
@@ -209,7 +224,27 @@ func updateMaterialFingerprint(m UpdateMaterial) (string, error) {
 // tree as stable and cannot authorize publication or recovery. Actual root/phase
 // ownership belongs to the authenticated engine receipt and retained lease.
 func AuthenticateUpdateMaterial(ctx context.Context, r *trustload.Runtime, actualRendererVersion string, m UpdateMaterial) error {
-	if ctx == nil || r == nil || r.TrustRuntime() == nil || (m.Version != 1 && m.Version != 2) || actualRendererVersion == "" || m.RendererVersion != actualRendererVersion || r.ProjectContext().RootPath != m.Root || !r.TrustRuntime().Binding().Equal(m.Binding) || len(m.SourceInput) == 0 || len(m.SourceInput) > 1<<20 || len(m.TargetInput) == 0 || len(m.TargetInput) > 1<<20 {
+	return authenticateUpdateMaterial(ctx, r, actualRendererVersion, m, true)
+}
+
+// authenticateUpdateMaterial reconstructs the signed material from its sealed
+// beforeimages. Historical managed lineage is authenticated against the
+// enclosing control images by its caller; it must not require the live root
+// marker to still equal that historical transaction. The ordinary public
+// verifier retains the live marker reobservation.
+func authenticateUpdateMaterial(ctx context.Context, r *trustload.Runtime, actualRendererVersion string, m UpdateMaterial, requireLiveMarker bool) error {
+	if ctx == nil || r == nil || r.TrustRuntime() == nil || (m.Version != 1 && m.Version != 2 && m.Version != 3) || actualRendererVersion == "" || m.RendererVersion != actualRendererVersion || r.ProjectContext().RootPath != m.Root || !r.TrustRuntime().Binding().Equal(m.Binding) || len(m.SourceInput) == 0 || len(m.SourceInput) > 1<<20 || len(m.TargetInput) == 0 || len(m.TargetInput) > 1<<20 {
+		return ErrInvalid
+	}
+	sourceErr := error(nil)
+	targetErr := error(nil)
+	_, sourceErr = contextsource.DecodeSourceSelectionV2(m.SourceInput)
+	_, targetErr = contextsource.DecodeSourceSelectionV2(m.TargetInput)
+	if m.Version == 3 {
+		if sourceErr != nil || targetErr != nil {
+			return ErrInvalid
+		}
+	} else if sourceErr == nil || targetErr == nil {
 		return ErrInvalid
 	}
 	if (m.Version == 2) != (m.Protection != nil) {
@@ -280,7 +315,10 @@ func AuthenticateUpdateMaterial(ctx context.Context, r *trustload.Runtime, actua
 	if err != nil || !bytes.Equal(raw, actual) {
 		return ErrInvalid
 	}
-	return checkUpdateMarker(ctx, r, m)
+	if requireLiveMarker {
+		return checkUpdateMarker(ctx, r, m)
+	}
+	return nil
 }
 
 func materialObservation(files map[string]UpdateFile) (*observation, error) {

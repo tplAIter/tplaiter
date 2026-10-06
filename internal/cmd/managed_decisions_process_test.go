@@ -1522,6 +1522,10 @@ func contextMerkle(h bootstrap.MerkleHash) string { return "sha256:" + hex.Encod
 // actual installed loader, stable runtime and SourceReader perform admission;
 // no fixture snapshot/resolution/reader is supplied to the carrier.
 func newContextFixture(t *testing.T, alter func(string, map[string][]byte)) *contextFixture {
+	return newContextFixtureScopes(t, alter, []string{"new"})
+}
+
+func newContextFixtureScopes(t *testing.T, alter func(string, map[string][]byte), scopesForFixture []string) *contextFixture {
 	t.Helper()
 	dir, e := filepath.EvalSymlinks(t.TempDir())
 	if e != nil {
@@ -1744,6 +1748,13 @@ func newContextFixture(t *testing.T, alter func(string, map[string][]byte)) *con
 	state.StateSHA256 = state.ComputedSHA256()
 	approverPub := approver.Public().(ed25519.PublicKey)
 	policy = trustverify.ExecutionPolicy{APIVersion: trustverify.ExecutionPolicyAPIVersion, PolicyID: "t6b-policy", Profile: "oss", MinimumProfile: "oss", Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Principals: []trustverify.Principal{{ID: "principal:approver"}, {ID: "principal:publisher"}, {ID: "principal:submitter"}}, IssuerPrincipals: []trustverify.IssuerPrincipal{{Issuer: "publisher-1", PrincipalID: "principal:publisher"}}, SourceRules: []trustverify.SourceRule{{PolicyOrigin: "https://example.test/policy", Issuer: "publisher-1", Origin: origin, TemplatePath: ".", Predicate: "https://example.test/predicate", Format: "tplaiter-publisher-statement-v1"}}, Approvers: []trustverify.Approver{{ID: "t6b-approver", PrincipalID: "principal:approver", IdentityClass: "operator", KeyFingerprint: bootstrap.Fingerprint(approverPub), PublicKeyBase64: base64.StdEncoding.EncodeToString(approverPub), Validity: trustverify.Validity{NotBefore: "2026-01-01T00:00:00Z", NotAfter: "2027-01-01T00:00:00Z"}, Scopes: []trustverify.ApprovalScope{{ProjectID: "project-t6b", OperationScope: "new", ActionKind: "formatter", Origin: origin, TemplatePath: "root"}}}}, AllowInvocationHuman: false, MaxTimeoutMillis: 5000}
+	policy.Approvers[0].Scopes = nil
+	for _, scope := range scopesForFixture {
+		if scope != "new" && scope != "update" {
+			t.Fatal("invalid context fixture scope")
+		}
+		policy.Approvers[0].Scopes = append(policy.Approvers[0].Scopes, trustverify.ApprovalScope{ProjectID: "project-t6b", OperationScope: scope, ActionKind: "formatter", Origin: origin, TemplatePath: "root"})
+	}
 	if policy.PolicySHA256, err = policy.ComputePolicySHA256(); err != nil {
 		t.Fatal(err)
 	}
@@ -2651,4 +2662,303 @@ func TestContextManagedNewInstalledRecovery(t *testing.T) {
 			pub = nil
 		}
 	}
+}
+
+// This is an owner integration counter, not organization or upstream authority.
+// Its initial New publication is the authenticated prerequisite for Settings.
+func TestContextManagedSettingsMaterialV3ColdPublication(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 580*time.Second)
+	defer cancel()
+	started := time.Now()
+	milestone := func(name string) { t.Logf("%s elapsed=%s", name, time.Since(started)) }
+	f := newContextFixtureScopes(t, func(alias string, files map[string][]byte) {
+		if alias != "root" {
+			return
+		}
+		files["template.manifest.yaml"] = bytes.Replace(files["template.manifest.yaml"], []byte("settings: []\n"), []byte("settings:\n  - group: label\n    title: Label\n    type: string\n    default: alpha\n"), 1)
+		var contract contextsource.NativeContextContract
+		if err := json.Unmarshal(files["template.contract.json"], &contract); err != nil {
+			t.Fatal(err)
+		}
+		contract.ManifestSHA256 = evidencecas.Digest(files["template.manifest.yaml"])
+		files["template.contract.json"] = contextJSON(t, contract)
+		files["files/main.go.tmpl"] = []byte("package fixture\n// tplater:managed-begin id=body provider=root-content\n// label: {{.Settings.label}}\nfunc F( ) int {return 1}\n// tplater:managed-end id=body\n")
+	}, []string{"new", "update"})
+	r := f.runtime
+	base := filepath.Dir(f.policyPath)
+	home := filepath.Join(base, "settings-home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(r.ProjectContext().RootPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(f.policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var policy trustverify.ExecutionPolicy
+	if err := json.Unmarshal(raw, &policy); err != nil {
+		t.Fatal(err)
+	}
+	owner := &managedNewIntegrationFixture{policy: policy, approver: ed25519.NewKeyFromSeed([]byte("23456789012345678901234567890123")), evidence: filepath.Join(base, "evidence")}
+	leaf := f.proofs["leaf"]
+	tool := contextJSON(t, operationtrust.SourceSelection{APIVersion: operationtrust.SourceSelectionAPIVersion, Subject: leaf.Subject, Evidence: leaf.Evidence, Dependencies: []string{}})
+	source := contextJSON(t, f.input)
+	initial := formatproof.NewCleanInput{APIVersion: "tplaiter.dev/managed-new-clean-input/v2", Home: home, Ref: f.input.Root.Subject.Commit, SourceInput: source, ToolSource: tool, Render: renderref.Input{Repo: "pinned", Values: settings.Values{"label": "alpha"}, Project: manifest.ProjectInfo{Name: "Example", Slug: "example", Module: "example.invalid/project"}, Runtime: manifest.ProjectRuntime{Port: 8080}}, RendererVersion: "1.0.0", Origins: map[string]survey.Source{"label": survey.SourceDefault}}
+	prep, err := formatproof.PrepareNewClean(ctx, r, initial)
+	if err != nil {
+		t.Fatal("initial preparation", err)
+	}
+	approvals := map[string]trustverify.ApprovalRefs{}
+	for _, q := range prep.Requests() {
+		approvals[q.RequestSHA256] = managedNewApprove(t, owner, q)
+	}
+	clean, err := formatproof.StageNewClean(ctx, prep, approvals)
+	if err != nil {
+		t.Fatal("initial effects", err)
+	}
+	pub, err := formatproof.BuildNewPublication(ctx, prep, clean)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, projection, err := newtransaction.BeginManagedPublication(ctx, r, pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, raw := range projection.Images {
+		path := filepath.Join(tx.Workspace(), filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			tx.Release()
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, raw, 0o644); err != nil {
+			tx.Release()
+			t.Fatal(err)
+		}
+	}
+	if err := tx.SealOutputs(); err != nil {
+		tx.Release()
+		t.Fatal(err)
+	}
+	registry := newtransaction.RegistryPlan{Home: projection.Home, Before: projection.RegistryBefore, After: projection.RegistryAfter}
+	if err := tx.PrepareRegistry(registry); err != nil {
+		tx.Release()
+		t.Fatal(err)
+	}
+	err = tx.Commit(registry)
+	if err == nil {
+		err = tx.Finalize()
+	}
+	tx.Release()
+	if err != nil {
+		t.Fatal("initial publication", err)
+	}
+	milestone("actual native-v2 New published")
+	decisionRaw, err := canonicaljson.Canonical(managedblocks.Decisions{APIVersion: managedblocks.DecisionsAPIVersion, Decisions: []managedblocks.Decision{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := updateplan.ManagedInput{ToolSource: tool, Decisions: decisionRaw}
+	pairs := []string{"label=beta"}
+	effects, err := projecttransaction.PrepareManagedSettingsEffects(ctx, r, home, "1.0.0", source, pairs, transport)
+	if err != nil {
+		t.Fatal("settings effects preparation", err)
+	}
+	for _, want := range []string{"clean-target", "merged-candidate"} {
+		phase, requests, err := effects.PhaseRequests(ctx)
+		if err != nil || phase != want || len(requests) != 2 {
+			t.Fatalf("phase=%s want=%s requests=%d err=%v", phase, want, len(requests), err)
+		}
+		if err := effects.StageCurrentPhase(ctx, nil); err == nil {
+			t.Fatal("missing actual approvals accepted")
+		}
+		signed := map[string]trustverify.ApprovalRefs{}
+		for _, q := range requests {
+			if q.Scope != "update" {
+				t.Fatal("wrong purpose")
+			}
+			signed[q.RequestSHA256] = managedNewApprove(t, owner, q)
+		}
+		if err := effects.StageCurrentPhase(ctx, signed); err != nil {
+			t.Fatal(want, err)
+		}
+		milestone(want)
+	}
+	report, err := effects.Report(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type completed struct {
+		raw  []byte
+		info os.FileInfo
+	}
+	completedEffects := map[string]completed{}
+	for _, frames := range []map[string]formatproof.Reference{report.CleanFrames, report.CandidateFrames} {
+		for _, ref := range frames {
+			if ref.APIVersion != "tplaiter.dev/formatter-reference/v3" {
+				t.Fatal("formatter reference domain", ref.APIVersion)
+			}
+			for ordinal := 1; ordinal <= 2; ordinal++ {
+				path := filepath.Join(r.ScratchRoot(), "formatter-evidence", strings.TrimPrefix(ref.FrameSHA256, "sha256:"), fmt.Sprintf("pass-%d-completed.json", ordinal))
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				info, err := os.Stat(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				completedEffects[path] = completed{raw, info}
+			}
+		}
+	}
+	backend, err := updateplan.New(r, home, "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := backend.Prepare(ctx, updateplan.Input{SourceInput: source, TargetInput: source, SettingsPairs: pairs, Managed: &transport})
+	if err != nil {
+		t.Fatal("settings writer plan", err)
+	}
+	material, _, err := plan.TransactionMaterial(ctx, plan.Fingerprint())
+	if err != nil {
+		t.Fatal("settings material", err)
+	}
+	if material.Version != 3 || !bytes.Equal(material.SourceInput, material.TargetInput) || material.ExpectedFingerprint != plan.Fingerprint() {
+		t.Fatal("wrong same-version native-v2 material")
+	}
+	if err := updateplan.AuthenticateUpdateMaterial(ctx, r, "1.0.0", material); err != nil {
+		t.Fatal("fresh material authentication", err)
+	}
+	altered := material
+	altered.TargetInput = append(append([]byte(nil), material.TargetInput...), ' ')
+	if err := updateplan.AuthenticateUpdateMaterial(ctx, r, "1.0.0", altered); err == nil {
+		t.Fatal("tampered target material accepted")
+	}
+	transaction, err := projecttransaction.BeginUpdate(ctx, plan, plan.Fingerprint())
+	if err != nil {
+		if transaction != nil {
+			transaction.Release()
+		}
+		t.Fatal("settings begin", err)
+	}
+	id := transaction.ID()
+	transaction.Release()
+	milestone("material-v3 sealed")
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cold, err := trustload.OpenRuntime(ctx, trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: contextFixtureClock{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if cold != nil {
+			cold.Close()
+		}
+	}()
+	continued, err := projecttransaction.OpenUpdate(ctx, cold, home, id, "1.0.0")
+	if err != nil {
+		t.Fatal("fresh runtime cold admission", err)
+	}
+	if continued.ID() != id {
+		continued.Release()
+		t.Fatal("cold ID changed")
+	}
+	err = continued.Commit(ctx)
+	continued.Release()
+	if err != nil {
+		t.Fatal("cold settings publication", err)
+	}
+	for path, old := range completedEffects {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(path)
+		if err != nil || !bytes.Equal(raw, old.raw) || !os.SameFile(info, old.info) || !info.ModTime().Equal(old.info.ModTime()) {
+			t.Fatal("completed effect rerun or replaced", path, err)
+		}
+	}
+	view, err := settingscmd.NewNative(cold, home, "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err := view.Read(ctx)
+	if err != nil {
+		t.Fatal("committed settings reader", err)
+	}
+	if observed.Values["label"] != "beta" || observed.Answers["label"].Source != "user" {
+		t.Fatal("settings value/provenance lost", observed.Values, observed.Answers)
+	}
+	if _, err := diffcmd.Run(ctx, cold, diffcmd.Options{Home: home, RendererVersion: "1.0.0", SecretProvider: readonlyHomeClassifier{}}); err != nil {
+		t.Fatal("committed diff reader", err)
+	}
+	// T1 is the first native-v2 Settings publication above. Prepare T2 from
+	// that committed state, reopen it through a fresh runtime, and verify the
+	// historical T1 lineage remains readable after T2 changes the live marker.
+	secondPairs := []string{"label=gamma"}
+	secondEffects, err := projecttransaction.PrepareManagedSettingsEffects(ctx, cold, home, "1.0.0", source, secondPairs, transport)
+	if err != nil {
+		t.Fatal("second settings effects preparation", err)
+	}
+	for _, want := range []string{"clean-target", "merged-candidate"} {
+		phase, requests, err := secondEffects.PhaseRequests(ctx)
+		if err != nil || phase != want || len(requests) != 2 {
+			t.Fatalf("second phase=%s want=%s requests=%d err=%v", phase, want, len(requests), err)
+		}
+		approvals := map[string]trustverify.ApprovalRefs{}
+		for _, q := range requests {
+			approvals[q.RequestSHA256] = managedNewApprove(t, owner, q)
+		}
+		if err := secondEffects.StageCurrentPhase(ctx, approvals); err != nil {
+			t.Fatal("second settings stage", err)
+		}
+	}
+	secondBackend, err := updateplan.New(cold, home, "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPlan, err := secondBackend.Prepare(ctx, updateplan.Input{SourceInput: source, TargetInput: source, SettingsPairs: secondPairs, Managed: &transport})
+	if err != nil {
+		t.Fatal("second settings writer plan", err)
+	}
+	secondTx, err := projecttransaction.BeginUpdate(ctx, secondPlan, secondPlan.Fingerprint())
+	if err != nil {
+		t.Fatal("second settings begin", err)
+	}
+	secondID := secondTx.ID()
+	secondTx.Release()
+	cold.Close()
+	cold, err = trustload.OpenRuntime(ctx, trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: contextFixtureClock{}})
+	if err != nil {
+		t.Fatal("second fresh runtime", err)
+	}
+	secondCold, err := projecttransaction.OpenUpdate(ctx, cold, home, secondID, "1.0.0")
+	if err != nil {
+		t.Fatal("second fresh runtime cold admission", err)
+	}
+	if err := secondCold.Commit(ctx); err != nil {
+		secondCold.Release()
+		t.Fatal("second cold settings publication", err)
+	}
+	secondCold.Release()
+	cold.Close()
+	cold, err = trustload.OpenRuntime(ctx, trustload.RuntimeOptions{Selection: f.selection, ProjectKey: "project", Clock: contextFixtureClock{}})
+	if err != nil {
+		t.Fatal("post-T2 fresh runtime", err)
+	}
+	view, err = settingscmd.NewNative(cold, home, "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err = view.Read(ctx)
+	if err != nil || observed.Values["label"] != "gamma" || observed.Answers["label"].Source != "user" {
+		t.Fatalf("T2 settings value/provenance: %v %+v", err, observed)
+	}
+	if _, err := diffcmd.Run(ctx, cold, diffcmd.Options{Home: home, RendererVersion: "1.0.0", SecretProvider: readonlyHomeClassifier{}}); err != nil {
+		t.Fatal("T2 committed diff reader", err)
+	}
+	milestone("SAME-ID fresh-runtime commit and authenticated readers; completed effect bytes/inodes/timestamps unchanged")
 }
