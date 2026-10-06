@@ -4,6 +4,7 @@ package trustload
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -57,7 +58,15 @@ func openLocalEndpoint(ctx context.Context, path string, uid uint32) (p *localEn
 			return p, ErrLocalProvider
 		}
 		var st unix.Stat_t
-		if unix.Fstatat(fd, name, &st, unix.AT_SYMLINK_NOFOLLOW) != nil {
+		if e := unix.Fstatat(fd, name, &st, unix.AT_SYMLINK_NOFOLLOW); e != nil {
+			if i == len(components)-1 && errors.Is(e, unix.ENOENT) && ctx.Err() == nil {
+				if e = p.recheck(); e != nil {
+					return p, e
+				}
+				if ctx.Err() == nil {
+					return p, localProviderUnavailable()
+				}
+			}
 			return p, ErrLocalProvider
 		}
 		if i == len(components)-1 {
@@ -98,6 +107,14 @@ func openLocalEndpoint(ctx context.Context, path string, uid uint32) (p *localEn
 	dialer := net.Dialer{}
 	conn, e := dialer.DialContext(ctx, "unix", filepath.Clean(path))
 	if e != nil {
+		if errors.Is(e, unix.ECONNREFUSED) && ctx.Err() == nil {
+			if e = p.recheck(); e != nil {
+				return p, e
+			}
+			if ctx.Err() == nil {
+				return p, localProviderUnavailable()
+			}
+		}
 		return p, ErrLocalProvider
 	}
 	p.conn = conn.(*net.UnixConn)

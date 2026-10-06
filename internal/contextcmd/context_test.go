@@ -5,12 +5,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"testing"
 
 	"github.com/tplAIter/tplaiter/internal/contextindex"
 	"github.com/tplAIter/tplaiter/internal/knowledge"
+	"github.com/tplAIter/tplaiter/internal/resultdto"
+	"github.com/tplAIter/tplaiter/internal/trustload"
 )
 
 func TestContextAdapterMatchesC03Identifiers(t *testing.T) {
@@ -42,6 +45,66 @@ func TestContextAdapterMatchesC03Identifiers(t *testing.T) {
 	d.Items[0], d.Items[2] = d.Items[2], d.Items[0]
 	if !reflect.DeepEqual(listed, entries(d)) {
 		t.Fatal("input permutation changes IDs")
+	}
+}
+
+func TestLocalProviderUnavailableProjection(t *testing.T) {
+	unavailable := &trustload.LocalProviderUnavailableError{}
+	if !errors.Is(unavailable, trustload.ErrLocalProvider) {
+		t.Fatal("legacy refusal compatibility lost")
+	}
+	for _, tc := range []struct {
+		name string
+		err  error
+		code string
+	}{
+		{"typed", unavailable, "LOCAL_PROVIDER_UNAVAILABLE"},
+		{"wrapped-typed", fmt.Errorf("neutral wrapper: %w", unavailable), "LOCAL_PROVIDER_UNAVAILABLE"},
+		{"raw-refusal", trustload.ErrLocalProvider, "CONTEXT_AUTHENTICATION_FAILED"},
+		{"wrapped-refusal", fmt.Errorf("neutral wrapper: %w", trustload.ErrLocalProvider), "CONTEXT_AUTHENTICATION_FAILED"},
+		{"text-lookalike", errors.New("LOCAL_PROVIDER_UNAVAILABLE"), "CONTEXT_AUTHENTICATION_FAILED"},
+		{"platform", trustload.ErrLocalUnsupported, "CONTEXT_AUTHENTICATION_FAILED"},
+		{"pin", trustload.ErrPinMismatch, "CONTEXT_AUTHENTICATION_FAILED"},
+		{"config", trustload.ErrConfigInvalid, "CONTEXT_AUTHENTICATION_FAILED"},
+		{"canceled", context.Canceled, "CONTEXT_CANCELLED"},
+		{"deadline", context.DeadlineExceeded, "CONTEXT_CANCELLED"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Code(tc.err); got != tc.code {
+				t.Fatalf("code = %s, want %s", got, tc.code)
+			}
+			// The installed local-preview route chooses ExitUnavailable (8).
+			// Ordinary context.go chooses ExitTrust (5); neither route changes.
+			projected := resultdto.NewError(Code(tc.err), resultdto.ExitUnavailable, tc.err)
+			if resultdto.Classify(projected) != resultdto.ExitUnavailable || int(resultdto.Classify(projected)) != 8 {
+				t.Fatal("existing CLI preview exit changed")
+			}
+			trustFailure := resultdto.NewError(Code(tc.err), resultdto.ExitTrust, tc.err)
+			if resultdto.Classify(trustFailure) != resultdto.ExitTrust {
+				t.Fatal("ordinary context trust exit changed")
+			}
+			diagnostics := resultdto.ProjectDiagnostics(projected)
+			if len(diagnostics) != 1 || diagnostics[0].Code != tc.code || diagnostics[0].Severity != "error" || diagnostics[0].Message != "lifecycle operation failed" || diagnostics[0].Details == nil || len(diagnostics[0].Details) != 0 {
+				t.Fatal("safe diagnostic projection changed")
+			}
+			if diagnostics[0].Path != "" || diagnostics[0].BlockID != "" {
+				t.Fatal("diagnostic acquired private context")
+			}
+			if tc.code == "LOCAL_PROVIDER_UNAVAILABLE" {
+				envelope := resultdto.New(resultdto.OperationContextQuery, "dev")
+				envelope.Status = resultdto.StatusForExit(projected.ExitCode())
+				envelope.Diagnostics = diagnostics
+				b, err := resultdto.MarshalCanonical(envelope)
+				if err != nil {
+					t.Fatal(err)
+				}
+				decoded, err := resultdto.Decode(b)
+				if err != nil || decoded.Status != resultdto.StatusBlocked || len(decoded.Data) != 0 || decoded.Project != nil || decoded.TransactionID != nil || decoded.Summary != (resultdto.Summary{}) || len(decoded.Changes) != 0 || len(decoded.Artifacts) != 0 {
+					t.Fatal("blocked envelope acquired effect or preview data")
+				}
+				t.Logf("actual safe result/v1 projection: %s; exit=%d", b, projected.ExitCode())
+			}
+		})
 	}
 }
 

@@ -378,5 +378,9 @@ func Code(err error) string {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return "CONTEXT_CANCELLED"
 	}
+	var unavailable *trustload.LocalProviderUnavailableError
+	if errors.As(err, &unavailable) {
+		return "LOCAL_PROVIDER_UNAVAILABLE"
+	}
 	return "CONTEXT_AUTHENTICATION_FAILED"
 }

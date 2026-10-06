@@ -23,6 +23,16 @@ var (
 	ErrLocalUnsupported = errors.New("LOCAL_PROVIDER_PLATFORM_UNSUPPORTED")
 )
 
+// LocalProviderUnavailableError identifies endpoint absence after the installed
+// factory has checked the required namespace. It conveys no provider authority.
+// Other namespace, selection and peer refusals retain ErrLocalProvider.
+type LocalProviderUnavailableError struct{}
+
+func (*LocalProviderUnavailableError) Error() string { return "LOCAL_PROVIDER_UNAVAILABLE" }
+func (*LocalProviderUnavailableError) Unwrap() error { return ErrLocalProvider }
+
+func localProviderUnavailable() error { return &LocalProviderUnavailableError{} }
+
 type localRegistration struct {
 	APIVersion     string   `json:"apiVersion"`
 	Kind           string   `json:"kind"`
