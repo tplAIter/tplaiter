@@ -1,6 +1,8 @@
 package projecttransaction
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha1"
@@ -8,6 +10,9 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,9 +21,13 @@ import (
 	"time"
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
+	"github.com/tplAIter/tplaiter/internal/execx"
+	"github.com/tplAIter/tplaiter/internal/newcmd"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
+	"github.com/tplAIter/tplaiter/internal/updateplan"
 )
 
 // Concrete signed two-version fixture copied from the accepted newcmd trust
@@ -295,4 +304,140 @@ func t5DFileTree(add func(string, []byte) string, files map[string][]byte, prefi
 		entries = append(entries, nested...)
 	}
 	return t5DTree(add, tree), entries
+}
+
+// The fixture bridge executes source-owner preparation in a separate test image.
+// Its bounded data transport never supplies production writer or spawn authority.
+type engineFixtureRequest struct {
+	Operation  string                    `json:"operation"`
+	Selection  trustload.LaunchSelection `json:"selection"`
+	ProjectKey string                    `json:"projectKey"`
+	Clock      string                    `json:"clock"`
+	Home       string                    `json:"home"`
+	Project    string                    `json:"project"`
+	Name       string                    `json:"name"`
+	Module     string                    `json:"module"`
+	Ref        string                    `json:"ref"`
+	Renderer   string                    `json:"renderer"`
+	Source     json.RawMessage           `json:"source,omitempty"`
+	Target     json.RawMessage           `json:"target,omitempty"`
+	Intent     json.RawMessage           `json:"intent,omitempty"`
+}
+type engineFixtureNoSpawn struct{}
+
+func (engineFixtureNoSpawn) Run(context.Context, string, []string, execx.Options) (execx.Result, error) {
+	return execx.Result{}, errors.New("fixture unexpectedly requested execution")
+}
+
+func (engineFixtureNoSpawn) LookPath(string) (string, error) {
+	return "", errors.New("fixture unexpectedly requested tool discovery")
+}
+
+func TestManagedEngineFixtureBridge(t *testing.T) {
+	if os.Getenv("TPLAITER_ENGINE_FIXTURE_BRIDGE") != "1" {
+		return
+	}
+	out := os.NewFile(3, "fixture-result")
+	if out == nil {
+		t.Fatal("missing result pipe")
+	}
+	defer out.Close()
+	scan := bufio.NewScanner(os.Stdin)
+	scan.Buffer(make([]byte, 4096), 32<<20)
+	var runtime *trustload.Runtime
+	var identity []byte
+	var plan *updateplan.Plan
+	defer func() {
+		if runtime != nil {
+			_ = runtime.Close()
+		}
+	}()
+	for scan.Scan() {
+		var q engineFixtureRequest
+		if err := canonicaljson.DecodeStrict(scan.Bytes(), &q); err != nil {
+			t.Fatal(err)
+		}
+		if q.ProjectKey == "" || q.Home == "" || q.Renderer == "" {
+			t.Fatal("incomplete fixture request")
+		}
+		key, err := canonicaljson.Canonical(struct {
+			Selection                         trustload.LaunchSelection
+			ProjectKey, Clock, Home, Renderer string
+		}{q.Selection, q.ProjectKey, q.Clock, q.Home, q.Renderer})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if runtime == nil {
+			clock := bootstrap.ClockFunc(time.Now)
+			if q.Clock != "" {
+				stamp, e := time.Parse(time.RFC3339Nano, q.Clock)
+				if e != nil {
+					t.Fatal(e)
+				}
+				clock = func() time.Time { return stamp }
+			}
+			runtime, err = trustload.OpenRuntime(context.Background(), trustload.RuntimeOptions{Selection: q.Selection, ProjectKey: q.ProjectKey, Clock: clock})
+			if err != nil {
+				t.Fatal(err)
+			}
+			identity = key
+		} else if !bytes.Equal(identity, key) {
+			t.Fatal("fixture identity changed")
+		}
+		ctx := context.Background()
+		var result any = struct{}{}
+		switch q.Operation {
+		case "create":
+			err = newcmd.Run(ctx, newcmd.Options{Ref: q.Ref, ProjectName: q.Name, Dir: q.Project, Module: q.Module, Defaults: true, NoHooks: true, NoDepsCheck: true, CLIVersion: q.Renderer}, newcmd.Deps{Runtime: runtime, Home: q.Home, SourceInput: q.Source, Runner: engineFixtureNoSpawn{}, Out: io.Discard})
+		case "prepare-update":
+			var backend *updateplan.Backend
+			backend, err = updateplan.New(runtime, q.Home, q.Renderer)
+			if err == nil {
+				plan, err = backend.Prepare(ctx, updateplan.Input{SourceInput: q.Source, TargetInput: q.Target})
+			}
+			if err == nil {
+				var m updateplan.UpdateMaterial
+				m, _, err = plan.TransactionMaterial(ctx, plan.Fingerprint())
+				if err == nil {
+					result, err = updateEngineMaterial(m)
+				}
+			}
+		case "after-lease":
+			if plan == nil {
+				t.Fatal("missing original prepared plan")
+			}
+			var m updateplan.UpdateMaterial
+			m, _, err = plan.TransactionMaterialAfterLease(ctx, plan.Fingerprint())
+			if err == nil {
+				err = updateplan.AuthenticateUpdateMaterial(ctx, runtime, q.Renderer, m)
+			}
+			if err == nil {
+				result, err = updateEngineMaterial(m)
+			}
+		case "authenticate-update":
+			var m updateplan.UpdateMaterial
+			err = canonicaljson.DecodeStrict(q.Intent, &m)
+			if err == nil {
+				err = updateplan.AuthenticateUpdateMaterial(ctx, runtime, q.Renderer, m)
+			}
+			if err == nil {
+				result, err = updateEngineMaterial(m)
+			}
+		default:
+			t.Fatal("unknown fixture operation")
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := canonicaljson.Canonical(result)
+		if err != nil || len(raw) > 32<<20 {
+			t.Fatal("invalid fixture result", err)
+		}
+		if _, err = fmt.Fprintf(out, "%s\n", raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := scan.Err(); err != nil {
+		t.Fatal(err)
+	}
 }

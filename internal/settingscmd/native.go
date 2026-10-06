@@ -15,6 +15,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/migrations"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/managed"
 	"github.com/tplAIter/tplaiter/internal/projectverify"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
@@ -160,6 +161,33 @@ func (n *Native) Read(ctx context.Context) (*NativeView, error) {
 	values := settings.Values{}
 	for key, a := range marker.Answers {
 		values[key] = a.Value
+	}
+	// A stripped lineage must not enter the ordinary reader merely because the
+	// locator is absent. Derive managed presence from the authenticated render.
+	text := func(key string) string { value, _ := marker.Project[key].(string); return value }
+	port, ok := marker.Runtime["port"].(int)
+	if !ok || port < 0 || port > 65535 {
+		return nil, stateledger.ErrUnsafe
+	}
+	prepared, err := operationtrust.PrepareSnapshot(ctx, r, operationtrust.PrepareSnapshotInput{SourceInput: input, RendererVersion: n.renderer, Render: renderref.Input{Repo: marker.Template.Repo, Values: renderref.Values(values), Project: manifest.ProjectInfo{Name: text("name"), Slug: text("slug"), Module: text("module"), System: text("system"), Domain: text("domain")}, Runtime: manifest.ProjectRuntime{Port: port}}})
+	if err != nil {
+		return nil, err
+	}
+	required := false
+	for _, raw := range prepared.Rendered().Files {
+		if bytes.Contains(raw, []byte("tplater:managed-")) {
+			required = true
+			break
+		}
+	}
+	lineage, err := observation.ReadState(ctx, managed.LineagePath)
+	if err != nil {
+		return nil, err
+	}
+	if required || lineage.Exists {
+		if _, err := managed.Read(ctx, r, n.home, n.renderer); err != nil {
+			return nil, err
+		}
 	}
 	resolved, err := settings.ResolveRecorded(tpl, renderref.Values(values), renderref.Values(values))
 	if err != nil {

@@ -75,6 +75,7 @@ func (t *Template) Validate() error {
 	v := &validator{groups: make(map[string]groupInfo)}
 
 	v.checkMetadata(t)
+	v.checkManagedBlocks(t)
 	if err := migrations.ValidateDeclarations(t.Migrations); err != nil {
 		v.add("migrations", "%s", err)
 	}
@@ -503,5 +504,37 @@ func isKnownType(t string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func (v *validator) checkManagedBlocks(t *Template) {
+	m := t.ManagedBlocks
+	if m == nil {
+		return
+	}
+	if m.Version != 1 || m.Replacements == nil || len(m.Replacements) > 4096 {
+		v.add("managedBlocks", "invalid version or replacement bounds")
+		return
+	}
+	ids := regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]{0,127}$`)
+	providers := regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._/-]{0,127}$`)
+	old, newIDs := map[string]bool{}, map[string]bool{}
+	for i, r := range m.Replacements {
+		loc := fmt.Sprintf("managedBlocks.replacements[%d]", i)
+		if r.Path == "" || path.Clean(r.Path) != r.Path || path.IsAbs(r.Path) || r.Path == "." || strings.Contains(r.Path, "\\") || strings.HasPrefix(r.Path, "../") || strings.HasPrefix(strings.ToLower(r.Path), ".tplaiter/") || strings.HasPrefix(strings.ToLower(r.Path), ".tplater/") || !strings.HasSuffix(r.Path, ".go") || !ids.MatchString(r.OldID) || !ids.MatchString(r.NewID) || r.OldID == r.NewID || !providers.MatchString(r.Provider) {
+			v.add(loc, "invalid same-file replacement")
+			continue
+		}
+		a, b := r.Path+"\x00"+r.OldID, r.Path+"\x00"+r.NewID
+		if old[a] || newIDs[b] {
+			v.add(loc, "replacement collision")
+		}
+		old[a] = true
+		newIDs[b] = true
+	}
+	for id := range old {
+		if newIDs[id] {
+			v.add("managedBlocks.replacements", "replacement chains/cycles are unsupported")
+		}
 	}
 }

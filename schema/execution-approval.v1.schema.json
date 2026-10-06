@@ -41,6 +41,7 @@
     "scope": {
       "enum": [
         "new",
+        "link",
         "update",
         "run",
         "gen",

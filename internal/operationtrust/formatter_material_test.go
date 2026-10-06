@@ -1,7 +1,10 @@
 package operationtrust
 
 import (
+	"bytes"
 	"testing"
+
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 )
@@ -37,6 +40,23 @@ func TestFormatterContentKeepsBytesPairedAfterSort(t *testing.T) {
 	for i, entry := range entries {
 		if entry.ContentSHA256 != evidencecas.Digest(values[i]) {
 			t.Fatalf("entry %s lost its paired bytes", entry.Path)
+		}
+	}
+}
+
+func TestManagedFormatterContextClosed(t *testing.T) {
+	d := evidencecas.Digest([]byte("x"))
+	c := ManagedFormatterContext{APIVersion: "tplaiter.dev/managed-formatter-context/v1", Role: "clean-target", SourceRootLockSHA256: d, TargetRootLockSHA256: d, ReplacementDeclarationsSHA256: d, DecisionsSHA256: d, ObservedProjectSHA256: d, ObservedRegistrySHA256: d, RendererAnswersSHA256: d}
+	raw, err := canonicaljson.Canonical(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseManagedFormatterContext(raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range [][]byte{append([]byte(" "), raw...), []byte(`{"apiVersion":"tplaiter.dev/managed-formatter-context/v1"}`), bytes.Replace(raw, []byte(`"clean-target"`), []byte(`"merged-candidate"`), 1), bytes.Replace(raw, []byte(`"role":`), []byte(`"Role":`), 1)} {
+		if _, err := ParseManagedFormatterContext(bad); err == nil {
+			t.Fatal("invalid context accepted")
 		}
 	}
 }

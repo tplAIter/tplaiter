@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"debug/buildinfo"
+	"encoding/hex"
 	"errors"
 	"reflect"
 	"sort"
@@ -21,7 +22,7 @@ type FormatterSelection struct {
 	provider, toolProvider                *trustverify.VerifiedResolution
 	operation                             trustverify.OperationInputs
 	action                                trustverify.ActionMaterial
-	tool, input, plan, record             []byte
+	tool, input, plan, record, context    []byte
 	path, mode                            string
 }
 
@@ -29,9 +30,53 @@ type FormatterSelection struct {
 // runner, a source resolution, or a filesystem location outside the fixed
 // logical formatter projection.
 type FormatterInput struct {
-	Path, Mode string
-	Bytes      []byte
-	PlanJSON   []byte
+	Path, Mode  string
+	Bytes       []byte
+	PlanJSON    []byte
+	ContextJSON []byte
+}
+
+// ManagedFormatterContext binds a finite lifecycle projection to both formatter
+// requests. It is data only; it carries no permit or executable selection.
+type ManagedFormatterContext struct {
+	APIVersion                    string `json:"apiVersion"`
+	Role                          string `json:"role"`
+	SourceRootLockSHA256          string `json:"sourceRootLockSHA256"`
+	TargetRootLockSHA256          string `json:"targetRootLockSHA256"`
+	ReplacementDeclarationsSHA256 string `json:"replacementDeclarationsSHA256"`
+	DecisionsSHA256               string `json:"decisionsSHA256"`
+	ObservedProjectSHA256         string `json:"observedProjectSHA256"`
+	ObservedRegistrySHA256        string `json:"observedRegistrySHA256"`
+	RendererAnswersSHA256         string `json:"rendererAnswersSHA256"`
+	PredecessorCleanProofSHA256   string `json:"predecessorCleanProofSHA256,omitempty"`
+}
+
+func ParseManagedFormatterContext(raw []byte) (ManagedFormatterContext, error) {
+	var c ManagedFormatterContext
+	if len(raw) == 0 || len(raw) > 1<<20 || canonicaljson.DecodeStrict(raw, &c) != nil {
+		return c, ErrFormatterMaterialUnavailable
+	}
+	canonical, err := canonicaljson.Canonical(c)
+	if err != nil || !bytes.Equal(raw, canonical) || c.APIVersion != "tplaiter.dev/managed-formatter-context/v1" || (c.Role != "clean-target" && c.Role != "merged-candidate") {
+		return ManagedFormatterContext{}, ErrFormatterMaterialUnavailable
+	}
+	for _, d := range []string{c.SourceRootLockSHA256, c.TargetRootLockSHA256, c.ReplacementDeclarationsSHA256, c.DecisionsSHA256, c.ObservedProjectSHA256, c.ObservedRegistrySHA256, c.RendererAnswersSHA256} {
+		if !formatterDigest(d) {
+			return ManagedFormatterContext{}, ErrFormatterMaterialUnavailable
+		}
+	}
+	if (c.Role == "merged-candidate" && !formatterDigest(c.PredecessorCleanProofSHA256)) || (c.Role == "clean-target" && c.PredecessorCleanProofSHA256 != "") {
+		return ManagedFormatterContext{}, ErrFormatterMaterialUnavailable
+	}
+	return c, nil
+}
+
+func formatterDigest(d string) bool {
+	if len(d) != 71 || !strings.HasPrefix(d, "sha256:") || strings.ToLower(d) != d {
+		return false
+	}
+	_, err := hex.DecodeString(d[7:])
+	return err == nil
 }
 
 const (
@@ -99,6 +144,11 @@ func ResolveFormatterComposition(ctx context.Context, runtime *trustverify.Runti
 	if canonical, err := canonicaljson.Canonicalize(input.PlanJSON); err != nil || !bytes.Equal(canonical, input.PlanJSON) {
 		return nil, ErrFormatterMaterialUnavailable
 	}
+	if len(input.ContextJSON) > 0 {
+		if _, err := ParseManagedFormatterContext(input.ContextJSON); err != nil {
+			return nil, err
+		}
+	}
 	content, _ := formatterContent(input, recordBytes)
 	closure, err := trustverify.ComputeContentClosureSHA256(content)
 	if err != nil || closure != action.Action.ContentClosureSHA256 {
@@ -112,11 +162,11 @@ func ResolveFormatterComposition(ctx context.Context, runtime *trustverify.Runti
 	if opts, err := trustverify.ComputeToolOptionsSHA256(actionToolOptions(action)); err != nil || opts != action.Tool.OptionsSHA256 {
 		return nil, ErrFormatterMaterialUnavailable
 	}
-	return &FormatterSelection{runtime: runtime, providerRuntime: runtime, toolRuntime: runtime, provider: provider, toolProvider: toolProvider, operation: cloneOperation(operation), action: cloneActionMaterial(action), tool: append([]byte(nil), tool...), input: append([]byte(nil), input.Bytes...), plan: append([]byte(nil), input.PlanJSON...), record: append([]byte(nil), recordBytes...), path: input.Path, mode: input.Mode}, nil
+	return &FormatterSelection{runtime: runtime, providerRuntime: runtime, toolRuntime: runtime, provider: provider, toolProvider: toolProvider, operation: cloneOperation(operation), action: cloneActionMaterial(action), tool: append([]byte(nil), tool...), input: append([]byte(nil), input.Bytes...), plan: append([]byte(nil), input.PlanJSON...), context: append([]byte(nil), input.ContextJSON...), record: append([]byte(nil), recordBytes...), path: input.Path, mode: input.Mode}, nil
 }
 
 func BindFormatterMaterial(ctx context.Context, runtime *trustverify.Runtime, provider, toolProvider *trustverify.VerifiedResolution, operation trustverify.OperationInputs, action trustverify.ActionMaterial, input FormatterInput, selection *FormatterSelection) (*ExecutionMaterial, error) {
-	if selection == nil || selection.runtime != runtime || selection.provider != provider || selection.toolProvider != toolProvider || !reflect.DeepEqual(selection.operation, operation) || !reflect.DeepEqual(selection.action, action) || !reflect.DeepEqual(selection.input, input.Bytes) || !reflect.DeepEqual(selection.plan, input.PlanJSON) || selection.path != input.Path || selection.mode != input.Mode {
+	if selection == nil || selection.runtime != runtime || selection.provider != provider || selection.toolProvider != toolProvider || !reflect.DeepEqual(selection.operation, operation) || !reflect.DeepEqual(selection.action, action) || !reflect.DeepEqual(selection.input, input.Bytes) || !reflect.DeepEqual(selection.plan, input.PlanJSON) || !bytes.Equal(selection.context, input.ContextJSON) || selection.path != input.Path || selection.mode != input.Mode {
 		return nil, ErrFormatterMaterialUnavailable
 	}
 	again, err := ResolveFormatterComposition(ctx, runtime, provider, toolProvider, operation, action, input)
@@ -146,7 +196,7 @@ func (m *ExecutionMaterial) stagedFormatter(ctx context.Context, runtime *trustv
 	if !recordOK || !toolOK || !bytes.Equal(record, s.record) || !bytes.Equal(tool, s.tool) {
 		return trustverify.StagedMaterial{}, ErrFormatterMaterialUnavailable
 	}
-	input := FormatterInput{Path: s.path, Mode: s.mode, Bytes: s.input, PlanJSON: s.plan}
+	input := FormatterInput{Path: s.path, Mode: s.mode, Bytes: s.input, PlanJSON: s.plan, ContextJSON: s.context}
 	content, contentBytes := formatterContent(input, s.record)
 	return trustverify.StagedMaterial{Operation: cloneOperation(s.operation), Request: cloneRequest(request), Content: content, ContentBytes: contentBytes, ToolBytes: append([]byte(nil), s.tool...), ToolOptions: actionToolOptions(s.action), Environment: fixedEnvironment()}, nil
 }
@@ -157,6 +207,9 @@ func formatterContent(input FormatterInput, record []byte) ([]trustverify.Conten
 		bytes []byte
 	}
 	pairs := []pair{{trustverify.ContentEntry{Root: "project", Path: input.Path, Mode: input.Mode, ContentSHA256: evidencecas.Digest(input.Bytes)}, append([]byte(nil), input.Bytes...)}, {trustverify.ContentEntry{Root: "project", Path: "formatter/plan.json", Mode: "100644", ContentSHA256: evidencecas.Digest(input.PlanJSON)}, append([]byte(nil), input.PlanJSON...)}, {trustverify.ContentEntry{Root: "project", Path: formatterToolRecordPath, Mode: "100644", ContentSHA256: evidencecas.Digest(record)}, append([]byte(nil), record...)}}
+	if len(input.ContextJSON) > 0 {
+		pairs = append(pairs, pair{trustverify.ContentEntry{Root: "project", Path: "formatter/context.json", Mode: "100644", ContentSHA256: evidencecas.Digest(input.ContextJSON)}, append([]byte(nil), input.ContextJSON...)})
+	}
 	sort.Slice(pairs, func(i, j int) bool {
 		return pairs[i].entry.Root+"\x00"+pairs[i].entry.Path < pairs[j].entry.Root+"\x00"+pairs[j].entry.Path
 	})

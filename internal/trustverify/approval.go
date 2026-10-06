@@ -847,7 +847,7 @@ func profile(s string) bool       { return s == "oss" || s == "organization" || 
 func identityClass(s string) bool { return s == "operator" || s == "automation" }
 func scope(s string) bool {
 	switch s {
-	case "new", "update", "run", "gen", "tool-install", "migration":
+	case "new", "link", "update", "run", "gen", "tool-install", "migration":
 		return true
 	}
 	return false

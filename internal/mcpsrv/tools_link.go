@@ -26,14 +26,18 @@ type linkToolArgs struct {
 	Module         string            `json:"module,omitempty"`
 	Ownership      map[string]string `json:"ownership,omitempty"`
 	DryRun         bool              `json:"dryRun,omitempty"`
+	Prepare        bool              `json:"prepare,omitempty"`
+	FormatStage    bool              `json:"formatStage,omitempty"`
+	FormatInput    string            `json:"formatInput,omitempty"`
 }
 
 func (s *Server) addLinkTools() {
 	data, _ := schemaOf[resultdto.ProjectLinkData]()
 	output, _ := resultdto.OperationsSchema([]resultdto.Operation{resultdto.OperationProjectLink, resultdto.OperationProjectAdopt}, data)
-	s.mcp.AddTool(mcp.NewTool("project_link",
+	s.mcp.AddTool(mcp.NewTool(
+		"project_link",
 		mcp.WithDescription("Link/adopt signed state only; preserves user files. Conflicts require explicit ownership path=track or path=user-owned. User-owned adoption preserves full signed baseline lineage and excludes those paths from Update writes. Cold recovery uses qualified CLI commands."),
-		mcp.WithString("action", mcp.Required(), mcp.Enum("link", "adopt")), mcp.WithString("dir", mcp.Required()), mcp.WithString("projectContext"), mcp.WithString("ref", mcp.Required()), mcp.WithString("name", mcp.Required()), mcp.WithString("sourceInput", mcp.Required()), mcp.WithString("module"), mcp.WithObject("ownership"), mcp.WithBoolean("dryRun", mcp.DefaultBool(false)),
+		mcp.WithString("action", mcp.Required(), mcp.Enum("link", "adopt")), mcp.WithString("dir", mcp.Required()), mcp.WithString("projectContext"), mcp.WithString("ref", mcp.Required()), mcp.WithString("name", mcp.Required()), mcp.WithString("sourceInput", mcp.Required()), mcp.WithString("module"), mcp.WithObject("ownership"), mcp.WithBoolean("dryRun", mcp.DefaultBool(false)), mcp.WithBoolean("prepare", mcp.DefaultBool(false)), mcp.WithBoolean("formatStage", mcp.DefaultBool(false)), mcp.WithString("formatInput"),
 		mcp.WithReadOnlyHintAnnotation(false), mcp.WithDestructiveHintAnnotation(false), mcp.WithIdempotentHintAnnotation(false), mcp.WithOpenWorldHintAnnotation(false), mcp.WithRawOutputSchema(output),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		raw, err := json.Marshal(request.GetArguments())
@@ -60,6 +64,15 @@ func (s *Server) addLinkTools() {
 		}
 		if a.Module != "" {
 			argv = append(argv, "--module="+a.Module)
+		}
+		if a.Prepare {
+			argv = append(argv, "--prepare")
+		}
+		if a.FormatStage {
+			argv = append(argv, "--format-stage")
+		}
+		if a.FormatInput != "" {
+			argv = append(argv, "--format-input="+a.FormatInput)
 		}
 		if a.DryRun {
 			argv = append(argv, "--dry-run")

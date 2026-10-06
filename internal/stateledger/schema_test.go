@@ -10,8 +10,6 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
-
-	"github.com/tplAIter/tplaiter/internal/newtransaction"
 )
 
 // stateLedgerSchemas are the schema files owned by the state ledger.
@@ -80,14 +78,22 @@ func TestProjectIDSchemaAndRuntimeLexicalContract(t *testing.T) {
 		name, id string
 		valid    bool
 	}{
-		{"uuid", marker.ID, true}, {"native", "project-t5f", true},
-		{"punctuation", "project.test:1", true}, {"dot", ".", true},
-		{"dotdot", "..", true}, {"unicode", "项目-é", true},
-		{"nonASCIIspace", "a\u00a0b", true}, {"empty", "", false},
-		{"space", "a b", false}, {"slash", "a/b", false},
-		{"backslash", "a\\b", false}, {"nul", "a\x00b", false},
-		{"cr", "a\rb", false}, {"lf", "a\nb", false},
-		{"trailingLF", "a\n", false}, {"tab", "a\tb", false},
+		{"uuid", marker.ID, true},
+		{"native", "project-t5f", true},
+		{"punctuation", "project.test:1", true},
+		{"dot", ".", true},
+		{"dotdot", "..", true},
+		{"unicode", "项目-é", true},
+		{"nonASCIIspace", "a\u00a0b", true},
+		{"empty", "", false},
+		{"space", "a b", false},
+		{"slash", "a/b", false},
+		{"backslash", "a\\b", false},
+		{"nul", "a\x00b", false},
+		{"cr", "a\rb", false},
+		{"lf", "a\nb", false},
+		{"trailingLF", "a\n", false},
+		{"tab", "a\tb", false},
 		{"invalidUTF8", string([]byte{0xff}), false},
 	}
 	for _, tc := range cases {
@@ -124,10 +130,14 @@ func TestLegacyProjectIDMigrationPreservesUUIDAndRefusesInvalidTokens(t *testing
 	}{
 		{"lowerUUID", "123e4567-e89b-42d3-a456-426614174000", true},
 		{"upperUUID", "123E4567-E89B-42D3-A456-426614174000", true},
-		{"empty", "", false}, {"space", "legacy project", false},
-		{"slash", "legacy/project", false}, {"backslash", "legacy\\project", false},
-		{"nul", "legacy\x00project", false}, {"cr", "legacy\rproject", false},
-		{"lf", "legacy\nproject", false}, {"tab", "legacy\tproject", false},
+		{"empty", "", false},
+		{"space", "legacy project", false},
+		{"slash", "legacy/project", false},
+		{"backslash", "legacy\\project", false},
+		{"nul", "legacy\x00project", false},
+		{"cr", "legacy\rproject", false},
+		{"lf", "legacy\nproject", false},
+		{"tab", "legacy\tproject", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := legacyProjectRoot(t)
@@ -219,7 +229,7 @@ func TestEmittedLedgerWiresMatchSchemas(t *testing.T) {
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	tx, err := newtransaction.Begin(home, target)
+	tx, err := beginNewOwnerFixture(t, home, target)
 	if err != nil {
 		t.Fatal(err)
 	}

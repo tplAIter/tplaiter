@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tplAIter/tplaiter/internal/blockmarkers"
 	"github.com/tplAIter/tplaiter/internal/manifest"
 	"github.com/tplAIter/tplaiter/internal/settings"
 )
@@ -41,6 +42,7 @@ const (
 	markerKindIfInverse
 	markerKindBegin
 	markerKindEnd
+	markerKindManaged
 	markerKindUnknown
 )
 
@@ -69,6 +71,8 @@ func findMarker(line string) (markerMatch, bool) {
 	// (see matchesKeyword: "!" is a boundary character, so if would also match
 	// "if!..." if checked first).
 	switch {
+	case matchesKeyword(after, "managed-begin"), matchesKeyword(after, "managed-end"):
+		return markerMatch{kind: markerKindManaged, idx: idx}, true
 	case matchesKeyword(after, markerKwIfInverse):
 		return markerMatch{kind: markerKindIfInverse, idx: idx, argIdx: idx + len(markerPrefix) + len(markerKwIfInverse)}, true
 	case matchesKeyword(after, markerKwIf):
@@ -196,6 +200,13 @@ func processMarkers(path string, data []byte, values settings.Values) ([]byte, e
 		}
 
 		switch m.kind {
+		case markerKindManaged:
+			if !strings.HasSuffix(path, ".go") {
+				return nil, fmt.Errorf("engine: %s:%d: managed markers require Go output", path, lineNo)
+			}
+			if active {
+				out = append(out, line)
+			}
 		case markerKindUnknown:
 			return nil, fmt.Errorf("engine: %s:%d: unknown tplater marker in line %q", path, lineNo, line)
 
@@ -246,11 +257,29 @@ func processMarkers(path string, data []byte, values settings.Values) ([]byte, e
 
 	result := []byte(strings.Join(out, "\n"))
 	if bytes.Contains(result, []byte(markerPrefix)) {
-		// Safety net: control should never reach this point; every marker above was
-		// either handled or returned an error. If "tplater:" remains in the output,
-		// it is a marker-processing bug, not a template-author typo (already caught
-		// as markerKindUnknown).
-		return nil, fmt.Errorf("engine: %s: tplater marker remained in processed output (internal error)", path)
+		// Preserve only delimiters proven to occupy exact Go comment tokens. Mask
+		// those specific delimiter spans for the unchanged unknown-marker floor.
+		if !strings.HasSuffix(path, ".go") {
+			return nil, fmt.Errorf("engine: %s: tplater marker remained in processed output (internal error)", path)
+		}
+		markers, err := blockmarkers.Validate(blockmarkers.LanguageGo, path, result)
+		if err != nil || len(markers) == 0 {
+			return nil, fmt.Errorf("engine: %s: invalid managed Go markers: %w", path, err)
+		}
+		masked := append([]byte(nil), result...)
+		for _, marker := range markers {
+			if marker.Start < 0 || marker.End > len(masked) || marker.Start >= marker.End || bytes.Count(masked[marker.Start:marker.End], []byte(markerPrefix)) != 1 {
+				return nil, fmt.Errorf("engine: %s: unexpected managed marker span", path)
+			}
+			line := masked[marker.Start:marker.End]
+			index := bytes.Index(line, []byte(markerPrefix))
+			for i := 0; i < len(markerPrefix); i++ {
+				line[index+i] = ' '
+			}
+		}
+		if bytes.Contains(masked, []byte(markerPrefix)) {
+			return nil, fmt.Errorf("engine: %s: unknown tplater marker remained in processed output", path)
+		}
 	}
 	return result, nil
 }

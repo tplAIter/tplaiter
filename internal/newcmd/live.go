@@ -12,25 +12,20 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
-	"github.com/tplAIter/tplaiter/internal/engine"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
-	"github.com/tplAIter/tplaiter/internal/managedblocks"
 	"github.com/tplAIter/tplaiter/internal/manifest"
-	"github.com/tplAIter/tplaiter/internal/migrations"
+	"github.com/tplAIter/tplaiter/internal/newimages"
 	"github.com/tplAIter/tplaiter/internal/newtransaction"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
-	"github.com/tplAIter/tplaiter/internal/ownership"
-	"github.com/tplAIter/tplaiter/internal/provenance"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/formatproof"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/resources"
 	"github.com/tplAIter/tplaiter/internal/settings"
 	"github.com/tplAIter/tplaiter/internal/sourceadapter"
 	"github.com/tplAIter/tplaiter/internal/state"
-	"github.com/tplAIter/tplaiter/internal/stateledger"
 	"github.com/tplAIter/tplaiter/internal/survey"
+	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
 // runLive is the bounded native, action-free lifecycle. It never calls the
@@ -41,6 +36,9 @@ func runLive(ctx context.Context, opts Options, d Deps, fault newtransaction.Fau
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if opts.FormatStage && (opts.Prepare || opts.DryRun || opts.Interactive && !opts.Defaults) {
+		return ErrManagedControls
 	}
 	project := d.Runtime.ProjectContext()
 	slug, err := Slugify(opts.ProjectName)
@@ -128,16 +126,22 @@ func runLive(ctx context.Context, opts Options, d Deps, fault newtransaction.Fau
 		return err
 	}
 	result := prepared.Rendered()
-	// The managed-block consumer is not restored in this slice.
+	managed := false
 	for path, data := range result.Files {
 		if !fs.ValidPath(path) || path == "." || path == ".tplaiter" || strings.HasPrefix(path, ".tplaiter/") || path == ".tplater" || strings.HasPrefix(path, ".tplater/") {
 			return newtransaction.ErrUnsafe
 		}
 		if strings.Contains(string(data), "tplater:managed-") {
-			return operationtrust.ErrSourceAdapterUnsupported
+			managed = true
 		}
 	}
-	if opts.DryRun {
+	if managed {
+		return runManagedLive(ctx, opts, d, src, info, port, answers.Values, sources)
+	}
+	if opts.FormatStage || len(d.ToolSourceInput) != 0 || len(d.FormatApprovals) != 0 {
+		return ErrManagedControls
+	}
+	if opts.DryRun || opts.Prepare {
 		return nil
 	}
 	if d.Home == "" {
@@ -237,110 +241,12 @@ func vacantLive(target string) error {
 	return nil
 }
 
-func liveTreeImages(id string, src *sourceadapter.Source, info manifest.ProjectInfo, port int, result *renderref.Result, prepared *operationtrust.PreparedNew, resourceImages *resources.ResourceImages, sources map[string]survey.Source, interactive bool) (files map[string][]byte, err error) {
-	if result == nil || result.Template == nil {
+func liveTreeImages(id string, src *sourceadapter.Source, info manifest.ProjectInfo, port int, result *renderref.Result, prepared *operationtrust.PreparedNew, resourceImages *resources.ResourceImages, sources map[string]survey.Source, interactive bool) (map[string][]byte, error) {
+	files, err := newimages.Build(newimages.Context{ID: id, Source: src, Info: info, Port: port, Result: result, Prepared: prepared, Resources: resourceImages, Sources: sources, Interactive: interactive})
+	if errors.Is(err, newimages.ErrUnsafe) {
 		return nil, newtransaction.ErrUnsafe
 	}
-	if _, err := settings.Resolve(result.Template, result.Resolved.Values); err != nil {
-		return nil, err
-	}
-	files = make(map[string][]byte, len(result.Files)+12)
-	write := func(path string, raw []byte) error {
-		if _, exists := files[path]; exists {
-			return newtransaction.ErrUnsafe
-		}
-		files[path] = append([]byte(nil), raw...)
-		return nil
-	}
-	inv := ownership.Inventory{Version: 1, Artifacts: []ownership.Artifact{}}
-	paths := make([]string, 0, len(result.Files))
-	for path := range result.Files {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
-	for _, path := range paths {
-		data := result.Files[path]
-		if err := write(path, data); err != nil {
-			return nil, err
-		}
-		artifact, err := ownership.ArtifactFor(path, data, 0o644, "")
-		if err != nil {
-			return nil, err
-		}
-		inv.Artifacts = append(inv.Artifacts, artifact)
-	}
-	rootLock, dependencyLock := prepared.RootLock(), prepared.DependencyLock()
-	if err := resourceImages.Validate(rootLock); err != nil {
-		return nil, err
-	}
-	for _, a := range resourceImages.Lock.Artifacts {
-		if err := write(a.Path, resourceImages.Files[a.Path]); err != nil {
-			return nil, err
-		}
-		// Ownership is deliberately only path/hash/mode; provenance lives in the lock.
-		inv.Artifacts = append(inv.Artifacts, ownership.Artifact{Path: a.Path, SHA256: strings.TrimPrefix(a.SHA256, "sha256:"), Mode: a.Mode})
-	}
-	sort.Slice(inv.Artifacts, func(i, j int) bool { return inv.Artifacts[i].Path < inv.Artifacts[j].Path })
-	if err := provenance.ValidateLockPair(rootLock, dependencyLock); err != nil {
-		return nil, err
-	}
-	for name, lock := range map[string]any{stateledger.RootLockFile: rootLock, stateledger.DependencyLockFile: dependencyLock} {
-		raw, err := canonicaljson.Canonical(lock)
-		if err != nil {
-			return nil, err
-		}
-		if err := write(".tplaiter/"+name, raw); err != nil {
-			return nil, err
-		}
-	}
-	answers := map[string]stateledger.Answer{}
-	for k, v := range result.Resolved.Values {
-		source := "default"
-		if interactive || (sources[k] != "" && sources[k] != survey.SourceDefault) {
-			source = "user"
-		}
-		answers[k] = stateledger.Answer{Value: v, Source: source}
-	}
-	marker := stateledger.ProjectV2{APIVersion: stateledger.ProjectV2APIVersion, Kind: "Project", ID: id, Template: stateledger.TemplateIdentity{Repo: src.Alias, Name: src.Name, RequestedRef: prepared.RootLock().Root.RequestedRef, ResolvedCommit: prepared.RootLock().Root.Commit}, Project: map[string]any{"name": info.Name, "slug": info.Slug, "module": info.Module, "system": info.System, "domain": info.Domain}, Answers: answers, Runtime: map[string]any{"port": port}, State: stateledger.StandardPointers()}
-	images := map[string]any{
-		engine.BaselineRelPath:           result.Baseline,
-		ownership.InventoryRelPath:       inv,
-		resources.NativeResourceLockPath: resourceImages.Lock,
-		".tplaiter/ai-managed.json": struct {
-			Version int      `json:"version"`
-			Files   []string `json:"files"`
-		}{1, []string{}},
-		".tplaiter/generator-targets.lock.json": struct {
-			Version int   `json:"version"`
-			Targets []any `json:"targets"`
-		}{1, []any{}},
-		".tplaiter/managed-blocks.json": managedblocks.Baseline{Schema: managedblocks.SchemaVersion, Files: map[string]managedblocks.FileBaseline{}},
-		".tplaiter/migrations.json":     migrations.Ledger{Version: 1, Applied: []migrations.LedgerEntry{}},
-	}
-	for path, image := range images {
-		raw, err := canonicaljson.Canonical(image)
-		if err != nil {
-			return nil, err
-		}
-		if err := write(path, raw); err != nil {
-			return nil, err
-		}
-	}
-	raw, err := yaml.Marshal(marker)
-	if err != nil {
-		return nil, err
-	}
-	if err := write(".tplaiter/project.yaml", raw); err != nil {
-		return nil, err
-	}
-	raw, err = fs.ReadFile(src.Snapshot, templateManifestFileName)
-	if err != nil {
-		return nil, err
-	}
-	if err := write(manifest.SnapshotRelPath, raw); err != nil {
-		return nil, err
-	}
-	return files, nil
+	return files, err
 }
 
 func liveRegistryPlan(home, target, id string, src *sourceadapter.Source, result *renderref.Result, now func() time.Time) (plan newtransaction.RegistryPlan, err error) {
@@ -466,4 +372,121 @@ func mkdirLiveParentsWith(root *os.Root, parent string, observed map[string]os.F
 	}
 	observed[parent] = now
 	return nil
+}
+
+var ErrManagedControls = errors.New("MANAGED_FORMAT_CONTROLS_INVALID")
+
+// ManagedPreparation is detached reporting data. It cannot authorize execution
+// or publication, and no transport approval paths enter its semantic frame.
+type ManagedPreparation struct {
+	APIVersion string                           `json:"apiVersion"`
+	Requests   []trustverify.ExecutionRequest   `json:"requests"`
+	References map[string]formatproof.Reference `json:"references"`
+}
+
+func runManagedLive(ctx context.Context, opts Options, d Deps, src *sourceadapter.Source, info manifest.ProjectInfo, port int, values settings.Values, origins map[string]survey.Source) (err error) {
+	if len(d.ToolSourceInput) == 0 || d.Home == "" {
+		return ErrManagedControls
+	}
+	canonicalOrigins := map[string]survey.Source{}
+	for key := range values {
+		canonicalOrigins[key] = survey.SourceDefault
+		if origin, ok := origins[key]; ok {
+			canonicalOrigins[key] = origin
+		}
+	}
+	input := formatproof.NewCleanInput{APIVersion: "tplaiter.dev/managed-new-clean-input/v1", Home: d.Home, Ref: opts.Ref, SourceInput: src.Input, ToolSource: d.ToolSourceInput, Render: renderref.Input{Values: values, Project: info, Runtime: manifest.ProjectRuntime{Port: port}, Repo: src.Alias}, RendererVersion: opts.CLIVersion, Origins: canonicalOrigins, Interactive: opts.Interactive && !opts.Defaults}
+	prepared, err := formatproof.PrepareNewClean(ctx, d.Runtime, input)
+	if err != nil {
+		return err
+	}
+	requests, err := prepared.RequiredRequests(ctx)
+	if err != nil {
+		return err
+	}
+	report := ManagedPreparation{APIVersion: "tplaiter.dev/managed-new-preparation/v1", Requests: requests, References: prepared.References()}
+	if d.PreparedOut != nil {
+		raw, err := canonicaljson.Canonical(report)
+		if err != nil {
+			return err
+		}
+		if _, err := d.PreparedOut.Write(raw); err != nil {
+			return err
+		}
+	}
+	if opts.Prepare || opts.DryRun {
+		if len(d.FormatApprovals) != 0 {
+			return ErrManagedControls
+		}
+		return nil
+	}
+	if opts.FormatStage {
+		_, err := formatproof.StageNewClean(ctx, prepared, d.FormatApprovals)
+		return err
+	}
+	if len(d.FormatApprovals) != 0 {
+		return ErrManagedControls
+	}
+	clean, err := formatproof.OpenNewClean(ctx, prepared, prepared.References())
+	if err != nil {
+		return err
+	}
+	publication, err := formatproof.BuildNewPublication(ctx, prepared, clean)
+	if err != nil {
+		return err
+	}
+	images, err := publication.ImagesFor(ctx, d.Runtime)
+	if err != nil {
+		return err
+	}
+	target := d.Runtime.ProjectContext().RootPath
+	if err := vacantLive(target); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(target); errors.Is(err, fs.ErrNotExist) {
+		if err := os.Mkdir(target, 0o755); err != nil {
+			return err
+		}
+	}
+	tx, err := newtransaction.BeginManagedSealed(ctx, d.Runtime, publication)
+	if err != nil {
+		return err
+	}
+	defer tx.Release()
+	publishing := false
+	defer func() {
+		if err != nil && !publishing {
+			err = errors.Join(err, tx.Abort())
+		}
+	}()
+	if tx.Journal().TargetBeforeTreeSHA != evidencecas.Digest(nil) {
+		return newtransaction.ErrUnsafe
+	}
+	if err := writeLiveTree(tx.Workspace(), images); err != nil {
+		publishing = true
+		return fmt.Errorf("newcmd: transaction %s requires recovery: %w", tx.ID(), errors.Join(err, newtransaction.ErrOwnershipUncertain))
+	}
+	if err := tx.SealOutputs(); err != nil {
+		publishing = true
+		return err
+	}
+	home, before, after, err := publication.RegistryFor(d.Runtime)
+	if err != nil {
+		return err
+	}
+	plan := newtransaction.RegistryPlan{Home: home, Before: before, After: after}
+	if err := tx.PrepareRegistry(plan); err != nil {
+		return err
+	}
+	publishing = true
+	if err := tx.Commit(plan); err != nil {
+		return fmt.Errorf("newcmd: transaction %s requires recovery: %w", tx.ID(), err)
+	}
+	if err := tx.Finalize(); err != nil {
+		return fmt.Errorf("newcmd: transaction %s requires recovery: %w", tx.ID(), err)
+	}
+	if d.Out != nil {
+		_, err = fmt.Fprintf(d.Out, "Project %s created in %s\n", info.Slug, target)
+	}
+	return err
 }

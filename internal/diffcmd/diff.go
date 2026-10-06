@@ -25,6 +25,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/ownership"
 	"github.com/tplAIter/tplaiter/internal/projecttransaction/adoption"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/managed"
 	"github.com/tplAIter/tplaiter/internal/projectverify"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/renderref"
@@ -176,6 +177,23 @@ func Run(ctx context.Context, r *trustload.Runtime, opts Options) (Report, error
 		return Report{}, failure(StateCode, stateledger.ErrUnsafe)
 	}
 	expected := prepared.Rendered()
+	hasManaged := false
+	for _, data := range expected.Files {
+		if bytes.Contains(data, []byte("tplater:managed-")) {
+			hasManaged = true
+			break
+		}
+	}
+	if hasManaged {
+		projection, err := managed.Read(ctx, r, opts.Home, opts.RendererVersion)
+		if err != nil {
+			return Report{}, failure(BlockCode, err)
+		}
+		expected, err = projection.RenderedFor(expected)
+		if err != nil {
+			return Report{}, failure(BlockCode, err)
+		}
+	}
 	raw, err = read(engine.BaselineRelPath)
 	if err != nil {
 		return Report{}, failure(StateCode, err)

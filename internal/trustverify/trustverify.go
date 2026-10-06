@@ -436,7 +436,15 @@ func policyApprover(ctx context.Context, store evidencecas.Reader, policy *Execu
 	return nil, nil, diagnostic(TrustApprovalMismatch, nil)
 }
 
-func (r *Runtime) authorizePersistent(ctx context.Context, resolution *VerifiedResolution, operation OperationInputs, request ExecutionRequest, refs ApprovalRefs) (*ExecutionPermit, error) {
+type persistentGrant struct {
+	resolution  *VerifiedResolution
+	grantSHA256 string
+	expires     time.Time
+}
+
+// verifyPersistentGrant retains the complete existing current-time authority,
+// policy, separation and reload checks, without constructing a process permit.
+func (r *Runtime) verifyPersistentGrant(ctx context.Context, resolution *VerifiedResolution, operation OperationInputs, request ExecutionRequest, refs ApprovalRefs) (*persistentGrant, error) {
 	if refs.Kind != "persistent-signed" || !validDigest(refs.ApprovalCAS) {
 		return nil, diagnostic(TrustApprovalRequired, nil)
 	}
@@ -483,7 +491,15 @@ func (r *Runtime) authorizePersistent(ctx context.Context, resolution *VerifiedR
 	if err != nil {
 		return nil, diagnostic(TrustApprovalMismatch, err)
 	}
-	return &ExecutionPermit{marker: r.marker, binding: r.binding, resolution: final, operation: cloneOperation(operation), request: cloneRequest(request), approval: refs, grantSHA256: approval.GrantSHA256, expires: until}, nil
+	return &persistentGrant{resolution: final, grantSHA256: approval.GrantSHA256, expires: until}, nil
+}
+
+func (r *Runtime) authorizePersistent(ctx context.Context, resolution *VerifiedResolution, operation OperationInputs, request ExecutionRequest, refs ApprovalRefs) (*ExecutionPermit, error) {
+	grant, err := r.verifyPersistentGrant(ctx, resolution, operation, request, refs)
+	if err != nil {
+		return nil, err
+	}
+	return &ExecutionPermit{marker: r.marker, binding: r.binding, resolution: grant.resolution, operation: cloneOperation(operation), request: cloneRequest(request), approval: refs, grantSHA256: grant.grantSHA256, expires: grant.expires}, nil
 }
 
 // Authorize mints only a persistent-signed permit. Human approval has a typed,
@@ -894,3 +910,75 @@ var (
 	_ = errors.New
 	_ = time.Time{}
 )
+
+// PersistentObservation is minted from a live persistent permit, not decoded.
+// Its clock values describe owner observations, not process syscall timestamps.
+type PersistentObservation struct {
+	runtime   *Runtime
+	reference PersistentApprovalReference
+	observed  time.Time
+}
+
+func (r *Runtime) PersistentApprovalObservation(permit *ExecutionPermit) (*PersistentObservation, error) {
+	ref, err := r.PersistentApprovalReference(permit)
+	if err != nil {
+		return nil, err
+	}
+	now := r.options.Clock.Now().UTC()
+	if !now.Before(permit.expires) {
+		return nil, diagnostic(TrustApprovalMismatch, nil)
+	}
+	return &PersistentObservation{runtime: r, reference: ref, observed: now}, nil
+}
+
+func (o *PersistentObservation) CompleteFor(r *Runtime) (PersistentApprovalReference, time.Time, time.Time, error) {
+	if o == nil || r == nil || o.runtime != r {
+		return PersistentApprovalReference{}, time.Time{}, time.Time{}, diagnostic(TrustApprovalMismatch, nil)
+	}
+	end := r.options.Clock.Now().UTC()
+	if end.Before(o.observed) {
+		return PersistentApprovalReference{}, time.Time{}, time.Time{}, diagnostic(TrustApprovalMismatch, nil)
+	}
+	return o.reference, o.observed, end, nil
+}
+
+// VerifyRetainedApproval verifies historical evidence only. The supplied time
+// must be authenticated by the receipt owner; this returns no execution permit.
+func (r *Runtime) VerifyRetainedApproval(ctx context.Context, resolution *VerifiedResolution, operation OperationInputs, request ExecutionRequest, ref PersistentApprovalReference, observed time.Time) error {
+	if r == nil || ctx == nil || observed.IsZero() || observed.After(r.options.Clock.Now().UTC()) || ref.RequestSHA256 != request.RequestSHA256 || !validDigest(ref.GrantSHA256) || exactOperationFor(request, operation) != nil {
+		return diagnostic(TrustApprovalMismatch, nil)
+	}
+	fresh, policy, project, err := r.currentResolution(ctx, resolution)
+	if err != nil {
+		return err
+	}
+	if request.ProjectID != project.ProjectID || request.Provider != subjectProvider(fresh.Subject()) || request.ProfileBindingSHA256 != operation.ProfileBindingSHA256 {
+		return diagnostic(TrustApprovalMismatch, nil)
+	}
+	refs := ApprovalRefs{Kind: "persistent-signed", ApprovalCAS: ref.ApprovalCAS}
+	approval, _, err := policyApprover(ctx, r.options.Evidence, policy, refs)
+	if err != nil || approval.GrantSHA256 != ref.GrantSHA256 {
+		return diagnostic(TrustApprovalMismatch, err)
+	}
+	if err := VerifyPersistentApproval(ctx, r.options.Evidence, policy, &request, request.OperationInputsSHA256, request.ProfileBindingSHA256, observed, ref.ApprovalCAS); err != nil {
+		return diagnostic(TrustApprovalMismatch, err)
+	}
+	return nil
+}
+
+// VerifyPublicationApproval performs the exact current persistent-grant checks
+// used by Authorize, but produces no execution permit or spawn capability.
+// The lifecycle owner supplies an authenticated completed-effect reference.
+func (r *Runtime) VerifyPublicationApproval(ctx context.Context, resolution *VerifiedResolution, operation OperationInputs, request ExecutionRequest, ref PersistentApprovalReference) error {
+	if r == nil || ref.RequestSHA256 != request.RequestSHA256 || !validDigest(ref.GrantSHA256) {
+		return diagnostic(TrustApprovalMismatch, nil)
+	}
+	grant, err := r.verifyPersistentGrant(ctx, resolution, operation, request, ApprovalRefs{Kind: "persistent-signed", ApprovalCAS: ref.ApprovalCAS})
+	if err != nil {
+		return err
+	}
+	if grant.grantSHA256 != ref.GrantSHA256 {
+		return diagnostic(TrustApprovalMismatch, nil)
+	}
+	return nil
+}

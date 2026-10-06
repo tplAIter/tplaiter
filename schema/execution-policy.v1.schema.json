@@ -223,6 +223,7 @@
         "operationScope": {
           "enum": [
             "new",
+            "link",
             "update",
             "run",
             "gen",

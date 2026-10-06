@@ -13,6 +13,9 @@ import (
 // ── project (new / run / stats / update / doctor / ai) ─────────────────────
 
 type projectNewArgs struct {
+	Prepare        bool              `json:"prepare"`
+	FormatStage    bool              `json:"formatStage"`
+	FormatInput    string            `json:"formatInput"`
 	Ref            string            `json:"ref"`
 	Name           string            `json:"name"`
 	Dir            string            `json:"dir"`
@@ -74,6 +77,9 @@ func (s *Server) addProjectTools() {
 		mcp.WithNumber("port", mcp.Description("Project port (.Runtime.Port); 0 — don't set")),
 		mcp.WithBoolean("dryRun", mcp.Description("Prepare a plan without changing files"), mcp.DefaultBool(false)),
 		mcp.WithString("sourceInput", mcp.Description("Path to the closed JSON source selection")),
+		mcp.WithBoolean("prepare", mcp.Description("Report source-owned formatter requests without executing or publishing")),
+		mcp.WithBoolean("formatStage", mcp.Description("Execute admitted formatting-only stage, without project publication")),
+		mcp.WithString("formatInput", mcp.Description("Path to closed formatter tool-source/approval selection JSON")),
 		outputSchema(resultdto.OperationProjectNew),
 	), mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, a projectNewArgs) (*mcp.CallToolResult, error) {
 		cwd, failure := s.workDir(resultdto.OperationProjectNew, "dir", a.Dir)
@@ -91,7 +97,7 @@ func (s *Server) addProjectTools() {
 		if target != "" && !filepath.IsAbs(target) {
 			target = filepath.Join(cwd, target)
 		}
-		argv := argvProjectNewInvocation(projectNewInvocation{Ref: a.Ref, Name: a.Name, Set: a.Set, Defaults: a.Defaults, NoHooks: a.NoHooks, NoDepsCheck: a.NoDepsCheck, NoEnvSetup: a.NoEnvSetup, Yes: a.Yes, Port: a.Port, DryRun: a.DryRun, SourceInput: a.SourceInput, ProjectContext: a.ProjectContext, TargetDir: target})
+		argv := argvProjectNewInvocation(projectNewInvocation{Ref: a.Ref, Name: a.Name, Prepare: a.Prepare, FormatStage: a.FormatStage, FormatInput: a.FormatInput, Set: a.Set, Defaults: a.Defaults, NoHooks: a.NoHooks, NoDepsCheck: a.NoDepsCheck, NoEnvSetup: a.NoEnvSetup, Yes: a.Yes, Port: a.Port, DryRun: a.DryRun, SourceInput: a.SourceInput, ProjectContext: a.ProjectContext, TargetDir: target})
 		return s.callStructured(ctx, resultdto.OperationProjectNew, cwd, argv, longCall), nil
 	}))
 

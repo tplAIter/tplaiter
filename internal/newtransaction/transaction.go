@@ -20,9 +20,11 @@ import (
 	"time"
 
 	"github.com/tplAIter/tplaiter/internal/naming"
-	"github.com/tplAIter/tplaiter/internal/ownership"
+	"github.com/tplAIter/tplaiter/internal/newtransaction/inspect"
+	"github.com/tplAIter/tplaiter/internal/projecttransaction/formatproof"
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/stateledger/ledgerpath"
+	"github.com/tplAIter/tplaiter/internal/trustload"
 )
 
 // Schema is the recovery-manifest schema version.
@@ -44,16 +46,16 @@ var pendingMarkerRel = filepath.Join(naming.ProjectDir, ledgerpath.NewPendingMar
 
 var (
 	ErrActive        = errors.New("new transaction: active transaction exists")
-	ErrNoActive      = errors.New("new transaction: no active transaction")
+	ErrNoActive      = inspect.ErrNoActive
 	ErrCommitted     = errors.New("new transaction: transaction is committed")
-	ErrUnsafe        = errors.New("new transaction: unsafe journal")
+	ErrUnsafe        = inspect.ErrUnsafe
 	ErrInjectedCrash = errors.New("new transaction: injected crash")
 	// ErrFutureVersion reports a journal written by a newer wire version. It
 	// is preserved as evidence and never reinterpreted.
-	ErrFutureVersion = errors.New("new transaction: future journal version")
+	ErrFutureVersion = inspect.ErrFutureVersion
 	// ErrMissingCAS reports a journal whose content-addressed evidence is
 	// absent. The journal is preserved; recovery refuses to guess.
-	ErrMissingCAS = errors.New("new transaction: journal CAS evidence is missing")
+	ErrMissingCAS = inspect.ErrMissingCAS
 )
 
 // UnsupportedHookError is returned before commit when a hook kind cannot be
@@ -64,18 +66,16 @@ func (e UnsupportedHookError) Error() string {
 	return fmt.Sprintf("new transaction: hook kind %q cannot be recovered safely", e.Kind)
 }
 
-type Phase string
+type Phase = inspect.Phase
 
 const (
-	Prepared Phase = "prepared"
-	// Publishing is retained as the Go API name for one release.  Its durable
-	// v1 spelling is the normative SPEC-07 phase "committing".
-	Publishing   Phase = "committing"
-	Committed    Phase = "committed"
-	HooksRunning Phase = "hooks_running"
-	HooksFailed  Phase = "hooks_failed"
-	Complete     Phase = "complete"
-	Aborted      Phase = "aborted"
+	Prepared     = inspect.Prepared
+	Publishing   = inspect.Publishing
+	Committed    = inspect.Committed
+	HooksRunning = inspect.HooksRunning
+	HooksFailed  = inspect.HooksFailed
+	Complete     = inspect.Complete
+	Aborted      = inspect.Aborted
 )
 
 type RegistryPlan struct {
@@ -83,130 +83,20 @@ type RegistryPlan struct {
 	Before, After []byte
 }
 
-type HookEntry struct {
-	Kind     string `json:"kind"`
-	Command  string `json:"command"`
-	Optional bool   `json:"optional,omitempty"`
-	Digest   string `json:"digest"`
-}
-type HookProgress struct {
-	Plan     []HookEntry `json:"plan,omitempty"`
-	Next     int         `json:"next"`
-	Failures []string    `json:"failures,omitempty"`
-}
+type (
+	HookEntry    = inspect.HookEntry
+	HookProgress = inspect.HookProgress
+)
+
 type (
 	HookExecutor  func(context.Context, HookEntry) error
 	FaultInjector func(point string) error
 )
 
-type Journal struct {
-	// The exported fields below are the one-release Go compatibility view.
-	// Journal.MarshalJSON writes only newJournalWire; decoding a legacy wire is
-	// deliberately refused rather than accepting two meanings for apiVersion v1.
-	APIVersion          string       `json:"-"`
-	Schema              int          `json:"-"`
-	ID                  string       `json:"-"`
-	Phase               Phase        `json:"-"`
-	Target              string       `json:"-"`
-	Staging             string       `json:"-"`
-	TargetExisted       bool         `json:"-"`
-	TargetBeforeSHA     string       `json:"-"`
-	TargetBeforeTreeSHA string       `json:"-"`
-	TargetAfterSHA      string       `json:"-"`
-	RegistryTarget      string       `json:"-"`
-	RegistryBeforeSHA   string       `json:"-"`
-	RegistryAfterSHA    string       `json:"-"`
-	CommitRecordSHA256  *string      `json:"-"`
-	completedDigests    []string     `json:"-"`
-	Hooks               HookProgress `json:"-"`
-	PendingMarker       string       `json:"-"`
-	CreatedAt           time.Time    `json:"-"`
-	UpdatedAt           time.Time    `json:"-"`
-}
-
-type casPair struct {
-	PathDigest string  `json:"pathDigest"`
-	BeforeCAS  *string `json:"beforeCAS"`
-	AfterCAS   *string `json:"afterCAS"`
-}
-
-type registryCAS struct {
-	BeforeCAS *string `json:"beforeCAS"`
-	AfterCAS  *string `json:"afterCAS"`
-}
-
-type wireHooks struct {
-	Status           string   `json:"status"`
-	CompletedDigests []string `json:"completedDigests"`
-}
-
-// recoveryManifest is the immutable payload addressed by target.afterCAS. It
-// contains every recovery-only value which cannot fit the portable normative
-// journal wire; no mutable sidecar is a recovery authority.
-type recoveryManifest struct {
-	Schema         int         `json:"schema"`
-	Target         string      `json:"target"`
-	PathDigest     string      `json:"pathDigest"`
-	Staging        string      `json:"staging"`
-	RegistryTarget string      `json:"registryTarget,omitempty"`
-	PendingMarker  string      `json:"pendingMarker"`
-	CreatedAt      time.Time   `json:"createdAt"`
-	TreeSHA256     string      `json:"treeSHA256"`
-	BeforeTreeSHA  string      `json:"beforeTreeSHA"`
-	HookPlan       []HookEntry `json:"hookPlan"`
-	SealedTree     string      `json:"sealedTreeSHA256,omitempty"`
-	SealedReady    bool        `json:"sealedReady,omitempty"`
-}
-
-type newJournalWire struct {
-	APIVersion         string      `json:"apiVersion"`
-	Kind               string      `json:"kind"`
-	TransactionID      string      `json:"transactionId"`
-	Phase              Phase       `json:"phase"`
-	Target             casPair     `json:"target"`
-	Registry           registryCAS `json:"registry"`
-	CommitRecordSHA256 *string     `json:"commitRecordSHA256"`
-	Hooks              wireHooks   `json:"hooks"`
-}
-
-func (j Journal) MarshalJSON() ([]byte, error) {
-	completed := make([]string, 0, j.Hooks.Next)
-	for i := 0; i < j.Hooks.Next && i < len(j.Hooks.Plan); i++ {
-		completed = append(completed, j.Hooks.Plan[i].Digest)
-	}
-	status := "pending"
-	if len(j.Hooks.Failures) > 0 {
-		status = "failed"
-	} else if j.Hooks.Next == len(j.Hooks.Plan) {
-		status = "complete"
-	}
-	return json.Marshal(newJournalWire{
-		APIVersion: APIVersion, Kind: "NewTransaction", TransactionID: j.ID, Phase: j.Phase,
-		Target:             casPair{PathDigest: digest([]byte(j.Target)), BeforeCAS: nullableDigest(j.TargetBeforeTreeSHA), AfterCAS: nullableDigest(j.TargetAfterSHA)},
-		Registry:           registryCAS{BeforeCAS: nullableDigest(j.RegistryBeforeSHA), AfterCAS: nullableDigest(j.RegistryAfterSHA)},
-		CommitRecordSHA256: j.CommitRecordSHA256,
-		Hooks:              wireHooks{Status: status, CompletedDigests: completed},
-	})
-}
-
-func (j *Journal) UnmarshalJSON(data []byte) error {
-	var wire newJournalWire
-	dec := json.NewDecoder(strings.NewReader(string(data)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&wire); err != nil || dec.Decode(&struct{}{}) != io.EOF {
-		return ErrUnsafe
-	}
-	if wire.APIVersion != APIVersion || wire.Kind != "NewTransaction" || wire.TransactionID == "" || !validDigest(wire.Target.PathDigest) {
-		return ErrUnsafe
-	}
-	*j = Journal{
-		APIVersion: wire.APIVersion, Schema: Schema, ID: wire.TransactionID, Phase: wire.Phase,
-		TargetBeforeSHA: wire.Target.PathDigest, TargetBeforeTreeSHA: derefDigest(wire.Target.BeforeCAS), TargetAfterSHA: derefDigest(wire.Target.AfterCAS),
-		RegistryBeforeSHA: derefDigest(wire.Registry.BeforeCAS), RegistryAfterSHA: derefDigest(wire.Registry.AfterCAS),
-		CommitRecordSHA256: wire.CommitRecordSHA256, completedDigests: wire.Hooks.CompletedDigests,
-	}
-	return nil
-}
+type (
+	Journal          = inspect.Journal
+	recoveryManifest = inspect.Manifest
+)
 
 func nullableDigest(value string) *string {
 	if value == "" {
@@ -249,12 +139,14 @@ func (t *Transaction) PrepareHooks(plan []HookEntry) error {
 }
 
 type Transaction struct {
-	home, dir   string
-	j           Journal
-	fault       FaultInjector
-	lock        *os.File // global new.lock, held from Begin through publication
-	sealedTree  string
-	sealedReady bool
+	home, dir        string
+	j                Journal
+	fault            FaultInjector
+	lock             *os.File // global new.lock, held from Begin through publication
+	sealedTree       string
+	sealedReady      bool
+	managedReference *formatproof.PublicationReference
+	managedRuntime   *trustload.Runtime
 }
 
 func Begin(home, target string) (*Transaction, error) {
@@ -408,93 +300,12 @@ func begin(home, target string, fault FaultInjector, sealedTree string) (*Transa
 }
 
 func Load(home, id string) (*Transaction, error) {
-	var err error
-	home, err = absClean(home)
+	record, err := inspect.Load(home, id)
 	if err != nil {
 		return nil, err
 	}
-	if id == "" {
-		return nil, ErrNoActive
-	}
-	if !validID(id) {
-		return nil, ErrUnsafe
-	}
-	dir := filepath.Join(home, "transactions", "new", "tx-"+id)
-	if info, statErr := os.Lstat(dir); statErr != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		if os.IsNotExist(statErr) {
-			return nil, ErrNoActive
-		}
-		return nil, ErrUnsafe
-	}
-	journalPath := filepath.Join(dir, "active.json")
-	info, statErr := os.Lstat(journalPath)
-	if statErr != nil {
-		if os.IsNotExist(statErr) {
-			return nil, ErrNoActive
-		}
-		return nil, statErr
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-		return nil, ErrUnsafe
-	}
-	data, err := os.ReadFile(journalPath)
-	if os.IsNotExist(err) {
-		return nil, ErrNoActive
-	}
-	if err != nil {
-		return nil, err
-	}
-	if version := peekAPIVersion(data); version != APIVersion {
-		if strings.HasPrefix(version, apiVersionFamily) {
-			return nil, ErrFutureVersion
-		}
-		return nil, ErrUnsafe
-	}
-	var j Journal
-	dec := json.NewDecoder(strings.NewReader(string(data)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&j); err != nil || dec.Decode(&struct{}{}) != io.EOF {
-		return nil, ErrUnsafe
-	}
-	manifest, manifestErr := loadRecoveryManifest(dir, j.TargetAfterSHA)
-	if errors.Is(manifestErr, ErrMissingCAS) {
-		return nil, ErrMissingCAS
-	}
-	if manifestErr != nil || manifest.PathDigest != j.TargetBeforeSHA {
-		return nil, ErrUnsafe
-	}
-	j.Target, j.Staging, j.PendingMarker, j.CreatedAt, j.UpdatedAt, j.RegistryTarget = manifest.Target, manifest.Staging, manifest.PendingMarker, manifest.CreatedAt, manifest.CreatedAt, manifest.RegistryTarget
-	j.TargetBeforeTreeSHA = manifest.BeforeTreeSHA
-	j.Hooks = HookProgress{Plan: manifest.HookPlan, Next: len(j.completedDigests)}
-	j.TargetBeforeSHA = ""
-	if len(j.completedDigests) != j.Hooks.Next {
-		return nil, ErrUnsafe
-	}
-	for i, value := range j.completedDigests {
-		if i >= len(j.Hooks.Plan) || j.Hooks.Plan[i].Digest != value {
-			return nil, ErrUnsafe
-		}
-	}
-	if err := validateJournal(home, dir, id, j); err != nil {
-		return nil, ErrUnsafe
-	}
-	tx := &Transaction{home: home, dir: dir, j: j, sealedTree: manifest.SealedTree, sealedReady: manifest.SealedReady}
-	for _, reference := range []string{j.TargetBeforeTreeSHA, j.TargetAfterSHA, j.RegistryBeforeSHA, j.RegistryAfterSHA} {
-		if reference == "" {
-			continue
-		}
-		data, readErr := tx.readBlob(reference)
-		if errors.Is(readErr, ErrMissingCAS) {
-			return nil, ErrMissingCAS
-		}
-		if readErr != nil || digest(data) != reference {
-			return nil, ErrUnsafe
-		}
-	}
-	if (j.Phase == Committed || j.Phase == HooksRunning || j.Phase == HooksFailed) && (j.CommitRecordSHA256 == nil || *j.CommitRecordSHA256 != commitRecordDigest(j.TargetAfterSHA, j.RegistryAfterSHA)) {
-		return nil, ErrUnsafe
-	}
-	return tx, nil
+	manifest := record.Manifest()
+	return &Transaction{home: record.Home(), dir: record.Directory(), j: record.Journal(), sealedTree: manifest.SealedTree, sealedReady: manifest.SealedReady, managedReference: manifest.ManagedPublication}, nil
 }
 
 func (t *Transaction) ID() string        { return t.j.ID }
@@ -502,6 +313,9 @@ func (t *Transaction) Workspace() string { return t.j.Staging }
 func (t *Transaction) Journal() Journal  { return t.j }
 
 func (t *Transaction) PrepareRegistry(plan RegistryPlan) error {
+	if err := t.checkManaged(context.Background(), false, &plan); err != nil {
+		return err
+	}
 	if t == nil || t.j.Phase != Prepared {
 		return ErrUnsafe
 	}
@@ -546,6 +360,9 @@ func (t *Transaction) PrepareRegistry(plan RegistryPlan) error {
 }
 
 func (t *Transaction) Commit(plan RegistryPlan) error {
+	if err := t.checkManaged(context.Background(), true, &plan); err != nil {
+		return err
+	}
 	if t == nil {
 		return ErrUnsafe
 	}
@@ -679,6 +496,9 @@ func (t *Transaction) Finalize() error {
 	if err := t.refresh(); err != nil {
 		return err
 	}
+	if err := t.checkManaged(context.Background(), false, nil); err != nil {
+		return err
+	}
 	if t.j.Hooks.Next != len(t.j.Hooks.Plan) {
 		return errors.New("new transaction: hooks are still pending")
 	}
@@ -709,6 +529,9 @@ func (t *Transaction) Abort() error {
 }
 
 func (t *Transaction) abortLocked() error {
+	if err := t.checkManaged(context.Background(), false, nil); err != nil {
+		return err
+	}
 	if t.j.Phase != Prepared {
 		return ErrCommitted
 	}
@@ -896,84 +719,14 @@ const (
 )
 
 // statusForLoadError maps a Load refusal to its inventory status.
-func statusForLoadError(err error) string {
-	switch {
-	case errors.Is(err, ErrFutureVersion):
-		return StatusFuture
-	case errors.Is(err, ErrMissingCAS):
-		return StatusMissingCAS
-	default:
-		return StatusUnsafe
-	}
-}
+func statusForLoadError(err error) string { return inspect.StatusForLoadError(err) }
 
 // TransactionStatus is a conservative inventory record. Unknown or damaged
 // journals are retained and reported; inventory never turns evidence into a
 // deletion candidate.
-type TransactionStatus struct {
-	ID, Status, Reason string
-	UpdatedAt          time.Time
-}
+type TransactionStatus = inspect.TransactionStatus
 
-func Inventory(home string) ([]TransactionStatus, error) {
-	root := filepath.Join(home, "transactions", "new")
-	entries, err := os.ReadDir(root)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	out := make([]TransactionStatus, 0)
-	for _, e := range entries {
-		if !e.IsDir() || !strings.HasPrefix(e.Name(), "tx-") {
-			continue
-		}
-		id := strings.TrimPrefix(e.Name(), "tx-")
-		tx, loadErr := Load(home, id)
-		if errors.Is(loadErr, ErrNoActive) && validID(id) {
-			if info, statErr := e.Info(); statErr == nil && info.IsDir() {
-				out = append(out, TransactionStatus{ID: id, Status: StatusOrphan, Reason: loadErr.Error(), UpdatedAt: info.ModTime().UTC()})
-				continue
-			}
-		}
-		if loadErr != nil {
-			out = append(out, TransactionStatus{ID: id, Status: statusForLoadError(loadErr), Reason: loadErr.Error()})
-			continue
-		}
-		status := string(tx.j.Phase)
-		if tx.j.Phase == Prepared || tx.j.Phase == Publishing || tx.j.Phase == Committed || tx.j.Phase == HooksRunning || tx.j.Phase == HooksFailed {
-			status = StatusActive
-		}
-		reason := ""
-		if tx.sealedTree != "" && (tx.j.Phase == Prepared || tx.j.Phase == Publishing || tx.j.Phase == Committed) {
-			var checkErr error
-			if _, err := os.Lstat(tx.j.Staging); err == nil {
-				if tx.sealedReady {
-					checkErr = tx.verifySealedTree(tx.j.Staging)
-				} else {
-					checkErr = tx.verifySealedAbort()
-				}
-			} else if tx.j.Phase == Prepared {
-				checkErr = tx.verifyTargetUnstaged()
-			} else {
-				checkErr = tx.verifySealedTree(tx.j.Target)
-			}
-			if checkErr != nil {
-				status, reason = "ownership_uncertain", ErrOwnershipUncertain.Error()
-			}
-		}
-		// The journal file time is when the record last changed phase; for a
-		// terminal record that is when it became terminal.
-		updated := tx.j.UpdatedAt
-		if info, statErr := os.Lstat(filepath.Join(tx.dir, "active.json")); statErr == nil {
-			updated = info.ModTime().UTC()
-		}
-		out = append(out, TransactionStatus{ID: id, Status: status, Reason: reason, UpdatedAt: updated})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out, nil
-}
+func Inventory(home string) ([]TransactionStatus, error) { return inspect.Inventory(home) }
 
 type GCPlan struct {
 	IDs    []string
@@ -1090,6 +843,10 @@ func Continue(home, id, registryHome string) error {
 
 // continueTx is Continue with a crash-injection seam for recovery tests.
 func continueTx(home, id, registryHome string, fault FaultInjector) error {
+	return continueAdmittedTx(context.Background(), home, id, registryHome, fault, nil)
+}
+
+func continueAdmittedTx(ctx context.Context, home, id, registryHome string, fault FaultInjector, runtime *trustload.Runtime) error {
 	home, err := absClean(home)
 	if err != nil {
 		return err
@@ -1104,6 +861,13 @@ func continueTx(home, id, registryHome string, fault FaultInjector) error {
 		return err
 	}
 	t.fault = fault
+	t.managedRuntime = runtime
+	if runtime != nil && t.managedReference == nil {
+		return ErrManagedAdmission
+	}
+	if err := t.checkManaged(ctx, t.j.Phase == Prepared || t.j.Phase == Publishing, nil); err != nil {
+		return err
+	}
 	registryHome, err = absClean(registryHome)
 	if err != nil || registryHome == "" || t.j.RegistryTarget != state.ProjectsPath(registryHome) {
 		return ErrUnsafe
@@ -1367,7 +1131,10 @@ func (t *Transaction) updateRecoveryManifest() error {
 		RegistryTarget: t.j.RegistryTarget,
 		CreatedAt:      t.j.CreatedAt, TreeSHA256: treeDigest, BeforeTreeSHA: t.j.TargetBeforeTreeSHA,
 		HookPlan:   append([]HookEntry(nil), t.j.Hooks.Plan...),
-		SealedTree: t.sealedTree, SealedReady: t.sealedReady,
+		SealedTree: t.sealedTree, SealedReady: t.sealedReady, ManagedPublication: t.managedReference,
+	}
+	if t.managedReference != nil {
+		manifest.Schema = 2
 	}
 	data, err := json.Marshal(manifest)
 	if err != nil {
@@ -1391,31 +1158,7 @@ func (t *Transaction) updateRecoveryManifest() error {
 }
 
 func loadRecoveryManifest(dir, ref string) (recoveryManifest, error) {
-	if !validDigest(ref) {
-		return recoveryManifest{}, ErrUnsafe
-	}
-	data, err := readCASFile(filepath.Join(dir, "blobs", "sha256", casLeaf(ref)))
-	if errors.Is(err, fs.ErrNotExist) {
-		return recoveryManifest{}, ErrMissingCAS
-	}
-	if err != nil || digest(data) != ref {
-		return recoveryManifest{}, ErrUnsafe
-	}
-	var manifest recoveryManifest
-	dec := json.NewDecoder(strings.NewReader(string(data)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&manifest); err != nil || dec.Decode(&struct{}{}) != io.EOF || manifest.Schema != Schema || !validDigest(manifest.PathDigest) || manifest.Target == "" || manifest.Staging == "" || manifest.PendingMarker != pendingMarkerRel || manifest.CreatedAt.IsZero() {
-		return recoveryManifest{}, ErrUnsafe
-	}
-	for _, hook := range manifest.HookPlan {
-		if hook.Kind != "shell" || hook.Command == "" || hook.Digest != hookDigest(hook) {
-			return recoveryManifest{}, ErrUnsafe
-		}
-	}
-	if manifest.SealedTree != "" && (!validDigest(manifest.SealedTree) || manifest.TreeSHA256 != manifest.SealedTree || len(manifest.HookPlan) != 0) || manifest.SealedReady && manifest.SealedTree == "" {
-		return recoveryManifest{}, ErrUnsafe
-	}
-	return manifest, nil
+	return inspect.LoadManifest(dir, ref)
 }
 
 func (t *Transaction) inject(point string) error {
@@ -1431,66 +1174,7 @@ func commitRecordDigest(target, registry string) string {
 	return digest([]byte(commitDomain + "\x00" + target + "\x00" + registry))
 }
 
-func snapshotTree(root string) ([]byte, error) {
-	// All reads go through an os.Root, so a symlink swapped in during the walk
-	// cannot redirect a read outside the tree.
-	r, err := os.OpenRoot(root)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = r.Close() }()
-	var entries []string
-	err = fs.WalkDir(r.FS(), ".", func(rel string, _ fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if rel == "." {
-			return nil
-		}
-		// The tree wire is newline- and NUL-separated.
-		if !fs.ValidPath(rel) || strings.ContainsAny(rel, "\n\x00") {
-			return ErrUnsafe
-		}
-		if rel == filepath.ToSlash(pendingMarkerRel) {
-			return nil
-		}
-		info, err := r.Lstat(rel)
-		if err != nil {
-			return err
-		}
-		kind := "file"
-		content := ""
-		switch {
-		case info.IsDir():
-			kind = "dir"
-		case info.Mode()&os.ModeSymlink != 0:
-			kind = "symlink"
-			target, readErr := r.Readlink(rel)
-			if readErr != nil {
-				return readErr
-			}
-			if ownership.ValidateRelativeSymlink(rel, target) != nil {
-				return ErrUnsafe
-			}
-			content = digest([]byte(target))
-		case info.Mode().IsRegular():
-			data, readErr := r.ReadFile(rel)
-			if readErr != nil {
-				return readErr
-			}
-			content = digest(data)
-		default:
-			return ErrUnsafe
-		}
-		entries = append(entries, rel+"\x00"+kind+"\x00"+fmt.Sprintf("%o", info.Mode().Perm())+"\x00"+content)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(entries)
-	return []byte(strings.Join(entries, "\n")), nil
-}
+func snapshotTree(root string) ([]byte, error) { return inspect.SnapshotTree(root) }
 
 func (t *Transaction) verifyTargetAfter() error {
 	if t == nil || t.j.TargetAfterSHA == "" {
@@ -1604,6 +1288,7 @@ func (t *Transaction) refresh() error {
 	}
 	t.j = current.j
 	t.sealedTree, t.sealedReady = current.sealedTree, current.sealedReady
+	t.managedReference = current.managedReference
 	return nil
 }
 
@@ -1727,73 +1412,10 @@ func (t *Transaction) readBlob(name string) ([]byte, error) {
 	return data, nil
 }
 
-func readCASFile(path string) ([]byte, error) {
-	before, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular() || before.Mode().Perm()&0o077 != 0 {
-		return nil, ErrUnsafe
-	}
-	if !singleLink(before) {
-		return nil, ErrUnsafe
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	opened, err := f.Stat()
-	if err != nil || !os.SameFile(before, opened) {
-		return nil, ErrUnsafe
-	}
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-	after, err := os.Lstat(path)
-	if err != nil || !os.SameFile(before, after) {
-		return nil, ErrUnsafe
-	}
-	return data, nil
-}
+func readCASFile(path string) ([]byte, error) { return inspect.ReadCASFile(path) }
 
 func validateJournal(home, dir, id string, j Journal) error {
-	if j.APIVersion != APIVersion || j.Schema != Schema || j.ID != id || !validID(j.ID) ||
-		j.Target == "" || j.Staging == "" || j.PendingMarker != pendingMarkerRel ||
-		j.CreatedAt.IsZero() || j.UpdatedAt.IsZero() {
-		return ErrUnsafe
-	}
-	for _, p := range []string{j.Target, j.Staging} {
-		if !filepath.IsAbs(p) || filepath.Clean(p) != p {
-			return ErrUnsafe
-		}
-	}
-	if filepath.Dir(j.Target) != filepath.Dir(j.Staging) || filepath.Base(j.Staging) != "."+filepath.Base(j.Target)+stagingInfix+id {
-		return ErrUnsafe
-	}
-	switch j.Phase {
-	case Prepared, Aborted:
-	case Publishing, Committed, HooksRunning, HooksFailed, Complete:
-		if !validDigest(j.RegistryBeforeSHA) || !validDigest(j.RegistryAfterSHA) || j.RegistryTarget == "" || !filepath.IsAbs(j.RegistryTarget) || filepath.Clean(j.RegistryTarget) != j.RegistryTarget || filepath.Base(j.RegistryTarget) != "projects.yaml" {
-			return ErrUnsafe
-		}
-	default:
-		return ErrUnsafe
-	}
-	for _, h := range j.Hooks.Plan {
-		if h.Kind != "shell" || h.Command == "" || h.Digest != hookDigest(h) {
-			return ErrUnsafe
-		}
-	}
-	if j.Hooks.Next < 0 || j.Hooks.Next > len(j.Hooks.Plan) {
-		return ErrUnsafe
-	}
-	root := filepath.Join(home, "transactions", "new")
-	if filepath.Dir(dir) != root || filepath.Base(dir) != "tx-"+id {
-		return ErrUnsafe
-	}
-	return nil
+	return inspect.ValidateJournal(home, dir, id, j)
 }
 
 func hookDigest(h HookEntry) string { return digest([]byte(h.Kind + "\x00" + h.Command)) }

@@ -282,10 +282,10 @@ func argvEnvSetup(name string) []string {
 
 // projectNewInvocation separates the target locator from the child CWD.
 type projectNewInvocation struct {
-	Ref, Name, SourceInput, ProjectContext, TargetDir       string
-	Set                                                     map[string]string
-	Defaults, NoHooks, NoDepsCheck, NoEnvSetup, Yes, DryRun bool
-	Port                                                    int
+	Ref, Name, SourceInput, ProjectContext, TargetDir, FormatInput                string
+	Set                                                                           map[string]string
+	Defaults, NoHooks, NoDepsCheck, NoEnvSetup, Yes, DryRun, Prepare, FormatStage bool
+	Port                                                                          int
 }
 
 func argvProjectNewInvocation(a projectNewInvocation) []string {
@@ -295,6 +295,15 @@ func argvProjectNewInvocation(a projectNewInvocation) []string {
 	}
 	if a.TargetDir != "" {
 		argv = append(argv, "--dir", a.TargetDir)
+	}
+	if a.Prepare {
+		argv = append(argv, "--prepare")
+	}
+	if a.FormatStage {
+		argv = append(argv, "--format-stage")
+	}
+	if a.FormatInput != "" {
+		argv = append(argv, "--format-input", a.FormatInput)
 	}
 	return argv
 }

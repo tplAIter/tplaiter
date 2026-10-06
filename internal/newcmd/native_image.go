@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tplAIter/tplaiter/internal/manifest"
+	"github.com/tplAIter/tplaiter/internal/newimages"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/renderref"
 	"github.com/tplAIter/tplaiter/internal/resources"
@@ -19,6 +20,22 @@ import (
 // builder without creating a target, lock, journal or registry. Returned bytes
 // are proposals; the workspace adapter freshly rebuilds them under its leases.
 func PrepareNativeImage(ctx context.Context, opts Options, d Deps) (map[string][]byte, error) {
+	c, err := PrepareNativeContext(ctx, opts, d)
+	if err != nil {
+		return nil, err
+	}
+	for _, raw := range c.Result.Files {
+		if strings.Contains(string(raw), "tplater:managed-") {
+			return nil, operationtrust.ErrSourceAdapterUnsupported
+		}
+	}
+	return newimages.Build(*c)
+}
+
+// PrepareNativeContext freshly derives the complete signed native renderer and
+// resources. It constructs no formatter grant, writer plan or filesystem state.
+// Managed lifecycle owners must separately verify real formatted projections.
+func PrepareNativeContext(ctx context.Context, opts Options, d Deps) (*newimages.Context, error) {
 	if d.Runtime == nil || d.Runtime.TrustRuntime() == nil {
 		return nil, operationtrust.ErrSourceAdapterUnsupported
 	}
@@ -88,10 +105,10 @@ func PrepareNativeImage(ctx context.Context, opts Options, d Deps) (map[string][
 		return nil, err
 	}
 	result := p.Rendered()
-	for name, raw := range result.Files {
-		if !fs.ValidPath(name) || name == "." || name == ".tplaiter" || strings.HasPrefix(name, ".tplaiter/") || name == ".tplater" || strings.HasPrefix(name, ".tplater/") || strings.Contains(string(raw), "tplater:managed-") {
+	for name := range result.Files {
+		if !fs.ValidPath(name) || name == "." || name == ".tplaiter" || strings.HasPrefix(name, ".tplaiter/") || name == ".tplater" || strings.HasPrefix(name, ".tplater/") {
 			return nil, operationtrust.ErrSourceAdapterUnsupported
 		}
 	}
-	return liveTreeImages(pc.ProjectID, src, info, port, result, p, images, sources, false)
+	return &newimages.Context{ID: pc.ProjectID, Source: src, Info: info, Port: port, Result: result, Prepared: p, Resources: images, Sources: sources, Interactive: false}, nil
 }

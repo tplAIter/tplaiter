@@ -1690,3 +1690,62 @@ func TestRecheckFreshReloadRejectsAuthorityPrincipalAndGrantChanges(t *testing.T
 		})
 	}
 }
+
+// Publication checks reuse the actual current signed-grant boundary without
+// minting a process permit. Fixture signatures represent local test authority.
+func TestRuntimePublicationApprovalUsesCurrentExactGrant(t *testing.T) {
+	f := newRuntimeFixture(t)
+	approver := runtimeKey("publication-current-approver")
+	permitPolicy(t, f, "oss", "oss", "principal:approver", "approver.test", approver, false)
+	ext, pol, bundle, project := &runtimeExternal{f: f}, &runtimePolicy{f: f}, &runtimeBundle{f: f}, &runtimeProject{f: f}
+	r, err := NewRuntime(context.Background(), runtimeOptions(f, ext, pol, bundle, project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolution, err := r.VerifySubject(context.Background(), f.subject, f.refs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, req, _ := permitInputs(t, r.Binding(), f.subject, f.project.ProjectID)
+	var policy ExecutionPolicy
+	if err = json.Unmarshal(f.policy.PolicyJSON, &policy); err != nil {
+		t.Fatal(err)
+	}
+	refs := persistentRefs(t, f, &policy, req, approver)
+	approval, err := DecodeExecutionApproval(f.store[refs.ApprovalCAS])
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := PersistentApprovalReference{RequestSHA256: req.RequestSHA256, GrantSHA256: approval.GrantSHA256, ApprovalCAS: refs.ApprovalCAS}
+	before := ext.calls
+	if err = r.VerifyPublicationApproval(context.Background(), resolution, op, req, ref); err != nil {
+		t.Fatal(err)
+	}
+	if ext.calls <= before {
+		t.Fatal("publication did not recheck current external authority")
+	}
+	for name, bad := range map[string]PersistentApprovalReference{
+		"request": {RequestSHA256: evidencecas.Digest([]byte("other request")), GrantSHA256: ref.GrantSHA256, ApprovalCAS: ref.ApprovalCAS},
+		"grant":   {RequestSHA256: ref.RequestSHA256, GrantSHA256: evidencecas.Digest([]byte("other grant")), ApprovalCAS: ref.ApprovalCAS},
+		"missing": {RequestSHA256: ref.RequestSHA256, GrantSHA256: ref.GrantSHA256, ApprovalCAS: evidencecas.Digest([]byte("missing"))},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := r.VerifyPublicationApproval(context.Background(), resolution, op, req, bad); err == nil {
+				t.Fatal("mismatched publication grant accepted")
+			}
+		})
+	}
+	wrong := req
+	wrong.Scope = "new"
+	wrong.RequestSHA256, _ = wrong.ComputeRequestSHA256()
+	if err := r.VerifyPublicationApproval(context.Background(), resolution, op, wrong, ref); err == nil {
+		t.Fatal("different operation scope accepted")
+	}
+	if err := r.VerifyPublicationApproval(nil, resolution, op, req, ref); err == nil {
+		t.Fatal("nil context accepted")
+	}
+	f.now = time.Date(2028, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := r.VerifyPublicationApproval(context.Background(), resolution, op, req, ref); err == nil {
+		t.Fatal("expired approval accepted at publication")
+	}
+}

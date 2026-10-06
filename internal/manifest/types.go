@@ -41,21 +41,22 @@ const StatusPlanned = "planned"
 
 // Template is a manifest for one template (`template.manifest.yaml`).
 type Template struct {
-	APIVersion  string                 `yaml:"apiVersion"`
-	Kind        string                 `yaml:"kind"`
-	Metadata    TemplateMeta           `yaml:"metadata"`
-	Engine      Engine                 `yaml:"engine"`
-	Requires    Requires               `yaml:"requires"`
-	Migrations  []migrations.Migration `yaml:"migrations"`
-	Settings    []SettingGroup         `yaml:"settings"`
-	Files       []FileRule             `yaml:"files"`
-	Constraints []Constraint           `yaml:"constraints"`
-	Commands    map[string]Command     `yaml:"commands"`
-	Generators  []Generator            `yaml:"generators"`
-	AIConfig    AIConfig               `yaml:"aiConfig"`
-	Environment Environment            `yaml:"environment"`
-	Hooks       Hooks                  `yaml:"hooks"`
-	Lint        LintConfig             `yaml:"lint"` // opt-in architecture-lint rules; see lint_types.go
+	APIVersion    string                 `yaml:"apiVersion"`
+	Kind          string                 `yaml:"kind"`
+	Metadata      TemplateMeta           `yaml:"metadata"`
+	Engine        Engine                 `yaml:"engine"`
+	Requires      Requires               `yaml:"requires"`
+	Migrations    []migrations.Migration `yaml:"migrations"`
+	ManagedBlocks *ManagedBlocks         `yaml:"managedBlocks,omitempty"`
+	Settings      []SettingGroup         `yaml:"settings"`
+	Files         []FileRule             `yaml:"files"`
+	Constraints   []Constraint           `yaml:"constraints"`
+	Commands      map[string]Command     `yaml:"commands"`
+	Generators    []Generator            `yaml:"generators"`
+	AIConfig      AIConfig               `yaml:"aiConfig"`
+	Environment   Environment            `yaml:"environment"`
+	Hooks         Hooks                  `yaml:"hooks"`
+	Lint          LintConfig             `yaml:"lint"` // opt-in architecture-lint rules; see lint_types.go
 }
 
 // TemplateMeta is the template metadata section.
@@ -321,4 +322,17 @@ type ProjectInfo struct {
 // ProjectRuntime contains project runtime parameters.
 type ProjectRuntime struct {
 	Port int `yaml:"port"`
+}
+
+// ManagedBlocks declares signed same-file identity continuity, never a provider
+// grant or a formatter exemption.
+type ManagedBlocks struct {
+	Version      int                  `yaml:"version" json:"version"`
+	Replacements []ManagedReplacement `yaml:"replacements" json:"replacements"`
+}
+type ManagedReplacement struct {
+	Path     string `yaml:"path" json:"path"`
+	Provider string `yaml:"provider" json:"provider"`
+	OldID    string `yaml:"oldID" json:"oldID"`
+	NewID    string `yaml:"newID" json:"newID"`
 }

@@ -13,11 +13,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/tplAIter/tplaiter/internal/newcmd"
 	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
-	"github.com/tplAIter/tplaiter/internal/updateplan"
 )
 
 // The observer only schedules interruption of real signed staging. It neither
@@ -58,34 +56,15 @@ func interruptedPreparingUpdate(t *testing.T, minimum int) (*Transaction, *trust
 	if err := os.Mkdir(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := newcmd.Run(ctx, newcmd.Options{Ref: f.source.Commit, ProjectName: "Ordinary Project", Dir: f.project, Module: "example.test/ordinary", Defaults: true, NoHooks: true, NoDepsCheck: true, CLIVersion: "v1"}, newcmd.Deps{Runtime: r, Home: home, SourceInput: t5DSelection(f.source, f.sourceRefs), Out: &bytes.Buffer{}}); err != nil {
-		t.Fatal(err)
-	}
-	b, err := updateplan.New(r, home, "v1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	p, err := b.Prepare(ctx, updateplan.Input{SourceInput: t5DSelection(f.source, f.sourceRefs), TargetInput: t5DSelection(f.target, f.targetRefs)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, _, err := p.TransactionMaterial(ctx, p.Fingerprint())
-	if err != nil {
-		t.Fatal(err)
-	}
-	tx, err := Acquire(ctx, r, NativeUpdateKind, updateTestMaterial(t, m))
+	bridge := updateFixtureBridge(t, f, home)
+	m := bridge.material("prepare-update", nil)
+	tx, err := Acquire(ctx, r, NativeUpdateKind, m)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(tx.Release)
-	m, _, err = p.TransactionMaterialAfterLease(ctx, p.Fingerprint())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := updateplan.AuthenticateUpdateMaterial(ctx, r, "v1", m); err != nil {
-		t.Fatal(err)
-	}
-	material := updateTestMaterial(t, m)
+	material := bridge.material("after-lease", nil)
+	bridge.Close()
 	if err := tx.ValidateLocked(ctx, material); err != nil {
 		t.Fatal(err)
 	}

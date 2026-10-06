@@ -25,6 +25,9 @@ func LoadTemplate(path string) (*Template, error) {
 	if err := decodeStrict(data, &t); err != nil {
 		return nil, fmt.Errorf("parsing template manifest %s: %w", path, err)
 	}
+	if err := checkManagedScalars(data); err != nil {
+		return nil, err
+	}
 	if err := checkDeprecatedScalars(data); err != nil {
 		return nil, err
 	}
@@ -78,6 +81,9 @@ func ParseTemplate(data []byte) (*Template, error) {
 	var t Template
 	if err := decodeStrict(data, &t); err != nil {
 		return nil, fmt.Errorf("parsing template manifest: %w", err)
+	}
+	if err := checkManagedScalars(data); err != nil {
+		return nil, err
 	}
 	if err := checkDeprecatedScalars(data); err != nil {
 		return nil, err
@@ -251,4 +257,54 @@ func checkDeprecatedScalars(data []byte) error {
 		return nil
 	}
 	return walk(field(doc.Content[0], "settings"))
+}
+
+func checkManagedScalars(data []byte) error {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return err
+	}
+	if len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil
+	}
+	root := doc.Content[0]
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value != "managedBlocks" {
+			continue
+		}
+		m := root.Content[i+1]
+		if m.Kind != yaml.MappingNode {
+			return errors.New("managedBlocks must be an object")
+		}
+		version, replacements := false, false
+		for j := 0; j+1 < len(m.Content); j += 2 {
+			k, n := m.Content[j].Value, m.Content[j+1]
+			switch k {
+			case "version":
+				version = true
+				if n.Kind != yaml.ScalarNode || n.Tag != "!!int" || n.Value != "1" {
+					return errors.New("managedBlocks.version must be integer 1")
+				}
+			case "replacements":
+				replacements = true
+				if n.Kind != yaml.SequenceNode {
+					return errors.New("managedBlocks.replacements must be an array")
+				}
+				for _, r := range n.Content {
+					if r.Kind != yaml.MappingNode {
+						return errors.New("managed replacement must be an object")
+					}
+					for x := 0; x+1 < len(r.Content); x += 2 {
+						if r.Content[x+1].Kind != yaml.ScalarNode || r.Content[x+1].Tag != "!!str" {
+							return errors.New("managed replacement fields must be strings")
+						}
+					}
+				}
+			}
+		}
+		if !version || !replacements {
+			return errors.New("managedBlocks requires version and replacements")
+		}
+	}
+	return nil
 }

@@ -39,6 +39,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/state"
 	"github.com/tplAIter/tplaiter/internal/survey"
 	"github.com/tplAIter/tplaiter/internal/trustload"
+	"github.com/tplAIter/tplaiter/internal/trustverify"
 	"github.com/tplAIter/tplaiter/internal/ui"
 )
 
@@ -57,6 +58,10 @@ const defaultPort = 8080
 // The cobra layer (internal/cmd/new.go) fills them and adds runtime context
 // (Interactive, CLIVersion).
 type Options struct {
+	// Prepare reports source-owned formatter requests without executing or publishing.
+	Prepare bool
+	// FormatStage executes only admitted formatter effects, never project publication.
+	FormatStage bool
 	// DryRun prepares a verified result without publishing project or registry state.
 	DryRun bool
 	// Ref is a template reference: `<repo>/<name>[@version]`.
@@ -100,6 +105,12 @@ type Options struct {
 // testability (production implementations are in internal/cmd/new.go and
 // test doubles are in package tests).
 type Deps struct {
+	// ToolSourceInput is pinned, authenticated tool-source selection transport.
+	ToolSourceInput []byte
+	// FormatApprovals are persistent CAS locators, never execution permits.
+	FormatApprovals map[string]trustverify.ApprovalRefs
+	// PreparedOut receives detached reporting data, never admission callbacks.
+	PreparedOut io.Writer
 	// Runtime is the authenticated installed runtime; legacy dependencies cannot replace it.
 	Runtime *trustload.Runtime
 	// SourceInput contains bounded, untrusted pinned selection and evidence locators.

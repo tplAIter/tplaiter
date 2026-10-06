@@ -19,6 +19,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
 )
 
@@ -125,17 +126,25 @@ func validGofmtMaterial(m trustverify.StagedMaterial) bool {
 }
 
 func gofmtInputIndex(m trustverify.StagedMaterial) (int, bool) {
-	if len(m.Content) != 3 || len(m.ContentBytes) != 3 {
+	if (len(m.Content) != 3 && len(m.Content) != 4) || len(m.ContentBytes) != len(m.Content) {
 		return 0, false
 	}
 	input := -1
+	seen := map[string]bool{}
 	for i, entry := range m.Content {
-		if entry.Root != "project" || entry.Mode != "100644" {
+		if entry.Root != "project" || entry.Mode != "100644" || seen[entry.Path] {
 			return 0, false
 		}
+		seen[entry.Path] = true
 		switch entry.Path {
 		case "formatter/plan.json", "formatter/tool.json":
-			continue
+		case "formatter/context.json":
+			if len(m.Content) != 4 {
+				return 0, false
+			}
+			if _, err := operationtrust.ParseManagedFormatterContext(m.ContentBytes[i]); err != nil {
+				return 0, false
+			}
 		default:
 			folded := strings.ToLower(entry.Path)
 			if input >= 0 || entry.Path == "" || folded == "formatter" || strings.HasPrefix(folded, "formatter/") || folded == "native-tool" || folded == ".tplaiter-execution" || strings.HasPrefix(folded, ".tplaiter-execution/") {
@@ -144,7 +153,7 @@ func gofmtInputIndex(m trustverify.StagedMaterial) (int, bool) {
 			input = i
 		}
 	}
-	return input, input >= 0
+	return input, input >= 0 && seen["formatter/plan.json"] && seen["formatter/tool.json"] && (len(m.Content) == 3 || seen["formatter/context.json"])
 }
 
 type limitedBuffer struct {

@@ -16,11 +16,9 @@ import (
 	"testing"
 
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
-	"github.com/tplAIter/tplaiter/internal/newcmd"
 	"github.com/tplAIter/tplaiter/internal/testfixture"
 	"github.com/tplAIter/tplaiter/internal/trustload"
 	"github.com/tplAIter/tplaiter/internal/trustverify"
-	"github.com/tplAIter/tplaiter/internal/updateplan"
 )
 
 func signedUpdateEngine(t *testing.T) (*Transaction, *t5DIntegrationFixture, *trustload.Runtime, string) {
@@ -40,33 +38,14 @@ func signedUpdateEngine(t *testing.T) (*Transaction, *t5DIntegrationFixture, *tr
 	if err := os.Mkdir(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := newcmd.Run(ctx, newcmd.Options{Ref: f.source.Commit, ProjectName: "Ordinary Project", Dir: f.project, Module: "example.test/ordinary", Defaults: true, NoHooks: true, NoDepsCheck: true, CLIVersion: "v1"}, newcmd.Deps{Runtime: r, Home: home, SourceInput: t5DSelection(f.source, f.sourceRefs), Out: &bytes.Buffer{}}); err != nil {
-		t.Fatal(err)
-	}
-	b, err := updateplan.New(r, home, "v1")
+	bridge := updateFixtureBridge(t, f, home)
+	m := bridge.material("prepare-update", nil)
+	tx, err := Acquire(ctx, r, NativeUpdateKind, m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := b.Prepare(ctx, updateplan.Input{SourceInput: t5DSelection(f.source, f.sourceRefs), TargetInput: t5DSelection(f.target, f.targetRefs)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, _, err := p.TransactionMaterial(ctx, p.Fingerprint())
-	if err != nil {
-		t.Fatal(err)
-	}
-	tx, err := Acquire(ctx, r, NativeUpdateKind, updateTestMaterial(t, m))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, _, err = p.TransactionMaterialAfterLease(ctx, p.Fingerprint())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := updateplan.AuthenticateUpdateMaterial(ctx, r, "v1", m); err != nil {
-		t.Fatal(err)
-	}
-	material := updateTestMaterial(t, m)
+	material := bridge.material("after-lease", nil)
+	bridge.Close()
 	if err := tx.ValidateLocked(ctx, material); err != nil {
 		t.Fatal(err)
 	}
@@ -74,22 +53,6 @@ func signedUpdateEngine(t *testing.T) (*Transaction, *t5DIntegrationFixture, *tr
 		t.Fatal(err)
 	}
 	return tx, f, r, home
-}
-
-func updateTestMaterial(t *testing.T, m updateplan.UpdateMaterial) Material {
-	t.Helper()
-	raw, err := canonicaljson.Canonical(m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	convert := func(in map[string]updateplan.UpdateFile) map[string]File {
-		out := map[string]File{}
-		for p, f := range in {
-			out[p] = File{Data: append(Bytes{}, f.Data...), Mode: f.Mode, Directory: f.Directory, Device: f.Device, Inode: f.Inode}
-		}
-		return out
-	}
-	return Material{Root: m.Root, Home: m.Home, ProjectID: m.ProjectID, Binding: m.Binding, Before: convert(m.Before), After: convert(m.After), Fingerprint: m.Fingerprint, ReadOnlyPaths: []string{}, Intent: raw, Registry: &RegistryPair{Before: File{Data: append(Bytes{}, m.Registry.BeforeContent...), Mode: m.Registry.Before.Mode, Device: m.RegistryDevice, Inode: m.RegistryInode}, After: File{Data: append(Bytes{}, m.Registry.AfterContent...), Mode: m.Registry.After.Mode}}}
 }
 
 func coldSignedUpdate(t *testing.T, r *trustload.Runtime, home, id string) *Transaction {
@@ -102,15 +65,9 @@ func coldSignedUpdate(t *testing.T, r *trustload.Runtime, home, id string) *Tran
 	if err != nil {
 		t.Fatal(err)
 	}
-	var intent updateplan.UpdateMaterial
-	if err := canonicaljson.DecodeStrict(m.Intent, &intent); err != nil {
-		t.Fatal(err)
-	}
-	if err := updateplan.AuthenticateUpdateMaterial(context.Background(), r, "v1", intent); err != nil {
-		t.Fatal(err)
-	}
+	rebuilt := authenticateFixtureMaterial(t, home, m.Intent)
 	a, _ := canonicaljson.Canonical(m)
-	b, _ := canonicaljson.Canonical(updateTestMaterial(t, intent))
+	b, _ := canonicaljson.Canonical(rebuilt)
 	if !bytes.Equal(a, b) {
 		t.Fatal("receipt differs from signed reconstruction")
 	}

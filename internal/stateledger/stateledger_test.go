@@ -3,19 +3,28 @@ package stateledger
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
-	"github.com/tplAIter/tplaiter/internal/newtransaction"
+	"github.com/tplAIter/tplaiter/internal/newtransaction/inspect"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 )
 
@@ -164,32 +173,32 @@ func TestPortableFixtureInventoryClassifiesEveryLedger(t *testing.T) {
 func seedJournals(t *testing.T, home string) map[string]string {
 	t.Helper()
 	statuses := map[string]string{}
-	begin := func() *newtransaction.Transaction {
+	begin := func() *newOwnerFixture {
 		t.Helper()
 		target := filepath.Join(t.TempDir(), "project")
 		if err := os.MkdirAll(target, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		tx, err := newtransaction.Begin(home, target)
+		tx, err := beginNewOwnerFixture(t, home, target)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return tx
 	}
-	release := func(tx *newtransaction.Transaction) {
+	release := func(tx *newOwnerFixture) {
 		// Simulate process exit: the flock is released, the journal stays.
 		tx.Release()
 	}
 	active := begin()
 	release(active)
-	statuses[active.ID()] = newtransaction.StatusActive
+	statuses[active.ID()] = inspect.StatusActive
 
 	unsafe := begin()
 	release(unsafe)
 	if err := os.WriteFile(filepath.Join(home, "transactions", "new", "tx-"+unsafe.ID(), "active.json"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	statuses[unsafe.ID()] = newtransaction.StatusUnsafe
+	statuses[unsafe.ID()] = inspect.StatusUnsafe
 
 	future := begin()
 	release(future)
@@ -198,10 +207,10 @@ func seedJournals(t *testing.T, home string) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(journal, bytes.Replace(raw, []byte(newtransaction.APIVersion), []byte("tplaiter.dev/new-transaction/v2"), 1), 0o600); err != nil {
+	if err := os.WriteFile(journal, bytes.Replace(raw, []byte(inspect.APIVersion), []byte("tplaiter.dev/new-transaction/v2"), 1), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	statuses[future.ID()] = newtransaction.StatusFuture
+	statuses[future.ID()] = inspect.StatusFuture
 
 	missing := begin()
 	release(missing)
@@ -209,7 +218,7 @@ func seedJournals(t *testing.T, home string) map[string]string {
 	if err := os.Remove(blob); err != nil {
 		t.Fatal(err)
 	}
-	statuses[missing.ID()] = newtransaction.StatusMissingCAS
+	statuses[missing.ID()] = inspect.StatusMissingCAS
 	return statuses
 }
 
@@ -556,5 +565,268 @@ func TestReportSealIsDeterministicAndRequiresProtectedReceipt(t *testing.T) {
 	bad.Receipt.BackendProtected = false
 	if _, err := bad.Seal(); !errors.Is(err, ErrUnsafe) {
 		t.Fatalf("unprotected receipt sealed: %v", err)
+	}
+}
+
+func TestLowerNewInspectionPreservesInventoryDiagnostics(t *testing.T) {
+	home := t.TempDir()
+	want := seedJournals(t, home)
+	got, err := inspect.Inventory(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("inventory size: %d want %d", len(got), len(want))
+	}
+	var previous string
+	for _, item := range got {
+		if item.ID <= previous || item.Status != want[item.ID] {
+			t.Fatalf("ordering/classification: %+v", got)
+		}
+		previous = item.ID
+		if item.Status == inspect.StatusActive && (item.UpdatedAt.IsZero() || item.Reason != "") {
+			t.Fatal("active diagnostic changed")
+		}
+		if item.Status != inspect.StatusActive && item.Reason == "" {
+			t.Fatal("refusal reason lost")
+		}
+	}
+}
+
+// The bridge invokes the real New owner in a separate exact test image. Only
+// public fixture geometry crosses this boundary; journal bytes remain owner-made.
+type newOwnerRequest struct {
+	Operation string `json:"operation"`
+	Home      string `json:"home"`
+	Target    string `json:"target"`
+	ID        string `json:"id"`
+}
+type newOwnerReply struct {
+	ID     string `json:"id"`
+	Phase  string `json:"phase"`
+	Target string `json:"target"`
+}
+type newOwnerFixture struct {
+	t        *testing.T
+	home, id string
+	journal  inspect.Journal
+}
+
+func (f *newOwnerFixture) ID() string               { return f.id }
+func (f *newOwnerFixture) Journal() inspect.Journal { return f.journal }
+func (f *newOwnerFixture) Release()                 {} // The owner has already released its flock before replying.
+func (f *newOwnerFixture) Abort() error {
+	_, err := invokeNewOwner(f.t, newOwnerRequest{Operation: "abort", Home: f.home, ID: f.id})
+	return err
+}
+
+type newOwnerImagePin struct {
+	path   string
+	digest [32]byte
+}
+
+var newOwnerImages = struct {
+	sync.Mutex
+	images map[*testing.T]newOwnerImagePin
+}{images: map[*testing.T]newOwnerImagePin{}}
+
+type newOwnerCapture struct {
+	sync.Mutex
+	b        []byte
+	overflow bool
+}
+
+func (b *newOwnerCapture) Write(p []byte) (int, error) {
+	b.Lock()
+	defer b.Unlock()
+	n := len(p)
+	remaining := 65536 - len(b.b)
+	if len(p) > remaining {
+		b.overflow = true
+		p = p[:remaining]
+	}
+	b.b = append(b.b, p...)
+	return n, nil
+}
+
+func newOwnerCommand(ctx context.Context, image string, args ...string) *exec.Cmd {
+	c := exec.CommandContext(ctx, image, args...)
+	c.SysProcAttr = &syscall.SysProcAttr{}
+	field := reflect.ValueOf(c.SysProcAttr).Elem().FieldByName("Setpgid")
+	if field.IsValid() && field.CanSet() {
+		field.SetBool(true)
+	}
+	c.WaitDelay = time.Second
+	c.Cancel = func() error { return signalNewOwnerGroup(c, syscall.SIGTERM) }
+	return c
+}
+
+func signalNewOwnerGroup(c *exec.Cmd, signal os.Signal) error {
+	if c.Process == nil {
+		return nil
+	}
+	group, err := os.FindProcess(-c.Process.Pid)
+	if err != nil {
+		return err
+	}
+	return group.Signal(signal)
+}
+
+func runNewOwner(ctx context.Context, c *exec.Cmd) error {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		return fmt.Errorf("owned process-group fixture unsupported on %s", runtime.GOOS)
+	}
+	if err := c.Start(); err != nil {
+		return err
+	}
+	wait := make(chan error, 1)
+	go func() { wait <- c.Wait() }()
+	defer signalNewOwnerGroup(c, syscall.SIGKILL)
+	select {
+	case err := <-wait:
+		return err
+	case <-ctx.Done():
+		_ = signalNewOwnerGroup(c, syscall.SIGTERM)
+		select {
+		case <-wait:
+			return ctx.Err()
+		case <-time.After(time.Second):
+			_ = signalNewOwnerGroup(c, syscall.SIGKILL)
+			<-wait
+			return ctx.Err()
+		}
+	}
+}
+
+func newOwnerImage(t *testing.T) (string, error) {
+	t.Helper()
+	newOwnerImages.Lock()
+	defer newOwnerImages.Unlock()
+	if pin := newOwnerImages.images[t]; pin.path != "" {
+		raw, err := os.ReadFile(pin.path)
+		if err != nil {
+			return "", err
+		}
+		if sha256.Sum256(raw) != pin.digest {
+			return "", errors.New("owner image changed")
+		}
+		return pin.path, nil
+	}
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		return "", err
+	}
+	image := filepath.Join(t.TempDir(), "new-owner.test")
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	c := newOwnerCommand(ctx, filepath.Join(runtime.GOROOT(), "bin", "go"), "test", "-c", "-o", image, "./internal/newtransaction")
+	c.Dir = root
+	c.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GOENV=off", "GOFLAGS=", "PYTHONDONTWRITEBYTECODE=1")
+	log := &newOwnerCapture{}
+	c.Stdout = log
+	c.Stderr = log
+	if err := runNewOwner(ctx, c); err != nil {
+		return "", fmt.Errorf("owner build: %w: %s", err, log.b)
+	}
+	if log.overflow {
+		return "", errors.New("owner build output exceeds limit")
+	}
+	raw, err := os.ReadFile(image)
+	if err != nil {
+		return "", err
+	}
+	t.Logf("source-owner fixture image sha256:%x", sha256.Sum256(raw))
+	newOwnerImages.images[t] = newOwnerImagePin{path: image, digest: sha256.Sum256(raw)}
+	t.Cleanup(func() { newOwnerImages.Lock(); delete(newOwnerImages.images, t); newOwnerImages.Unlock() })
+	return image, nil
+}
+
+func decodeNewOwnerReply(raw []byte) (newOwnerReply, error) {
+	var reply newOwnerReply
+	if len(raw) == 0 || len(raw) > 65536 {
+		return reply, errors.New("missing or oversized owner response")
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&reply); err != nil {
+		return reply, err
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		return reply, errors.New("trailing owner response")
+	}
+	if reply.ID == "" || reply.Phase == "" || !filepath.IsAbs(reply.Target) {
+		return reply, errors.New("incomplete owner response")
+	}
+	return reply, nil
+}
+
+func invokeNewOwner(t *testing.T, q newOwnerRequest) (newOwnerReply, error) {
+	t.Helper()
+	var empty newOwnerReply
+	image, err := newOwnerImage(t)
+	if err != nil {
+		return empty, err
+	}
+	raw, err := json.Marshal(q)
+	if err != nil {
+		return empty, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	c := newOwnerCommand(ctx, image, "-test.run=^TestStateLedgerOwnerFixtureBridge$", "-test.count=1")
+	c.Env = append(os.Environ(), "TPLAITER_NEW_OWNER_FIXTURE=1", "PYTHONDONTWRITEBYTECODE=1")
+	c.Stdin = bytes.NewReader(raw)
+	result, err := os.CreateTemp(t.TempDir(), "response-")
+	if err != nil {
+		return empty, err
+	}
+	defer result.Close()
+	c.ExtraFiles = []*os.File{result}
+	log := &newOwnerCapture{}
+	c.Stdout = log
+	c.Stderr = log
+	if err := runNewOwner(ctx, c); err != nil {
+		return empty, fmt.Errorf("owner execution: %w: %s", err, log.b)
+	}
+	if log.overflow {
+		return empty, errors.New("owner execution output exceeds limit")
+	}
+	if _, err := result.Seek(0, 0); err != nil {
+		return empty, err
+	}
+	out, err := io.ReadAll(io.LimitReader(result, 65537))
+	if err != nil {
+		return empty, err
+	}
+	return decodeNewOwnerReply(out)
+}
+
+func beginNewOwnerFixture(t *testing.T, home, target string) (*newOwnerFixture, error) {
+	reply, err := invokeNewOwner(t, newOwnerRequest{Operation: "begin", Home: home, Target: target})
+	if err != nil {
+		return nil, err
+	}
+	record, err := inspect.Load(home, reply.ID)
+	if err != nil {
+		return nil, err
+	}
+	if reply.Target != target || reply.Phase != string(record.Journal().Phase) {
+		return nil, errors.New("owner geometry mismatch")
+	}
+	return &newOwnerFixture{t: t, home: home, id: reply.ID, journal: record.Journal()}, nil
+}
+
+func TestNewOwnerBridgeRefusesMalformedResponse(t *testing.T) {
+	for _, raw := range []string{"", `{}`, `{"id":"x","phase":"prepared","target":"/x","extra":true}`, strings.Repeat("x", 65537), `{"id":"x","phase":"prepared","target":"/x"}{}`} {
+		if _, err := decodeNewOwnerReply([]byte(raw)); err == nil {
+			t.Fatal("invalid owner response accepted")
+		}
+	}
+	home, target := t.TempDir(), t.TempDir()
+	for _, q := range []newOwnerRequest{{Operation: "unknown", Home: home, Target: target}, {Operation: "begin", Home: home}, {Operation: "abort", Home: home, ID: "invalid"}} {
+		if _, err := invokeNewOwner(t, q); err == nil {
+			t.Fatal("invalid owner request succeeded")
+		}
 	}
 }

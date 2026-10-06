@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/tplAIter/tplaiter/internal/blockmarkers"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
@@ -28,9 +29,11 @@ type FormatSelection struct {
 	provider, toolProvider *trustverify.VerifiedResolution
 	plan                   Plan
 	input                  []byte
+	context                []byte
 	actions                []trustverify.ActionMaterial
 }
 type PreparedFormat struct {
+	mu        sync.Mutex
 	selection *FormatSelection
 	operation trustverify.OperationInputs
 	requests  []trustverify.ExecutionRequest
@@ -66,6 +69,19 @@ func NewRuntimeAdapter(runtime *trustload.Runtime) (*RuntimeAdapter, error) {
 }
 
 func (a *RuntimeAdapter) Select(ctx context.Context, provider, toolProvider *trustverify.VerifiedResolution, plan Plan, input []byte) (*FormatSelection, error) {
+	return a.selectContext(ctx, provider, toolProvider, plan, input, nil)
+}
+
+// SelectManaged retains the ordinary Select route and binds managed lifecycle
+// context into a distinct, closed four-entry material projection.
+func (a *RuntimeAdapter) SelectManaged(ctx context.Context, provider, toolProvider *trustverify.VerifiedResolution, plan Plan, input, contextJSON []byte) (*FormatSelection, error) {
+	if _, err := operationtrust.ParseManagedFormatterContext(contextJSON); err != nil {
+		return nil, err
+	}
+	return a.selectContext(ctx, provider, toolProvider, plan, input, contextJSON)
+}
+
+func (a *RuntimeAdapter) selectContext(ctx context.Context, provider, toolProvider *trustverify.VerifiedResolution, plan Plan, input, contextJSON []byte) (*FormatSelection, error) {
 	if a == nil || a.runtime == nil || a.stable == nil || a.runtime.TrustRuntime() != a.stable || provider == nil || toolProvider == nil || ctx == nil || ctx.Err() != nil || plan.Language != "go" || plan.Adapter != "gofmt-stdin-v1" || plan.InputSHA256 != digest(input) || len(input) > maxOutputBytes || plan.Tool.ID != "gofmt" {
 		return nil, ErrRuntimeUnavailable
 	}
@@ -77,6 +93,10 @@ func (a *RuntimeAdapter) Select(ctx context.Context, provider, toolProvider *tru
 		return nil, ErrRuntimeUnavailable
 	}
 	ids := []string{"format-" + strings.TrimPrefix(plan.PlanSHA256, "sha256:") + "-1", "format-" + strings.TrimPrefix(plan.PlanSHA256, "sha256:") + "-2"}
+	if len(contextJSON) > 0 {
+		d := digest(append(append([]byte(nil), mustCanonical(plan)...), contextJSON...))
+		ids = []string{"format-" + strings.TrimPrefix(d, "sha256:") + "-1", "format-" + strings.TrimPrefix(d, "sha256:") + "-2"}
+	}
 	p := provider.Subject()
 	tp := toolProvider.Subject()
 	pm := trustverify.Provider{Origin: p.Origin, TemplatePath: p.TemplatePath, Commit: p.Commit, TreeSHA256: p.TreeSHA256, ContractSHA256: p.ContractSHA256}
@@ -96,6 +116,9 @@ func (a *RuntimeAdapter) Select(ctx context.Context, provider, toolProvider *tru
 	env := operationtrustEnvironment()
 	envHash, _ := trustverify.ComputeEnvironmentPolicySHA256(env)
 	content := []trustverify.ContentEntry{{Root: "project", Path: plan.Path, Mode: plan.InputMode, ContentSHA256: digestBytes(input)}, {Root: "project", Path: "formatter/plan.json", Mode: "100644", ContentSHA256: digestBytes(planJSON)}, {Root: "project", Path: "formatter/tool.json", Mode: "100644", ContentSHA256: digestBytes(record)}}
+	if len(contextJSON) > 0 {
+		content = append(content, trustverify.ContentEntry{Root: "project", Path: "formatter/context.json", Mode: "100644", ContentSHA256: digest(contextJSON)})
+	}
 	sort.Slice(content, func(i, j int) bool {
 		return content[i].Root+"\x00"+content[i].Path < content[j].Root+"\x00"+content[j].Path
 	})
@@ -107,7 +130,7 @@ func (a *RuntimeAdapter) Select(ctx context.Context, provider, toolProvider *tru
 	for i, id := range ids {
 		actions[i] = trustverify.ActionMaterial{Provider: pm, Action: trustverify.Action{ID: id, Kind: "formatter", Phase: "standalone", Shell: false, Argv: append([]string{"gofmt"}, plan.Options...), ContentClosureSHA256: closure}, Tool: plan.Tool, WorkingDirectoryScope: trustverify.WorkingDirectoryScope{Root: "project", Path: "."}, EnvironmentPolicySHA256: envHash, TimeoutMillis: plan.TimeoutMillis, Migration: trustverify.Migration{Kind: "none"}}
 	}
-	return &FormatSelection{adapter: a, provider: provider, toolProvider: toolProvider, plan: clonePlan(plan), input: append([]byte(nil), input...), actions: actions}, nil
+	return &FormatSelection{adapter: a, provider: provider, toolProvider: toolProvider, plan: clonePlan(plan), input: append([]byte(nil), input...), context: append([]byte(nil), contextJSON...), actions: actions}, nil
 }
 
 func (s *FormatSelection) Actions() []trustverify.ActionMaterial {
@@ -130,7 +153,7 @@ func (a *RuntimeAdapter) Bind(ctx context.Context, selection *FormatSelection, o
 		return nil, ErrRuntimeUnavailable
 	}
 	toolSubject := providerFromResolution(selection.toolProvider)
-	if (operation.Scope != "new" && operation.Scope != "update" && operation.Scope != "run") || !containsProvider(operation.Subjects, selection.actions[0].Provider) || !containsProvider(operation.Subjects, toolSubject) || !uniqueProviders(operation.Subjects) || !uniqueActionIDs(operation.Actions) {
+	if (operation.Scope != "new" && operation.Scope != "link" && operation.Scope != "update" && operation.Scope != "run") || !containsProvider(operation.Subjects, selection.actions[0].Provider) || !containsProvider(operation.Subjects, toolSubject) || !uniqueProviders(operation.Subjects) || !uniqueActionIDs(operation.Actions) {
 		return nil, ErrRuntimeUnavailable
 	}
 	requests := make([]trustverify.ExecutionRequest, 2)
@@ -151,7 +174,7 @@ func (a *RuntimeAdapter) Bind(ctx context.Context, selection *FormatSelection, o
 		if err != nil {
 			return nil, ErrRuntimeUnavailable
 		}
-		input := operationtrust.FormatterInput{Path: selection.plan.Path, Mode: selection.plan.InputMode, Bytes: selection.input, PlanJSON: mustCanonical(selection.plan)}
+		input := operationtrust.FormatterInput{Path: selection.plan.Path, Mode: selection.plan.InputMode, Bytes: selection.input, PlanJSON: mustCanonical(selection.plan), ContextJSON: selection.context}
 		fs, e := operationtrust.ResolveFormatterComposition(ctx, a.stable, selection.provider, selection.toolProvider, operation, action, input)
 		if e != nil {
 			return nil, e
@@ -172,7 +195,12 @@ func (p *PreparedFormat) Requests() []trustverify.ExecutionRequest {
 }
 
 func (a *RuntimeAdapter) Run(ctx context.Context, prepared *PreparedFormat, refs []trustverify.ApprovalRefs) (*PendingFormat, error) {
-	if a == nil || a.runtime == nil || a.runtime.TrustRuntime() != a.stable || prepared == nil || prepared.used || len(refs) != len(prepared.requests) || ctx == nil || ctx.Err() != nil {
+	if a == nil || a.runtime == nil || a.runtime.TrustRuntime() != a.stable || prepared == nil || len(refs) != len(prepared.requests) || ctx == nil || ctx.Err() != nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	prepared.mu.Lock()
+	defer prepared.mu.Unlock()
+	if prepared.used {
 		return nil, ErrRuntimeUnavailable
 	}
 	prepared.used = true

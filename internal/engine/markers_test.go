@@ -361,3 +361,55 @@ func TestRenderSingleBasicMarkersDeterministic(t *testing.T) {
 		t.Errorf("modes.txt baseline hash not stable: %q vs %q", res1.Baseline.Files["modes.txt"], res2.Baseline.Files["modes.txt"])
 	}
 }
+
+func TestProcessMarkersManagedGoConditionalProjection(t *testing.T) {
+	block := "// tplater:managed-begin id=body provider=root\nfunc f(){ }\n// tplater:managed-end id=body\n"
+	input := "package fixture\n" + block
+	output, err := processMarkers("main.go", []byte(input), markerValues())
+	if err != nil || string(output) != input {
+		t.Fatalf("literal managed bytes changed: %v", err)
+	}
+	for _, tc := range []struct{ condition, want string }{
+		{"database=postgres", input}, {"database=mysql", "package fixture\n"},
+	} {
+		conditioned := "package fixture\n// tplater:begin " + tc.condition + "\n" + block + "// tplater:end\n"
+		output, err := processMarkers("main.go", []byte(conditioned), markerValues())
+		if err != nil || string(output) != tc.want {
+			t.Fatalf("conditional managed projection: %v: %q", err, output)
+		}
+	}
+	// The existing ordinary conditional projection keeps its exact byte domain.
+	ordinary := "package fixture\nvar n = 1 // tplater:if database=postgres\n"
+	output, err = processMarkers("main.go", []byte(ordinary), markerValues())
+	if err != nil || string(output) != "package fixture\nvar n = 1\n" {
+		t.Fatalf("ordinary projection changed: %v: %q", err, output)
+	}
+}
+
+func TestProcessMarkersManagedGoRefusals(t *testing.T) {
+	valid := "package fixture\n// tplater:managed-begin id=body provider=root\nfunc f(){ }\n// tplater:managed-end id=body\n"
+	cases := map[string]string{
+		"syntax":           strings.Replace(valid, "func f(){ }", "func f(", 1),
+		"string":           "package fixture\nvar text = `// tplater:managed-begin id=body provider=root\nx\n// tplater:managed-end id=body`\n",
+		"unpaired":         strings.Replace(valid, "// tplater:managed-end id=body\n", "", 1),
+		"mismatched":       strings.Replace(valid, "managed-end id=body", "managed-end id=other", 1),
+		"duplicate":        valid + "// tplater:managed-begin id=body provider=root\nfunc g(){}\n// tplater:managed-end id=body\n",
+		"nested":           strings.Replace(valid, "func f(){ }", "// tplater:managed-begin id=inner provider=root\nfunc f(){}\n// tplater:managed-end id=inner", 1),
+		"malformed":        strings.Replace(valid, "provider=root", "provider=", 1),
+		"unknown-keyword":  strings.Replace(valid, "managed-begin", "managed-beginn", 1),
+		"unknown-trailing": strings.Replace(valid, "provider=root", "provider=root tplater:iff database=postgres", 1),
+		"unknown-body":     strings.Replace(valid, "func f(){ }", "var text = `tplater:iff database=postgres`", 1),
+	}
+	for name, input := range cases {
+		t.Run(name, func(t *testing.T) {
+			if output, err := processMarkers("main.go", []byte(input), markerValues()); err == nil || output != nil {
+				t.Fatal("invalid managed source accepted")
+			}
+		})
+	}
+	for _, path := range []string{"main.rs", "main.txt", "main.go.tmpl"} {
+		if _, err := processMarkers(path, []byte(valid), markerValues()); err == nil {
+			t.Fatal("non-Go managed output accepted")
+		}
+	}
+}

@@ -23,7 +23,7 @@ import (
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/naming"
-	"github.com/tplAIter/tplaiter/internal/newtransaction"
+	"github.com/tplAIter/tplaiter/internal/newtransaction/inspect"
 	inventory "github.com/tplAIter/tplaiter/internal/projecttransaction/inventory/catalog"
 	"github.com/tplAIter/tplaiter/internal/provenance"
 	"github.com/tplAIter/tplaiter/internal/stateledger/ledgerpath"
@@ -309,7 +309,7 @@ type Snapshot struct {
 	APIVersion string  `json:"apiVersion"`
 	Entries    []Entry `json:"entries"`
 	// Transactions is the global new-transaction inventory (home scope only).
-	Transactions []newtransaction.TransactionStatus `json:"-"`
+	Transactions []inspect.TransactionStatus `json:"-"`
 	// ProjectTransactionCandidates are namespace observations only; they do not
 	// authenticate a phase or replace the transaction guards.
 	ProjectTransactionCandidates []inventory.Candidate `json:"-"`
@@ -387,7 +387,7 @@ func InventoryContext(ctx context.Context, projectRoot string, opts Options) (*S
 		if err = inventoryRoot(ctx, s, "home", h, "", opts.SecretProvider); err != nil {
 			return nil, err
 		}
-		if s.Transactions, err = newtransaction.Inventory(h); err != nil {
+		if s.Transactions, err = inspect.Inventory(h); err != nil {
 			return nil, err
 		}
 	}
@@ -1052,16 +1052,16 @@ func validateJournalState(entries []Entry, home string) error {
 	if home == "" {
 		return nil
 	}
-	items, err := newtransaction.Inventory(home)
+	items, err := inspect.Inventory(home)
 	if err != nil {
 		return err
 	}
 	for _, item := range items {
 		switch item.Status {
-		case newtransaction.StatusComplete, newtransaction.StatusAborted, newtransaction.StatusOrphan:
-		case newtransaction.StatusFuture:
+		case inspect.StatusComplete, inspect.StatusAborted, inspect.StatusOrphan:
+		case inspect.StatusFuture:
 			return fmt.Errorf("%w: global journal tx-%s", ErrFutureVersion, item.ID)
-		case newtransaction.StatusActive:
+		case inspect.StatusActive:
 			return fmt.Errorf("%w: active global journal tx-%s", ErrUnsafe, item.ID)
 		default:
 			return fmt.Errorf("%w: %s global journal tx-%s", ErrUnsafe, item.Status, item.ID)

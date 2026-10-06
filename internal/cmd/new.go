@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 
 	"github.com/spf13/cobra"
 
@@ -41,6 +44,9 @@ func newNewCmd() *cobra.Command {
 		noEnvSetup     bool
 		yes            bool
 		port           int
+		prepare        bool
+		formatStage    bool
+		formatInput    string
 		dryRun         bool
 		sourceInput    string
 		projectContext string
@@ -74,16 +80,77 @@ func newNewCmd() *cobra.Command {
 				return err
 			}
 			interactive := term.IsTerminal(int(os.Stdin.Fd()))
-			opts := newcmd.Options{Ref: args[0], ProjectName: args[1], Dir: dir, Module: module, System: system, Domain: domain, Sets: sets, AnswersFile: answers, Defaults: defaults, NoHooks: noHooks, NoDepsCheck: noDepsCheck, EnvSetup: envSetupTriState(cmd, envSetup, noEnvSetup), Yes: yes, Port: port, Interactive: interactive, CLIVersion: resolveVersion(), DryRun: dryRun}
-			err = newcmd.Run(cmd.Context(), opts, newcmd.Deps{Runtime: runtime, SourceInput: raw, Home: home, Prompter: survey.HuhPrompter{In: cmd.InOrStdin(), Out: humanOut(cmd)}, Out: humanOut(cmd), Err: cmd.ErrOrStderr(), Palette: ui.Default()})
+			opts := newcmd.Options{Ref: args[0], ProjectName: args[1], Dir: dir, Module: module, System: system, Domain: domain, Sets: sets, AnswersFile: answers, Defaults: defaults, NoHooks: noHooks, NoDepsCheck: noDepsCheck, EnvSetup: envSetupTriState(cmd, envSetup, noEnvSetup), Yes: yes, Port: port, Interactive: interactive, CLIVersion: resolveVersion(), DryRun: dryRun, Prepare: prepare, FormatStage: formatStage}
+
+			var transport bytes.Buffer
+			deps := newcmd.Deps{Runtime: runtime, SourceInput: raw, Home: home, Prompter: survey.HuhPrompter{In: cmd.InOrStdin(), Out: humanOut(cmd)}, Out: humanOut(cmd), Err: cmd.ErrOrStderr(), Palette: ui.Default(), PreparedOut: &transport}
+			var controls FormatInput
+			var controlRaw []byte
+			if formatInput != "" {
+				controlRaw, err = readUntrustedDocument(cmd.Context(), formatInput)
+				if err != nil {
+					return err
+				}
+				controls, err = ParseFormatInput(controlRaw)
+				if err != nil {
+					return err
+				}
+				deps.ToolSourceInput, err = canonicaljson.Canonical(controls.ToolSource)
+				if err != nil {
+					return err
+				}
+			}
+			if err := validateFormatControls(prepare, formatStage, dryRun, controlRaw); err != nil {
+				return err
+			}
+			if !formatStage && len(controls.Approvals) != 0 {
+				return ErrFormatControls
+			}
+			if formatStage {
+				preview := opts
+				preview.Prepare = true
+				preview.FormatStage = false
+				if err := newcmd.Run(cmd.Context(), preview, deps); err != nil {
+					return err
+				}
+				var report newcmd.ManagedPreparation
+				if canonicaljson.DecodeStrict(transport.Bytes(), &report) != nil || report.APIVersion != "tplaiter.dev/managed-new-preparation/v1" {
+					return ErrFormatControls
+				}
+				deps.FormatApprovals, err = importExactFormatApprovals(cmd, controls, report.Requests)
+				if err != nil {
+					return err
+				}
+				transport.Reset()
+			}
+			err = newcmd.Run(cmd.Context(), opts, deps)
 			if err != nil {
 				return err
 			}
 			if jsonMode(cmd) {
 				var project *resultdto.Project
-				if !dryRun {
+				if !dryRun && !prepare && !formatStage {
 					p := runtime.ProjectContext()
 					project = &resultdto.Project{ID: p.ProjectID, Root: p.RootPath}
+				}
+				if prepare || formatStage {
+					env := newResult(resultdto.OperationProjectNew)
+					env.Project = project
+					if err := env.SetData(resultdto.ProjectNewData{DryRun: dryRun, Ref: args[0], Name: args[1]}); err != nil {
+						return err
+					}
+					var report newcmd.ManagedPreparation
+					if transport.Len() != 0 {
+						if canonicaljson.DecodeStrict(transport.Bytes(), &report) != nil {
+							return ErrFormatControls
+						}
+						phase := "prepared"
+						if formatStage {
+							phase = "formatter-staged"
+						}
+						env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-I-MANAGED-NEW-PHASE", Severity: "info", Message: phase, Details: map[string]any{"phase": phase, "requests": report.Requests, "references": report.References}})
+					}
+					return emitResult(cmd, env, resultdto.ExitSuccess, nil)
 				}
 				return emitData(cmd, resultdto.OperationProjectNew, project, resultdto.ProjectNewData{DryRun: dryRun, Ref: args[0], Name: args[1]})
 			}
@@ -108,9 +175,13 @@ func newNewCmd() *cobra.Command {
 	f.BoolVar(&noEnvSetup, "no-env-setup", false, "do not offer env setup after creation")
 	f.BoolVar(&yes, "yes", false, "auto-confirm (install tools and env setup)")
 	f.IntVar(&port, "port", 0, "project port (.Runtime.Port, defaults to 8080)")
+	f.BoolVar(&prepare, "prepare", false, "report actual managed formatter requests without execution or publication")
+	f.BoolVar(&formatStage, "format-stage", false, "execute admitted formatter passes without publishing the project")
+	f.StringVar(&formatInput, "format-input", "", "closed formatter tool-source and approval selection JSON")
 	f.BoolVar(&dryRun, "dry-run", false, "prepare result without changing files")
 	f.StringVar(&projectContext, "project-context", "", "key of an authenticated installed project context (default: registration key)")
 	f.StringVar(&sourceInput, "source-input", "", "JSON pinned source selection and publisher evidence locators")
+	c.AddCommand(newManagedRecoveryCmd("continue"), newManagedRecoveryCmd("abort"))
 	return withResult(c, resultdto.OperationProjectNew)
 }
 

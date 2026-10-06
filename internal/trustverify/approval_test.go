@@ -459,3 +459,106 @@ func TestExecutionRequestGrantGoldenFraming(t *testing.T) {
 		t.Fatal("signature wrapper was not committed")
 	}
 }
+
+func TestLinkScopeSignedCodecAndBinding(t *testing.T) {
+	p, req, key := approvalFixture(t)
+	p.Approvers[0].Scopes[0].OperationScope = "link"
+	req.Scope = "link"
+	var err error
+	p.PolicySHA256, err = p.ComputePolicySHA256()
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := OperationInputs{APIVersion: "tplaiter.dev/operation-inputs/v1", ProfileBindingSHA256: req.ProfileBindingSHA256, ProjectID: req.ProjectID, Scope: "link", PreimageSHA256: evidencecas.Digest([]byte("observed operator project")), AnswersSHA256: evidencecas.Digest([]byte("typed answers")), Subjects: []Provider{req.Provider}, Actions: []ActionMaterial{}}
+	req.OperationInputsSHA256, err = ComputeOperationInputsSHA256(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.RequestSHA256, err = req.ComputeRequestSHA256()
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval := ExecutionApproval{APIVersion: ExecutionApprovalAPIVersion, Kind: "persistent-signed", RequestSHA256: req.RequestSHA256, ProfileBindingSHA256: req.ProfileBindingSHA256, OperationInputsSHA256: req.OperationInputsSHA256, ProjectID: req.ProjectID, Scope: "link", ApproverID: p.Approvers[0].ID, IdentityClass: "operator", ExecutionPolicySHA256: p.PolicySHA256, Validity: Validity{"2030-01-01T00:00:00Z", "2031-01-01T00:00:00Z"}, KeyFingerprint: p.Approvers[0].KeyFingerprint}
+	sign := func(a ExecutionApproval) (approvalMemoryCAS, string) {
+		t.Helper()
+		a.GrantSHA256, err = a.ComputeGrantSHA256()
+		if err != nil {
+			t.Fatal(err)
+		}
+		message, err := digestBytes(a.GrantSHA256)
+		if err != nil {
+			t.Fatal(err)
+		}
+		signature := []byte(bootstrap.EncodeSignature(ed25519.Sign(key, message)))
+		a.SignatureCAS = evidencecas.Digest(signature)
+		raw, err := json.Marshal(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return approvalMemoryCAS{evidencecas.Digest(raw): raw, a.SignatureCAS: signature}, evidencecas.Digest(raw)
+	}
+	store, approvalCAS := sign(approval)
+	decodedApproval, err := DecodeExecutionApproval(store[approvalCAS])
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval = *decodedApproval
+	for _, item := range []struct {
+		name  string
+		value any
+	}{
+		{"execution-policy.v1.schema.json", p}, {"execution-request.v1.schema.json", req}, {"execution-approval.v1.schema.json", approval},
+	} {
+		raw, err := json.Marshal(item.value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := schemaChecksJSON(t, executionSchema(t, item.name), raw); err != nil {
+			t.Fatal(item.name, err)
+		}
+		switch item.name {
+		case "execution-policy.v1.schema.json":
+			_, err = DecodeExecutionPolicy(raw)
+		case "execution-request.v1.schema.json":
+			_, err = DecodeExecutionRequest(raw)
+		case "execution-approval.v1.schema.json":
+			_, err = DecodeExecutionApproval(raw)
+		}
+		if err != nil {
+			t.Fatal(item.name, err)
+		}
+		for _, bad := range []string{"Link", "link ", "*", "unknown-action-purpose"} {
+			badRaw := []byte(strings.Replace(string(raw), `"link"`, `"`+bad+`"`, 1))
+			if err := schemaChecksJSON(t, executionSchema(t, item.name), badRaw); err == nil {
+				t.Fatal(item.name, "unknown scope schema accepted", bad)
+			}
+			switch item.name {
+			case "execution-policy.v1.schema.json":
+				_, err = DecodeExecutionPolicy(badRaw)
+			case "execution-request.v1.schema.json":
+				_, err = DecodeExecutionRequest(badRaw)
+			case "execution-approval.v1.schema.json":
+				_, err = DecodeExecutionApproval(badRaw)
+			}
+			if err == nil {
+				t.Fatal(item.name, "unknown scope codec accepted", bad)
+			}
+		}
+	}
+	now := time.Date(2030, 1, 2, 0, 0, 0, 0, time.UTC)
+	if err := VerifyPersistentApproval(context.Background(), store, p, req, req.OperationInputsSHA256, req.ProfileBindingSHA256, now, approvalCAS); err != nil {
+		t.Fatal(err)
+	}
+	for _, other := range []string{"new", "run", "update"} {
+		bad := approval
+		bad.Scope = other
+		badStore, badCAS := sign(bad)
+		if err := VerifyPersistentApproval(context.Background(), badStore, p, req, req.OperationInputsSHA256, req.ProfileBindingSHA256, now, badCAS); err == nil {
+			t.Fatal("signed wrong-purpose approval accepted", other)
+		}
+	}
+	operation.Scope = "unknown-action-purpose"
+	if _, err := ComputeOperationInputsSHA256(operation); err == nil {
+		t.Fatal("unknown operation purpose accepted")
+	}
+}

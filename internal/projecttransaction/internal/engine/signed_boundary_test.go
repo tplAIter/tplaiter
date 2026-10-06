@@ -25,7 +25,6 @@ import (
 	"github.com/tplAIter/tplaiter/internal/evidencecas"
 	"github.com/tplAIter/tplaiter/internal/execx"
 	"github.com/tplAIter/tplaiter/internal/gen"
-	"github.com/tplAIter/tplaiter/internal/newcmd"
 	"github.com/tplAIter/tplaiter/internal/operationtrust"
 	"github.com/tplAIter/tplaiter/internal/ossinstall"
 	"github.com/tplAIter/tplaiter/internal/ownership"
@@ -314,11 +313,9 @@ func nativeSignedProject(t *testing.T) (*trustload.Runtime, string, string) {
 	if err := os.Mkdir(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	d := newcmd.Deps{Runtime: runtime, Home: home, SourceInput: sourceInput, Runner: noNativeResourceSpawn{t}, Out: &bytes.Buffer{}}
-	opts := newcmd.Options{Ref: publicGoCommit, ProjectName: "Local Go", Dir: target, Module: "example.test/neutral", Defaults: true, NoHooks: true, NoDepsCheck: true, CLIVersion: "v1.0.0"}
-	if err := newcmd.Run(ctx, opts, d); err != nil {
-		t.Fatal(err)
-	}
+	bridge := startFixtureBridge(t, fixtureBridgeRequest{Selection: registration.Selection(), ProjectKey: "go", Home: home, Project: target, Name: "Local Go", Module: "example.test/neutral", Ref: publicGoCommit, Renderer: "v1.0.0", Source: sourceInput})
+	bridge.call("create", nil)
+	bridge.Close()
 	launch, err := json.Marshal(registration.Selection())
 	if err != nil {
 		t.Fatal(err)

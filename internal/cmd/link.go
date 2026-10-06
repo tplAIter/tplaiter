@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/linkcmd"
 	linktx "github.com/tplAIter/tplaiter/internal/projecttransaction/link"
 	"github.com/tplAIter/tplaiter/internal/resultdto"
@@ -16,12 +17,14 @@ func init() {
 	registerCommand(func() *cobra.Command { return newLinkCmd("link") })
 	registerCommand(func() *cobra.Command { return newLinkCmd("adopt") })
 }
+
 func linkOperation(action string) resultdto.Operation {
 	if action == "adopt" {
 		return resultdto.OperationProjectAdopt
 	}
 	return resultdto.OperationProjectLink
 }
+
 func linkError(err error) error {
 	if errors.Is(err, linkcmd.ErrInput) {
 		return resultdto.NewError("TPL-E-LINK-INPUT", resultdto.ExitUsage, err)
@@ -34,11 +37,12 @@ func linkError(err error) error {
 	}
 	return err
 }
+
 func newLinkCmd(action string) *cobra.Command {
-	var key, dir, source, module string
+	var key, dir, source, module, formatInput string
 	var sets, choices []string
 	var port int
-	var dry bool
+	var dry, prepare, formatStage bool
 	op := linkOperation(action)
 	c := &cobra.Command{Use: action + " <commit> <project-name>", Short: "Attach signed native state to an existing project without writing user files", Args: cobra.ExactArgs(2), Annotations: prerunAnnotations(prerunTrustOwned)}
 	c.RunE = func(cmd *cobra.Command, args []string) error {
@@ -72,7 +76,71 @@ func newLinkCmd(action string) *cobra.Command {
 			}
 			selected[p] = choice
 		}
-		p, err := linkcmd.Prepare(cmd.Context(), r, home, linkcmd.Input{Action: action, Ref: args[0], Name: args[1], Module: module, Sets: sets, Port: port, Source: raw, Choices: selected}, resolveVersion())
+		input := linkcmd.Input{Action: action, Ref: args[0], Name: args[1], Module: module, Sets: sets, Port: port, Source: raw, Choices: selected}
+		var controls FormatInput
+		var controlRaw []byte
+		if formatInput != "" {
+			controlRaw, err = readUntrustedDocument(cmd.Context(), formatInput)
+			if err != nil {
+				return err
+			}
+			controls, err = ParseFormatInput(controlRaw)
+			if err != nil {
+				return err
+			}
+			tool, err := canonicaljson.Canonical(controls.ToolSource)
+			if err != nil {
+				return err
+			}
+			input.Managed = &linkcmd.ManagedInput{APIVersion: "tplaiter.dev/managed-link-input/v1", ToolSource: tool}
+		}
+		if err := validateFormatControls(prepare, formatStage, dry, controlRaw); err != nil {
+			return err
+		}
+		if !formatStage && len(controls.Approvals) != 0 {
+			return ErrFormatControls
+		}
+		if (prepare || formatStage) && input.Managed == nil {
+			return ErrFormatControls
+		}
+		if prepare || formatStage {
+			staged, e := linkcmd.PrepareManaged(cmd.Context(), r, home, input, resolveVersion())
+			if e != nil {
+				return linkError(e)
+			}
+			requests, e := staged.Requests(cmd.Context())
+			if e != nil {
+				return e
+			}
+			phase := "prepared"
+			if formatStage {
+				approvals, e := importExactFormatApprovals(cmd, controls, requests)
+				if e != nil {
+					return e
+				}
+				if e := staged.Stage(cmd.Context(), approvals); e != nil {
+					return e
+				}
+				requests, e = staged.Requests(cmd.Context())
+				if e != nil {
+					return e
+				}
+				phase = "formatter-staged"
+			}
+			env := newResult(op)
+			env.Project = trustProject(r.ProjectContext())
+			env.Status = resultdto.StatusOK
+			if e := env.SetData(linkData(action, dry, args[0], linkcmd.Report{Action: action, Conflicts: []linkcmd.Conflict{}, Paths: []string{}})); e != nil {
+				return e
+			}
+			env.Diagnostics = append(env.Diagnostics, resultdto.Diagnostic{Code: "TPL-I-MANAGED-LINK-PHASE", Severity: "info", Message: phase, Details: map[string]any{"phase": phase, "requests": requests, "references": staged.References()}})
+			if jsonMode(cmd) {
+				return emitResult(cmd, env, resultdto.ExitSuccess, nil)
+			}
+			_, e = fmt.Fprintln(cmd.OutOrStdout(), "managed link "+phase)
+			return e
+		}
+		p, err := linkcmd.Prepare(cmd.Context(), r, home, input, resolveVersion())
 		if err != nil {
 			return linkError(err)
 		}
@@ -122,11 +190,15 @@ func newLinkCmd(action string) *cobra.Command {
 	f.StringArrayVar(&choices, "ownership", nil, "explicit conflict choice path=track or path=user-owned")
 	f.IntVar(&port, "port", 0, "project port used in signed rendering")
 	f.BoolVar(&dry, "dry-run", false, "authenticate and prepare without publication")
+	f.BoolVar(&prepare, "prepare", false, "report exact Link formatter requests without execution or publication")
+	f.BoolVar(&formatStage, "format-stage", false, "execute only admitted Link formatter passes without publication")
+	f.StringVar(&formatInput, "format-input", "", "closed formatter tool-source and signed approval selection JSON")
 	for _, verb := range []string{"continue", "abort"} {
 		c.AddCommand(newLinkRecoveryCmd(action, verb))
 	}
 	return withResult(c, op)
 }
+
 func linkData(action string, dry bool, ref string, report linkcmd.Report) resultdto.ProjectLinkData {
 	data := resultdto.ProjectLinkData{Action: action, DryRun: dry, Ref: ref, TrackedConflicts: []resultdto.LinkOwnershipChoice{}}
 	for _, v := range report.Conflicts {
@@ -140,6 +212,7 @@ func linkData(action string, dry bool, ref string, report linkcmd.Report) result
 	}
 	return data
 }
+
 func newLinkRecoveryCmd(action, verb string) *cobra.Command {
 	var key, dir string
 	op := linkOperation(action)

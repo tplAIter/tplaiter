@@ -101,6 +101,52 @@
       }
     },
     "migrations": { "type": "array", "items": { "$ref": "#/$defs/migration" } },
+    "managedBlocks": {
+      "type": "object",
+      "required": [
+        "version",
+        "replacements"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "replacements": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "provider",
+              "oldID",
+              "newID"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\.go$"
+              },
+              "provider": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9._/-]{0,127}$"
+              },
+              "oldID": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"
+              },
+              "newID": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"
+              }
+            }
+          }
+        }
+      }
+    },
     "settings": {
       "type": "array",
       "items": { "$ref": "#/$defs/settingGroup" }

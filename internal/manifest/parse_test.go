@@ -159,3 +159,17 @@ func TestDeprecatedMergedBooleanCannotBecomeFalse(t *testing.T) {
 		}
 	}
 }
+
+func TestManagedReplacementDeclarationStrict(t *testing.T) {
+	prefix := "apiVersion: tplater.dev/v1alpha1\nkind: Template\nmetadata: {name: example, version: 1.0.0}\nengine: {type: go-template, root: template}\n"
+	valid := "managedBlocks:\n  version: 1\n  replacements:\n    - {path: x.go, provider: root, oldID: old, newID: next}\n"
+	tpl, err := ParseTemplate([]byte(prefix + valid))
+	if err != nil || tpl.ManagedBlocks == nil || tpl.Validate() != nil {
+		t.Fatalf("signed replacement: %v", err)
+	}
+	for _, bad := range []string{"managedBlocks: null\n", "managedBlocks: {version: '1', replacements: []}\n", "managedBlocks: {version: 1, replacements: null}\n", "managedBlocks: {version: 1, replacements: [{path: x.go, provider: root, oldID: old, newID: next, extra: x}]}\n"} {
+		if _, err := ParseTemplate([]byte(prefix + bad)); err == nil {
+			t.Fatal("invalid declaration parsed")
+		}
+	}
+}
