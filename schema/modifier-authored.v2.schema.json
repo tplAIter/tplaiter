@@ -1,0 +1,1667 @@
+{
+  "$id": "tplaiter.dev/modifier-authored/v2",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Closed inert authored source/declaration constraints. Parser and source projection additionally enforce strict semver, paths, declaration uniqueness, source equality, complete original equality and byte bounds; no CAS/provider/permit is authored. Bytes <=1MiB.",
+  "properties": {
+    "apiVersion": {
+      "const": "tplaiter.dev/modifier-authored/v2"
+    },
+    "bindings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "boolean",
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "maxItems": 256
+    },
+    "compatibility": {
+      "additionalProperties": false,
+      "properties": {
+        "layouts": {
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+          },
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true
+        },
+        "minimumCLI": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+        },
+        "portableAPI": {
+          "const": "tplaiter.dev/portable/v1"
+        },
+        "runtimes": {
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+          },
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "minimumCLI",
+        "portableAPI",
+        "runtimes",
+        "layouts"
+      ],
+      "type": "object"
+    },
+    "conflicts": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "maxItems": 256
+    },
+    "kind": {
+      "const": "Modifier"
+    },
+    "metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "type": "object"
+    },
+    "provides": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "ruleId"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "maxItems": 256
+    },
+    "renames": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedBaselineDigest": {
+            "type": "string"
+          },
+          "expectedSourceDigest": {
+            "type": "string"
+          },
+          "newBlockId": {
+            "type": "string"
+          },
+          "oldBlockId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "oldBlockId",
+          "newBlockId",
+          "expectedBaselineDigest",
+          "expectedSourceDigest"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "maxItems": 256
+    },
+    "replaces": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "providerRule": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "withRule": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "providerRule",
+          "withRule"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "maxItems": 256
+    },
+    "requires": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": "array",
+          "maxItems": 256
+        },
+        "exports": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "compatibleRange": {
+                "type": "string"
+              },
+              "contractDigest": {
+                "type": "string"
+              },
+              "selector": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "selector",
+              "contractDigest",
+              "compatibleRange"
+            ],
+            "type": "object"
+          },
+          "type": "array",
+          "maxItems": 256
+        }
+      },
+      "required": [
+        "exports",
+        "capabilities"
+      ],
+      "type": "object"
+    },
+    "ruleConstraints": {
+      "items": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "const": "add"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "kind": {
+                  "const": ""
+                },
+                "original": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "enum": [
+                    "replace",
+                    "remove"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "file",
+                    "generator",
+                    "export"
+                  ]
+                },
+                "original": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "file"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "original": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "Entry": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "contentSHA256": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "kind",
+                        "mode"
+                      ],
+                      "type": "object"
+                    },
+                    "Target": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "Entry",
+                    "Target"
+                  ],
+                  "type": "object"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "generator"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "original": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "Generator": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "Anchors": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "Anchor": {
+                                "type": "string"
+                              },
+                              "File": {
+                                "type": "string"
+                              },
+                              "Insert": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "File",
+                              "Anchor",
+                              "Insert"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "array",
+                            "null"
+                          ]
+                        },
+                        "Description": {
+                          "type": "string"
+                        },
+                        "Kind": {
+                          "type": "string"
+                        },
+                        "Params": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "Default": {},
+                              "Description": {
+                                "type": "string"
+                              },
+                              "Name": {
+                                "type": "string"
+                              },
+                              "Pattern": {
+                                "type": "string"
+                              },
+                              "Required": {
+                                "type": "boolean"
+                              },
+                              "Type": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "Name",
+                              "Type",
+                              "Required",
+                              "Default",
+                              "Pattern",
+                              "Description"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "array",
+                            "null"
+                          ]
+                        },
+                        "Snippet": {
+                          "type": "string"
+                        },
+                        "Target": {
+                          "type": "string"
+                        },
+                        "Targets": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "Numbered": {
+                                "type": "string"
+                              },
+                              "Snippet": {
+                                "type": "string"
+                              },
+                              "Target": {
+                                "type": "string"
+                              },
+                              "When": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": [
+                                  "array",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "Snippet",
+                              "Target",
+                              "When",
+                              "Numbered"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "array",
+                            "null"
+                          ]
+                        },
+                        "When": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": [
+                            "array",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "Kind",
+                        "Description",
+                        "Snippet",
+                        "Target",
+                        "Params",
+                        "Targets",
+                        "Anchors",
+                        "When"
+                      ],
+                      "type": "object"
+                    },
+                    "Resources": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "contentSHA256": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "kind",
+                          "mode"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "Generator",
+                    "Resources"
+                  ],
+                  "type": "object"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "export"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "original": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "Blocks": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "apiVersion": {
+                            "type": "string"
+                          },
+                          "compatibility": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "markerSchema": {
+                                "type": "string"
+                              },
+                              "tplater": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "tplater",
+                              "markerSchema"
+                            ],
+                            "type": "object"
+                          },
+                          "formatter": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "adapter": {
+                                "type": "string"
+                              },
+                              "optionsDigest": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "adapter",
+                              "optionsDigest"
+                            ],
+                            "type": "object"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "mergeStrategy": {
+                            "type": "string"
+                          },
+                          "metadata": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "version": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "version"
+                            ],
+                            "type": "object"
+                          },
+                          "targets": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "blocks": {
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "anchor": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "after": {
+                                            "type": "string"
+                                          },
+                                          "before": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "body": {
+                                        "type": "string"
+                                      },
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "layout": {
+                                        "type": "string"
+                                      },
+                                      "order": {
+                                        "type": "integer"
+                                      },
+                                      "provider": {
+                                        "type": "string"
+                                      },
+                                      "replaces": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": [
+                                          "array",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "provider",
+                                      "layout",
+                                      "body",
+                                      "order"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": [
+                                    "array",
+                                    "null"
+                                  ]
+                                },
+                                "path": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "path",
+                                "blocks"
+                              ],
+                              "type": "object"
+                            },
+                            "type": [
+                              "array",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "apiVersion",
+                          "kind",
+                          "metadata",
+                          "compatibility",
+                          "mergeStrategy",
+                          "formatter",
+                          "targets"
+                        ],
+                        "type": "object"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "Entry": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "contentDigest": {
+                          "type": "string"
+                        },
+                        "domain": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "type": [
+                                  "string",
+                                  "boolean",
+                                  "number",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "array",
+                            "null"
+                          ]
+                        },
+                        "requires": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "compatibleRange": {
+                                "type": "string"
+                              },
+                              "contractDigest": {
+                                "type": "string"
+                              },
+                              "selector": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "selector",
+                              "contractDigest",
+                              "compatibleRange"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "array",
+                            "null"
+                          ]
+                        },
+                        "toolDigest": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "domain",
+                        "name",
+                        "version",
+                        "contentDigest",
+                        "parameters",
+                        "toolDigest",
+                        "requires"
+                      ],
+                      "type": "object"
+                    },
+                    "Path": {
+                      "type": "string"
+                    },
+                    "Payload": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "apiVersion": {
+                          "type": "string"
+                        },
+                        "blocks": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "contentSHA256": {
+                                "type": "string"
+                              },
+                              "sourcePath": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "sourcePath",
+                              "contentSHA256"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "array",
+                            "null"
+                          ]
+                        },
+                        "exportID": {
+                          "type": "string"
+                        },
+                        "files": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "contentSHA256": {
+                                "type": "string"
+                              },
+                              "mode": {
+                                "type": "string"
+                              },
+                              "sourcePath": {
+                                "type": "string"
+                              },
+                              "targetPath": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "sourcePath",
+                              "targetPath",
+                              "mode",
+                              "contentSHA256"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "array",
+                            "null"
+                          ]
+                        },
+                        "slots": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "pointer": {
+                                "type": "string"
+                              },
+                              "targetPath": {
+                                "type": "string"
+                              },
+                              "value": {}
+                            },
+                            "required": [
+                              "targetPath",
+                              "pointer",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "array",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "apiVersion",
+                        "exportID",
+                        "files",
+                        "slots",
+                        "blocks"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "Entry",
+                    "Path",
+                    "Payload",
+                    "Blocks"
+                  ],
+                  "type": "object"
+                }
+              }
+            }
+          }
+        ],
+        "properties": {
+          "after": {
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+            },
+            "type": "array",
+            "maxItems": 256
+          },
+          "before": {
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+            },
+            "type": "array",
+            "maxItems": 256
+          },
+          "export": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
+          },
+          "kind": {
+            "enum": [
+              "",
+              "file",
+              "generator",
+              "export"
+            ]
+          },
+          "op": {
+            "enum": [
+              "add",
+              "replace",
+              "remove"
+            ]
+          },
+          "original": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "Entry": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "contentSHA256": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "mode": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "kind",
+                      "mode"
+                    ],
+                    "type": "object"
+                  },
+                  "Target": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "Entry",
+                  "Target"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "Generator": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "Anchors": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "Anchor": {
+                              "type": "string"
+                            },
+                            "File": {
+                              "type": "string"
+                            },
+                            "Insert": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "File",
+                            "Anchor",
+                            "Insert"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "Description": {
+                        "type": "string"
+                      },
+                      "Kind": {
+                        "type": "string"
+                      },
+                      "Params": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "Default": {},
+                            "Description": {
+                              "type": "string"
+                            },
+                            "Name": {
+                              "type": "string"
+                            },
+                            "Pattern": {
+                              "type": "string"
+                            },
+                            "Required": {
+                              "type": "boolean"
+                            },
+                            "Type": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "Name",
+                            "Type",
+                            "Required",
+                            "Default",
+                            "Pattern",
+                            "Description"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "Snippet": {
+                        "type": "string"
+                      },
+                      "Target": {
+                        "type": "string"
+                      },
+                      "Targets": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "Numbered": {
+                              "type": "string"
+                            },
+                            "Snippet": {
+                              "type": "string"
+                            },
+                            "Target": {
+                              "type": "string"
+                            },
+                            "When": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": [
+                                "array",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "Snippet",
+                            "Target",
+                            "When",
+                            "Numbered"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "When": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "Kind",
+                      "Description",
+                      "Snippet",
+                      "Target",
+                      "Params",
+                      "Targets",
+                      "Anchors",
+                      "When"
+                    ],
+                    "type": "object"
+                  },
+                  "Resources": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "contentSHA256": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "kind",
+                        "mode"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "Generator",
+                  "Resources"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "Blocks": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "apiVersion": {
+                          "type": "string"
+                        },
+                        "compatibility": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "markerSchema": {
+                              "type": "string"
+                            },
+                            "tplater": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "tplater",
+                            "markerSchema"
+                          ],
+                          "type": "object"
+                        },
+                        "formatter": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "adapter": {
+                              "type": "string"
+                            },
+                            "optionsDigest": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "adapter",
+                            "optionsDigest"
+                          ],
+                          "type": "object"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "mergeStrategy": {
+                          "type": "string"
+                        },
+                        "metadata": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "version": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "version"
+                          ],
+                          "type": "object"
+                        },
+                        "targets": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "blocks": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "anchor": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "after": {
+                                          "type": "string"
+                                        },
+                                        "before": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [],
+                                      "type": "object"
+                                    },
+                                    "body": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "layout": {
+                                      "type": "string"
+                                    },
+                                    "order": {
+                                      "type": "integer"
+                                    },
+                                    "provider": {
+                                      "type": "string"
+                                    },
+                                    "replaces": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": [
+                                        "array",
+                                        "null"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "provider",
+                                    "layout",
+                                    "body",
+                                    "order"
+                                  ],
+                                  "type": "object"
+                                },
+                                "type": [
+                                  "array",
+                                  "null"
+                                ]
+                              },
+                              "path": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "path",
+                              "blocks"
+                            ],
+                            "type": "object"
+                          },
+                          "type": [
+                            "array",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "apiVersion",
+                        "kind",
+                        "metadata",
+                        "compatibility",
+                        "mergeStrategy",
+                        "formatter",
+                        "targets"
+                      ],
+                      "type": "object"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "Entry": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "contentDigest": {
+                        "type": "string"
+                      },
+                      "domain": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "parameters": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": [
+                                "string",
+                                "boolean",
+                                "number",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "requires": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "compatibleRange": {
+                              "type": "string"
+                            },
+                            "contractDigest": {
+                              "type": "string"
+                            },
+                            "selector": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "selector",
+                            "contractDigest",
+                            "compatibleRange"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "toolDigest": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "domain",
+                      "name",
+                      "version",
+                      "contentDigest",
+                      "parameters",
+                      "toolDigest",
+                      "requires"
+                    ],
+                    "type": "object"
+                  },
+                  "Path": {
+                    "type": "string"
+                  },
+                  "Payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "apiVersion": {
+                        "type": "string"
+                      },
+                      "blocks": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "contentSHA256": {
+                              "type": "string"
+                            },
+                            "sourcePath": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "sourcePath",
+                            "contentSHA256"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "exportID": {
+                        "type": "string"
+                      },
+                      "files": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "contentSHA256": {
+                              "type": "string"
+                            },
+                            "mode": {
+                              "type": "string"
+                            },
+                            "sourcePath": {
+                              "type": "string"
+                            },
+                            "targetPath": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "sourcePath",
+                            "targetPath",
+                            "mode",
+                            "contentSHA256"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "slots": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "pointer": {
+                              "type": "string"
+                            },
+                            "targetPath": {
+                              "type": "string"
+                            },
+                            "value": {}
+                          },
+                          "required": [
+                            "targetPath",
+                            "pointer",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "apiVersion",
+                      "exportID",
+                      "files",
+                      "slots",
+                      "blocks"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "Entry",
+                  "Path",
+                  "Payload",
+                  "Blocks"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+          }
+        },
+        "required": [
+          "id",
+          "op",
+          "before",
+          "after",
+          "source",
+          "kind",
+          "original",
+          "export"
+        ],
+        "type": "object"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "type": "array"
+    },
+    "selfSource": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+    },
+    "sourceConstraints": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+          },
+          "commitAlgorithm": {
+            "enum": [
+              "sha1",
+              "sha256"
+            ]
+          },
+          "contentDigest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "contractDigest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "dependencies": {
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+            },
+            "type": "array",
+            "maxItems": 16
+          },
+          "origin": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "parameters": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+                },
+                "value": {
+                  "type": [
+                    "string",
+                    "boolean",
+                    "number"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 256
+          },
+          "templatePath": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "treeDigest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "alias",
+          "origin",
+          "templatePath",
+          "commitAlgorithm",
+          "commit",
+          "treeDigest",
+          "contentDigest",
+          "contractDigest",
+          "parameters",
+          "dependencies"
+        ],
+        "type": "object"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "type": "array"
+    },
+    "toolConstraints": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "compatibleRange": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "optionsDigest": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "compatibleRange",
+          "optionsDigest"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "maxItems": 256
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "compatibility",
+    "sourceConstraints",
+    "selfSource",
+    "requires",
+    "provides",
+    "conflicts",
+    "replaces",
+    "bindings",
+    "toolConstraints",
+    "renames",
+    "ruleConstraints"
+  ],
+  "type": "object"
+}
