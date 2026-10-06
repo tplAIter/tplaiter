@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/fs"
 	"maps"
+	"path"
 	"reflect"
 	"regexp"
 	"slices"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/tplAIter/tplaiter/internal/blockmarkers"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
 	"github.com/tplAIter/tplaiter/internal/canonicaljson"
 	"github.com/tplAIter/tplaiter/internal/deps"
@@ -45,9 +47,37 @@ type PreparedNativeNew struct {
 	manifest                 []byte
 	rootAlias                string
 	operation, contextDigest string
+	operationBase            trustverify.OperationInputs
+	managedFiles             []NativeManagedFile
 }
 
+// NativeManagedFile describes exact unformatted root-authored Go content.
+// Marker provider labels identify content, never dependency authority.
+type NativeManagedFile struct {
+	Path        string
+	Mode        string
+	InputSHA256 string
+	Markers     []blockmarkers.Marker
+}
+
+type nativeNewMode uint8
+
+const (
+	nativeActionFree nativeNewMode = iota
+	nativeManaged
+)
+
 func PrepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *PreparedContextSources, in NativeNewInput) (*PreparedNativeNew, error) {
+	return prepareNativeNew(ctx, r, sources, in, nativeActionFree)
+}
+
+// PrepareManagedNativeNew calculates authenticated root render intent. It grants
+// neither formatter execution nor project publication; those remain owner routes.
+func PrepareManagedNativeNew(ctx context.Context, r *trustload.Runtime, sources *PreparedContextSources, in NativeNewInput) (*PreparedNativeNew, error) {
+	return prepareNativeNew(ctx, r, sources, in, nativeManaged)
+}
+
+func prepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *PreparedContextSources, in NativeNewInput, mode nativeNewMode) (*PreparedNativeNew, error) {
 	if ctx == nil || r == nil || sources == nil || !nativeNewRenderer.MatchString(in.RendererVersion) {
 		return nil, errContextSources
 	}
@@ -102,8 +132,15 @@ func PrepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *Prepar
 		return nil, err
 	}
 	for name, data := range result.Files {
-		if !fs.ValidPath(name) || name == "." || name == ".tplaiter" || strings.HasPrefix(name, ".tplaiter/") || name == ".tplater" || strings.HasPrefix(name, ".tplater/") || strings.Contains(string(data), "tplater:managed-") {
+		if !fs.ValidPath(name) || name == "." || name == ".tplaiter" || strings.HasPrefix(name, ".tplaiter/") || name == ".tplater" || strings.HasPrefix(name, ".tplater/") || (mode == nativeActionFree && strings.Contains(string(data), "tplater:managed-")) {
 			return nil, errContextSources
+		}
+	}
+	var managedFiles []NativeManagedFile
+	if mode == nativeManaged {
+		managedFiles, err = nativeManagedInventory(ctx, result.Files)
+		if err != nil {
+			return nil, err
 		}
 	}
 	binding := stable.Binding()
@@ -130,6 +167,20 @@ func PrepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *Prepar
 			dependencies.Dependencies = append(dependencies.Dependencies, provenance.DependencySubject(provenance.RootSubjectFromTrust(s, bootstrap.PublisherEvidence{StatementCAS: e.StatementCAS, SignatureCAS: e.SignatureCAS, KeyFingerprint: e.KeyFingerprint}, e.CheckpointCAS, e.InclusionProofCAS)))
 		}
 	}
+	if mode == nativeManaged {
+		unique := map[string]trustverify.Provider{}
+		for _, provider := range providers {
+			key := nativeProviderOrder(provider)
+			if old, ok := unique[key]; ok && old != provider {
+				return nil, errContextSources
+			}
+			unique[key] = provider
+		}
+		providers = providers[:0]
+		for _, provider := range unique {
+			providers = append(providers, provider)
+		}
+	}
 	sort.Slice(providers, func(i, j int) bool { return nativeProviderOrder(providers[i]) < nativeProviderOrder(providers[j]) })
 	sort.Slice(dependencies.Dependencies, func(i, j int) bool {
 		a, b := dependencies.Dependencies[i], dependencies.Dependencies[j]
@@ -147,7 +198,8 @@ func PrepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *Prepar
 	if err != nil {
 		return nil, err
 	}
-	operation, err := trustverify.ComputeOperationInputsSHA256(trustverify.OperationInputs{APIVersion: "tplaiter.dev/operation-inputs/v1", ProfileBindingSHA256: profileDigest, ProjectID: project.ProjectID, Scope: "new", PreimageSHA256: evidencecas.Digest(nil), AnswersSHA256: evidencecas.Digest(values), Subjects: providers, Actions: []trustverify.ActionMaterial{}})
+	operationBase := trustverify.OperationInputs{APIVersion: "tplaiter.dev/operation-inputs/v1", ProfileBindingSHA256: profileDigest, ProjectID: project.ProjectID, Scope: "new", PreimageSHA256: evidencecas.Digest(nil), AnswersSHA256: evidencecas.Digest(values), Subjects: providers, Actions: []trustverify.ActionMaterial{}}
+	operation, err := trustverify.ComputeOperationInputsSHA256(operationBase)
 	if err != nil {
 		return nil, err
 	}
@@ -175,10 +227,190 @@ func PrepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *Prepar
 	if err != nil {
 		return nil, err
 	}
+	if mode == nativeManaged {
+		contextDigest, err = bootstrap.DomainDigest("tplaiter.dev/native-managed-new-context/v2", struct {
+			Root         provenance.RootTemplateLock
+			Dependencies provenance.TemplateLock
+			Render       renderref.Input
+			Values       settings.Values
+			Graph        deps.SourceGraph
+			Catalogs     []exports.Catalog
+			Images       []nativeNewImage
+			Managed      []NativeManagedFile
+		}{root, dependencies, in.Render, result.Resolved.Values, graph, catalogWires, nativeNewImages(result.Files), managedFiles})
+		if err != nil {
+			return nil, err
+		}
+	}
 	if err = sources.RecheckFor(ctx, r); err != nil {
 		return nil, err
 	}
-	return &PreparedNativeNew{owner: r, sources: sources, root: root, dependencies: dependencies, rendered: result, manifest: append([]byte(nil), raw...), rootAlias: pin.Alias, operation: operation, contextDigest: contextDigest}, nil
+	return &PreparedNativeNew{owner: r, sources: sources, root: root, dependencies: dependencies, rendered: result, manifest: append([]byte(nil), raw...), rootAlias: pin.Alias, operation: operation, contextDigest: contextDigest, operationBase: operationBase, managedFiles: managedFiles}, nil
+}
+
+type nativeNewImage struct {
+	Path, Mode, ContentSHA256 string
+}
+
+func nativeNewImages(files map[string][]byte) []nativeNewImage {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	images := make([]nativeNewImage, 0, len(names))
+	for _, name := range names {
+		images = append(images, nativeNewImage{name, "100644", evidencecas.Digest(files[name])})
+	}
+	return images
+}
+func nativeManagedInventory(ctx context.Context, files map[string][]byte) ([]NativeManagedFile, error) {
+	folded := map[string]bool{}
+	for name := range files {
+		if !fs.ValidPath(name) || name == "." || strings.Contains(name, "\\") {
+			return nil, errContextSources
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		key := strings.ToLower(name)
+		if folded[key] {
+			return nil, errContextSources
+		}
+		folded[key] = true
+		if key == ".tplaiter" || strings.HasPrefix(key, ".tplaiter/") || key == ".tplater" || strings.HasPrefix(key, ".tplater/") {
+			return nil, errContextSources
+		}
+	}
+	for key := range folded {
+		for parent := path.Dir(key); parent != "."; parent = path.Dir(parent) {
+			if folded[parent] {
+				return nil, errContextSources
+			}
+		}
+	}
+	out := []NativeManagedFile{}
+	mentions := 0
+	for _, image := range nativeNewImages(files) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		data := files[image.Path]
+		if !strings.Contains(string(data), "tplater:managed-") {
+			continue
+		}
+		mentions += strings.Count(string(data), "tplater:managed-")
+		if !strings.HasSuffix(image.Path, ".go") || mentions > 8192 || len(out) >= 4096 {
+			return nil, errContextSources
+		}
+		markers, err := blockmarkers.Validate(blockmarkers.LanguageGo, image.Path, data)
+		if err != nil {
+			return nil, err
+		}
+		if len(markers) == 0 {
+			return nil, errContextSources
+		}
+		out = append(out, NativeManagedFile{image.Path, "100644", image.ContentSHA256, markers})
+	}
+	if len(out) == 0 {
+		return nil, errContextSources
+	}
+	return out, nil
+}
+
+// OperationBase is calculation data with no actions. The formatter owner must
+// bind its actual selected actions and tool subject to a separate operation.
+func (p *PreparedNativeNew) OperationBase(ctx context.Context, r *trustload.Runtime) (trustverify.OperationInputs, error) {
+	if p == nil {
+		return trustverify.OperationInputs{}, errContextSources
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.check(ctx, r); err != nil {
+		return trustverify.OperationInputs{}, err
+	}
+	out := p.operationBase
+	out.Subjects = append([]trustverify.Provider{}, out.Subjects...)
+	out.Actions = []trustverify.ActionMaterial{}
+	if err := p.check(ctx, r); err != nil {
+		return trustverify.OperationInputs{}, err
+	}
+	return out, nil
+}
+func (p *PreparedNativeNew) ManagedFiles(ctx context.Context, r *trustload.Runtime) ([]NativeManagedFile, error) {
+	if p == nil {
+		return nil, errContextSources
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.check(ctx, r); err != nil {
+		return nil, err
+	}
+	if len(p.managedFiles) == 0 {
+		return nil, errContextSources
+	}
+	out := append([]NativeManagedFile{}, p.managedFiles...)
+	for i := range out {
+		out[i].Markers = append([]blockmarkers.Marker{}, out[i].Markers...)
+	}
+	if err := p.check(ctx, r); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+func (p *PreparedNativeNew) SourcePins(ctx context.Context, r *trustload.Runtime) ([]deps.PinnedSource, error) {
+	if p == nil {
+		return nil, errContextSources
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.check(ctx, r); err != nil {
+		return nil, err
+	}
+	out, err := p.sources.Pins(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.check(ctx, r); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+func (p *PreparedNativeNew) SourceGraph(ctx context.Context, r *trustload.Runtime) (deps.SourceGraph, error) {
+	if p == nil {
+		return deps.SourceGraph{}, errContextSources
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.check(ctx, r); err != nil {
+		return deps.SourceGraph{}, err
+	}
+	out, err := p.sources.SourceGraph(ctx)
+	if err != nil {
+		return deps.SourceGraph{}, err
+	}
+	if err := p.check(ctx, r); err != nil {
+		return deps.SourceGraph{}, err
+	}
+	return out, nil
+}
+func (p *PreparedNativeNew) Catalogs(ctx context.Context, r *trustload.Runtime) ([]exports.SourceCatalog, error) {
+	if p == nil {
+		return nil, errContextSources
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.check(ctx, r); err != nil {
+		return nil, err
+	}
+	out, err := p.sources.Catalogs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.check(ctx, r); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func nativeProviderOrder(p trustverify.Provider) string {
@@ -298,6 +530,8 @@ func (p *PreparedNativeNew) Close() {
 	p.dependencies.Dependencies = nil
 	p.operation = ""
 	p.contextDigest = ""
+	p.operationBase = trustverify.OperationInputs{}
+	p.managedFiles = nil
 }
 
 // Validate the existing typed settings carrier using its declared groups and
