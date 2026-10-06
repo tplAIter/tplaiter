@@ -192,8 +192,8 @@ func TestRunActionCompiledMetadataGolden(t *testing.T) {
 	if err := json.Unmarshal(raw, &golden); err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 36 || len(golden) != 36 {
-		t.Fatalf("expected original35 + batch descriptors, got %d/%d", len(tools), len(golden))
+	if len(tools) != 37 || len(golden) != 37 {
+		t.Fatalf("expected original36 + semantic descriptor, got %d/%d", len(tools), len(golden))
 	}
 	seen := make(map[string]bool)
 	for _, want := range golden {

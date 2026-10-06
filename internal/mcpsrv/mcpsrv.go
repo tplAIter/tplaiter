@@ -11,6 +11,7 @@
 package mcpsrv
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"log"
@@ -113,6 +114,7 @@ func (s *Server) ServeStdio() error {
 	defer closeOutput()
 	rootWriter := &rootResponseWriter{frames: s.rootFrames, server: s, out: output}
 	graph := newGraphTransport(ctx, s, &rootCancellationReader{in: os.Stdin, frames: s.rootFrames}, rootWriter, output)
+	graph.input = bufio.NewReader(&semanticInput{input: graph.input, graph: graph})
 	graph.stopStdio = cancel
 	s.mu.Lock()
 	s.graph = graph

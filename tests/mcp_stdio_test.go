@@ -559,6 +559,34 @@ func TestMCPStdioContract(t *testing.T) {
 		}
 		called["project_link"] = true
 	})
+	t.Run("semantic preview installed configured operator", func(t *testing.T) {
+		receipts := t.TempDir()
+		child := exec.Command("go", "test", "./internal/cmd", "-run", "^TestSemanticInstalledConfiguredOperatorCLIAndMCP$", "-count=1", "-args", "-semantic-installed-process", "-graph-process-receipts", receipts)
+		child.Dir = ".."
+		if raw, e := child.CombinedOutput(); e != nil {
+			t.Fatalf("actual installed semantic consumer: %v %s", e, raw)
+		}
+		for _, intent := range []string{"body", "add", "remove", "comment"} {
+			raw, e := os.ReadFile(filepath.Join(receipts, "semantic-mcp-"+intent+".json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			var frame struct {
+				Error  json.RawMessage `json:"error"`
+				Result struct {
+					IsError           bool `json:"isError"`
+					StructuredContent struct {
+						Operation string `json:"operation"`
+						Status    string `json:"status"`
+					} `json:"structuredContent"`
+				} `json:"result"`
+			}
+			if json.Unmarshal(raw, &frame) != nil || len(raw) > 32768 || len(frame.Error) > 0 || frame.Result.IsError || frame.Result.StructuredContent.Operation != "semantic.preview" || frame.Result.StructuredContent.Status != "ok" {
+				t.Fatalf("incomplete actual semantic intent %s: %s", intent, raw)
+			}
+		}
+		called["semantic_preview"] = true
+	})
 	// The graph domain has its own real installed fixture: successful calls
 	// use normal enrollment/New instead of fabricating the old fixture's locks.
 	t.Run("graph installed configured operator", func(t *testing.T) {

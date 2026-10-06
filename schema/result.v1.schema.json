@@ -638,6 +638,25 @@
       "if": {
         "properties": {
           "operation": {
+            "const": "semantic.preview"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "SemanticPreview"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
             "const": "settings.reanswer"
           }
         },
@@ -971,6 +990,7 @@
               "project.run_batch",
               "project.stats",
               "project.verify",
+              "semantic.preview",
               "settings.reanswer",
               "settings.set",
               "settings.show",
@@ -1142,6 +1162,7 @@
         "RepoRemove",
         "RepoUpdate",
         "RunBatch",
+        "SemanticPreview",
         "SettingsReanswer",
         "SettingsSet",
         "SettingsShow",
@@ -1210,6 +1231,7 @@
         "repo.list",
         "repo.remove",
         "repo.update",
+        "semantic.preview",
         "settings.reanswer",
         "settings.set",
         "settings.show",

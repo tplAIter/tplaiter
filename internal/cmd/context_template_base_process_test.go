@@ -825,7 +825,7 @@ func TestTemplateBaseRootV2Other29Descriptors(t *testing.T) {
 	tools := s.MCP().ListTools()
 	other := map[string]json.RawMessage{}
 	// Preserve the original30 inventory; additions are separately accepted domain tools.
-	for _, name := range []string{"graph_source", "dependency_graph", "graph_exports", "graph_ast", "graph_stats"} {
+	for _, name := range []string{"graph_source", "dependency_graph", "graph_exports", "graph_ast", "graph_stats", "run_batch", "semantic_preview"} {
 		if tools[name] == nil {
 			t.Fatal("missing registered graph domain")
 		}

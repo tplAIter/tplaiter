@@ -25,6 +25,7 @@ repo_remove
 repo_update
 run
 run_batch
+semantic_preview
 settings_edit
 settings_list
 settings_set
