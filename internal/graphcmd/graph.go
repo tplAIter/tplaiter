@@ -410,8 +410,11 @@ func (o *Observation) frame(ctx context.Context, version string, l *resultwire.G
 	}
 	return frame, nil
 }
-func makeFrame(data resultdto.GraphData, q Query, id, root, version string) ([]byte, error) {
-	return makeFrameLayout(data, q, id, root, version, nil)
+
+// makeFrame is the fixed-project test wrapper. The ignored position preserves
+// existing test call sites; production makeFrameLayout retains dynamic IDs.
+func makeFrame(data resultdto.GraphData, q Query, _ string, root, version string) ([]byte, error) {
+	return makeFrameLayout(data, q, "project", root, version, nil)
 }
 func makeFrameLayout(data resultdto.GraphData, q Query, id, root, version string, l *resultwire.GraphFrameLayout) ([]byte, error) {
 	if l != nil && (l.Validate() != nil || l.Ceiling != q.MaxBytes) {

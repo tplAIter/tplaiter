@@ -7,6 +7,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/tplAIter/tplaiter/internal/bootstrap"
@@ -31,6 +32,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -118,7 +120,7 @@ func graphSyntheticSource(t *testing.T, repo string, variant string) string {
 		for _, n := range ordered {
 			p := prefix + n
 			mode := "100644"
-			id := ""
+			var id string
 			if b, ok := files[p]; ok {
 				id = add("blob", b)
 			} else {
@@ -353,7 +355,7 @@ func TestGraphInstalledConfiguredOperatorCLIAndMCP(t *testing.T) {
 	}
 	minimum := len(raw)
 	for _, delta := range []int{0, -1} {
-		out, e = f.run("graph", "exports", "--dir", f.project, "--source-input", input, "--select", "base.skill.review", "--select", "base.approach.careful", "--representation", "whole", "--max-bytes", fmt.Sprint(minimum+delta), "--json")
+		out, e = f.run("graph", "exports", "--dir", f.project, "--source-input", input, "--select", "base.skill.review", "--select", "base.approach.careful", "--representation", "whole", "--max-bytes", strconv.Itoa(minimum+delta), "--json")
 		graphReceipt(t, fmt.Sprintf("whole-boundary-%d.json", delta), out)
 		if delta == 0 && e != nil || delta < 0 && (e == nil || !bytes.Contains(out, []byte("GRAPH_OUTPUT_BUDGET"))) {
 			t.Fatal("boundary not honest", delta, e)
@@ -471,7 +473,12 @@ func graphInstalledBlockedStdout(t *testing.T, f *rootB2Fixture) {
 		}
 		if time.Now().After(deadline) {
 			child.Process.Kill()
-			child.Wait()
+			if waitErr := child.Wait(); waitErr != nil {
+				var exitErr *exec.ExitError
+				if !errors.As(waitErr, &exitErr) {
+					t.Fatalf("ordinary installed CLI terminal wait: %v", waitErr)
+				}
+			}
 			t.Fatal("ordinary installed CLI did not reach blocked final write", stderr.String())
 		}
 		time.Sleep(time.Millisecond)

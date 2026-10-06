@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -677,7 +678,7 @@ func graphFullPipe(t *testing.T) (*os.File, *os.File, int) {
 
 func TestGraphPrehandlerRefusalFullPipe(t *testing.T) {
 	for _, preceding := range []bool{false, true} {
-		t.Run(fmt.Sprint(preceding), func(t *testing.T) {
+		t.Run(strconv.FormatBool(preceding), func(t *testing.T) {
 			s := New("/not-executable", "test", nil)
 			defer s.Close()
 			r, w, fill := graphFullPipe(t)

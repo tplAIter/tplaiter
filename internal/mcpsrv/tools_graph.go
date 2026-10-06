@@ -101,11 +101,11 @@ func (s *Server) addGraphTools() {
 		s.mcp.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			raw, e := json.Marshal(req.Params.Arguments)
 			if e != nil {
-				return s.argumentFailure(spec.op, "arguments"), nil
+				return s.graphArgumentRefusal(spec.op, "arguments")
 			}
 			var a graphArgs
 			if e = canonicaljson.DecodeStrict(raw, &a); e != nil {
-				return s.argumentFailure(spec.op, "arguments"), nil
+				return s.graphArgumentRefusal(spec.op, "arguments")
 			}
 			cwd, failure := s.workDir(spec.op, "dir", a.Dir)
 			if failure != nil {
@@ -113,12 +113,12 @@ func (s *Server) addGraphTools() {
 			}
 			call, ok := ctx.Value(graphCallKey{}).(*graphCall)
 			if !ok || call == nil || !call.sdkBound || call.transport.server != s {
-				return s.argumentFailure(spec.op, "graph transport"), nil
+				return s.graphArgumentRefusal(spec.op, "graph transport")
 			}
 			layout := resultwire.GraphFrameLayout{APIVersion: resultwire.GraphFrameVersion, ID: call.id, Ceiling: call.ceiling}
 			encoded, err := resultwire.EncodeGraphFrame(layout)
 			if err != nil {
-				return s.argumentFailure(spec.op, "graph transport"), nil
+				return s.graphArgumentRefusal(spec.op, "graph transport")
 			}
 			argv := append(graphArgv(spec.layer, a), "--graph-mcp-frame", encoded)
 			out := s.callStructured(ctx, spec.op, cwd, argv, shortCall)
@@ -127,6 +127,13 @@ func (s *Server) addGraphTools() {
 		})
 	}
 }
+
+// graphArgumentRefusal reports a failed tool result without a JSON-RPC error.
+// Keep argument guards and SDK output validation on the structured failure path.
+func (s *Server) graphArgumentRefusal(op resultdto.Operation, argument string) (*mcp.CallToolResult, error) {
+	return s.argumentFailure(op, argument), nil
+}
+
 func ptrGraphTrue() *bool { v := true; return &v }
 
 // graphCall is created only by the stdio adapter. The actual SDK initialization
