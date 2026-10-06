@@ -144,6 +144,8 @@ func (p *Prepared) valid(ctx context.Context) error {
 		if err := p.nativeIntent.RecheckFor(ctx, p.runtime); err != nil {
 			return err
 		}
+		// This guard also covers evidence writes and completed-pass reopening,
+		// which do not necessarily issue a new execution permit.
 		if err := p.sources.RecheckFor(ctx, p.runtime); err != nil {
 			return err
 		}
@@ -192,6 +194,9 @@ func OpenPair(ctx context.Context, p *Prepared, reference Reference) (*VerifiedP
 	}
 	check, err := blockformatter.CheckRetainedPair(data[0], data[1])
 	if err != nil {
+		return nil, err
+	}
+	if err := p.valid(ctx); err != nil {
 		return nil, err
 	}
 	return &VerifiedPair{runtime: p.runtime, frameDigest: p.digest, output: append([]byte(nil), check.Formatted...), passes: passes}, nil
@@ -284,7 +289,7 @@ func RevalidatePublication(ctx context.Context, p *Prepared, pair *VerifiedPair)
 			return err
 		}
 	}
-	return nil
+	return p.valid(ctx)
 }
 
 // PrepareRootGoFile derives the exact native tool identity from its verified
@@ -412,7 +417,7 @@ func PrepareContextNativeNewFile(ctx context.Context, r *trustload.Runtime, inte
 	if err != nil {
 		return nil, err
 	}
-	graph, err := sources.SourceGraph(ctx)
+	graph, err := intent.SourceGraph(ctx, r)
 	if err != nil {
 		return nil, err
 	}

@@ -25,6 +25,98 @@ type PreparedContextSources struct {
 	records   map[string]contextSourceRecord
 }
 
+// SourceOperation keeps one complete authenticated source admission available
+// to a single calculation. It is read-only source material; FinalRecheck is
+// still required before the calculation is accepted.
+type SourceOperation struct {
+	owner   *PreparedContextSources
+	closure *contextauth.SourceClosureOperation
+}
+
+func (p *PreparedContextSources) BeginOperation(ctx context.Context, r *trustload.Runtime) (*SourceOperation, error) {
+	if p == nil {
+		return nil, errContextSources
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if r == nil || r != p.installed || p.closure == nil || len(p.records) == 0 {
+		return nil, errContextSources
+	}
+	for _, v := range p.records {
+		if v.resolution == nil || v.resolution != v.original {
+			return nil, errContextSources
+		}
+	}
+	op, e := p.closure.BeginOperation(ctx, r)
+	if e != nil {
+		return nil, e
+	}
+	return &SourceOperation{owner: p, closure: op}, nil
+}
+
+func (o *SourceOperation) Pins() ([]deps.PinnedSource, error) {
+	if o == nil || o.owner == nil {
+		return nil, errContextSources
+	}
+	return o.closure.Pins()
+}
+
+func (o *SourceOperation) SourceGraph() (deps.SourceGraph, error) {
+	if o == nil || o.owner == nil {
+		return deps.SourceGraph{}, errContextSources
+	}
+	return o.closure.SourceGraph()
+}
+
+func (o *SourceOperation) Catalogs() ([]exports.SourceCatalog, error) {
+	if o == nil || o.owner == nil {
+		return nil, errContextSources
+	}
+	return o.closure.Catalogs()
+}
+
+func (o *SourceOperation) Resolution(alias string) (*trustverify.VerifiedResolution, error) {
+	if o == nil || o.owner == nil {
+		return nil, errContextSources
+	}
+	return o.closure.Resolution(alias)
+}
+
+func (o *SourceOperation) RootPin() (deps.PinnedSource, error) {
+	if o == nil || o.owner == nil {
+		return deps.PinnedSource{}, errContextSources
+	}
+	return o.closure.RootPin()
+}
+
+func (o *SourceOperation) RootResolution() (*trustverify.VerifiedResolution, error) {
+	if o == nil || o.owner == nil {
+		return nil, errContextSources
+	}
+	return o.closure.RootResolution()
+}
+
+func (o *SourceOperation) Check(ctx context.Context, r *trustload.Runtime) error {
+	if o == nil || o.owner == nil || o.closure == nil {
+		return errContextSources
+	}
+	return o.closure.Check(ctx, r)
+}
+
+func (o *SourceOperation) OperationSubjects() ([]trustverify.Provider, error) {
+	if o == nil || o.owner == nil || o.closure == nil {
+		return nil, errContextSources
+	}
+	return o.closure.OperationSubjects()
+}
+
+func (o *SourceOperation) FinalRecheck(ctx context.Context, r *trustload.Runtime) error {
+	if o == nil || o.owner == nil {
+		return errContextSources
+	}
+	return o.owner.RecheckFor(ctx, r)
+}
+
 func PrepareContextSources(ctx context.Context, r *trustload.Runtime, raw []byte) (*PreparedContextSources, error) {
 	if ctx == nil || r == nil || r.TrustRuntime() == nil {
 		return nil, errContextSources
@@ -49,19 +141,28 @@ func PrepareContextSources(ctx context.Context, r *trustload.Runtime, raw []byte
 	if e != nil {
 		return nil, e
 	}
+	op, e := c.BeginOperation(ctx, r)
+	if e != nil {
+		c.Close()
+		return nil, e
+	}
 	p := &PreparedContextSources{installed: r, closure: c, records: map[string]contextSourceRecord{}}
-	pins, e := c.Pins(ctx)
+	pins, e := op.Pins()
 	if e != nil {
 		c.Close()
 		return nil, e
 	}
 	for _, pin := range pins {
-		v, e := c.Resolution(ctx, pin.Alias)
+		v, e := op.Resolution(pin.Alias)
 		if e != nil {
 			c.Close()
 			return nil, e
 		}
 		p.records[pin.Alias] = contextSourceRecord{v, v}
+	}
+	if e := p.RecheckFor(ctx, r); e != nil {
+		c.Close()
+		return nil, e
 	}
 	return p, nil
 }

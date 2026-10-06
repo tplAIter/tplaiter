@@ -43,6 +43,7 @@ type PreparedNativeNew struct {
 	mu                       sync.Mutex
 	owner                    *trustload.Runtime
 	sources                  *PreparedContextSources
+	sourceOperation          *SourceOperation
 	formatterSources         *contextauth.VerifiedSourceClosure
 	formatterOwner           *PreparedNativeNew
 	root                     provenance.RootTemplateLock
@@ -101,16 +102,20 @@ func prepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *Prepar
 	if err := sources.RecheckFor(ctx, r); err != nil {
 		return nil, err
 	}
+	sourceOperation, err := sources.BeginOperation(ctx, r)
+	if err != nil {
+		return nil, err
+	}
 	stable := r.TrustRuntime()
 	project := r.ProjectContext()
 	if stable == nil || r.ScratchRoot() == "" || project.ProjectID == "" || project.RootPath == "" {
 		return nil, errContextSources
 	}
-	pin, err := sources.RootPin(ctx)
+	pin, err := sourceOperation.RootPin()
 	if err != nil {
 		return nil, err
 	}
-	resolution, err := sources.Resolution(ctx, pin.Alias)
+	resolution, err := sourceOperation.Resolution(pin.Alias)
 	if err != nil {
 		return nil, err
 	}
@@ -169,12 +174,12 @@ func prepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *Prepar
 	}
 	dependencies := provenance.TemplateLock{APIVersion: provenance.TemplateLockAPIVersion, Kind: provenance.DependencyExportLockKind, TrustProfile: binding, RootLockSHA256: root.RootLockSHA256, Dependencies: []provenance.DependencySubject{}}
 	providers := []trustverify.Provider{}
-	pins, err := sources.Pins(ctx)
+	pins, err := sourceOperation.Pins()
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range pins {
-		resolved, err := sources.Resolution(ctx, p.Alias)
+		resolved, err := sourceOperation.Resolution(p.Alias)
 		if err != nil {
 			return nil, err
 		}
@@ -220,11 +225,11 @@ func prepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *Prepar
 	if err != nil {
 		return nil, err
 	}
-	graph, err := sources.SourceGraph(ctx)
+	graph, err := sourceOperation.SourceGraph()
 	if err != nil {
 		return nil, err
 	}
-	catalogs, err := sources.Catalogs(ctx)
+	catalogs, err := sourceOperation.Catalogs()
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +267,7 @@ func prepareNativeNew(ctx context.Context, r *trustload.Runtime, sources *Prepar
 	if err = sources.RecheckFor(ctx, r); err != nil {
 		return nil, err
 	}
-	prepared := &PreparedNativeNew{owner: r, sources: sources, root: root, dependencies: dependencies, rendered: result, manifest: append([]byte(nil), raw...), rootAlias: pin.Alias, operation: operation, contextDigest: contextDigest, operationBase: operationBase, managedFiles: managedFiles}
+	prepared := &PreparedNativeNew{owner: r, sources: sources, sourceOperation: sourceOperation, root: root, dependencies: dependencies, rendered: result, manifest: append([]byte(nil), raw...), rootAlias: pin.Alias, operation: operation, contextDigest: contextDigest, operationBase: operationBase, managedFiles: managedFiles}
 	if mode == nativeManaged {
 		prepared.formatterOwner = prepared
 	}
@@ -370,7 +375,10 @@ func (p *PreparedNativeNew) Projection(ctx context.Context, r *trustload.Runtime
 	if err := p.check(ctx, r); err != nil {
 		return NativeNewProjection{}, err
 	}
-	resolution, err := p.sources.Resolution(ctx, p.rootAlias)
+	if p.sourceOperation == nil {
+		return NativeNewProjection{}, errContextSources
+	}
+	resolution, err := p.sourceOperation.Resolution(p.rootAlias)
 	if err != nil {
 		return NativeNewProjection{}, err
 	}
@@ -425,7 +433,10 @@ func (p *PreparedNativeNew) SourcePins(ctx context.Context, r *trustload.Runtime
 	if err := p.check(ctx, r); err != nil {
 		return nil, err
 	}
-	out, err := p.sources.Pins(ctx)
+	if p.sourceOperation == nil {
+		return nil, errContextSources
+	}
+	out, err := p.sourceOperation.Pins()
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +454,10 @@ func (p *PreparedNativeNew) SourceGraph(ctx context.Context, r *trustload.Runtim
 	if err := p.check(ctx, r); err != nil {
 		return deps.SourceGraph{}, err
 	}
-	out, err := p.sources.SourceGraph(ctx)
+	if p.sourceOperation == nil {
+		return deps.SourceGraph{}, errContextSources
+	}
+	out, err := p.sourceOperation.SourceGraph()
 	if err != nil {
 		return deps.SourceGraph{}, err
 	}
@@ -461,7 +475,10 @@ func (p *PreparedNativeNew) Catalogs(ctx context.Context, r *trustload.Runtime) 
 	if err := p.check(ctx, r); err != nil {
 		return nil, err
 	}
-	out, err := p.sources.Catalogs(ctx)
+	if p.sourceOperation == nil {
+		return nil, errContextSources
+	}
+	out, err := p.sourceOperation.Catalogs()
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +495,10 @@ func (p *PreparedNativeNew) check(ctx context.Context, r *trustload.Runtime) err
 	if p == nil || ctx == nil || r == nil || p.owner != r || p.sources == nil || p.rendered == nil {
 		return errContextSources
 	}
-	return p.sources.RecheckFor(ctx, r)
+	if p.sourceOperation == nil {
+		return errContextSources
+	}
+	return p.sourceOperation.Check(ctx, r)
 }
 func (p *PreparedNativeNew) RecheckFor(ctx context.Context, r *trustload.Runtime) error {
 	if p == nil {
@@ -486,7 +506,10 @@ func (p *PreparedNativeNew) RecheckFor(ctx context.Context, r *trustload.Runtime
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.check(ctx, r)
+	if err := p.check(ctx, r); err != nil {
+		return err
+	}
+	return p.sourceOperation.FinalRecheck(ctx, r)
 }
 func (p *PreparedNativeNew) RootLock(ctx context.Context, r *trustload.Runtime) (provenance.RootTemplateLock, error) {
 	if p == nil {
@@ -521,7 +544,7 @@ func (p *PreparedNativeNew) RootResolution(ctx context.Context, r *trustload.Run
 	if err := p.check(ctx, r); err != nil {
 		return nil, err
 	}
-	return p.sources.Resolution(ctx, p.rootAlias)
+	return p.sourceOperation.Resolution(p.rootAlias)
 }
 func (p *PreparedNativeNew) OperationInputsSHA256(ctx context.Context, r *trustload.Runtime) (string, error) {
 	if p == nil {

@@ -17,6 +17,7 @@ type ContextSource struct {
 	mu                   sync.Mutex
 	runtime              *trustload.Runtime
 	sources              *contextsource.PreparedContextSources
+	operation            *contextsource.SourceOperation
 	input                []byte
 	alias, name, version string
 }
@@ -38,7 +39,12 @@ func ResolveContextSources(ctx context.Context, runtime *trustload.Runtime, home
 	if err != nil {
 		return nil, err
 	}
-	out := &ContextSource{runtime: runtime, sources: sources, input: input, alias: alias, version: version}
+	operation, err := sources.BeginOperation(ctx, runtime)
+	if err != nil {
+		sources.Close()
+		return nil, err
+	}
+	out := &ContextSource{runtime: runtime, sources: sources, operation: operation, input: input, alias: alias, version: version}
 	complete := false
 	defer func() {
 		if !complete {
@@ -64,6 +70,13 @@ func (s *ContextSource) check(ctx context.Context, r *trustload.Runtime) error {
 	return s.sources.RecheckFor(ctx, r)
 }
 
+func (s *ContextSource) operationCheck(ctx context.Context, r *trustload.Runtime) error {
+	if s == nil || ctx == nil || r == nil || s.runtime != r || s.sources == nil || s.operation == nil {
+		return ErrMismatch
+	}
+	return ctx.Err()
+}
+
 // Root returns calculation data only. New preparation reconstructs its own
 // retained root snapshot from Sources instead of accepting this FS as authority.
 func (s *ContextSource) Root(ctx context.Context, r *trustload.Runtime) (*Source, error) {
@@ -72,14 +85,14 @@ func (s *ContextSource) Root(ctx context.Context, r *trustload.Runtime) (*Source
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.check(ctx, r); err != nil {
+	if err := s.operationCheck(ctx, r); err != nil {
 		return nil, err
 	}
-	pin, err := s.sources.RootPin(ctx)
+	pin, err := s.operation.RootPin()
 	if err != nil {
 		return nil, err
 	}
-	resolution, err := s.sources.Resolution(ctx, pin.Alias)
+	resolution, err := s.operation.Resolution(pin.Alias)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +115,7 @@ func (s *ContextSource) Root(ctx context.Context, r *trustload.Runtime) (*Source
 	if err != nil {
 		return nil, err
 	}
-	if err = s.check(ctx, r); err != nil {
+	if err = s.operation.FinalRecheck(ctx, r); err != nil {
 		return nil, err
 	}
 	return &Source{Input: append([]byte(nil), s.input...), Snapshot: snapshot, Alias: s.alias, Name: tpl.Metadata.Name, Version: s.version}, nil
@@ -114,7 +127,7 @@ func (s *ContextSource) Sources(ctx context.Context, r *trustload.Runtime) (*con
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.check(ctx, r); err != nil {
+	if err := s.operationCheck(ctx, r); err != nil {
 		return nil, err
 	}
 	return s.sources, nil
@@ -137,6 +150,7 @@ func (s *ContextSource) Close() {
 		s.sources.Close()
 	}
 	s.sources = nil
+	s.operation = nil
 	s.runtime = nil
 	s.input = nil
 }

@@ -68,6 +68,177 @@ type VerifiedSourceClosure struct {
 	self      *VerifiedSourceClosure
 }
 
+// SourceClosureOperation is a read-only view of one complete source admission.
+// It carries the original opaque resolutions and detached source projections;
+// it has no authorization, grant, or publication method. The owning closure is
+// still physically rechecked by FinalRecheck before effects or result acceptance.
+type SourceClosureOperation struct {
+	owner    *VerifiedSourceClosure
+	runtime  *trustload.Runtime
+	root     string
+	pins     []deps.PinnedSource
+	graph    deps.SourceGraph
+	catalogs []exports.SourceCatalog
+	res      map[string]*trustverify.VerifiedResolution
+}
+
+func (p *VerifiedSourceClosure) BeginOperation(ctx context.Context, r *trustload.Runtime) (*SourceClosureOperation, error) {
+	if p == nil {
+		return nil, errContextSources
+	}
+	if ctx == nil {
+		return nil, errContextSources
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if r == nil || r != p.installed {
+		return nil, errContextSources
+	}
+	// The operation is created immediately after the owning admission (or by a
+	// caller that already holds an authenticated closure). Rechecking every
+	// source here duplicates the full signed-source reconstruction and defeats
+	// the operation-local view. FinalRecheck is mandatory before acceptance and
+	// is the freshness boundary for this read-only carrier.
+	if err := p.operationLiveLocked(); err != nil {
+		return nil, errContextSources
+	}
+	pins, e := contextCopy(p.pinsLocked())
+	if e != nil {
+		return nil, e
+	}
+	graph, e := contextCopy(p.graph)
+	if e != nil {
+		return nil, e
+	}
+	catalogs, e := contextCopy(p.catalogs)
+	if e != nil {
+		return nil, e
+	}
+	res := make(map[string]*trustverify.VerifiedResolution, len(p.records))
+	for alias, record := range p.records {
+		res[alias] = record.resolution
+	}
+	return &SourceClosureOperation{owner: p, runtime: r, root: p.root, pins: pins, graph: graph, catalogs: catalogs, res: res}, nil
+}
+
+func (o *SourceClosureOperation) valid() error {
+	if o == nil || o.owner == nil || o.runtime == nil {
+		return errContextSources
+	}
+	o.owner.mu.Lock()
+	defer o.owner.mu.Unlock()
+	if o.owner.installed != o.runtime {
+		return errContextSources
+	}
+	return o.owner.operationLiveLocked()
+}
+
+// Check validates the operation-local carrier and runtime identity without
+// replaying signed source admission. Call FinalRecheck at an acceptance
+// boundary before execution or publication.
+func (o *SourceClosureOperation) Check(ctx context.Context, r *trustload.Runtime) error {
+	if ctx == nil || r == nil || o == nil || r != o.runtime {
+		return errContextSources
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return o.valid()
+}
+
+func (o *SourceClosureOperation) FinalRecheck(ctx context.Context, r *trustload.Runtime) error {
+	if err := o.Check(ctx, r); err != nil {
+		return err
+	}
+	return o.owner.RecheckFor(ctx, r)
+}
+
+func (o *SourceClosureOperation) Pins() ([]deps.PinnedSource, error) {
+	if e := o.valid(); e != nil {
+		return nil, e
+	}
+	return contextCopy(o.pins)
+}
+
+func (o *SourceClosureOperation) SourceGraph() (deps.SourceGraph, error) {
+	if e := o.valid(); e != nil {
+		return deps.SourceGraph{}, e
+	}
+	return contextCopy(o.graph)
+}
+
+func (o *SourceClosureOperation) Catalogs() ([]exports.SourceCatalog, error) {
+	if e := o.valid(); e != nil {
+		return nil, e
+	}
+	return contextCopy(o.catalogs)
+}
+
+func (o *SourceClosureOperation) Resolution(alias string) (*trustverify.VerifiedResolution, error) {
+	if e := o.valid(); e != nil {
+		return nil, e
+	}
+	resolution, ok := o.res[alias]
+	if !ok {
+		return nil, errContextSources
+	}
+	return resolution, nil
+}
+
+func (o *SourceClosureOperation) RootPin() (deps.PinnedSource, error) {
+	if e := o.valid(); e != nil {
+		return deps.PinnedSource{}, e
+	}
+	for _, pin := range o.pins {
+		if pin.Alias == o.root {
+			return contextCopy(pin)
+		}
+	}
+	return deps.PinnedSource{}, errContextSources
+}
+
+func (o *SourceClosureOperation) RootResolution() (*trustverify.VerifiedResolution, error) {
+	if e := o.valid(); e != nil {
+		return nil, e
+	}
+	return o.res[o.root], nil
+}
+
+func (o *SourceClosureOperation) OperationSubjects() ([]trustverify.Provider, error) {
+	if err := o.valid(); err != nil {
+		return nil, err
+	}
+	out := make([]trustverify.Provider, 0, len(o.res))
+	for _, resolution := range o.res {
+		s := resolution.Subject()
+		out = append(out, trustverify.Provider{Origin: s.Origin, TemplatePath: s.TemplatePath, Commit: s.Commit, TreeSHA256: s.TreeSHA256, ContractSHA256: s.ContractSHA256})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Origin+"\x00"+out[i].TemplatePath+"\x00"+out[i].Commit < out[j].Origin+"\x00"+out[j].TemplatePath+"\x00"+out[j].Commit
+	})
+	return out, nil
+}
+
+// operationLiveLocked checks owner identity and lifetime only. It does not
+// establish source freshness; FinalRecheck remains the acceptance boundary.
+func (p *VerifiedSourceClosure) operationLiveLocked() error {
+	if p.closed || p.self != p || p.installed == nil || p.stable == nil || p.installed.TrustRuntime() != p.stable || !p.stable.Binding().Equal(p.profile) || p.installed.ProjectContext() != p.project || len(p.records) == 0 || p.root == "" {
+		return errContextSources
+	}
+	if p.parent != nil {
+		p.parent.mu.Lock()
+		defer p.parent.mu.Unlock()
+		if p.parent.installed != p.installed {
+			return errContextSources
+		}
+		return p.parent.operationLiveLocked()
+	}
+	return nil
+}
+
 // AdmitSourceClosure consumes original admissions from one installed runtime.
 // Eligibility and DAG edges come from retained authenticated source bytes;
 // rechecking original evidence never synthesizes project locks or permissions.

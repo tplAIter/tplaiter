@@ -373,6 +373,9 @@ func ResolveContextNewFormatterComposition(ctx context.Context, r *trustload.Run
 		return nil, err
 	}
 	sources := calculation.sources
+	if calculation.operation == nil {
+		return nil, ErrFormatterMaterialUnavailable
+	}
 	c, err := ParseContextNewFormatterContext(input.ContextJSON)
 	if err != nil {
 		return nil, err
@@ -384,7 +387,7 @@ func ResolveContextNewFormatterComposition(ctx context.Context, r *trustload.Run
 	if err != nil || operation.ProfileBindingSHA256 != binding {
 		return nil, ErrFormatterMaterialUnavailable
 	}
-	graph, err := sources.SourceGraph(ctx)
+	graph, err := calculation.operation.SourceGraph()
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +395,7 @@ func ResolveContextNewFormatterComposition(ctx context.Context, r *trustload.Run
 	if err != nil || c.SourceGraphSHA256 != graphDigest {
 		return nil, ErrFormatterMaterialUnavailable
 	}
-	subjects, err := sources.OperationSubjects(ctx, r)
+	subjects, err := calculation.operation.OperationSubjects()
 	if err != nil {
 		return nil, err
 	}
@@ -416,7 +419,7 @@ func ResolveContextNewFormatterComposition(ctx context.Context, r *trustload.Run
 	if !reflect.DeepEqual(operation.Subjects, expected) {
 		return nil, ErrFormatterMaterialUnavailable
 	}
-	root, err := sources.RootResolution(ctx, r)
+	root, err := calculation.operation.RootResolution()
 	if err != nil {
 		return nil, err
 	}
@@ -427,9 +430,6 @@ func ResolveContextNewFormatterComposition(ctx context.Context, r *trustload.Run
 	selection.installed = r
 	selection.calculation = calculation
 	selection.sources = sources
-	if err := sources.RecheckFor(ctx, r); err != nil {
-		return nil, err
-	}
 	return selection, nil
 }
 
@@ -479,6 +479,7 @@ func ValidateRetainedFormatterContext(raw []byte, scope string) error {
 type ContextNewFormatterCalculation struct {
 	owner                                      *trustload.Runtime
 	sources                                    *contextauth.VerifiedSourceClosure
+	operation                                  *contextauth.SourceClosureOperation
 	self                                       *ContextNewFormatterCalculation
 	root, dependencies, graph, native, answers string
 	files                                      map[string][]byte
@@ -491,7 +492,11 @@ func PrepareContextNewFormatterCalculation(ctx context.Context, r *trustload.Run
 	if err := sources.RecheckFor(ctx, r); err != nil {
 		return nil, err
 	}
-	resolution, err := sources.RootResolution(ctx, r)
+	sourceOperation, err := sources.BeginOperation(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	resolution, err := sourceOperation.RootResolution()
 	if err != nil {
 		return nil, err
 	}
@@ -533,11 +538,11 @@ func PrepareContextNewFormatterCalculation(ctx context.Context, r *trustload.Run
 		return nil, err
 	}
 	dependencies := provenance.TemplateLock{APIVersion: provenance.TemplateLockAPIVersion, Kind: provenance.DependencyExportLockKind, TrustProfile: binding, RootLockSHA256: root.RootLockSHA256, Dependencies: []provenance.DependencySubject{}}
-	pins, err := sources.Pins(ctx)
+	pins, err := sourceOperation.Pins()
 	if err != nil {
 		return nil, err
 	}
-	rootPin, err := sources.RootPin(ctx)
+	rootPin, err := sourceOperation.RootPin()
 	if err != nil {
 		return nil, err
 	}
@@ -545,7 +550,7 @@ func PrepareContextNewFormatterCalculation(ctx context.Context, r *trustload.Run
 		if pin.Alias == rootPin.Alias {
 			continue
 		}
-		resolved, err := sources.Resolution(ctx, pin.Alias)
+		resolved, err := sourceOperation.Resolution(pin.Alias)
 		if err != nil {
 			return nil, err
 		}
@@ -560,11 +565,11 @@ func PrepareContextNewFormatterCalculation(ctx context.Context, r *trustload.Run
 	if err != nil || provenance.ValidateLockPair(root, dependencies) != nil {
 		return nil, ErrFormatterMaterialUnavailable
 	}
-	graph, err := sources.SourceGraph(ctx)
+	graph, err := sourceOperation.SourceGraph()
 	if err != nil {
 		return nil, err
 	}
-	catalogs, err := sources.Catalogs(ctx)
+	catalogs, err := sourceOperation.Catalogs()
 	if err != nil {
 		return nil, err
 	}
@@ -642,7 +647,7 @@ func PrepareContextNewFormatterCalculation(ctx context.Context, r *trustload.Run
 	if err != nil {
 		return nil, err
 	}
-	p := &ContextNewFormatterCalculation{owner: r, sources: sources, root: root.RootLockSHA256, dependencies: dependencies.LockSHA256, graph: graphDigest, native: native, answers: evidencecas.Digest(answers), files: map[string][]byte{}}
+	p := &ContextNewFormatterCalculation{owner: r, sources: sources, operation: sourceOperation, root: root.RootLockSHA256, dependencies: dependencies.LockSHA256, graph: graphDigest, native: native, answers: evidencecas.Digest(answers), files: map[string][]byte{}}
 	for _, file := range managed {
 		p.files[file.Path] = bytes.Clone(result.Files[file.Path])
 	}
@@ -653,15 +658,26 @@ func PrepareContextNewFormatterCalculation(ctx context.Context, r *trustload.Run
 	return p, nil
 }
 
-func (p *ContextNewFormatterCalculation) RecheckFor(ctx context.Context, r *trustload.Runtime) error {
+func (p *ContextNewFormatterCalculation) check(ctx context.Context, r *trustload.Runtime) error {
 	if p == nil || p.self != p || r == nil || p.owner != r || p.sources == nil {
 		return ErrFormatterMaterialUnavailable
 	}
-	return p.sources.RecheckFor(ctx, r)
+	if p.operation == nil {
+		return ErrFormatterMaterialUnavailable
+	}
+	return p.operation.Check(ctx, r)
+}
+
+// RecheckFor establishes fresh signed source and CAS admission, not just carrier validity.
+func (p *ContextNewFormatterCalculation) RecheckFor(ctx context.Context, r *trustload.Runtime) error {
+	if err := p.check(ctx, r); err != nil {
+		return err
+	}
+	return p.operation.FinalRecheck(ctx, r)
 }
 
 func (p *ContextNewFormatterCalculation) ValidateContext(ctx context.Context, r *trustload.Runtime, raw []byte, name string, input []byte) error {
-	if err := p.RecheckFor(ctx, r); err != nil {
+	if err := p.check(ctx, r); err != nil {
 		return err
 	}
 	c, err := ParseContextNewFormatterContext(raw)
@@ -676,10 +692,10 @@ func (p *ContextNewFormatterCalculation) ValidateContext(ctx context.Context, r 
 }
 
 func (p *ContextNewFormatterCalculation) RootResolution(ctx context.Context, r *trustload.Runtime) (*trustverify.VerifiedResolution, error) {
-	if err := p.RecheckFor(ctx, r); err != nil {
+	if err := p.check(ctx, r); err != nil {
 		return nil, err
 	}
-	return p.sources.RootResolution(ctx, r)
+	return p.operation.RootResolution()
 }
 
 // ContextUpdateFormatterContext is a distinct closed native-v2 Update frame.
